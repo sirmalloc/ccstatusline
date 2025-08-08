@@ -103,6 +103,10 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 const sessionColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
                 elements.push(sessionColor('Session: 2hr 15m'));
                 break;
+            case 'version':
+                const versionColor = (chalk as any)[item.color || 'green'] || chalk.green;
+                elements.push(versionColor('Version: 1.0.72'));
+                break;
             case 'terminal-width':
                 const termColor = (chalk as any)[item.color || 'dim'] || chalk.dim;
                 const detectedWidth = canDetectTerminalWidth() ? terminalWidth : '??';
@@ -110,7 +114,9 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 break;
             case 'separator':
                 const sepChar = item.character || '|';
-                elements.push(chalk.dim(` ${sepChar} `));
+                // Don't add space before comma
+                const sepContent = sepChar === ',' ? chalk.dim(`${sepChar} `) : chalk.dim(` ${sepChar} `);
+                elements.push(sepContent);
                 break;
             case 'flex-separator':
                 elements.push('FLEX');
@@ -308,7 +314,7 @@ interface ItemsEditorProps {
 const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    const separatorChars = ['|', '-', ' '];
+    const separatorChars = ['|', '-', ',', ' '];
 
     useInput((input, key) => {
         if (moveMode) {
@@ -345,7 +351,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type backwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 
-                    'session-clock', 'terminal-width', 'flex-separator'];
+                    'session-clock', 'terminal-width', 'version', 'flex-separator'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -362,7 +368,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type forwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 
-                    'session-clock', 'terminal-width', 'flex-separator'];
+                    'session-clock', 'terminal-width', 'version', 'flex-separator'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -456,6 +462,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 return chalk.blue('Session Clock');
             case 'terminal-width':
                 return chalk.dim('Terminal Width');
+            case 'version':
+                return chalk.green('Version');
         }
     };
 
@@ -505,7 +513,7 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock'].includes(item.type)
+        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'version'].includes(item.type)
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -544,6 +552,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'context-length': return 'Context Length';
             case 'context-percentage': return 'Context Percentage';
             case 'session-clock': return 'Session Clock';
+            case 'version': return 'Version';
             default: return item.type;
         }
     };

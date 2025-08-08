@@ -24,6 +24,7 @@ interface StatusJSON {
         current_dir: string;
         project_dir: string;
     };
+    version?: string;
 }
 
 interface TokenUsage {
@@ -399,13 +400,21 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 }
                 break;
 
+            case 'version':
+                const versionString = data.version || 'Unknown';
+                const versionColor = (chalk as any)[item.color || 'green'] || chalk.green;
+                elements.push({ content: versionColor(`Version: ${versionString}`), type: 'version' });
+                break;
+
             case 'separator':
                 // Only add separator if there are already elements and the last one isn't a separator
                 const lastElement = elements[elements.length - 1];
                 if (elements.length > 0 && lastElement && lastElement.type !== 'separator') {
                     const sepColor = (chalk as any)[settings.colors.separator] || chalk.dim;
                     const sepChar = item.character || '|';
-                    elements.push({ content: sepColor(` ${sepChar} `), type: 'separator' });
+                    // Don't add space before comma
+                    const sepContent = sepChar === ',' ? sepColor(`${sepChar} `) : sepColor(` ${sepChar} `);
+                    elements.push({ content: sepContent, type: 'separator' });
                 }
                 break;
 
