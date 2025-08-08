@@ -412,8 +412,15 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 if (elements.length > 0 && lastElement && lastElement.type !== 'separator') {
                     const sepColor = (chalk as any)[settings.colors.separator] || chalk.dim;
                     const sepChar = item.character || '|';
-                    // Don't add space before comma
-                    const sepContent = sepChar === ',' ? sepColor(`${sepChar} `) : sepColor(` ${sepChar} `);
+                    // Handle special separator cases
+                    let sepContent;
+                    if (sepChar === ',') {
+                        sepContent = sepColor(`${sepChar} `);
+                    } else if (sepChar === ' ') {
+                        sepContent = sepColor(' ');
+                    } else {
+                        sepContent = sepColor(` ${sepChar} `);
+                    }
                     elements.push({ content: sepContent, type: 'separator' });
                 }
                 break;

@@ -114,8 +114,15 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 break;
             case 'separator':
                 const sepChar = item.character || '|';
-                // Don't add space before comma
-                const sepContent = sepChar === ',' ? chalk.dim(`${sepChar} `) : chalk.dim(` ${sepChar} `);
+                // Handle special separator cases
+                let sepContent;
+                if (sepChar === ',') {
+                    sepContent = chalk.dim(`${sepChar} `);
+                } else if (sepChar === ' ') {
+                    sepContent = chalk.dim(' ');
+                } else {
+                    sepContent = chalk.dim(` ${sepChar} `);
+                }
                 elements.push(sepContent);
                 break;
             case 'flex-separator':
