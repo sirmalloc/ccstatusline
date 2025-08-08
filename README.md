@@ -45,10 +45,13 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
-- **Token Usage** - Shows input/output/total tokens used
-- **Time** - Current time in HH:MM:SS format
-- **Custom Text** - Add your own static text
-- **Separator** - Visual divider between items
+- **Tokens Input** - Shows input tokens used
+- **Tokens Output** - Shows output tokens used
+- **Tokens Cached** - Shows cached tokens used
+- **Tokens Total** - Shows total tokens used
+- **Context Length** - Shows current context length in tokens
+- **Context Percentage** - Shows percentage of context limit used
+- **Separator** - Visual divider between items (|)
 - **Flex Separator** - Expands to fill available space
 
 ## Configuration File
@@ -64,29 +67,26 @@ The configuration file at `~/.config/ccstatusline/settings.json` looks like:
     },
     {
       "type": "separator",
-      "text": " │ ",
       "color": "gray"
     },
     {
-      "type": "git_branch",
+      "type": "git-branch",
       "color": "green"
     },
     {
       "type": "separator",
-      "text": " │ ",
       "color": "gray"
     },
     {
-      "type": "tokens",
+      "type": "tokens-total",
       "color": "yellow"
     },
     {
-      "type": "flex_separator",
-      "text": "─",
+      "type": "flex-separator",
       "color": "gray"
     },
     {
-      "type": "time",
+      "type": "context-percentage",
       "color": "blue"
     }
   ]
