@@ -43,25 +43,25 @@ export async function saveClaudeSettings(settings: ClaudeSettings): Promise<void
 
 export async function isInstalled(): Promise<boolean> {
     const settings = await loadClaudeSettings();
-    return settings.statusLine?.command === 'npx -y ccstatusline';
+    return settings.statusLine?.command === 'npx -y ccstatusline@latest';
 }
 
 export async function installStatusLine(): Promise<void> {
     const settings = await loadClaudeSettings();
-    
+
     // Update settings with our status line (confirmation already handled in TUI)
     settings.statusLine = {
         type: 'command',
-        command: 'npx -y ccstatusline',
+        command: 'npx -y ccstatusline@latest',
         padding: 1
     };
-    
+
     await saveClaudeSettings(settings);
 }
 
 export async function uninstallStatusLine(): Promise<void> {
     const settings = await loadClaudeSettings();
-    
+
     if (settings.statusLine) {
         delete settings.statusLine;
         await saveClaudeSettings(settings);

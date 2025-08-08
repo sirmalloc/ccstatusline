@@ -527,9 +527,9 @@ const App: React.FC = () => {
             const existing = await getExistingStatusLine();
             let message: string;
 
-            if (existing && existing !== 'npx -y ccstatusline') {
-                message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline?`;
-            } else if (existing === 'npx -y ccstatusline') {
+            if (existing && existing !== 'npx -y ccstatusline@latest') {
+                message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
+            } else if (existing === 'npx -y ccstatusline@latest') {
                 message = 'ccstatusline is already installed in ~/.claude/settings.json\nReinstall it?';
             } else {
                 message = 'This will modify ~/.claude/settings.json to add ccstatusline.\nContinue?';

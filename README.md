@@ -16,7 +16,7 @@ No installation needed! Use directly with npx:
 
 ```bash
 # Run the configuration TUI
-npx ccstatusline
+npx ccstatusline@latest
 ```
 
 ## Setup
@@ -26,7 +26,7 @@ npx ccstatusline
 Run the interactive configuration tool:
 
 ```bash
-npx ccstatusline
+npx ccstatusline@latest
 ```
 
 This launches a TUI where you can:
