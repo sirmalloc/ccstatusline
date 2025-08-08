@@ -25,6 +25,10 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
                 const branchColor = (chalk as any)[item.color || 'magenta'] || chalk.magenta;
                 elements.push(branchColor('⎇ main'));
                 break;
+            case 'git-changes':
+                const changesColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
+                elements.push(changesColor('(+42,-10)'));
+                break;
             case 'tokens-input':
                 const inputColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
                 elements.push(inputColor('In: 15.2k'));
@@ -224,7 +228,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 setSelectedIndex(Math.min(items.length - 1, selectedIndex + 1));
             } else if (key.leftArrow && items.length > 0) {
                 // Toggle item type backwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'separator', 'flex-separator',
+                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -240,7 +244,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 }
             } else if (key.rightArrow && items.length > 0) {
                 // Toggle item type forwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'separator', 'flex-separator',
+                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -293,6 +297,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 return chalk.cyan('Model');
             case 'git-branch':
                 return chalk.magenta('Git Branch');
+            case 'git-changes':
+                return chalk.yellow('Git Changes');
             case 'separator':
                 return chalk.dim('Separator |');
             case 'flex-separator':
@@ -377,6 +383,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
         switch (item.type) {
             case 'model': return 'Model';
             case 'git-branch': return 'Git Branch';
+            case 'git-changes': return 'Git Changes';
             case 'tokens-input': return 'Tokens Input';
             case 'tokens-output': return 'Tokens Output';
             case 'tokens-cached': return 'Tokens Cached';

@@ -8,7 +8,7 @@ const readFile = fs.promises?.readFile || promisify(fs.readFile);
 const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
 const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
 
-export type StatusItemType = 'model' | 'git-branch' | 'separator' | 'flex-separator' | 
+export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' | 
     'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage';
 
 export interface StatusItem {
@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS: Settings = {
         { id: '1', type: 'model', color: 'cyan' },
         { id: '2', type: 'separator' },
         { id: '3', type: 'git-branch', color: 'magenta' },
+        { id: '4', type: 'separator' },
+        { id: '5', type: 'git-changes', color: 'yellow' },
     ],
     colors: {
         model: 'cyan',
