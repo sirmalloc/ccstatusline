@@ -2,7 +2,7 @@
 import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { runTUI } from './tui.tsx';
-import { loadSettings } from './config';
+import { loadSettings, type StatusItem } from './config';
 import * as fs from 'fs';
 import { promisify } from 'util';
 
@@ -68,6 +68,54 @@ async function readStdin(): Promise<string | null> {
     }
 }
 
+function getTerminalWidth(): number | null {
+    try {
+        // First try to get the tty of the parent process
+        const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            shell: '/bin/sh'
+        }).trim();
+        
+        // Check if we got a valid tty (not ?? which means no tty)
+        if (tty && tty !== '??' && tty !== '?') {
+            // Now get the terminal size
+            const width = execSync(
+                `stty size < /dev/${tty} | awk '{print $2}'`,
+                {
+                    encoding: 'utf8',
+                    stdio: ['pipe', 'pipe', 'ignore'],
+                    shell: '/bin/sh'
+                }
+            ).trim();
+            
+            const parsed = parseInt(width, 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+    } catch {
+        // Command failed, width detection not available
+    }
+    
+    // Fallback: try tput cols which might work in some environments
+    try {
+        const width = execSync('tput cols 2>/dev/null', {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore']
+        }).trim();
+        
+        const parsed = parseInt(width, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+            return parsed;
+        }
+    } catch {
+        // tput also failed
+    }
+    
+    return null;
+}
+
 function getGitBranch(): string | null {
     try {
         const branch = execSync('git branch --show-current 2>/dev/null', {
@@ -119,6 +167,77 @@ function getGitChanges(): { insertions: number; deletions: number } | null {
         }
 
         return { insertions: totalInsertions, deletions: totalDeletions };
+    } catch {
+        return null;
+    }
+}
+
+async function getSessionDuration(transcriptPath: string): Promise<string | null> {
+    try {
+        if (!fs.existsSync(transcriptPath)) {
+            return null;
+        }
+
+        const content = await readFile(transcriptPath, 'utf-8');
+        const lines = content.trim().split('\n').filter(line => line.trim());
+        
+        if (lines.length === 0) {
+            return null;
+        }
+
+        let firstTimestamp: Date | null = null;
+        let lastTimestamp: Date | null = null;
+
+        // Find first valid timestamp
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line);
+                if (data.timestamp) {
+                    firstTimestamp = new Date(data.timestamp);
+                    break;
+                }
+            } catch {
+                // Skip invalid lines
+            }
+        }
+
+        // Find last valid timestamp (iterate backwards)
+        for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+                const data = JSON.parse(lines[i]);
+                if (data.timestamp) {
+                    lastTimestamp = new Date(data.timestamp);
+                    break;
+                }
+            } catch {
+                // Skip invalid lines
+            }
+        }
+
+        if (!firstTimestamp || !lastTimestamp) {
+            return null;
+        }
+
+        // Calculate duration in milliseconds
+        const durationMs = lastTimestamp.getTime() - firstTimestamp.getTime();
+        
+        // Convert to minutes
+        const totalMinutes = Math.floor(durationMs / (1000 * 60));
+        
+        if (totalMinutes < 1) {
+            return '<1m';
+        }
+
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        if (hours === 0) {
+            return `${minutes}m`;
+        } else if (minutes === 0) {
+            return `${hours}hr`;
+        } else {
+            return `${hours}hr ${minutes}m`;
+        }
     } catch {
         return null;
     }
@@ -180,21 +299,12 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
     }
 }
 
-async function renderStatusLine(data: StatusJSON) {
-    const settings = await loadSettings();
-    const terminalWidth = 80; // Always use 80 chars for Claude Code status line
+function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, tokenMetrics: any, sessionDuration: string | null): string {
+    const detectedWidth = getTerminalWidth();
+    // Subtract 40 chars to account for right-side content like auto compact messages
+    const terminalWidth = detectedWidth ? detectedWidth - 40 : null;
     const elements: { content: string, type: string }[] = [];
     let hasFlexSeparator = false;
-
-    // Get token metrics if needed
-    const hasTokenItems = settings.items.some(item =>
-        ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'].includes(item.type)
-    );
-
-    let tokenMetrics: any = null;
-    if (hasTokenItems && data.transcript_path) {
-        tokenMetrics = await getTokenMetrics(data.transcript_path);
-    }
 
     // Helper function to format token counts
     const formatTokens = (count: number): string => {
@@ -204,7 +314,7 @@ async function renderStatusLine(data: StatusJSON) {
     };
 
     // Build elements based on configured items
-    for (const item of settings.items) {
+    for (const item of items) {
         switch (item.type) {
             case 'model':
                 if (data.model) {
@@ -274,6 +384,21 @@ async function renderStatusLine(data: StatusJSON) {
                 }
                 break;
 
+            case 'terminal-width':
+                const detectedWidth = terminalWidth || getTerminalWidth();
+                if (detectedWidth) {
+                    const color = (chalk as any)[item.color || 'dim'] || chalk.dim;
+                    elements.push({ content: color(`Term: ${detectedWidth}`), type: 'terminal-width' });
+                }
+                break;
+
+            case 'session-clock':
+                if (sessionDuration) {
+                    const color = (chalk as any)[item.color || 'blue'] || chalk.blue;
+                    elements.push({ content: color(`Session: ${sessionDuration}`), type: 'session-clock' });
+                }
+                break;
+
             case 'separator':
                 // Only add separator if there are already elements and the last one isn't a separator
                 const lastElement = elements[elements.length - 1];
@@ -290,12 +415,12 @@ async function renderStatusLine(data: StatusJSON) {
         }
     }
 
-    if (elements.length === 0) return;
+    if (elements.length === 0) return '';
 
     // Build the final status line
     let statusLine = '';
 
-    if (hasFlexSeparator) {
+    if (hasFlexSeparator && terminalWidth) {
         // Split elements by flex separators
         const parts: string[][] = [[]];
         let currentPart = 0;
@@ -336,26 +461,61 @@ async function renderStatusLine(data: StatusJSON) {
             }
         }
     } else {
-        // No flex separator, just join all elements
-        statusLine = elements.map(e => e.content).join('');
-
-        // Pad to full width with spaces
-        const contentLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
-        const remainingSpace = terminalWidth - contentLength;
-        if (remainingSpace > 0) {
-            statusLine = statusLine + ' '.repeat(remainingSpace);
+        // No flex separator OR no width detected
+        if (hasFlexSeparator && !terminalWidth) {
+            // Treat flex separators as normal separators when width detection fails
+            statusLine = elements.map(e => e.type === 'flex-separator' ? chalk.dim(' | ') : e.content).join('');
+        } else {
+            // Just join all elements normally
+            statusLine = elements.map(e => e.content).join('');
         }
     }
 
-    // Ensure we never exceed 80 chars
-    const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
-    if (plainLength > 80) {
-        // Truncate with ellipsis if too long
-        const visibleText = statusLine.replace(/\x1b\[[0-9;]*m/g, '');
-        const truncated = visibleText.substring(0, 77) + '...';
-        console.log(truncated);
+    return statusLine;
+}
+
+async function renderStatusLine(data: StatusJSON) {
+    const settings = await loadSettings();
+    
+    // Get all lines to render (support both old items format and new lines format)
+    let lines: StatusItem[][] = [];
+    if (settings.lines) {
+        lines = settings.lines;
+    } else if (settings.items) {
+        // Legacy support for single line
+        lines = [settings.items];
     } else {
-        console.log(statusLine);
+        lines = [[]];
+    }
+    
+    // Get token metrics if needed (check all lines)
+    const hasTokenItems = lines.some(line => 
+        line.some(item =>
+            ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'].includes(item.type)
+        )
+    );
+    
+    // Check if session clock is needed
+    const hasSessionClock = lines.some(line =>
+        line.some(item => item.type === 'session-clock')
+    );
+    
+    let tokenMetrics: any = null;
+    if (hasTokenItems && data.transcript_path) {
+        tokenMetrics = await getTokenMetrics(data.transcript_path);
+    }
+    
+    let sessionDuration: string | null = null;
+    if (hasSessionClock && data.transcript_path) {
+        sessionDuration = await getSessionDuration(data.transcript_path);
+    }
+    
+    // Render each line
+    for (const lineItems of lines) {
+        if (lineItems.length > 0) {
+            const line = renderSingleLine(lineItems, settings, data, tokenMetrics, sessionDuration);
+            console.log(line);
+        }
     }
 }
 

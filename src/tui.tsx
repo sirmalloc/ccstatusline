@@ -2,16 +2,62 @@ import React, { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
+import { execSync } from 'child_process';
 import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType } from './config';
 import { isInstalled, installStatusLine, uninstallStatusLine, getExistingStatusLine } from './claude-settings';
 
+// Check if terminal width detection is available
+function canDetectTerminalWidth(): boolean {
+    try {
+        // First try to get the tty of the parent process
+        const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            shell: '/bin/sh'
+        }).trim();
+        
+        // Check if we got a valid tty
+        if (tty && tty !== '??' && tty !== '?') {
+            const width = execSync(
+                `stty size < /dev/${tty} | awk '{print $2}'`,
+                {
+                    encoding: 'utf8',
+                    stdio: ['pipe', 'pipe', 'ignore'],
+                    shell: '/bin/sh'
+                }
+            ).trim();
+            
+            const parsed = parseInt(width, 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                return true;
+            }
+        }
+    } catch {
+        // Try fallback
+    }
+    
+    // Fallback: try tput cols
+    try {
+        const width = execSync('tput cols 2>/dev/null', {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore']
+        }).trim();
+        
+        const parsed = parseInt(width, 10);
+        return !isNaN(parsed) && parsed > 0;
+    } catch {
+        return false;
+    }
+}
+
 interface StatusLinePreviewProps {
-    items: StatusItem[];
+    lines: StatusItem[][];
     terminalWidth: number;
 }
 
-const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWidth }) => {
-    const width = 80; // Status line is always 80 chars max
+const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean): string => {
+    // Use full terminal width for calculations, we'll handle truncation at the end if needed
+    const width = widthDetectionAvailable ? terminalWidth : null;
     const elements: string[] = [];
     let hasFlexSeparator = false;
 
@@ -53,6 +99,15 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
                 const ctxPctColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
                 elements.push(ctxPctColor('Ctx: 9.3%'));
                 break;
+            case 'session-clock':
+                const sessionColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
+                elements.push(sessionColor('Session: 2hr 15m'));
+                break;
+            case 'terminal-width':
+                const termColor = (chalk as any)[item.color || 'dim'] || chalk.dim;
+                const detectedWidth = canDetectTerminalWidth() ? terminalWidth : '??';
+                elements.push(termColor(`Term: ${detectedWidth}`));
+                break;
             case 'separator':
                 elements.push(chalk.dim(' | '));
                 break;
@@ -65,7 +120,7 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
 
     // Build the status line with flex separator support
     let statusLine = '';
-    if (hasFlexSeparator) {
+    if (hasFlexSeparator && width) {
         const parts: string[][] = [[]];
         let currentPart = 0;
 
@@ -109,21 +164,34 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
             }
         }
     } else {
-        statusLine = elements.filter(e => e !== 'FLEX').join('');
+        // No width detection available - treat flex separators as normal separators
+        statusLine = elements.map(e => e === 'FLEX' ? chalk.dim(' | ') : e).join('');
     }
 
+    return statusLine;
+};
+
+const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth }) => {
+    const widthDetectionAvailable = canDetectTerminalWidth();
     // Build the Claude Code input box - account for ink's padding
     const boxWidth = Math.min(terminalWidth - 4, process.stdout.columns - 4 || 76);
     const topLine = chalk.dim('╭' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╮');
     const middleLine = chalk.dim('│') + ' > ' + ' '.repeat(Math.max(0, boxWidth - 5)) + chalk.dim('│');
     const bottomLine = chalk.dim('╰' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╯');
 
+    // Render each configured line - use boxWidth for consistency
+    const renderedLines = lines.map(lineItems => 
+        lineItems.length > 0 ? renderSingleLine(lineItems, boxWidth, widthDetectionAvailable) : ''
+    ).filter(line => line !== ''); // Remove empty lines
+
     return (
         <Box flexDirection='column'>
             <Text>{topLine}</Text>
             <Text>{middleLine}</Text>
             <Text>{bottomLine}</Text>
-            <Text>{statusLine}</Text>
+            {renderedLines.map((line, index) => (
+                <Text key={index}>{line}</Text>
+            ))}
         </Box>
     );
 };
@@ -153,6 +221,50 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCan
     );
 };
 
+interface LineSelectorProps {
+    lines: StatusItem[][];
+    onSelect: (lineIndex: number) => void;
+    onBack: () => void;
+}
+
+const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack }) => {
+    const items = [
+        { label: `📝 Line 1${lines[0] && lines[0].length > 0 ? ` (${lines[0].length} items)` : ' (empty)'}`, value: 0 },
+        { label: `📝 Line 2${lines[1] && lines[1].length > 0 ? ` (${lines[1].length} items)` : ' (empty)'}`, value: 1 },
+        { label: `📝 Line 3${lines[2] && lines[2].length > 0 ? ` (${lines[2].length} items)` : ' (empty)'}`, value: 2 },
+        { label: '← Back', value: -1 },
+    ];
+    
+    const handleSelect = (item: { value: number }) => {
+        if (item.value === -1) {
+            onBack();
+        } else {
+            onSelect(item.value);
+        }
+    };
+    
+    // Handle ESC key
+    useInput((input, key) => {
+        if (key.escape) {
+            onBack();
+        }
+    });
+    
+    return (
+        <Box flexDirection='column'>
+            <Text bold>Select Line to Edit</Text>
+            <Text dimColor>Choose which status line to configure (up to 3 lines supported)</Text>
+            <Text dimColor>Press ESC to go back</Text>
+            <Box marginTop={1}>
+                <SelectInput
+                    items={items}
+                    onSelect={handleSelect}
+                />
+            </Box>
+        </Box>
+    );
+};
+
 interface MainMenuProps {
     onSelect: (value: string) => void;
     isClaudeInstalled: boolean;
@@ -161,7 +273,7 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges }) => {
     const items = [
-        { label: '📝 Edit Status Line Items', value: 'items' },
+        { label: '📝 Edit Lines', value: 'lines' },
         { label: '🎨 Configure Colors', value: 'colors' },
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install' },
     ];
@@ -189,9 +301,10 @@ interface ItemsEditorProps {
     items: StatusItem[];
     onUpdate: (items: StatusItem[]) => void;
     onBack: () => void;
+    lineNumber: number;
 }
 
-const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) => {
+const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
 
@@ -228,8 +341,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 setSelectedIndex(Math.min(items.length - 1, selectedIndex + 1));
             } else if (key.leftArrow && items.length > 0) {
                 // Toggle item type backwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'];
+                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
+                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 
+                    'session-clock', 'terminal-width', 'flex-separator'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -244,8 +358,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 }
             } else if (key.rightArrow && items.length > 0) {
                 // Toggle item type forwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'];
+                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
+                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 
+                    'session-clock', 'terminal-width', 'flex-separator'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -267,7 +382,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                     id: Date.now().toString(),
                     type: 'separator',
                 };
-                onUpdate([...items, newItem]);
+                const newItems = [...items, newItem];
+                onUpdate(newItems);
+                setSelectedIndex(newItems.length - 1); // Move selection to new item
             } else if (input === 'i') {
                 // Insert item after selected
                 const newItem: StatusItem = {
@@ -277,7 +394,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 const newItems = [...items];
                 newItems.splice(selectedIndex + 1, 0, newItem);
                 onUpdate(newItems);
-                setSelectedIndex(selectedIndex + 1);
+                setSelectedIndex(selectedIndex + 1); // Selection already moves to new item
             } else if (input === 'd' && items.length > 0) {
                 // Delete selected item
                 const newItems = items.filter((_, i) => i !== selectedIndex);
@@ -285,6 +402,10 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 if (selectedIndex >= newItems.length && selectedIndex > 0) {
                     setSelectedIndex(selectedIndex - 1);
                 }
+            } else if (input === 'c') {
+                // Clear entire line
+                onUpdate([]);
+                setSelectedIndex(0);
             } else if (key.escape) {
                 onBack();
             }
@@ -315,16 +436,29 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 return chalk.cyan('Context Length');
             case 'context-percentage':
                 return chalk.cyan('Context %');
+            case 'session-clock':
+                return chalk.blue('Session Clock');
+            case 'terminal-width':
+                return chalk.dim('Terminal Width');
         }
     };
 
+    const hasFlexSeparator = items.some(item => item.type === 'flex-separator');
+    const widthDetectionAvailable = canDetectTerminalWidth();
+    
     return (
         <Box flexDirection='column'>
-            <Text bold>Edit Status Line Items {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
+            <Text bold>Edit Line {lineNumber} {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
             {moveMode ? (
                 <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
             ) : (
-                <Text dimColor>↑↓ select, ←→ change type, Enter to move, (a)dd, (i)nsert, (d)elete, ESC back</Text>
+                <Text dimColor>↑↓ select, ←→ change type, Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line, ESC back</Text>
+            )}
+            {hasFlexSeparator && !widthDetectionAvailable && (
+                <Box marginTop={1}>
+                    <Text color='yellow'>⚠ Note: Terminal width detection is currently unavailable in your environment.</Text>
+                    <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
+                </Box>
             )}
             <Box marginTop={1} flexDirection='column'>
                 {items.length === 0 ? (
@@ -352,7 +486,7 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'].includes(item.type)
+        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock'].includes(item.type)
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -390,6 +524,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'tokens-total': return 'Tokens Total';
             case 'context-length': return 'Context Length';
             case 'context-percentage': return 'Context Percentage';
+            case 'session-clock': return 'Session Clock';
             default: return item.type;
         }
     };
@@ -469,13 +604,21 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'items' | 'colors' | 'confirm'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'confirm'>('main');
+    const [selectedLine, setSelectedLine] = useState(0);
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
 
     useEffect(() => {
         loadSettings().then(loadedSettings => {
+            // Ensure lines array exists and has 3 slots
+            if (!loadedSettings.lines) {
+                loadedSettings.lines = [[]];
+            }
+            while (loadedSettings.lines.length < 3) {
+                loadedSettings.lines.push([]);
+            }
             setSettings(loadedSettings);
             setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
         });
@@ -550,8 +693,8 @@ const App: React.FC = () => {
 
     const handleMainMenuSelect = async (value: string) => {
         switch (value) {
-            case 'items':
-                setScreen('items');
+            case 'lines':
+                setScreen('lines');
                 break;
             case 'colors':
                 setScreen('colors');
@@ -571,8 +714,15 @@ const App: React.FC = () => {
         }
     };
 
-    const updateItems = (items: StatusItem[]) => {
-        setSettings({ ...settings, items });
+    const updateLine = (lineIndex: number, items: StatusItem[]) => {
+        const newLines = [...(settings.lines || [])];
+        newLines[lineIndex] = items;
+        setSettings({ ...settings, lines: newLines });
+    };
+    
+    const handleLineSelect = (lineIndex: number) => {
+        setSelectedLine(lineIndex);
+        setScreen('items');
     };
 
     return (
@@ -584,21 +734,43 @@ const App: React.FC = () => {
             <Box marginBottom={1}>
                 <Text dimColor>Preview:</Text>
             </Box>
-            <StatusLinePreview items={settings.items} terminalWidth={terminalWidth} />
+            <StatusLinePreview lines={settings.lines || [[]]} terminalWidth={terminalWidth} />
 
             <Box marginTop={2}>
                 {screen === 'main' && <MainMenu onSelect={handleMainMenuSelect} isClaudeInstalled={isClaudeInstalled} hasChanges={hasChanges} />}
-                {screen === 'items' && (
-                    <ItemsEditor
-                        items={settings.items}
-                        onUpdate={updateItems}
+                {screen === 'lines' && (
+                    <LineSelector
+                        lines={settings.lines || [[]]}
+                        onSelect={handleLineSelect}
                         onBack={() => setScreen('main')}
+                    />
+                )}
+                {screen === 'items' && settings.lines && (
+                    <ItemsEditor
+                        items={settings.lines[selectedLine] || []}
+                        onUpdate={(items) => updateLine(selectedLine, items)}
+                        onBack={() => setScreen('lines')}
+                        lineNumber={selectedLine + 1}
                     />
                 )}
                 {screen === 'colors' && (
                     <ColorMenu
-                        items={settings.items}
-                        onUpdate={updateItems}
+                        items={settings.lines?.flat() || []}
+                        onUpdate={(items) => {
+                            // This is a bit tricky - we need to update colors across all lines
+                            // For now, just update the flat list
+                            const newLines = settings.lines || [[]];
+                            let flatIndex = 0;
+                            for (let lineIndex = 0; lineIndex < newLines.length; lineIndex++) {
+                                for (let itemIndex = 0; itemIndex < newLines[lineIndex].length; itemIndex++) {
+                                    if (flatIndex < items.length) {
+                                        newLines[lineIndex][itemIndex] = items[flatIndex];
+                                        flatIndex++;
+                                    }
+                                }
+                            }
+                            setSettings({ ...settings, lines: newLines });
+                        }}
                         onBack={() => setScreen('main')}
                     />
                 )}

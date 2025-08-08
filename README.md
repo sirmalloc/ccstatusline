@@ -4,11 +4,12 @@ A customizable status line formatter for Claude Code CLI that displays model inf
 
 ## Features
 
-- 📊 **Real-time metrics** - Display model name, git branch, token usage, and more
+- 📊 **Real-time metrics** - Display model name, git branch, token usage, session duration, and more
 - 🎨 **Fully customizable** - Choose what to display and customize colors
+- 📐 **Multi-line support** - Configure up to 3 status lines
 - 🖥️ **Interactive TUI** - Built-in configuration interface using React/Ink
 - 🚀 **Cross-platform** - Works with both Bun and Node.js
-- 📏 **80-character format** - Perfectly sized for Claude Code CLI integration
+- 📏 **Auto-width detection** - Automatically adapts to terminal width with flex separators
 
 ## Quick Start
 
@@ -45,12 +46,15 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
+- **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
+- **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Tokens Input** - Shows input tokens used
 - **Tokens Output** - Shows output tokens used
 - **Tokens Cached** - Shows cached tokens used
 - **Tokens Total** - Shows total tokens used
 - **Context Length** - Shows current context length in tokens
 - **Context Percentage** - Shows percentage of context limit used
+- **Terminal Width** - Shows detected terminal width (for debugging)
 - **Separator** - Visual divider between items (|)
 - **Flex Separator** - Expands to fill available space
 
@@ -60,36 +64,38 @@ The configuration file at `~/.config/ccstatusline/settings.json` looks like:
 
 ```json
 {
-  "items": [
-    {
-      "type": "model",
-      "color": "cyan"
-    },
-    {
-      "type": "separator",
-      "color": "gray"
-    },
-    {
-      "type": "git-branch",
-      "color": "green"
-    },
-    {
-      "type": "separator",
-      "color": "gray"
-    },
-    {
-      "type": "tokens-total",
-      "color": "yellow"
-    },
-    {
-      "type": "flex-separator",
-      "color": "gray"
-    },
-    {
-      "type": "context-percentage",
-      "color": "blue"
-    }
-  ]
+  "lines": [
+    [
+      {
+        "id": "1",
+        "type": "model",
+        "color": "cyan"
+      },
+      {
+        "id": "2",
+        "type": "separator"
+      },
+      {
+        "id": "3",
+        "type": "git-branch",
+        "color": "magenta"
+      },
+      {
+        "id": "4",
+        "type": "separator"
+      },
+      {
+        "id": "5",
+        "type": "session-clock",
+        "color": "blue"
+      }
+    ]
+  ],
+  "colors": {
+    "model": "cyan",
+    "gitBranch": "magenta",
+    "separator": "dim"
+  }
 }
 ```
 

@@ -9,7 +9,7 @@ const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
 const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
 
 export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' | 
-    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage';
+    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'terminal-width' | 'session-clock';
 
 export interface StatusItem {
     id: string;
@@ -18,7 +18,8 @@ export interface StatusItem {
 }
 
 export interface Settings {
-    items: StatusItem[];
+    items?: StatusItem[]; // Legacy single line support
+    lines?: StatusItem[][]; // Multiple lines (up to 3)
     colors: {
         model: string;
         gitBranch: string;
@@ -30,12 +31,16 @@ const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
 const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
 
 export const DEFAULT_SETTINGS: Settings = {
-    items: [
-        { id: '1', type: 'model', color: 'cyan' },
-        { id: '2', type: 'separator' },
-        { id: '3', type: 'git-branch', color: 'magenta' },
-        { id: '4', type: 'separator' },
-        { id: '5', type: 'git-changes', color: 'yellow' },
+    lines: [
+        [
+            { id: '1', type: 'model', color: 'cyan' },
+            { id: '2', type: 'separator' },
+            { id: '3', type: 'terminal-width', color: 'dim' },
+            { id: '4', type: 'separator' },
+            { id: '5', type: 'git-branch', color: 'magenta' },
+            { id: '6', type: 'separator' },
+            { id: '7', type: 'git-changes', color: 'yellow' },
+        ]
     ],
     colors: {
         model: 'cyan',
@@ -52,15 +57,39 @@ export async function loadSettings(): Promise<Settings> {
         }
         
         const content = await readFile(SETTINGS_PATH, 'utf-8');
-        const loaded = JSON.parse(content);
+        let loaded: any;
         
-        // Migrate old format if needed
+        try {
+            loaded = JSON.parse(content);
+        } catch (parseError) {
+            // If we can't parse the settings, return defaults
+            console.error('Failed to parse settings.json, using defaults');
+            return DEFAULT_SETTINGS;
+        }
+        
+        // Migrate from old format with elements/layout
         if (loaded.elements || loaded.layout) {
             return migrateOldSettings(loaded);
         }
         
+        // Migrate from single items array to lines array
+        if (loaded.items && !loaded.lines) {
+            loaded.lines = [loaded.items];
+            delete loaded.items;
+        }
+        
+        // Ensure lines is an array and limit to 3 lines
+        if (loaded.lines) {
+            if (!Array.isArray(loaded.lines)) {
+                loaded.lines = [[]];
+            }
+            loaded.lines = loaded.lines.slice(0, 3);
+        }
+        
         return { ...DEFAULT_SETTINGS, ...loaded };
-    } catch {
+    } catch (error) {
+        // Any other error, return defaults
+        console.error('Error loading settings:', error);
         return DEFAULT_SETTINGS;
     }
 }
@@ -91,7 +120,7 @@ function migrateOldSettings(old: any): Settings {
     }
     
     return {
-        items,
+        lines: [items], // Put migrated items in first line
         colors: old.colors || DEFAULT_SETTINGS.colors,
     };
 }
