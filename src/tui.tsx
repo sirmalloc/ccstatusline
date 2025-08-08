@@ -14,7 +14,7 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
     const width = 80; // Status line is always 80 chars max
     const elements: string[] = [];
     let hasFlexSeparator = false;
-    
+
     items.forEach(item => {
         switch (item.type) {
             case 'model':
@@ -58,13 +58,13 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
                 break;
         }
     });
-    
+
     // Build the status line with flex separator support
     let statusLine = '';
     if (hasFlexSeparator) {
         const parts: string[][] = [[]];
         let currentPart = 0;
-        
+
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             if (item && item.type === 'flex-separator') {
@@ -77,20 +77,20 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
                 }
             }
         }
-        
+
         // Calculate total length of all non-flex content
         const partLengths = parts.map(part => {
             const joined = part.join('');
             return joined.replace(/\x1b\[[0-9;]*m/g, '').length;
         });
         const totalContentLength = partLengths.reduce((sum, len) => sum + len, 0);
-        
+
         // Calculate space to distribute among flex separators
         const flexCount = parts.length - 1; // Number of flex separators
         const totalSpace = Math.max(0, width - totalContentLength);
         const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
         const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
-        
+
         // Build the status line with distributed spacing
         statusLine = '';
         for (let i = 0; i < parts.length; i++) {
@@ -107,13 +107,13 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ items, terminalWi
     } else {
         statusLine = elements.filter(e => e !== 'FLEX').join('');
     }
-    
+
     // Build the Claude Code input box - account for ink's padding
     const boxWidth = Math.min(terminalWidth - 4, process.stdout.columns - 4 || 76);
     const topLine = chalk.dim('╭' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╮');
     const middleLine = chalk.dim('│') + ' > ' + ' '.repeat(Math.max(0, boxWidth - 5)) + chalk.dim('│');
     const bottomLine = chalk.dim('╰' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╯');
-    
+
     return (
         <Box flexDirection='column'>
             <Text>{topLine}</Text>
@@ -135,14 +135,14 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCan
         { label: '✅ Yes', value: 'yes' },
         { label: '❌ No', value: 'no' },
     ];
-    
+
     return (
         <Box flexDirection='column'>
             <Text>{message}</Text>
             <Box marginTop={1}>
-                <SelectInput 
-                    items={items} 
-                    onSelect={(item) => item.value === 'yes' ? onConfirm() : onCancel()} 
+                <SelectInput
+                    items={items}
+                    onSelect={(item) => item.value === 'yes' ? onConfirm() : onCancel()}
                 />
             </Box>
         </Box>
@@ -161,7 +161,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
         { label: '🎨 Configure Colors', value: 'colors' },
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install' },
     ];
-    
+
     if (hasChanges) {
         items.push(
             { label: '💾 Save & Exit', value: 'save' },
@@ -170,7 +170,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
     } else {
         items.push({ label: '🚪 Exit', value: 'exit' });
     }
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
@@ -190,7 +190,7 @@ interface ItemsEditorProps {
 const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    
+
     useInput((input, key) => {
         if (moveMode) {
             // In move mode, use up/down to move the selected item
@@ -224,7 +224,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 setSelectedIndex(Math.min(items.length - 1, selectedIndex + 1));
             } else if (key.leftArrow && items.length > 0) {
                 // Toggle item type backwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'separator', 'flex-separator', 
+                const types: StatusItemType[] = ['model', 'git-branch', 'separator', 'flex-separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -286,7 +286,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
             }
         }
     });
-    
+
     const getItemDisplay = (item: StatusItem) => {
         switch (item.type) {
             case 'model':
@@ -311,7 +311,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack }) =>
                 return chalk.cyan('Context %');
         }
     };
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Edit Status Line Items {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
@@ -345,18 +345,18 @@ interface ColorMenuProps {
 }
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
-    const colorableItems = items.filter(item => 
+    const colorableItems = items.filter(item =>
         ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'].includes(item.type)
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
-    
+
     // Handle ESC key
     useInput((input, key) => {
         if (key.escape) {
             onBack();
         }
     });
-    
+
     if (colorableItems.length === 0) {
         return (
             <Box flexDirection='column'>
@@ -372,7 +372,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             </Box>
         );
     }
-    
+
     const getItemLabel = (item: StatusItem) => {
         switch (item.type) {
             case 'model': return 'Model';
@@ -386,7 +386,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             default: return item.type;
         }
     };
-    
+
     // Create menu items with colored labels
     const menuItems = colorableItems.map((item, index) => {
         const color = item.color || 'white';
@@ -397,7 +397,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
         };
     });
     menuItems.push({ label: '← Back', value: 'back' });
-    
+
     const handleSelect = (selected: { value: string }) => {
         if (selected.value === 'back') {
             onBack();
@@ -414,7 +414,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             onUpdate(newItems);
         }
     };
-    
+
     const handleHighlight = (item: { value: string }) => {
         if (item.value !== 'back') {
             const itemIndex = colorableItems.findIndex(i => i.id === item.value);
@@ -423,19 +423,19 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             }
         }
     };
-    
+
     // Color list for cycling
     const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
         'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
         'magentaBright', 'cyanBright', 'whiteBright'];
-    
+
     // Get current color for selected item (if a valid colorable item is selected)
     const selectedItem = selectedIndex < colorableItems.length ? colorableItems[selectedIndex] : null;
     const currentColor = selectedItem ? (selectedItem.color || 'white') : 'white';
     const colorIndex = colors.indexOf(currentColor);
     const colorNumber = colorIndex === -1 ? 8 : colorIndex + 1; // Default to white (8) if not found
     const colorDisplay = (chalk as any)[currentColor] ? (chalk as any)[currentColor](currentColor) : chalk.white(currentColor);
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Configure Colors</Text>
@@ -446,8 +446,8 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                 </Box>
             )}
             <Box marginTop={1}>
-                <SelectInput 
-                    items={menuItems} 
+                <SelectInput
+                    items={menuItems}
                     onSelect={handleSelect}
                     onHighlight={handleHighlight}
                     initialIndex={selectedIndex}
@@ -466,24 +466,24 @@ const App: React.FC = () => {
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
-    
+
     useEffect(() => {
         loadSettings().then(loadedSettings => {
             setSettings(loadedSettings);
             setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
         });
         isInstalled().then(setIsClaudeInstalled);
-        
+
         const handleResize = () => {
             setTerminalWidth(process.stdout.columns || 80);
         };
-        
+
         process.stdout.on('resize', handleResize);
         return () => {
             process.stdout.off('resize', handleResize);
         };
     }, []);
-    
+
     // Check for changes whenever settings update
     useEffect(() => {
         if (settings && originalSettings) {
@@ -491,17 +491,17 @@ const App: React.FC = () => {
             setHasChanges(hasAnyChanges);
         }
     }, [settings, originalSettings]);
-    
+
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
             exit();
         }
     });
-    
+
     if (!settings) {
         return <Text>Loading settings...</Text>;
     }
-    
+
     const handleInstallUninstall = async () => {
         if (isClaudeInstalled) {
             // Uninstall
@@ -519,15 +519,15 @@ const App: React.FC = () => {
             // Always ask for consent before modifying Claude settings
             const existing = await getExistingStatusLine();
             let message: string;
-            
-            if (existing && existing !== 'npx ccstatusline') {
-                message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with ccstatusline?`;
-            } else if (existing === 'npx ccstatusline') {
+
+            if (existing && existing !== 'npx -y ccstatusline') {
+                message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline?`;
+            } else if (existing === 'npx -y ccstatusline') {
                 message = 'ccstatusline is already installed in ~/.claude/settings.json\nReinstall it?';
             } else {
                 message = 'This will modify ~/.claude/settings.json to add ccstatusline.\nContinue?';
             }
-            
+
             setConfirmDialog({
                 message,
                 action: async () => {
@@ -540,7 +540,7 @@ const App: React.FC = () => {
             setScreen('confirm');
         }
     };
-    
+
     const handleMainMenuSelect = async (value: string) => {
         switch (value) {
             case 'items':
@@ -563,36 +563,36 @@ const App: React.FC = () => {
                 break;
         }
     };
-    
+
     const updateItems = (items: StatusItem[]) => {
         setSettings({ ...settings, items });
     };
-    
+
     return (
         <Box flexDirection='column' padding={1}>
             <Box marginBottom={1}>
                 <Text bold color='cyan'>🎨 CCStatusline Configuration</Text>
             </Box>
-            
+
             <Box marginBottom={1}>
                 <Text dimColor>Preview:</Text>
             </Box>
             <StatusLinePreview items={settings.items} terminalWidth={terminalWidth} />
-            
+
             <Box marginTop={2}>
                 {screen === 'main' && <MainMenu onSelect={handleMainMenuSelect} isClaudeInstalled={isClaudeInstalled} hasChanges={hasChanges} />}
                 {screen === 'items' && (
-                    <ItemsEditor 
+                    <ItemsEditor
                         items={settings.items}
                         onUpdate={updateItems}
-                        onBack={() => setScreen('main')} 
+                        onBack={() => setScreen('main')}
                     />
                 )}
                 {screen === 'colors' && (
-                    <ColorMenu 
+                    <ColorMenu
                         items={settings.items}
                         onUpdate={updateItems}
-                        onBack={() => setScreen('main')} 
+                        onBack={() => setScreen('main')}
                     />
                 )}
                 {screen === 'confirm' && confirmDialog && (
