@@ -109,7 +109,8 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 elements.push(termColor(`Term: ${detectedWidth}`));
                 break;
             case 'separator':
-                elements.push(chalk.dim(' | '));
+                const sepChar = item.character || '|';
+                elements.push(chalk.dim(` ${sepChar} `));
                 break;
             case 'flex-separator':
                 elements.push('FLEX');
@@ -307,6 +308,7 @@ interface ItemsEditorProps {
 const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
+    const separatorChars = ['|', '-', ' '];
 
     useInput((input, key) => {
         if (moveMode) {
@@ -406,6 +408,17 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Clear entire line
                 onUpdate([]);
                 setSelectedIndex(0);
+            } else if (input === ' ' && items.length > 0) {
+                // Space key - cycle separator character for separator types only (not flex)
+                const currentItem = items[selectedIndex];
+                if (currentItem && currentItem.type === 'separator') {
+                    const currentChar = currentItem.character || '|';
+                    const currentCharIndex = separatorChars.indexOf(currentChar);
+                    const nextChar = separatorChars[(currentCharIndex + 1) % separatorChars.length];
+                    const newItems = [...items];
+                    newItems[selectedIndex] = { ...currentItem, character: nextChar };
+                    onUpdate(newItems);
+                }
             } else if (key.escape) {
                 onBack();
             }
@@ -420,10 +433,13 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 return chalk.magenta('Git Branch');
             case 'git-changes':
                 return chalk.yellow('Git Changes');
-            case 'separator':
-                return chalk.dim('Separator |');
+            case 'separator': {
+                const char = item.character || '|';
+                const charDisplay = char === ' ' ? '(space)' : char;
+                return chalk.dim(`Separator ${charDisplay}`);
+            }
             case 'flex-separator':
-                return chalk.yellow('Flex Separator ─────');
+                return chalk.yellow('Flex Separator');
             case 'tokens-input':
                 return chalk.yellow('Tokens Input');
             case 'tokens-output':
@@ -452,7 +468,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             {moveMode ? (
                 <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
             ) : (
-                <Text dimColor>↑↓ select, ←→ change type, Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line, ESC back</Text>
+                <Text dimColor>↑↓ select, ←→ change type, Space edit separator, Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line, ESC back</Text>
             )}
             {hasFlexSeparator && !widthDetectionAvailable && (
                 <Box marginTop={1}>
@@ -469,6 +485,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                             <Text color={index === selectedIndex ? (moveMode ? 'yellow' : 'green') : undefined}>
                                 {index === selectedIndex ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                 {index + 1}. {getItemDisplay(item)}
+                                {item.type === 'separator' && index === selectedIndex && !moveMode && (
+                                    <Text dimColor> (Space to edit)</Text>
+                                )}
                             </Text>
                         </Box>
                     ))

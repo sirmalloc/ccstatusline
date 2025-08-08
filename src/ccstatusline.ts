@@ -404,7 +404,8 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 const lastElement = elements[elements.length - 1];
                 if (elements.length > 0 && lastElement && lastElement.type !== 'separator') {
                     const sepColor = (chalk as any)[settings.colors.separator] || chalk.dim;
-                    elements.push({ content: sepColor(' | '), type: 'separator' });
+                    const sepChar = item.character || '|';
+                    elements.push({ content: sepColor(` ${sepChar} `), type: 'separator' });
                 }
                 break;
 

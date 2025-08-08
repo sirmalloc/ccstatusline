@@ -15,6 +15,7 @@ export interface StatusItem {
     id: string;
     type: StatusItemType;
     color?: string;
+    character?: string; // For separator and flex-separator types
 }
 
 export interface Settings {
