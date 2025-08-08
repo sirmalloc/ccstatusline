@@ -43,7 +43,9 @@ export async function saveClaudeSettings(settings: ClaudeSettings): Promise<void
 
 export async function isInstalled(): Promise<boolean> {
     const settings = await loadClaudeSettings();
-    return settings.statusLine?.command === 'npx -y ccstatusline@latest';
+    // Check if command is correct AND padding is 0 (or undefined for new installs)
+    return settings.statusLine?.command === 'npx -y ccstatusline@latest' && 
+           (settings.statusLine.padding === 0 || settings.statusLine.padding === undefined);
 }
 
 export async function installStatusLine(): Promise<void> {
@@ -53,7 +55,7 @@ export async function installStatusLine(): Promise<void> {
     settings.statusLine = {
         type: 'command',
         command: 'npx -y ccstatusline@latest',
-        padding: 1
+        padding: 0
     };
 
     await saveClaudeSettings(settings);

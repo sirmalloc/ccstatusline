@@ -530,7 +530,7 @@ const App: React.FC = () => {
             if (existing && existing !== 'npx -y ccstatusline@latest') {
                 message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
             } else if (existing === 'npx -y ccstatusline@latest') {
-                message = 'ccstatusline is already installed in ~/.claude/settings.json\nReinstall it?';
+                message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with the latest options?';
             } else {
                 message = 'This will modify ~/.claude/settings.json to add ccstatusline.\nContinue?';
             }
