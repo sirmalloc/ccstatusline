@@ -1,0 +1,35 @@
+# Source files
+src/
+*.ts
+*.tsx
+
+# Development files
+bun.lock
+CLAUDE.md
+.claude/
+test-settings.json
+
+# Build files
+tsconfig.json
+
+# Test and example files
+*.test.*
+*.spec.*
+
+# Git files
+.git/
+.gitignore
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node modules (in case someone uses npm instead of bun)
+node_modules/

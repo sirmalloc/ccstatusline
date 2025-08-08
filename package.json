@@ -1,0 +1,48 @@
+{
+  "name": "ccstatusline",
+  "version": "1.0.0",
+  "description": "A customizable status line formatter for Claude Code CLI",
+  "module": "src/ccstatusline.ts",
+  "type": "module",
+  "bin": {
+    "ccstatusline": "dist/ccstatusline.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "start": "bun run src/ccstatusline.ts",
+    "build": "bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --packages=external --target-version=14",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@types/react": "^19.1.9",
+    "chalk": "^5.5.0",
+    "ink": "^6.1.0",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.1.1"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "status-line",
+    "terminal"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sirmalloc/ccstatusline.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
