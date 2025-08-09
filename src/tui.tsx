@@ -65,7 +65,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
         switch (item.type) {
             case 'model':
                 const modelColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                elements.push(modelColor('Model: Claude'));
+                elements.push(modelColor(item.rawValue ? 'Claude' : 'Model: Claude'));
                 break;
             case 'git-branch':
                 const branchColor = (chalk as any)[item.color || 'magenta'] || chalk.magenta;
@@ -77,40 +77,40 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 break;
             case 'tokens-input':
                 const inputColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
-                elements.push(inputColor('In: 15.2k'));
+                elements.push(inputColor(item.rawValue ? '15.2k' : 'In: 15.2k'));
                 break;
             case 'tokens-output':
                 const outputColor = (chalk as any)[item.color || 'green'] || chalk.green;
-                elements.push(outputColor('Out: 3.4k'));
+                elements.push(outputColor(item.rawValue ? '3.4k' : 'Out: 3.4k'));
                 break;
             case 'tokens-cached':
                 const cachedColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
-                elements.push(cachedColor('Cached: 12k'));
+                elements.push(cachedColor(item.rawValue ? '12k' : 'Cached: 12k'));
                 break;
             case 'tokens-total':
                 const totalColor = (chalk as any)[item.color || 'white'] || chalk.white;
-                elements.push(totalColor('Total: 30.6k'));
+                elements.push(totalColor(item.rawValue ? '30.6k' : 'Total: 30.6k'));
                 break;
             case 'context-length':
                 const ctxColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                elements.push(ctxColor('Ctx: 18.6k'));
+                elements.push(ctxColor(item.rawValue ? '18.6k' : 'Ctx: 18.6k'));
                 break;
             case 'context-percentage':
                 const ctxPctColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                elements.push(ctxPctColor('Ctx: 9.3%'));
+                elements.push(ctxPctColor(item.rawValue ? '9.3%' : 'Ctx: 9.3%'));
                 break;
             case 'session-clock':
                 const sessionColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
-                elements.push(sessionColor('Session: 2hr 15m'));
+                elements.push(sessionColor(item.rawValue ? '2hr 15m' : 'Session: 2hr 15m'));
                 break;
             case 'version':
                 const versionColor = (chalk as any)[item.color || 'green'] || chalk.green;
-                elements.push(versionColor('Version: 1.0.72'));
+                elements.push(versionColor(item.rawValue ? '1.0.72' : 'Version: 1.0.72'));
                 break;
             case 'terminal-width':
                 const termColor = (chalk as any)[item.color || 'dim'] || chalk.dim;
                 const detectedWidth = canDetectTerminalWidth() ? terminalWidth : '??';
-                elements.push(termColor(`Term: ${detectedWidth}`));
+                elements.push(termColor(item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`));
                 break;
             case 'separator':
                 const sepChar = item.character || '|';
@@ -432,6 +432,14 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                     newItems[selectedIndex] = { ...currentItem, character: nextChar };
                     onUpdate(newItems);
                 }
+            } else if (input === 'r' && items.length > 0) {
+                // Toggle raw value for non-separator items
+                const currentItem = items[selectedIndex];
+                if (currentItem && currentItem.type !== 'separator' && currentItem.type !== 'flex-separator') {
+                    const newItems = [...items];
+                    newItems[selectedIndex] = { ...currentItem, rawValue: !currentItem.rawValue };
+                    onUpdate(newItems);
+                }
             } else if (key.escape) {
                 onBack();
             }
@@ -477,13 +485,29 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     const hasFlexSeparator = items.some(item => item.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
     
+    // Build dynamic help text based on selected item
+    const currentItem = items[selectedIndex];
+    const isSeparator = currentItem?.type === 'separator';
+    const isFlexSeparator = currentItem?.type === 'flex-separator';
+    const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator;
+    
+    let helpText = '↑↓ select, ←→ change type';
+    if (isSeparator) {
+        helpText += ', Space edit separator';
+    }
+    helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
+    if (canToggleRaw) {
+        helpText += ', (r)aw value';
+    }
+    helpText += ', ESC back';
+    
     return (
         <Box flexDirection='column'>
             <Text bold>Edit Line {lineNumber} {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
             {moveMode ? (
                 <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
             ) : (
-                <Text dimColor>↑↓ select, ←→ change type, Space edit separator, Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line, ESC back</Text>
+                <Text dimColor>{helpText}</Text>
             )}
             {hasFlexSeparator && !widthDetectionAvailable && (
                 <Box marginTop={1}>
@@ -500,9 +524,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                             <Text color={index === selectedIndex ? (moveMode ? 'yellow' : 'green') : undefined}>
                                 {index === selectedIndex ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                 {index + 1}. {getItemDisplay(item)}
-                                {item.type === 'separator' && index === selectedIndex && !moveMode && (
-                                    <Text dimColor> (Space to edit)</Text>
-                                )}
+                                {item.rawValue && <Text dimColor> (raw value)</Text>}
                             </Text>
                         </Box>
                     ))

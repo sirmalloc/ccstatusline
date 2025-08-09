@@ -326,7 +326,8 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'model':
                 if (data.model) {
                     const color = (chalk as any)[item.color || settings.colors.model] || chalk.cyan;
-                    elements.push({ content: color(`Model: ${data.model.display_name}`), type: 'model' });
+                    const text = item.rawValue ? data.model.display_name : `Model: ${data.model.display_name}`;
+                    elements.push({ content: color(text), type: 'model' });
                 }
                 break;
 
@@ -334,7 +335,8 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 const branch = getGitBranch();
                 if (branch) {
                     const color = (chalk as any)[item.color || settings.colors.gitBranch] || chalk.magenta;
-                    elements.push({ content: color(`⎇ ${branch}`), type: 'git-branch' });
+                    const text = item.rawValue ? branch : `⎇ ${branch}`;
+                    elements.push({ content: color(text), type: 'git-branch' });
                 }
                 break;
 
@@ -351,35 +353,40 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'tokens-input':
                 if (tokenMetrics) {
                     const color = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
-                    elements.push({ content: color(`In: ${formatTokens(tokenMetrics.inputTokens)}`), type: 'tokens-input' });
+                    const text = item.rawValue ? formatTokens(tokenMetrics.inputTokens) : `In: ${formatTokens(tokenMetrics.inputTokens)}`;
+                    elements.push({ content: color(text), type: 'tokens-input' });
                 }
                 break;
 
             case 'tokens-output':
                 if (tokenMetrics) {
                     const color = (chalk as any)[item.color || 'green'] || chalk.green;
-                    elements.push({ content: color(`Out: ${formatTokens(tokenMetrics.outputTokens)}`), type: 'tokens-output' });
+                    const text = item.rawValue ? formatTokens(tokenMetrics.outputTokens) : `Out: ${formatTokens(tokenMetrics.outputTokens)}`;
+                    elements.push({ content: color(text), type: 'tokens-output' });
                 }
                 break;
 
             case 'tokens-cached':
                 if (tokenMetrics) {
                     const color = (chalk as any)[item.color || 'blue'] || chalk.blue;
-                    elements.push({ content: color(`Cached: ${formatTokens(tokenMetrics.cachedTokens)}`), type: 'tokens-cached' });
+                    const text = item.rawValue ? formatTokens(tokenMetrics.cachedTokens) : `Cached: ${formatTokens(tokenMetrics.cachedTokens)}`;
+                    elements.push({ content: color(text), type: 'tokens-cached' });
                 }
                 break;
 
             case 'tokens-total':
                 if (tokenMetrics) {
                     const color = (chalk as any)[item.color || 'white'] || chalk.white;
-                    elements.push({ content: color(`Total: ${formatTokens(tokenMetrics.totalTokens)}`), type: 'tokens-total' });
+                    const text = item.rawValue ? formatTokens(tokenMetrics.totalTokens) : `Total: ${formatTokens(tokenMetrics.totalTokens)}`;
+                    elements.push({ content: color(text), type: 'tokens-total' });
                 }
                 break;
 
             case 'context-length':
                 if (tokenMetrics) {
                     const color = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                    elements.push({ content: color(`Ctx: ${formatTokens(tokenMetrics.contextLength)}`), type: 'context-length' });
+                    const text = item.rawValue ? formatTokens(tokenMetrics.contextLength) : `Ctx: ${formatTokens(tokenMetrics.contextLength)}`;
+                    elements.push({ content: color(text), type: 'context-length' });
                 }
                 break;
 
@@ -387,7 +394,8 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 if (tokenMetrics) {
                     const percentage = Math.min(100, (tokenMetrics.contextLength / 200000) * 100);
                     const color = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                    elements.push({ content: color(`Ctx: ${percentage.toFixed(1)}%`), type: 'context-percentage' });
+                    const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
+                    elements.push({ content: color(text), type: 'context-percentage' });
                 }
                 break;
 
@@ -395,21 +403,24 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 const detectedWidth = terminalWidth || getTerminalWidth();
                 if (detectedWidth) {
                     const color = (chalk as any)[item.color || 'dim'] || chalk.dim;
-                    elements.push({ content: color(`Term: ${detectedWidth}`), type: 'terminal-width' });
+                    const text = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+                    elements.push({ content: color(text), type: 'terminal-width' });
                 }
                 break;
 
             case 'session-clock':
                 if (sessionDuration) {
                     const color = (chalk as any)[item.color || 'blue'] || chalk.blue;
-                    elements.push({ content: color(`Session: ${sessionDuration}`), type: 'session-clock' });
+                    const text = item.rawValue ? sessionDuration : `Session: ${sessionDuration}`;
+                    elements.push({ content: color(text), type: 'session-clock' });
                 }
                 break;
 
             case 'version':
                 const versionString = data.version || 'Unknown';
                 const versionColor = (chalk as any)[item.color || 'green'] || chalk.green;
-                elements.push({ content: versionColor(`Version: ${versionString}`), type: 'version' });
+                const text = item.rawValue ? versionString : `Version: ${versionString}`;
+                elements.push({ content: versionColor(text), type: 'version' });
                 break;
 
             case 'separator':

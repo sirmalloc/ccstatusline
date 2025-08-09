@@ -16,6 +16,7 @@ export interface StatusItem {
     type: StatusItemType;
     color?: string;
     character?: string; // For separator and flex-separator types
+    rawValue?: boolean; // Show value without label prefix
 }
 
 export interface Settings {
