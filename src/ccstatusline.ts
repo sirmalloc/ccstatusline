@@ -476,6 +476,72 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 const customText = item.customText || '';
                 elements.push({ content: customTextColor(customText), type: 'custom-text' });
                 break;
+
+            case 'custom-command':
+                if (item.commandPath) {
+                    try {
+                        // Execute the command with a timeout
+                        const output = execSync(item.commandPath, {
+                            encoding: 'utf8',
+                            stdio: ['pipe', 'pipe', 'ignore'],
+                            timeout: 1000 // 1 second timeout
+                        }).trim();
+                        
+                        if (output) {
+                            let finalOutput = output;
+                            
+                            // Handle max width truncation
+                            if (item.maxWidth && item.maxWidth > 0) {
+                                // Remove ANSI codes to measure actual length
+                                const plainLength = output.replace(/\x1b\[[0-9;]*m/g, '').length;
+                                if (plainLength > item.maxWidth) {
+                                    // Truncate while preserving ANSI codes
+                                    let truncated = '';
+                                    let currentLength = 0;
+                                    let inAnsiCode = false;
+                                    let ansiBuffer = '';
+                                    
+                                    for (let i = 0; i < output.length; i++) {
+                                        const char = output[i];
+                                        if (char === '\x1b') {
+                                            inAnsiCode = true;
+                                            ansiBuffer = char;
+                                        } else if (inAnsiCode) {
+                                            ansiBuffer += char;
+                                            if (char === 'm') {
+                                                truncated += ansiBuffer;
+                                                inAnsiCode = false;
+                                                ansiBuffer = '';
+                                            }
+                                        } else {
+                                            if (currentLength < item.maxWidth) {
+                                                truncated += char;
+                                                currentLength++;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    finalOutput = truncated;
+                                }
+                            }
+                            
+                            // Apply color if not preserving original colors
+                            if (!item.preserveColors) {
+                                // Strip existing ANSI codes and apply new color
+                                const stripped = finalOutput.replace(/\x1b\[[0-9;]*m/g, '');
+                                const cmdColor = (chalk as any)[item.color || 'white'] || chalk.white;
+                                elements.push({ content: cmdColor(stripped), type: 'custom-command' });
+                            } else {
+                                // Preserve original colors from command output - ignore any color property
+                                elements.push({ content: finalOutput, type: 'custom-command' });
+                            }
+                        }
+                    } catch {
+                        // Command failed or timed out - silently skip
+                    }
+                }
+                break;
         }
     }
 

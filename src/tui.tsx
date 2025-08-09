@@ -163,6 +163,17 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 const customText = item.customText || '';
                 elements.push(customTextColor(customText));
                 break;
+            case 'custom-command':
+                const cmdText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
+                // Only apply color if not preserving colors
+                if (!item.preserveColors) {
+                    const cmdColor = (chalk as any)[item.color || 'white'] || chalk.white;
+                    elements.push(cmdColor(cmdText));
+                } else {
+                    // When preserving colors, just show the text without color
+                    elements.push(chalk.white(cmdText));
+                }
+                break;
         }
     });
 
@@ -399,6 +410,12 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     const [moveMode, setMoveMode] = useState(false);
     const [editingText, setEditingText] = useState(false);
     const [textInput, setTextInput] = useState('');
+    const [textCursorPos, setTextCursorPos] = useState(0);
+    const [editingCommand, setEditingCommand] = useState(false);
+    const [commandInput, setCommandInput] = useState('');
+    const [commandCursorPos, setCommandCursorPos] = useState(0);
+    const [editingMaxWidth, setEditingMaxWidth] = useState(false);
+    const [maxWidthInput, setMaxWidthInput] = useState('');
     const separatorChars = ['|', '-', ',', ' '];
 
     useInput((input, key) => {
@@ -414,14 +431,95 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 }
                 setEditingText(false);
                 setTextInput('');
+                setTextCursorPos(0);
             } else if (key.escape) {
                 // Cancel editing
                 setEditingText(false);
                 setTextInput('');
+                setTextCursorPos(0);
+            } else if (key.leftArrow) {
+                setTextCursorPos(Math.max(0, textCursorPos - 1));
+            } else if (key.rightArrow) {
+                setTextCursorPos(Math.min(textInput.length, textCursorPos + 1));
+            } else if (key.ctrl && key.leftArrow) {
+                // Move to beginning
+                setTextCursorPos(0);
+            } else if (key.ctrl && key.rightArrow) {
+                // Move to end
+                setTextCursorPos(textInput.length);
             } else if (key.backspace || key.delete) {
-                setTextInput(textInput.slice(0, -1));
+                if (textCursorPos > 0) {
+                    setTextInput(textInput.slice(0, textCursorPos - 1) + textInput.slice(textCursorPos));
+                    setTextCursorPos(textCursorPos - 1);
+                }
             } else if (input && input.length === 1) {
-                setTextInput(textInput + input);
+                setTextInput(textInput.slice(0, textCursorPos) + input + textInput.slice(textCursorPos));
+                setTextCursorPos(textCursorPos + 1);
+            }
+        } else if (editingCommand) {
+            // In command editing mode
+            if (key.return) {
+                // Save the command path
+                const currentItem = items[selectedIndex];
+                if (currentItem) {
+                    const newItems = [...items];
+                    newItems[selectedIndex] = { ...currentItem, commandPath: commandInput };
+                    onUpdate(newItems);
+                }
+                setEditingCommand(false);
+                setCommandInput('');
+                setCommandCursorPos(0);
+            } else if (key.escape) {
+                // Cancel editing
+                setEditingCommand(false);
+                setCommandInput('');
+                setCommandCursorPos(0);
+            } else if (key.leftArrow) {
+                setCommandCursorPos(Math.max(0, commandCursorPos - 1));
+            } else if (key.rightArrow) {
+                setCommandCursorPos(Math.min(commandInput.length, commandCursorPos + 1));
+            } else if (key.ctrl && key.leftArrow) {
+                // Move to beginning
+                setCommandCursorPos(0);
+            } else if (key.ctrl && key.rightArrow) {
+                // Move to end
+                setCommandCursorPos(commandInput.length);
+            } else if (key.backspace || key.delete) {
+                if (commandCursorPos > 0) {
+                    setCommandInput(commandInput.slice(0, commandCursorPos - 1) + commandInput.slice(commandCursorPos));
+                    setCommandCursorPos(commandCursorPos - 1);
+                }
+            } else if (input) {
+                setCommandInput(commandInput.slice(0, commandCursorPos) + input + commandInput.slice(commandCursorPos));
+                setCommandCursorPos(commandCursorPos + input.length);
+            }
+        } else if (editingMaxWidth) {
+            // In max width editing mode
+            if (key.return) {
+                // Save the max width
+                const currentItem = items[selectedIndex];
+                if (currentItem) {
+                    const width = parseInt(maxWidthInput, 10);
+                    const newItems = [...items];
+                    if (!isNaN(width) && width > 0) {
+                        newItems[selectedIndex] = { ...currentItem, maxWidth: width };
+                    } else {
+                        // Remove max width if invalid
+                        const { maxWidth, ...rest } = currentItem;
+                        newItems[selectedIndex] = rest;
+                    }
+                    onUpdate(newItems);
+                }
+                setEditingMaxWidth(false);
+                setMaxWidthInput('');
+            } else if (key.escape) {
+                // Cancel editing
+                setEditingMaxWidth(false);
+                setMaxWidthInput('');
+            } else if (key.backspace || key.delete) {
+                setMaxWidthInput(maxWidthInput.slice(0, -1));
+            } else if (input && /\d/.test(input)) {
+                setMaxWidthInput(maxWidthInput + input);
             }
         } else if (moveMode) {
             // In move mode, use up/down to move the selected item
@@ -457,7 +555,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type backwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text'];
+                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -474,7 +572,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type forwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text'];
+                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -540,11 +638,33 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                     onUpdate(newItems);
                 }
             } else if (input === 'e' && items.length > 0) {
-                // Edit custom text
+                // Edit custom text or custom command
                 const currentItem = items[selectedIndex];
                 if (currentItem && currentItem.type === 'custom-text') {
-                    setTextInput(currentItem.customText || '');
+                    const text = currentItem.customText || '';
+                    setTextInput(text);
+                    setTextCursorPos(text.length); // Start cursor at end
                     setEditingText(true);
+                } else if (currentItem && currentItem.type === 'custom-command') {
+                    const cmd = currentItem.commandPath || '';
+                    setCommandInput(cmd);
+                    setCommandCursorPos(cmd.length); // Start cursor at end
+                    setEditingCommand(true);
+                }
+            } else if (input === 'w' && items.length > 0) {
+                // Edit max width for custom command
+                const currentItem = items[selectedIndex];
+                if (currentItem && currentItem.type === 'custom-command') {
+                    setMaxWidthInput(currentItem.maxWidth ? currentItem.maxWidth.toString() : '');
+                    setEditingMaxWidth(true);
+                }
+            } else if (input === 'p' && items.length > 0) {
+                // Toggle preserve colors for custom command
+                const currentItem = items[selectedIndex];
+                if (currentItem && currentItem.type === 'custom-command') {
+                    const newItems = [...items];
+                    newItems[selectedIndex] = { ...currentItem, preserveColors: !currentItem.preserveColors };
+                    onUpdate(newItems);
                 }
             } else if (key.escape) {
                 onBack();
@@ -588,6 +708,10 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             case 'custom-text':
                 const text = item.customText || 'Empty';
                 return chalk.white(`Custom Text (${text})`);
+            case 'custom-command':
+                const cmd = item.commandPath || 'No command';
+                const truncatedCmd = cmd.length > 30 ? `${cmd.substring(0, 27)}...` : cmd;
+                return chalk.yellow(`Custom Command (${truncatedCmd})`);
         }
     };
 
@@ -599,7 +723,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     const isSeparator = currentItem?.type === 'separator';
     const isFlexSeparator = currentItem?.type === 'flex-separator';
     const isCustomText = currentItem?.type === 'custom-text';
-    const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator && !isCustomText;
+    const isCustomCommand = currentItem?.type === 'custom-command';
+    const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator && !isCustomText && !isCustomCommand;
 
     let helpText = '↑↓ select, ←→ change type';
     if (isSeparator) {
@@ -607,6 +732,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     }
     if (isCustomText) {
         helpText += ', (e)dit text';
+    }
+    if (isCustomCommand) {
+        helpText += ', (e)dit cmd, (w)idth, (p)reserve colors';
     }
     helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
     if (canToggleRaw) {
@@ -619,7 +747,25 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             <Text bold>Edit Line {lineNumber} {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
             {editingText ? (
                 <Box flexDirection='column'>
-                    <Text>Enter custom text: {textInput}</Text>
+                    <Text>
+                        Enter custom text: {textInput.slice(0, textCursorPos)}
+                        <Text backgroundColor="gray" color="black">{textInput[textCursorPos] || ' '}</Text>
+                        {textInput.slice(textCursorPos + 1)}
+                    </Text>
+                    <Text dimColor>←→ move cursor, Ctrl+←→ jump to start/end, Enter save, ESC cancel</Text>
+                </Box>
+            ) : editingCommand ? (
+                <Box flexDirection='column'>
+                    <Text>
+                        Enter command path: {commandInput.slice(0, commandCursorPos)}
+                        <Text backgroundColor="gray" color="black">{commandInput[commandCursorPos] || ' '}</Text>
+                        {commandInput.slice(commandCursorPos + 1)}
+                    </Text>
+                    <Text dimColor>←→ move cursor, Ctrl+←→ jump to start/end, Enter save, ESC cancel</Text>
+                </Box>
+            ) : editingMaxWidth ? (
+                <Box flexDirection='column'>
+                    <Text>Enter max width (blank for no limit): {maxWidthInput}</Text>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
                 </Box>
             ) : moveMode ? (
@@ -643,6 +789,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                                 {index === selectedIndex ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                 {index + 1}. {getItemDisplay(item)}
                                 {item.rawValue && <Text dimColor> (raw value)</Text>}
+                                {item.type === 'custom-command' && item.maxWidth && <Text dimColor> (max: {item.maxWidth})</Text>}
+                                {item.type === 'custom-command' && item.preserveColors && <Text dimColor> (preserve colors)</Text>}
                             </Text>
                         </Box>
                     ))
@@ -660,7 +808,8 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'terminal-width', 'version', 'custom-text'].includes(item.type)
+        ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
+        !(item.type === 'custom-command' && item.preserveColors) // Exclude custom-command items with preserveColors
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -702,6 +851,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'terminal-width': return 'Terminal Width';
             case 'version': return 'Version';
             case 'custom-text': return `Custom Text (${item.customText || 'Empty'})`;
+            case 'custom-command': return `Custom Command (${item.commandPath ? item.commandPath.substring(0, 20) + (item.commandPath.length > 20 ? '...' : '') : 'No command'})`;
             default: return item.type;
         }
     };
