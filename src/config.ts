@@ -8,7 +8,7 @@ const readFile = fs.promises?.readFile || promisify(fs.readFile);
 const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
 const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
 
-export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' | 
+export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' |
     'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text';
 
 export interface StatusItem {
@@ -40,13 +40,38 @@ const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
 export const DEFAULT_SETTINGS: Settings = {
     lines: [
         [
-            { id: '1', type: 'model', color: 'cyan' },
-            { id: '2', type: 'separator' },
-            { id: '3', type: 'terminal-width', color: 'dim' },
-            { id: '4', type: 'separator' },
-            { id: '5', type: 'git-branch', color: 'magenta' },
-            { id: '6', type: 'separator' },
-            { id: '7', type: 'git-changes', color: 'yellow' },
+            {
+                "id": "1",
+                "type": "model",
+                "color": "cyan"
+            },
+            {
+                "id": "2",
+                "type": "separator"
+            },
+            {
+                "id": "3",
+                "type": "context-length",
+                "color": "dim"
+            },
+            {
+                "id": "4",
+                "type": "separator"
+            },
+            {
+                "id": "5",
+                "type": "git-branch",
+                "color": "magenta"
+            },
+            {
+                "id": "6",
+                "type": "separator"
+            },
+            {
+                "id": "7",
+                "type": "git-changes",
+                "color": "yellow"
+            }
         ]
     ],
     colors: {
@@ -55,7 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
         separator: 'dim',
     },
     flexMode: 'full-minus-40',
-    compactThreshold: 75,
+    compactThreshold: 60,
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -64,10 +89,10 @@ export async function loadSettings(): Promise<Settings> {
         if (!fs.existsSync(SETTINGS_PATH)) {
             return DEFAULT_SETTINGS;
         }
-        
+
         const content = await readFile(SETTINGS_PATH, 'utf-8');
         let loaded: any;
-        
+
         try {
             loaded = JSON.parse(content);
         } catch (parseError) {
@@ -75,18 +100,18 @@ export async function loadSettings(): Promise<Settings> {
             console.error('Failed to parse settings.json, using defaults');
             return DEFAULT_SETTINGS;
         }
-        
+
         // Migrate from old format with elements/layout
         if (loaded.elements || loaded.layout) {
             return migrateOldSettings(loaded);
         }
-        
+
         // Migrate from single items array to lines array
         if (loaded.items && !loaded.lines) {
             loaded.lines = [loaded.items];
             delete loaded.items;
         }
-        
+
         // Ensure lines is an array and limit to 3 lines
         if (loaded.lines) {
             if (!Array.isArray(loaded.lines)) {
@@ -94,7 +119,7 @@ export async function loadSettings(): Promise<Settings> {
             }
             loaded.lines = loaded.lines.slice(0, 3);
         }
-        
+
         return { ...DEFAULT_SETTINGS, ...loaded };
     } catch (error) {
         // Any other error, return defaults
@@ -106,19 +131,19 @@ export async function loadSettings(): Promise<Settings> {
 function migrateOldSettings(old: any): Settings {
     const items: StatusItem[] = [];
     let id = 1;
-    
+
     if (old.elements?.model) {
         items.push({ id: String(id++), type: 'model', color: old.colors?.model });
     }
-    
+
     if (items.length > 0 && old.elements?.gitBranch) {
         items.push({ id: String(id++), type: 'separator' });
     }
-    
+
     if (old.elements?.gitBranch) {
         items.push({ id: String(id++), type: 'git-branch', color: old.colors?.gitBranch });
     }
-    
+
     if (old.layout?.expandingSeparators) {
         // Replace regular separators with flex separators
         items.forEach(item => {
@@ -127,7 +152,7 @@ function migrateOldSettings(old: any): Settings {
             }
         });
     }
-    
+
     return {
         lines: [items], // Put migrated items in first line
         colors: old.colors || DEFAULT_SETTINGS.colors,
@@ -139,7 +164,7 @@ function migrateOldSettings(old: any): Settings {
 export async function saveSettings(settings: Settings): Promise<void> {
     // Ensure config directory exists
     await mkdir(CONFIG_DIR, { recursive: true });
-    
+
     // Write settings using Node.js-compatible API
     await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
 }

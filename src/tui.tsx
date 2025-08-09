@@ -220,7 +220,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
     if (width && width > 0) {
         // Remove ANSI escape codes to get actual length
         const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
-        
+
         if (plainLength > width) {
             // Need to truncate - preserve ANSI codes while truncating
             let truncated = '';
@@ -228,10 +228,10 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
             let inAnsiCode = false;
             let ansiBuffer = '';
             const targetLength = width - 5; // Reserve 3 chars for ellipsis + 2 for proper fit in preview
-            
+
             for (let i = 0; i < statusLine.length; i++) {
                 const char = statusLine[i];
-                
+
                 if (char === '\x1b') {
                     inAnsiCode = true;
                     ansiBuffer = char;
@@ -251,7 +251,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                     }
                 }
             }
-            
+
             statusLine = truncated + '...';
         }
     }
@@ -783,9 +783,9 @@ interface FlexOptionsProps {
 
 const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack }) => {
     const [selectedOption, setSelectedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
-    const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold || 75);
+    const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold || 60);
     const [editingThreshold, setEditingThreshold] = useState(false);
-    const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold || 75));
+    const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold || 60));
     const [validationError, setValidationError] = useState<string | null>(null);
     const [highlightedOption, setHighlightedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
 

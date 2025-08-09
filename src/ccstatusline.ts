@@ -79,7 +79,7 @@ function getTerminalWidth(): number | null {
             stdio: ['pipe', 'pipe', 'ignore'],
             shell: '/bin/sh'
         }).trim();
-        
+
         // Check if we got a valid tty (not ?? which means no tty)
         if (tty && tty !== '??' && tty !== '?') {
             // Now get the terminal size
@@ -91,7 +91,7 @@ function getTerminalWidth(): number | null {
                     shell: '/bin/sh'
                 }
             ).trim();
-            
+
             const parsed = parseInt(width, 10);
             if (!isNaN(parsed) && parsed > 0) {
                 return parsed;
@@ -100,14 +100,14 @@ function getTerminalWidth(): number | null {
     } catch {
         // Command failed, width detection not available
     }
-    
+
     // Fallback: try tput cols which might work in some environments
     try {
         const width = execSync('tput cols 2>/dev/null', {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore']
         }).trim();
-        
+
         const parsed = parseInt(width, 10);
         if (!isNaN(parsed) && parsed > 0) {
             return parsed;
@@ -115,7 +115,7 @@ function getTerminalWidth(): number | null {
     } catch {
         // tput also failed
     }
-    
+
     return null;
 }
 
@@ -179,7 +179,7 @@ async function getSessionDuration(transcriptPath: string): Promise<string | null
 
         const content = await readFile(transcriptPath, 'utf-8');
         const lines = content.trim().split('\n').filter(line => line.trim());
-        
+
         if (lines.length === 0) {
             return null;
         }
@@ -219,10 +219,10 @@ async function getSessionDuration(transcriptPath: string): Promise<string | null
 
         // Calculate duration in milliseconds
         const durationMs = lastTimestamp.getTime() - firstTimestamp.getTime();
-        
+
         // Convert to minutes
         const totalMinutes = Math.floor(durationMs / (1000 * 60));
-        
+
         if (totalMinutes < 1) {
             return '<1m';
         }
@@ -266,7 +266,7 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
         // Parse each line and sum up token usage for totals
         let mostRecentMainChainEntry: TranscriptLine | null = null;
         let mostRecentTimestamp: Date | null = null;
-        
+
         for (const line of lines) {
             try {
                 const data: TranscriptLine = JSON.parse(line);
@@ -275,7 +275,7 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
                     outputTokens += data.message.usage.output_tokens || 0;
                     cachedTokens += data.message.usage.cache_read_input_tokens || 0;
                     cachedTokens += data.message.usage.cache_creation_input_tokens || 0;
-                    
+
                     // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
                     if (data.isSidechain !== true && data.timestamp) {
                         const entryTime = new Date(data.timestamp);
@@ -293,8 +293,8 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
         // Calculate context length from the most recent main chain message
         if (mostRecentMainChainEntry?.message?.usage) {
             const usage = mostRecentMainChainEntry.message.usage;
-            contextLength = (usage.input_tokens || 0) + 
-                          (usage.cache_read_input_tokens || 0) + 
+            contextLength = (usage.input_tokens || 0) +
+                          (usage.cache_read_input_tokens || 0) +
                           (usage.cache_creation_input_tokens || 0);
         }
 
@@ -312,7 +312,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     let terminalWidth: number | null = null;
     if (detectedWidth) {
         const flexMode = settings.flexMode || 'full-minus-40';
-        
+
         if (flexMode === 'full') {
             // Use full width minus 4 for terminal padding
             terminalWidth = detectedWidth - 4;
@@ -321,10 +321,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             terminalWidth = detectedWidth - 40;
         } else if (flexMode === 'full-until-compact') {
             // Check context percentage to decide
-            const threshold = settings.compactThreshold || 75;
-            const contextPercentage = tokenMetrics ? 
+            const threshold = settings.compactThreshold || 60;
+            const contextPercentage = tokenMetrics ?
                 Math.min(100, (tokenMetrics.contextLength / 200000) * 100) : 0;
-            
+
             if (contextPercentage >= threshold) {
                 // Context is high, leave space for auto-compact
                 terminalWidth = detectedWidth - 40;
@@ -544,7 +544,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     if (detectedWidth && detectedWidth > 0) {
         // Remove ANSI escape codes to get actual length
         const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
-        
+
         if (plainLength > detectedWidth) {
             // Need to truncate - preserve ANSI codes while truncating
             let truncated = '';
@@ -552,10 +552,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             let inAnsiCode = false;
             let ansiBuffer = '';
             const targetLength = detectedWidth - 7; // Truncate to width-7 for proper fit
-            
+
             for (let i = 0; i < statusLine.length; i++) {
                 const char = statusLine[i];
-                
+
                 if (char === '\x1b') {
                     inAnsiCode = true;
                     ansiBuffer = char;
@@ -575,17 +575,17 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                     }
                 }
             }
-            
+
             statusLine = truncated + '...';
         }
     }
-    
+
     return statusLine;
 }
 
 async function renderStatusLine(data: StatusJSON) {
     const settings = await loadSettings();
-    
+
     // Get all lines to render (support both old items format and new lines format)
     let lines: StatusItem[][] = [];
     if (settings.lines) {
@@ -596,29 +596,29 @@ async function renderStatusLine(data: StatusJSON) {
     } else {
         lines = [[]];
     }
-    
+
     // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line => 
+    const hasTokenItems = lines.some(line =>
         line.some(item =>
             ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'].includes(item.type)
         )
     );
-    
+
     // Check if session clock is needed
     const hasSessionClock = lines.some(line =>
         line.some(item => item.type === 'session-clock')
     );
-    
+
     let tokenMetrics: any = null;
     if (hasTokenItems && data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
     }
-    
+
     let sessionDuration: string | null = null;
     if (hasSessionClock && data.transcript_path) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
-    
+
     // Render each line
     for (const lineItems of lines) {
         if (lineItems.length > 0) {
