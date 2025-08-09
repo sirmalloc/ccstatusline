@@ -38,6 +38,8 @@ interface TranscriptLine {
     message?: {
         usage?: TokenUsage;
     };
+    isSidechain?: boolean;
+    timestamp?: string;
 }
 
 async function readStdin(): Promise<string | null> {
@@ -266,7 +268,9 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
         let contextLength = 0;
 
         // Parse each line and sum up token usage for totals
-        let lastMessageWithUsage: TranscriptLine | null = null;
+        let mostRecentMainChainEntry: TranscriptLine | null = null;
+        let mostRecentTimestamp: Date | null = null;
+        
         for (const line of lines) {
             try {
                 const data: TranscriptLine = JSON.parse(line);
@@ -276,17 +280,23 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
                     cachedTokens += data.message.usage.cache_read_input_tokens || 0;
                     cachedTokens += data.message.usage.cache_creation_input_tokens || 0;
                     
-                    // Keep track of the last message with usage data
-                    lastMessageWithUsage = data;
+                    // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
+                    if (data.isSidechain !== true && data.timestamp) {
+                        const entryTime = new Date(data.timestamp);
+                        if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
+                            mostRecentTimestamp = entryTime;
+                            mostRecentMainChainEntry = data;
+                        }
+                    }
                 }
             } catch {
                 // Skip invalid JSON lines
             }
         }
 
-        // Calculate context length from the most recent message
-        if (lastMessageWithUsage?.message?.usage) {
-            const usage = lastMessageWithUsage.message.usage;
+        // Calculate context length from the most recent main chain message
+        if (mostRecentMainChainEntry?.message?.usage) {
+            const usage = mostRecentMainChainEntry.message.usage;
             contextLength = (usage.input_tokens || 0) + 
                           (usage.cache_read_input_tokens || 0) + 
                           (usage.cache_creation_input_tokens || 0);
@@ -533,6 +543,11 @@ async function renderStatusLine(data: StatusJSON) {
             const line = renderSingleLine(lineItems, settings, data, tokenMetrics, sessionDuration);
             console.log(line);
         }
+    }
+    
+    // Add debug output if CCSTATUSLINEDEBUG environment variable is set to true
+    if (process.env.CCSTATUSLINEDEBUG === 'true' && data.transcript_path) {
+        console.log(chalk.dim(`[DEBUG] JSONL Path: ${data.transcript_path}`));
     }
 }
 
