@@ -31,9 +31,12 @@ npx ccstatusline@latest
 ```
 
 This launches a TUI where you can:
-- Add/remove status line items
-- Reorder items with arrow keys
+- Configure up to 3 separate status lines
+- Add/remove/reorder status line items
 - Customize colors for each element
+- Configure flex separator behavior
+- Edit custom text items
+- Install/uninstall to Claude Code settings
 - Preview your status line in real-time
 
 Your settings are saved to `~/.config/ccstatusline/settings.json`.
@@ -48,6 +51,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
+- **Version** - Shows Claude Code version
 - **Tokens Input** - Shows input tokens used
 - **Tokens Output** - Shows output tokens used
 - **Tokens Cached** - Shows cached tokens used
@@ -55,55 +59,51 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Context Length** - Shows current context length in tokens
 - **Context Percentage** - Shows percentage of context limit used
 - **Terminal Width** - Shows detected terminal width (for debugging)
-- **Separator** - Visual divider between items (|)
+- **Custom Text** - Add your own custom text to the status line
+- **Separator** - Visual divider between items (customizable: |, -, comma, space)
 - **Flex Separator** - Expands to fill available space
 
-## Configuration File
+### TUI Controls
 
-The configuration file at `~/.config/ccstatusline/settings.json` looks like:
+#### Main Menu
+- **↑↓** - Navigate menu items
+- **Enter** - Select item
+- **Ctrl+C** - Exit
 
-```json
-{
-  "lines": [
-    [
-      {
-        "id": "1",
-        "type": "model",
-        "color": "cyan"
-      },
-      {
-        "id": "2",
-        "type": "separator"
-      },
-      {
-        "id": "3",
-        "type": "git-branch",
-        "color": "magenta"
-      },
-      {
-        "id": "4",
-        "type": "separator"
-      },
-      {
-        "id": "5",
-        "type": "session-clock",
-        "color": "blue"
-      }
-    ]
-  ],
-  "colors": {
-    "model": "cyan",
-    "gitBranch": "magenta",
-    "separator": "dim"
-  }
-}
-```
+#### Line Editor
+- **↑↓** - Select item
+- **←→** - Change item type
+- **Enter** - Enter move mode (reorder items)
+- **a** - Add item at end
+- **i** - Insert item before selected
+- **d** - Delete selected item
+- **c** - Clear entire line
+- **r** - Toggle raw value mode (no labels)
+- **e** - Edit custom text (for custom-text items)
+- **Space** - Change separator character (for separator items)
+- **ESC** - Go back
 
-### Color Options
+#### Color Configuration
+- **↑↓** - Select item
+- **Enter** - Cycle through colors
+- **ESC** - Go back
 
-Available colors:
-- `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `gray`
-- `brightBlack`, `brightRed`, `brightGreen`, `brightYellow`, `brightBlue`, `brightMagenta`, `brightCyan`, `brightWhite`
+#### Flex Options
+Configure how flex separators calculate available width:
+- **Full width always** - Uses full terminal width (may wrap with auto-compact message)
+- **Full width minus 40** - Leaves space for auto-compact message (default)
+- **Full width until compact** - Switches based on context percentage threshold
+
+### Raw Value Mode
+
+Some items support "raw value" mode which displays just the value without a label:
+- Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
+- Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
+- Normal: `Ctx: 18.6k` → Raw: `18.6k`
+
+### Status Line Truncation
+
+When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
 
 ## Development
 
