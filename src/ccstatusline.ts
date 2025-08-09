@@ -164,11 +164,7 @@ function getGitChanges(): { insertions: number; deletions: number } | null {
             totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
         }
 
-        // Return null if no changes at all (so the element doesn't appear)
-        if (totalInsertions === 0 && totalDeletions === 0) {
-            return null;
-        }
-
+        // Always return the changes, even if they're zero
         return { insertions: totalInsertions, deletions: totalDeletions };
     } catch {
         return null;
@@ -443,6 +439,11 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     }
 
     if (elements.length === 0) return '';
+
+    // Remove trailing separators
+    while (elements.length > 0 && elements[elements.length - 1]?.type === 'separator') {
+        elements.pop();
+    }
 
     // Build the final status line
     let statusLine = '';
