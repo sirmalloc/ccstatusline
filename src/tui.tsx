@@ -158,6 +158,11 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 elements.push('FLEX');
                 hasFlexSeparator = true;
                 break;
+            case 'custom-text':
+                const customTextColor = (chalk as any)[item.color || 'white'] || chalk.white;
+                const customText = item.customText || '';
+                elements.push(customTextColor(customText));
+                break;
         }
     });
 
@@ -392,10 +397,33 @@ interface ItemsEditorProps {
 const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
+    const [editingText, setEditingText] = useState(false);
+    const [textInput, setTextInput] = useState('');
     const separatorChars = ['|', '-', ',', ' '];
 
     useInput((input, key) => {
-        if (moveMode) {
+        if (editingText) {
+            // In text editing mode
+            if (key.return) {
+                // Save the custom text
+                const currentItem = items[selectedIndex];
+                if (currentItem) {
+                    const newItems = [...items];
+                    newItems[selectedIndex] = { ...currentItem, customText: textInput };
+                    onUpdate(newItems);
+                }
+                setEditingText(false);
+                setTextInput('');
+            } else if (key.escape) {
+                // Cancel editing
+                setEditingText(false);
+                setTextInput('');
+            } else if (key.backspace || key.delete) {
+                setTextInput(textInput.slice(0, -1));
+            } else if (input && input.length === 1) {
+                setTextInput(textInput + input);
+            }
+        } else if (moveMode) {
             // In move mode, use up/down to move the selected item
             if (key.upArrow && selectedIndex > 0) {
                 const newItems = [...items];
@@ -429,7 +457,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type backwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator'];
+                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -446,7 +474,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type forwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator'];
+                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -472,15 +500,15 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 onUpdate(newItems);
                 setSelectedIndex(newItems.length - 1); // Move selection to new item
             } else if (input === 'i') {
-                // Insert item after selected
+                // Insert item before selected
                 const newItem: StatusItem = {
                     id: Date.now().toString(),
                     type: 'separator',
                 };
                 const newItems = [...items];
-                newItems.splice(selectedIndex + 1, 0, newItem);
+                newItems.splice(selectedIndex, 0, newItem);
                 onUpdate(newItems);
-                setSelectedIndex(selectedIndex + 1); // Selection already moves to new item
+                // Keep selection on the new item (which is now at selectedIndex)
             } else if (input === 'd' && items.length > 0) {
                 // Delete selected item
                 const newItems = items.filter((_, i) => i !== selectedIndex);
@@ -506,10 +534,17 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (input === 'r' && items.length > 0) {
                 // Toggle raw value for non-separator items
                 const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type !== 'separator' && currentItem.type !== 'flex-separator') {
+                if (currentItem && currentItem.type !== 'separator' && currentItem.type !== 'flex-separator' && currentItem.type !== 'custom-text') {
                     const newItems = [...items];
                     newItems[selectedIndex] = { ...currentItem, rawValue: !currentItem.rawValue };
                     onUpdate(newItems);
+                }
+            } else if (input === 'e' && items.length > 0) {
+                // Edit custom text
+                const currentItem = items[selectedIndex];
+                if (currentItem && currentItem.type === 'custom-text') {
+                    setTextInput(currentItem.customText || '');
+                    setEditingText(true);
                 }
             } else if (key.escape) {
                 onBack();
@@ -550,6 +585,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 return chalk.dim('Terminal Width');
             case 'version':
                 return chalk.green('Version');
+            case 'custom-text':
+                const text = item.customText || 'Empty';
+                return chalk.white(`Custom Text (${text})`);
         }
     };
 
@@ -560,11 +598,15 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     const currentItem = items[selectedIndex];
     const isSeparator = currentItem?.type === 'separator';
     const isFlexSeparator = currentItem?.type === 'flex-separator';
-    const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator;
+    const isCustomText = currentItem?.type === 'custom-text';
+    const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator && !isCustomText;
 
     let helpText = '↑↓ select, ←→ change type';
     if (isSeparator) {
         helpText += ', Space edit separator';
+    }
+    if (isCustomText) {
+        helpText += ', (e)dit text';
     }
     helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
     if (canToggleRaw) {
@@ -575,7 +617,12 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     return (
         <Box flexDirection='column'>
             <Text bold>Edit Line {lineNumber} {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
-            {moveMode ? (
+            {editingText ? (
+                <Box flexDirection='column'>
+                    <Text>Enter custom text: {textInput}</Text>
+                    <Text dimColor>Press Enter to save, ESC to cancel</Text>
+                </Box>
+            ) : moveMode ? (
                 <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
             ) : (
                 <Text dimColor>{helpText}</Text>
@@ -613,7 +660,7 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'version'].includes(item.type)
+        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'version', 'custom-text'].includes(item.type)
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -653,6 +700,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'context-percentage': return 'Context Percentage';
             case 'session-clock': return 'Session Clock';
             case 'version': return 'Version';
+            case 'custom-text': return `Custom Text (${item.customText || 'Empty'})`;
             default: return item.type;
         }
     };

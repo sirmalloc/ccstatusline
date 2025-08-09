@@ -470,6 +470,12 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 elements.push({ content: 'FLEX', type: 'flex-separator' });
                 hasFlexSeparator = true;
                 break;
+
+            case 'custom-text':
+                const customTextColor = (chalk as any)[item.color || 'white'] || chalk.white;
+                const customText = item.customText || '';
+                elements.push({ content: customTextColor(customText), type: 'custom-text' });
+                break;
         }
     }
 

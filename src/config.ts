@@ -9,7 +9,7 @@ const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
 const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
 
 export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' | 
-    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'terminal-width' | 'session-clock' | 'version';
+    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text';
 
 export interface StatusItem {
     id: string;
@@ -17,6 +17,7 @@ export interface StatusItem {
     color?: string;
     character?: string; // For separator and flex-separator types
     rawValue?: boolean; // Show value without label prefix
+    customText?: string; // For custom-text type
 }
 
 export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
