@@ -308,8 +308,34 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
 
 function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, tokenMetrics: any, sessionDuration: string | null): string {
     const detectedWidth = getTerminalWidth();
-    // Subtract 40 chars to account for right-side content like auto compact messages
-    const terminalWidth = detectedWidth ? detectedWidth - 40 : null;
+    console.error(`[DEBUG] Detected terminal width: ${detectedWidth}`);
+    
+    // Calculate terminal width based on flex mode settings
+    let terminalWidth: number | null = null;
+    if (detectedWidth) {
+        const flexMode = settings.flexMode || 'full-minus-40';
+        
+        if (flexMode === 'full') {
+            // Use full width minus 4 for terminal padding
+            terminalWidth = detectedWidth - 4;
+        } else if (flexMode === 'full-minus-40') {
+            // Always subtract 40 for auto-compact message
+            terminalWidth = detectedWidth - 40;
+        } else if (flexMode === 'full-until-compact') {
+            // Check context percentage to decide
+            const threshold = settings.compactThreshold || 75;
+            const contextPercentage = tokenMetrics ? 
+                Math.min(100, (tokenMetrics.contextLength / 200000) * 100) : 0;
+            
+            if (contextPercentage >= threshold) {
+                // Context is high, leave space for auto-compact
+                terminalWidth = detectedWidth - 40;
+            } else {
+                // Context is low, use full width minus 4 for padding
+                terminalWidth = detectedWidth - 4;
+            }
+        }
+    }
     const elements: { content: string, type: string }[] = [];
     let hasFlexSeparator = false;
 
@@ -414,6 +440,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                     const text = item.rawValue ? sessionDuration : `Session: ${sessionDuration}`;
                     elements.push({ content: color(text), type: 'session-clock' });
                 }
+                // Debug - let's see if we skip session-clock
+                if (process.env.CCSTATUSLINEDEBUG === 'true' && !sessionDuration) {
+                    console.error('[DEBUG] Skipping session-clock - no duration');
+                }
                 break;
 
             case 'version':
@@ -460,6 +490,8 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     let statusLine = '';
 
     if (hasFlexSeparator && terminalWidth) {
+        // Add debug at start of flex processing
+        console.error(`[DEBUG] Processing flex separator - Terminal width: ${terminalWidth}`);
         // Split elements by flex separators
         const parts: string[][] = [[]];
         let currentPart = 0;
@@ -486,6 +518,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
         const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
 
+        // Debug output
+        console.error(`[DEBUG] Terminal width: ${terminalWidth}, Total content: ${totalContentLength}, Parts: ${partLengths.join(', ')}`);
+        console.error(`[DEBUG] Flex count: ${flexCount}, Space per flex: ${spacePerFlex}, Total space: ${totalSpace}`);
+
         // Build the status line with distributed spacing
         statusLine = '';
         for (let i = 0; i < parts.length; i++) {
@@ -502,6 +538,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     } else {
         // No flex separator OR no width detected
         if (hasFlexSeparator && !terminalWidth) {
+            console.error('[DEBUG] Flex separator present but no terminal width detected - falling back to normal separator');
             // Treat flex separators as normal separators when width detection fails
             statusLine = elements.map(e => e.type === 'flex-separator' ? chalk.dim(' | ') : e.content).join('');
         } else {
@@ -510,6 +547,46 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         }
     }
 
+    // Truncate if the line exceeds the terminal width
+    if (detectedWidth && detectedWidth > 0) {
+        // Remove ANSI escape codes to get actual length
+        const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
+        
+        if (plainLength > detectedWidth) {
+            // Need to truncate - preserve ANSI codes while truncating
+            let truncated = '';
+            let currentLength = 0;
+            let inAnsiCode = false;
+            let ansiBuffer = '';
+            const targetLength = detectedWidth - 7; // Truncate to width-7 for proper fit
+            
+            for (let i = 0; i < statusLine.length; i++) {
+                const char = statusLine[i];
+                
+                if (char === '\x1b') {
+                    inAnsiCode = true;
+                    ansiBuffer = char;
+                } else if (inAnsiCode) {
+                    ansiBuffer += char;
+                    if (char === 'm') {
+                        truncated += ansiBuffer;
+                        inAnsiCode = false;
+                        ansiBuffer = '';
+                    }
+                } else {
+                    if (currentLength < targetLength) {
+                        truncated += char;
+                        currentLength++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            statusLine = truncated + '...';
+        }
+    }
+    
     return statusLine;
 }
 

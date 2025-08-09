@@ -3,8 +3,21 @@ import { render, Box, Text, useInput, useApp } from 'ink';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import { execSync } from 'child_process';
-import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType } from './config';
+import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType, type FlexMode } from './config';
 import { isInstalled, installStatusLine, uninstallStatusLine, getExistingStatusLine } from './claude-settings';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Get package version
+function getPackageVersion(): string {
+    try {
+        const packageJsonPath = path.join(__dirname, '..', 'package.json');
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+        return packageJson.version || '';
+    } catch {
+        return '';
+    }
+}
 
 // Check if terminal width detection is available
 function canDetectTerminalWidth(): boolean {
@@ -15,7 +28,7 @@ function canDetectTerminalWidth(): boolean {
             stdio: ['pipe', 'pipe', 'ignore'],
             shell: '/bin/sh'
         }).trim();
-        
+
         // Check if we got a valid tty
         if (tty && tty !== '??' && tty !== '?') {
             const width = execSync(
@@ -26,7 +39,7 @@ function canDetectTerminalWidth(): boolean {
                     shell: '/bin/sh'
                 }
             ).trim();
-            
+
             const parsed = parseInt(width, 10);
             if (!isNaN(parsed) && parsed > 0) {
                 return true;
@@ -35,14 +48,14 @@ function canDetectTerminalWidth(): boolean {
     } catch {
         // Try fallback
     }
-    
+
     // Fallback: try tput cols
     try {
         const width = execSync('tput cols 2>/dev/null', {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore']
         }).trim();
-        
+
         const parsed = parseInt(width, 10);
         return !isNaN(parsed) && parsed > 0;
     } catch {
@@ -53,11 +66,27 @@ function canDetectTerminalWidth(): boolean {
 interface StatusLinePreviewProps {
     lines: StatusItem[][];
     terminalWidth: number;
+    settings?: Settings;
 }
 
-const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean): string => {
-    // Use full terminal width for calculations, we'll handle truncation at the end if needed
-    const width = widthDetectionAvailable ? terminalWidth : null;
+const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
+    // Calculate effective width based on flex mode settings
+    let effectiveWidth: number | null = null;
+    if (widthDetectionAvailable && terminalWidth) {
+        const flexMode = settings?.flexMode || 'full-minus-40';
+
+        if (flexMode === 'full') {
+            effectiveWidth = terminalWidth - 2; // Subtract 2 for terminal padding in preview
+        } else if (flexMode === 'full-minus-40') {
+            effectiveWidth = terminalWidth - 40;
+        } else if (flexMode === 'full-until-compact') {
+            // For preview, always show full width
+            effectiveWidth = terminalWidth - 2; // Subtract 2 for terminal padding in preview
+        }
+    }
+    // Always ensure we have a width for truncation
+    const width = terminalWidth; // Always use terminal width for truncation
+    const flexWidth = effectiveWidth; // Use this for flex separator calculations
     const elements: string[] = [];
     let hasFlexSeparator = false;
 
@@ -134,7 +163,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
 
     // Build the status line with flex separator support
     let statusLine = '';
-    if (hasFlexSeparator && width) {
+    if (hasFlexSeparator && flexWidth) {
         const parts: string[][] = [[]];
         let currentPart = 0;
 
@@ -160,7 +189,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
 
         // Calculate space to distribute among flex separators
         const flexCount = parts.length - 1; // Number of flex separators
-        const totalSpace = Math.max(0, width - totalContentLength);
+        const totalSpace = Math.max(0, flexWidth - totalContentLength);
         const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
         const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
 
@@ -182,10 +211,50 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
         statusLine = elements.map(e => e === 'FLEX' ? chalk.dim(' | ') : e).join('');
     }
 
+    // Truncate if the line exceeds the maximum width
+    if (width && width > 0) {
+        // Remove ANSI escape codes to get actual length
+        const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
+        
+        if (plainLength > width) {
+            // Need to truncate - preserve ANSI codes while truncating
+            let truncated = '';
+            let currentLength = 0;
+            let inAnsiCode = false;
+            let ansiBuffer = '';
+            const targetLength = width - 5; // Reserve 3 chars for ellipsis + 2 for proper fit in preview
+            
+            for (let i = 0; i < statusLine.length; i++) {
+                const char = statusLine[i];
+                
+                if (char === '\x1b') {
+                    inAnsiCode = true;
+                    ansiBuffer = char;
+                } else if (inAnsiCode) {
+                    ansiBuffer += char;
+                    if (char === 'm') {
+                        truncated += ansiBuffer;
+                        inAnsiCode = false;
+                        ansiBuffer = '';
+                    }
+                } else {
+                    if (currentLength < targetLength) {
+                        truncated += char;
+                        currentLength++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+            statusLine = truncated + '...';
+        }
+    }
+
     return statusLine;
 };
 
-const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth }) => {
+const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {
     const widthDetectionAvailable = canDetectTerminalWidth();
     // Build the Claude Code input box - account for ink's padding
     const boxWidth = Math.min(terminalWidth - 4, process.stdout.columns - 4 || 76);
@@ -193,9 +262,10 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWi
     const middleLine = chalk.dim('│') + ' > ' + ' '.repeat(Math.max(0, boxWidth - 5)) + chalk.dim('│');
     const bottomLine = chalk.dim('╰' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╯');
 
-    // Render each configured line - use boxWidth for consistency
-    const renderedLines = lines.map(lineItems => 
-        lineItems.length > 0 ? renderSingleLine(lineItems, boxWidth, widthDetectionAvailable) : ''
+    // Render each configured line - account for 2-space prefix in display
+    const availableWidth = boxWidth - 2; // Account for 2-space indent
+    const renderedLines = lines.map(lineItems =>
+        lineItems.length > 0 ? renderSingleLine(lineItems, availableWidth, widthDetectionAvailable, settings) : ''
     ).filter(line => line !== ''); // Remove empty lines
 
     return (
@@ -204,7 +274,7 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWi
             <Text>{middleLine}</Text>
             <Text>{bottomLine}</Text>
             {renderedLines.map((line, index) => (
-                <Text key={index}>{line}</Text>
+                <Text key={index}>  {line}</Text>
             ))}
         </Box>
     );
@@ -248,7 +318,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack }) 
         { label: `📝 Line 3${lines[2] && lines[2].length > 0 ? ` (${lines[2].length} items)` : ' (empty)'}`, value: 2 },
         { label: '← Back', value: -1 },
     ];
-    
+
     const handleSelect = (item: { value: number }) => {
         if (item.value === -1) {
             onBack();
@@ -256,14 +326,14 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack }) 
             onSelect(item.value);
         }
     };
-    
+
     // Handle ESC key
     useInput((input, key) => {
         if (key.escape) {
             onBack();
         }
     });
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Select Line to Edit</Text>
@@ -289,6 +359,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
     const items = [
         { label: '📝 Edit Lines', value: 'lines' },
         { label: '🎨 Configure Colors', value: 'colors' },
+        { label: '⚡ Flex Options', value: 'flex' },
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install' },
     ];
 
@@ -357,7 +428,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (key.leftArrow && items.length > 0) {
                 // Toggle item type backwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 
+                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
                     'session-clock', 'terminal-width', 'version', 'flex-separator'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -374,7 +445,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (key.rightArrow && items.length > 0) {
                 // Toggle item type forwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 
+                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
                     'session-clock', 'terminal-width', 'version', 'flex-separator'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -484,13 +555,13 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
 
     const hasFlexSeparator = items.some(item => item.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
-    
+
     // Build dynamic help text based on selected item
     const currentItem = items[selectedIndex];
     const isSeparator = currentItem?.type === 'separator';
     const isFlexSeparator = currentItem?.type === 'flex-separator';
     const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator;
-    
+
     let helpText = '↑↓ select, ←→ change type';
     if (isSeparator) {
         helpText += ', Space edit separator';
@@ -500,7 +571,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
         helpText += ', (r)aw value';
     }
     helpText += ', ESC back';
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Edit Line {lineNumber} {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}</Text>
@@ -656,12 +727,163 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     );
 };
 
+interface FlexOptionsProps {
+    settings: Settings;
+    onUpdate: (settings: Settings) => void;
+    onBack: () => void;
+}
+
+const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack }) => {
+    const [selectedOption, setSelectedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
+    const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold || 75);
+    const [editingThreshold, setEditingThreshold] = useState(false);
+    const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold || 75));
+    const [validationError, setValidationError] = useState<string | null>(null);
+    const [highlightedOption, setHighlightedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
+
+    useInput((input, key) => {
+        if (editingThreshold) {
+            if (key.return) {
+                const value = parseInt(thresholdInput, 10);
+                if (isNaN(value)) {
+                    setValidationError('Please enter a valid number');
+                } else if (value < 1 || value > 99) {
+                    setValidationError(`Value must be between 1 and 99 (you entered ${value})`);
+                } else {
+                    setCompactThreshold(value);
+                    // Update settings with both flexMode and the new threshold
+                    const updatedSettings = {
+                        ...settings,
+                        flexMode: selectedOption,
+                        compactThreshold: value
+                    };
+                    onUpdate(updatedSettings);
+                    setEditingThreshold(false);
+                    setValidationError(null);
+                }
+            } else if (key.escape) {
+                setThresholdInput(String(compactThreshold));
+                setEditingThreshold(false);
+                setValidationError(null);
+            } else if (key.backspace || key.delete) {
+                setThresholdInput(thresholdInput.slice(0, -1));
+                setValidationError(null);
+            } else if (input && /\d/.test(input)) {
+                const newValue = thresholdInput + input;
+                if (newValue.length <= 2) {
+                    setThresholdInput(newValue);
+                    setValidationError(null);
+                }
+            }
+        } else {
+            if (key.escape) {
+                onBack();
+            }
+        }
+    });
+
+    const options = [
+        {
+            value: 'full' as FlexMode,
+            label: 'Full width always',
+            description: 'Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap. This is due to a limitation where we cannot accurately detect the available width.\n\nNOTE: If /ide integration is enabled, it\'s not recommended to use this mode as stuff like opening a file will cause text to appear on the right of the terminal that will force the status line to wrap.'
+        },
+        {
+            value: 'full-minus-40' as FlexMode,
+            label: 'Full width minus 40',
+            description: 'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
+        },
+        {
+            value: 'full-until-compact' as FlexMode,
+            label: 'Full width until compact',
+            description: `Dynamically adjusts width based on context usage. When context reaches ${compactThreshold}%, it switches to leaving space for the auto-compact message. This provides a balance but requires guessing when the message appears.\n\nNOTE: If /ide integration is enabled, it's not recommended to use this mode as stuff like opening a file will cause text to appear on the right of the terminal that will force the status line to wrap.`
+        }
+    ];
+
+    const handleSelect = (item: { value: string }) => {
+        const mode = item.value as FlexMode;
+        setSelectedOption(mode);
+
+        // Always update both flexMode and compactThreshold together
+        const updatedSettings = {
+            ...settings,
+            flexMode: mode,
+            compactThreshold: compactThreshold
+        };
+        onUpdate(updatedSettings);
+
+        if (mode === 'full-until-compact') {
+            // Prompt for threshold editing
+            setEditingThreshold(true);
+        }
+    };
+
+    const menuItems = options.map(opt => ({
+        label: opt.label + (opt.value === selectedOption ? ' ✓' : ''),
+        value: opt.value
+    }));
+    menuItems.push({ label: '← Back', value: 'back' });
+
+    const currentOption = options.find(o => o.value === highlightedOption);
+
+    return (
+        <Box flexDirection='column'>
+            <Text bold>Flex Separator Width Options</Text>
+            <Text dimColor>Select how flex separators calculate available width</Text>
+
+            {editingThreshold ? (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Enter compact threshold (1-99): {thresholdInput}%</Text>
+                    {validationError ? (
+                        <Text color='red'>{validationError}</Text>
+                    ) : (
+                        <Text dimColor>Press Enter to confirm, ESC to cancel</Text>
+                    )}
+                </Box>
+            ) : (
+                <>
+                    <Box marginTop={1}>
+                        <SelectInput
+                            items={menuItems}
+                            initialIndex={options.findIndex(o => o.value === selectedOption)}
+                            onHighlight={(item) => {
+                                if (item.value !== 'back') {
+                                    setHighlightedOption(item.value as FlexMode);
+                                }
+                            }}
+                            onSelect={(item) => {
+                                if (item.value === 'back') {
+                                    onBack();
+                                } else {
+                                    handleSelect(item);
+                                }
+                            }}
+                        />
+                    </Box>
+
+                    {currentOption && (
+                        <Box marginTop={1} marginBottom={1} borderStyle='round' borderColor='dim' paddingX={1}>
+                            <Box flexDirection='column'>
+                                <Text>
+                                    <Text color='yellow'>{currentOption.label}</Text>
+                                    {highlightedOption === 'full-until-compact' && ` | Current threshold: ${compactThreshold}%`}
+                                </Text>
+                                <Text dimColor wrap='wrap'>{currentOption.description}</Text>
+                            </Box>
+                        </Box>
+                    )}
+                </>
+            )}
+        </Box>
+    );
+};
+
 const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'confirm'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'flex' | 'confirm'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
@@ -756,6 +978,9 @@ const App: React.FC = () => {
             case 'colors':
                 setScreen('colors');
                 break;
+            case 'flex':
+                setScreen('flex');
+                break;
             case 'install':
                 await handleInstallUninstall();
                 break;
@@ -776,7 +1001,7 @@ const App: React.FC = () => {
         newLines[lineIndex] = items;
         setSettings({ ...settings, lines: newLines });
     };
-    
+
     const handleLineSelect = (lineIndex: number) => {
         setSelectedLine(lineIndex);
         setScreen('items');
@@ -785,13 +1010,13 @@ const App: React.FC = () => {
     return (
         <Box flexDirection='column' padding={1}>
             <Box marginBottom={1}>
-                <Text bold color='cyan'>🎨 CCStatusline Configuration</Text>
+                <Text bold color='cyan'>CCStatusline Configuration {getPackageVersion() && `v${getPackageVersion()}`}</Text>
             </Box>
 
             <Box marginBottom={1}>
                 <Text dimColor>Preview:</Text>
             </Box>
-            <StatusLinePreview lines={settings.lines || [[]]} terminalWidth={terminalWidth} />
+            <StatusLinePreview lines={settings.lines || [[]]} terminalWidth={terminalWidth} settings={settings} />
 
             <Box marginTop={2}>
                 {screen === 'main' && <MainMenu onSelect={handleMainMenuSelect} isClaudeInstalled={isClaudeInstalled} hasChanges={hasChanges} />}
@@ -831,6 +1056,15 @@ const App: React.FC = () => {
                         onBack={() => setScreen('main')}
                     />
                 )}
+                {screen === 'flex' && (
+                    <FlexOptions
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
+                        }}
+                        onBack={() => setScreen('main')}
+                    />
+                )}
                 {screen === 'confirm' && confirmDialog && (
                     <ConfirmDialog
                         message={confirmDialog.message}
@@ -847,5 +1081,7 @@ const App: React.FC = () => {
 };
 
 export function runTUI() {
+    // Clear the terminal before starting the TUI
+    process.stdout.write('\x1b[2J\x1b[H');
     render(<App />);
 }

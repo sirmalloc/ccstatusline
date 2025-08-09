@@ -19,6 +19,8 @@ export interface StatusItem {
     rawValue?: boolean; // Show value without label prefix
 }
 
+export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
+
 export interface Settings {
     items?: StatusItem[]; // Legacy single line support
     lines?: StatusItem[][]; // Multiple lines (up to 3)
@@ -27,6 +29,8 @@ export interface Settings {
         gitBranch: string;
         separator: string;
     };
+    flexMode?: FlexMode; // How to handle terminal width for flex separators
+    compactThreshold?: number; // Context percentage (50-99) for 'full-until-compact' mode
 }
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
@@ -49,6 +53,8 @@ export const DEFAULT_SETTINGS: Settings = {
         gitBranch: 'magenta',
         separator: 'dim',
     },
+    flexMode: 'full-minus-40',
+    compactThreshold: 75,
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -124,6 +130,8 @@ function migrateOldSettings(old: any): Settings {
     return {
         lines: [items], // Put migrated items in first line
         colors: old.colors || DEFAULT_SETTINGS.colors,
+        flexMode: DEFAULT_SETTINGS.flexMode,
+        compactThreshold: DEFAULT_SETTINGS.compactThreshold,
     };
 }
 
