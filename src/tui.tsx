@@ -820,7 +820,7 @@ const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack })
 
     const menuItems = options.map(opt => ({
         label: opt.label + (opt.value === selectedOption ? ' ✓' : ''),
-        value: opt.value
+        value: opt.value as string
     }));
     menuItems.push({ label: '← Back', value: 'back' });
 
@@ -1044,10 +1044,13 @@ const App: React.FC = () => {
                             const newLines = settings.lines || [[]];
                             let flatIndex = 0;
                             for (let lineIndex = 0; lineIndex < newLines.length; lineIndex++) {
-                                for (let itemIndex = 0; itemIndex < newLines[lineIndex].length; itemIndex++) {
-                                    if (flatIndex < items.length) {
-                                        newLines[lineIndex][itemIndex] = items[flatIndex];
-                                        flatIndex++;
+                                const line = newLines[lineIndex];
+                                if (line) {
+                                    for (let itemIndex = 0; itemIndex < line.length; itemIndex++) {
+                                        if (flatIndex < items.length && items[flatIndex]) {
+                                            line[itemIndex] = items[flatIndex]!;
+                                            flatIndex++;
+                                        }
                                     }
                                 }
                             }
