@@ -660,7 +660,7 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'version', 'custom-text'].includes(item.type)
+        ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'terminal-width', 'version', 'custom-text'].includes(item.type)
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -699,6 +699,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'context-length': return 'Context Length';
             case 'context-percentage': return 'Context Percentage';
             case 'session-clock': return 'Session Clock';
+            case 'terminal-width': return 'Terminal Width';
             case 'version': return 'Version';
             case 'custom-text': return `Custom Text (${item.customText || 'Empty'})`;
             default: return item.type;
