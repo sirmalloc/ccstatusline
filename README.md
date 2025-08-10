@@ -2,7 +2,7 @@
 
 > 🎨 A highly customizable status line formatter for Claude Code CLI that displays model info, git branch, token usage, and other metrics in your terminal.
 
-![Demo](screenshots/demo.gif)
+![Demo](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/demo.gif)
 
 ## ✨ Features
 

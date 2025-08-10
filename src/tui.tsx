@@ -105,31 +105,31 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 elements.push(changesColor('(+42,-10)'));
                 break;
             case 'tokens-input':
-                const inputColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
+                const inputColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
                 elements.push(inputColor(item.rawValue ? '15.2k' : 'In: 15.2k'));
                 break;
             case 'tokens-output':
-                const outputColor = (chalk as any)[item.color || 'green'] || chalk.green;
+                const outputColor = (chalk as any)[item.color || 'white'] || chalk.white;
                 elements.push(outputColor(item.rawValue ? '3.4k' : 'Out: 3.4k'));
                 break;
             case 'tokens-cached':
-                const cachedColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
+                const cachedColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
                 elements.push(cachedColor(item.rawValue ? '12k' : 'Cached: 12k'));
                 break;
             case 'tokens-total':
-                const totalColor = (chalk as any)[item.color || 'white'] || chalk.white;
+                const totalColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
                 elements.push(totalColor(item.rawValue ? '30.6k' : 'Total: 30.6k'));
                 break;
             case 'context-length':
-                const ctxColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
+                const ctxColor = (chalk as any)[item.color || 'dim'] || chalk.dim;
                 elements.push(ctxColor(item.rawValue ? '18.6k' : 'Ctx: 18.6k'));
                 break;
             case 'context-percentage':
-                const ctxPctColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
+                const ctxPctColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
                 elements.push(ctxPctColor(item.rawValue ? '9.3%' : 'Ctx: 9.3%'));
                 break;
             case 'session-clock':
-                const sessionColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
+                const sessionColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
                 elements.push(sessionColor(item.rawValue ? '2hr 15m' : 'Session: 2hr 15m'));
                 break;
             case 'version':
@@ -137,7 +137,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 elements.push(versionColor(item.rawValue ? '1.0.72' : 'Version: 1.0.72'));
                 break;
             case 'terminal-width':
-                const termColor = (chalk as any)[item.color || 'dim'] || chalk.dim;
+                const termColor = (chalk as any)[item.color || 'gray'] || chalk.gray;
                 const detectedWidth = canDetectTerminalWidth() ? terminalWidth : '??';
                 elements.push(termColor(item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`));
                 break;
@@ -672,14 +672,39 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
         }
     });
 
+    // Helper to get the default color for each item type
+    const getDefaultColor = (type: string): string => {
+        switch (type) {
+            case 'model': return 'cyan';
+            case 'git-branch': return 'magenta';
+            case 'git-changes': return 'yellow';
+            case 'session-clock': return 'yellow';
+            case 'version': return 'green';
+            case 'tokens-input': return 'blue';
+            case 'tokens-output': return 'white';
+            case 'tokens-cached': return 'cyan';
+            case 'tokens-total': return 'cyan';
+            case 'context-length': return 'dim';
+            case 'context-percentage': return 'blue';
+            case 'terminal-width': return 'gray';
+            case 'custom-text': return 'white';
+            case 'custom-command': return 'white';
+            default: return 'white';
+        }
+    };
+
     const getItemDisplay = (item: StatusItem) => {
+        // Get the color for this item (use custom color if set, otherwise default)
+        const colorName = item.color || getDefaultColor(item.type);
+        const colorFunc = (chalk as any)[colorName] || chalk.white;
+        
         switch (item.type) {
             case 'model':
-                return chalk.cyan('Model');
+                return colorFunc('Model');
             case 'git-branch':
-                return chalk.magenta('Git Branch');
+                return colorFunc('Git Branch');
             case 'git-changes':
-                return chalk.yellow('Git Changes');
+                return colorFunc('Git Changes');
             case 'separator': {
                 const char = item.character || '|';
                 const charDisplay = char === ' ' ? '(space)' : char;
@@ -688,30 +713,35 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             case 'flex-separator':
                 return chalk.yellow('Flex Separator');
             case 'tokens-input':
-                return chalk.yellow('Tokens Input');
+                return colorFunc('Tokens Input');
             case 'tokens-output':
-                return chalk.green('Tokens Output');
+                return colorFunc('Tokens Output');
             case 'tokens-cached':
-                return chalk.blue('Tokens Cached');
+                return colorFunc('Tokens Cached');
             case 'tokens-total':
-                return chalk.white('Tokens Total');
+                return colorFunc('Tokens Total');
             case 'context-length':
-                return chalk.cyan('Context Length');
+                return colorFunc('Context Length');
             case 'context-percentage':
-                return chalk.cyan('Context %');
+                return colorFunc('Context %');
             case 'session-clock':
-                return chalk.blue('Session Clock');
+                return colorFunc('Session Clock');
             case 'terminal-width':
-                return chalk.dim('Terminal Width');
+                return colorFunc('Terminal Width');
             case 'version':
-                return chalk.green('Version');
+                return colorFunc('Version');
             case 'custom-text':
                 const text = item.customText || 'Empty';
-                return chalk.white(`Custom Text (${text})`);
+                return colorFunc(`Custom Text (${text})`);
             case 'custom-command':
                 const cmd = item.commandPath || 'No command';
                 const truncatedCmd = cmd.length > 30 ? `${cmd.substring(0, 27)}...` : cmd;
-                return chalk.yellow(`Custom Command (${truncatedCmd})`);
+                // Only apply color if not preserving colors
+                if (!item.preserveColors) {
+                    return colorFunc(`Custom Command (${truncatedCmd})`);
+                } else {
+                    return chalk.white(`Custom Command (${truncatedCmd}) [preserving colors]`);
+                }
         }
     };
 
@@ -813,6 +843,27 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
 
+    // Get default color for each item type (matching ccstatusline.ts defaults)
+    const getDefaultColor = (type: string): string => {
+        switch (type) {
+            case 'model': return 'cyan';
+            case 'git-branch': return 'magenta';
+            case 'git-changes': return 'yellow';
+            case 'session-clock': return 'yellow';
+            case 'version': return 'green';
+            case 'tokens-input': return 'blue';
+            case 'tokens-output': return 'white';
+            case 'tokens-cached': return 'cyan';
+            case 'tokens-total': return 'cyan';
+            case 'context-length': return 'dim';
+            case 'context-percentage': return 'blue';
+            case 'terminal-width': return 'gray';
+            case 'custom-text': return 'white';
+            case 'custom-command': return 'white';
+            default: return 'white';
+        }
+    };
+
     // Handle ESC key
     useInput((input, key) => {
         if (key.escape) {
@@ -858,7 +909,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
 
     // Create menu items with colored labels
     const menuItems = colorableItems.map((item, index) => {
-        const color = item.color || 'white';
+        const color = item.color || getDefaultColor(item.type);
         const colorFunc = (chalk as any)[color] || chalk.white;
         return {
             label: colorFunc(`${getItemLabel(item)} #${index + 1}`),
@@ -900,7 +951,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
 
     // Get current color for selected item (if a valid colorable item is selected)
     const selectedItem = selectedIndex < colorableItems.length ? colorableItems[selectedIndex] : null;
-    const currentColor = selectedItem ? (selectedItem.color || 'white') : 'white';
+    const currentColor = selectedItem ? (selectedItem.color || getDefaultColor(selectedItem.type)) : 'white';
     const colorIndex = colors.indexOf(currentColor);
     const colorNumber = colorIndex === -1 ? 8 : colorIndex + 1; // Default to white (8) if not found
     const colorDisplay = (chalk as any)[currentColor] ? (chalk as any)[currentColor](currentColor) : chalk.white(currentColor);
