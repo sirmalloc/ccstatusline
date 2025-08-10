@@ -1,36 +1,31 @@
 # ccstatusline
 
-A customizable status line formatter for Claude Code CLI that displays model info, git branch, token usage, and other metrics in your terminal.
+> 🎨 A highly customizable status line formatter for Claude Code CLI that displays model info, git branch, token usage, and other metrics in your terminal.
 
-## Features
+![Demo](screenshots/demo.gif)
 
-- 📊 **Real-time metrics** - Display model name, git branch, token usage, session duration, and more
-- 🎨 **Fully customizable** - Choose what to display and customize colors
-- 📐 **Multi-line support** - Configure up to 3 status lines
-- 🖥️ **Interactive TUI** - Built-in configuration interface using React/Ink
-- 🚀 **Cross-platform** - Works with both Bun and Node.js
-- 📏 **Auto-width detection** - Automatically adapts to terminal width with flex separators
+## ✨ Features
 
-## Quick Start
+- **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, and more
+- **🎨 Fully Customizable** - Choose what to display and customize colors for each element
+- **📐 Multi-line Support** - Configure up to 3 independent status lines
+- **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
+- **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
+- **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
+- **⚡ Zero Config** - Sensible defaults that work out of the box
 
-No installation needed! Use directly with npx:
+## 🚀 Quick Start
+
+### No installation needed! Use directly with npx:
 
 ```bash
 # Run the configuration TUI
 npx ccstatusline@latest
 ```
 
-## Setup
-
 ### Configure ccstatusline
 
-Run the interactive configuration tool:
-
-```bash
-npx ccstatusline@latest
-```
-
-This launches a TUI where you can:
+The interactive configuration tool provides a terminal UI where you can:
 - Configure up to 3 separate status lines
 - Add/remove/reorder status line items
 - Customize colors for each element
@@ -39,13 +34,13 @@ This launches a TUI where you can:
 - Install/uninstall to Claude Code settings
 - Preview your status line in real-time
 
-Your settings are saved to `~/.config/ccstatusline/settings.json`.
+> 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
 
-## Usage
+## 📖 Usage
 
 Once configured, ccstatusline automatically formats your Claude Code status line. The status line appears at the bottom of your terminal during Claude Code sessions.
 
-### Available Status Items
+### 📊 Available Status Items
 
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
@@ -60,10 +55,11 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Context Percentage** - Shows percentage of context limit used
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Custom Text** - Add your own custom text to the status line
+- **Custom Command** - Execute shell commands and display their output (refreshes every 5 seconds)
 - **Separator** - Visual divider between items (customizable: |, -, comma, space)
 - **Flex Separator** - Expands to fill available space
 
-### TUI Controls
+### ⌨️ TUI Controls
 
 #### Main Menu
 - **↑↓** - Navigate menu items
@@ -79,7 +75,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **d** - Delete selected item
 - **c** - Clear entire line
 - **r** - Toggle raw value mode (no labels)
-- **e** - Edit custom text (for custom-text items)
+- **e** - Edit value (for custom-text and custom-command items)
 - **Space** - Change separator character (for separator items)
 - **ESC** - Go back
 
@@ -94,23 +90,45 @@ Configure how flex separators calculate available width:
 - **Full width minus 40** - Leaves space for auto-compact message (default)
 - **Full width until compact** - Switches based on context percentage threshold
 
-### Raw Value Mode
+### 🔤 Raw Value Mode
 
 Some items support "raw value" mode which displays just the value without a label:
 - Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
 - Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
-### Status Line Truncation
+### 🔧 Custom Widgets
+
+#### Custom Text Widget
+Add static text to your status line. Perfect for:
+- Project identifiers
+- Environment indicators (dev/prod)
+- Personal labels or reminders
+
+#### Custom Command Widget
+Execute shell commands and display their output dynamically:
+- Refreshes automatically every 5 seconds
+- Displays command output inline in your status line
+- Examples:
+  - `pwd | xargs basename` - Show current directory name
+  - `node -v` - Display Node.js version
+  - `git rev-parse --short HEAD` - Show current commit hash
+  - `date +%H:%M` - Display current time
+  - `curl -s wttr.in?format="%t"` - Show current temperature
+
+> ⚠️ **Note:** Commands should complete quickly (<1s) to avoid delays. Long-running commands will be killed after timeout.
+
+### ✂️ Smart Truncation
 
 When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
 
-## Development
+## 🛠️ Development
 
 ### Prerequisites
 
-- [Bun](https://bun.sh)
+- [Bun](https://bun.sh) (v1.0+)
 - Git
+- Node.js 18+ (optional, for npm publishing)
 
 ### Setup
 
@@ -133,7 +151,7 @@ bun run src/ccstatusline.ts
 bun run build
 ```
 
-### Project Structure
+### 📁 Project Structure
 
 ```
 ccstatusline/
@@ -147,7 +165,7 @@ ccstatusline/
 ├── tsconfig.json
 └── README.md
 ```
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -157,14 +175,29 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## License
+## 📄 License
 
-MIT
+[MIT](LICENSE) © Matthew Breedlove
 
-## Author
+## 👤 Author
 
-Matthew Breedlove
+**Matthew Breedlove**
 
-## Acknowledgments
+- GitHub: [@sirmalloc](https://github.com/sirmalloc)
 
-Built for use with [Claude Code CLI](https://claude.ai/code) by Anthropic.
+## 🙏 Acknowledgments
+
+- Built for use with [Claude Code CLI](https://claude.ai/code) by Anthropic
+- Powered by [Ink](https://github.com/vadimdemedes/ink) for the terminal UI
+- Made with ❤️ for the Claude Code community
+
+---
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/ccstatusline">
+    <img src="https://img.shields.io/npm/v/ccstatusline.svg" alt="npm version">
+  </a>
+  <a href="https://github.com/sirmalloc/ccstatusline/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  </a>
+</p>
