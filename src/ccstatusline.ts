@@ -15,7 +15,7 @@ chalk.level = 3;
 // Helper function to apply foreground, background colors and bold
 function applyColors(text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string {
     let result = text;
-    
+
     // Standard color application
     // Ignore 'dim' color - it causes issues with terminal rendering
     if (foregroundColor && foregroundColor !== 'dim') {
@@ -24,18 +24,18 @@ function applyColors(text: string, foregroundColor?: string, backgroundColor?: s
             result = fgFunc(result);
         }
     }
-    
+
     if (backgroundColor && backgroundColor !== 'none') {
         const bgFunc = (chalk as any)[backgroundColor];
         if (bgFunc) {
             result = bgFunc(result);
         }
     }
-    
+
     if (bold) {
         result = chalk.bold(result);
     }
-    
+
     return result;
 }
 
@@ -95,6 +95,29 @@ async function readStdin(): Promise<string | null> {
         return chunks.join('');
     } catch {
         return null;
+    }
+}
+
+// Helper to get default color for an item type
+function getItemDefaultColor(type: string): string {
+    switch (type) {
+        case 'model': return 'cyan';
+        case 'git-branch': return 'magenta';
+        case 'git-changes': return 'yellow';
+        case 'session-clock': return 'yellow';
+        case 'version': return 'green';
+        case 'tokens-input': return 'blue';
+        case 'tokens-output': return 'white';
+        case 'tokens-cached': return 'cyan';
+        case 'tokens-total': return 'cyan';
+        case 'context-length': return 'gray';
+        case 'context-percentage': return 'blue';
+        case 'context-percentage-usable': return 'green';
+        case 'terminal-width': return 'gray';
+        case 'custom-text': return 'white';
+        case 'custom-command': return 'white';
+        case 'separator': return 'gray';
+        default: return 'white';
     }
 }
 
@@ -334,20 +357,20 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
 }
 
 function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, tokenMetrics: any, sessionDuration: string | null): string {
-    // Helper to apply colors with optional background and bold override  
+    // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground color
         let fgColor = foregroundColor;
         if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
             fgColor = settings.overrideForegroundColor;
         }
-        
+
         // Override background color takes precedence over EVERYTHING, including passed background color
         let bgColor = backgroundColor;
         if (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
             bgColor = settings.overrideBackgroundColor;
         }
-        
+
         const shouldBold = settings.globalBold || bold;
         return applyColors(text, fgColor, bgColor, shouldBold);
     };
@@ -394,9 +417,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'model':
                 if (data.model) {
                     const text = item.rawValue ? data.model.display_name : `Model: ${data.model.display_name}`;
-                    // Use item.color first, then fall back to settings.colors.model
-                    const defaultColor = item.color || settings.colors.model;
-                    elements.push({ content: applyColorsWithOverride(text, defaultColor, item.backgroundColor, item.bold), type: 'model', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'model', item });
                 }
                 break;
 
@@ -404,7 +425,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 const branch = getGitBranch();
                 if (branch) {
                     const text = item.rawValue ? branch : `⎇ ${branch}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || settings.colors.gitBranch, item.backgroundColor, item.bold), type: 'git-branch', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
                 }
                 break;
 
@@ -420,35 +441,35 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'tokens-input':
                 if (tokenMetrics) {
                     const text = item.rawValue ? formatTokens(tokenMetrics.inputTokens) : `In: ${formatTokens(tokenMetrics.inputTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'yellow', item.backgroundColor, item.bold), type: 'tokens-input', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'tokens-input', item });
                 }
                 break;
 
             case 'tokens-output':
                 if (tokenMetrics) {
                     const text = item.rawValue ? formatTokens(tokenMetrics.outputTokens) : `Out: ${formatTokens(tokenMetrics.outputTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'green', item.backgroundColor, item.bold), type: 'tokens-output', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'white', item.backgroundColor, item.bold), type: 'tokens-output', item });
                 }
                 break;
 
             case 'tokens-cached':
                 if (tokenMetrics) {
                     const text = item.rawValue ? formatTokens(tokenMetrics.cachedTokens) : `Cached: ${formatTokens(tokenMetrics.cachedTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'tokens-cached', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'tokens-cached', item });
                 }
                 break;
 
             case 'tokens-total':
                 if (tokenMetrics) {
                     const text = item.rawValue ? formatTokens(tokenMetrics.totalTokens) : `Total: ${formatTokens(tokenMetrics.totalTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'white', item.backgroundColor, item.bold), type: 'tokens-total', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'tokens-total', item });
                 }
                 break;
 
             case 'context-length':
                 if (tokenMetrics) {
                     const text = item.rawValue ? formatTokens(tokenMetrics.contextLength) : `Ctx: ${formatTokens(tokenMetrics.contextLength)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'context-length', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'gray', item.backgroundColor, item.bold), type: 'context-length', item });
                 }
                 break;
 
@@ -456,7 +477,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 if (tokenMetrics) {
                     const percentage = Math.min(100, (tokenMetrics.contextLength / 200000) * 100);
                     const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'context-percentage', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'context-percentage', item });
                 }
                 break;
 
@@ -465,14 +486,14 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                     // Calculate percentage out of 160,000 (80% of full context for auto-compact)
                     const percentage = Math.min(100, (tokenMetrics.contextLength / 160000) * 100);
                     const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'green', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
                 }
                 break;
 
             case 'terminal-width':
-                const detectedWidth = terminalWidth || getTerminalWidth();
-                if (detectedWidth) {
-                    const text = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+                const width = terminalWidth || getTerminalWidth();
+                if (width) {
+                    const text = item.rawValue ? `${width}` : `Term: ${width}`;
                     elements.push({ content: applyColorsWithOverride(text, item.color || 'gray', item.backgroundColor, item.bold), type: 'terminal-width', item });
                 }
                 break;
@@ -480,7 +501,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'session-clock':
                 if (sessionDuration) {
                     const text = item.rawValue ? sessionDuration : `Session: ${sessionDuration}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'session-clock', item });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'yellow', item.backgroundColor, item.bold), type: 'session-clock', item });
                 }
                 break;
 
@@ -504,8 +525,8 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                     } else {
                         sepText = ` ${sepChar} `;
                     }
-                    // Use item color if specified, otherwise use settings color or default to gray
-                    const sepContent = applyColorsWithOverride(sepText, item.color || settings.colors.separator || 'gray', item.backgroundColor, item.bold);
+                    // Use item color if specified, otherwise default to gray
+                    const sepContent = applyColorsWithOverride(sepText, item.color || 'gray', item.backgroundColor, item.bold);
                     elements.push({ content: sepContent, type: 'separator', item });
                 }
                 break;
@@ -531,10 +552,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                             stdio: ['pipe', 'pipe', 'ignore'],
                             timeout: timeout
                         }).trim();
-                        
+
                         if (output) {
                             let finalOutput = output;
-                            
+
                             // Handle max width truncation
                             if (item.maxWidth && item.maxWidth > 0) {
                                 // Remove ANSI codes to measure actual length
@@ -545,7 +566,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                                     let currentLength = 0;
                                     let inAnsiCode = false;
                                     let ansiBuffer = '';
-                                    
+
                                     for (let i = 0; i < output.length; i++) {
                                         const char = output[i];
                                         if (char === '\x1b') {
@@ -570,7 +591,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                                     finalOutput = truncated;
                                 }
                             }
-                            
+
                             // Apply color if not preserving original colors
                             if (!item.preserveColors) {
                                 // Strip existing ANSI codes and apply new color
@@ -595,12 +616,12 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     while (elements.length > 0 && elements[elements.length - 1]?.type === 'separator') {
         elements.pop();
     }
-    
+
     // Apply default padding and separators
     const finalElements: string[] = [];
     const padding = settings.defaultPadding || '';
     const defaultSep = settings.defaultSeparator || '';
-    
+
     elements.forEach((elem, index) => {
         // Add default separator between any two items (but not before first item)
         if (defaultSep && index > 0) {
@@ -609,7 +630,9 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 const prevElem = elements[index - 1];
                 if (prevElem && prevElem.item) {
                     // Apply the previous element's colors to the separator (already handles override)
-                    const coloredSep = applyColorsWithOverride(defaultSep, prevElem.item.color, prevElem.item.backgroundColor, prevElem.item.bold);
+                    // Use the item's color if set, otherwise get the default color for that item type
+                    const itemColor = prevElem.item.color || getItemDefaultColor(prevElem.item.type);
+                    const coloredSep = applyColorsWithOverride(defaultSep, itemColor, prevElem.item.backgroundColor, prevElem.item.bold);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);
@@ -623,7 +646,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 finalElements.push(defaultSep);
             }
         }
-        
+
         // Add element with padding (separators don't get padding)
         if (elem.type === 'separator' || elem.type === 'flex-separator') {
             finalElements.push(elem.content);
@@ -631,11 +654,11 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             // Apply padding with colors (using overrides if set)
             const hasColorOverride = (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') ||
                                     (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
-            
+
             if (padding && (elem.item?.backgroundColor || hasColorOverride)) {
                 // Apply colors to padding - applyColorsWithOverride will handle the overrides
-                const paddedContent = applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor) + 
-                                     elem.content + 
+                const paddedContent = applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor) +
+                                     elem.content +
                                      applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
                 finalElements.push(paddedContent);
             } else {
@@ -652,7 +675,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         // Split elements by flex separators
         const parts: string[][] = [[]];
         let currentPart = 0;
-        
+
         for (let i = 0; i < finalElements.length; i++) {
             const elem = finalElements[i];
             if (elem === 'FLEX' || (elements[i] && elements[i]?.type === 'flex-separator')) {
@@ -676,7 +699,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
         const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
 
-// Build the status line with distributed spacing
+        // Build the status line with distributed spacing
         statusLine = '';
         for (let i = 0; i < parts.length; i++) {
             const part = parts[i];
@@ -692,7 +715,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     } else {
         // No flex separator OR no width detected
         if (hasFlexSeparator && !terminalWidth) {
-// Treat flex separators as normal separators when width detection fails
+            // Treat flex separators as normal separators when width detection fails
             statusLine = finalElements.map(e => e === 'FLEX' ? chalk.gray(' | ') : e).join('');
         } else {
             // Just join all elements normally
@@ -784,8 +807,8 @@ async function renderStatusLine(data: StatusJSON) {
         const lineItems = lines[i];
         if (lineItems && lineItems.length > 0) {
             const line = renderSingleLine(lineItems, settings, data, tokenMetrics, sessionDuration);
-            // Add zero-width non-joiner at start of second+ lines to prevent trimming
-            const outputLine = i > 0 ? '\u200C' + line : line;
+            // Replace all spaces with non-breaking spaces to prevent VSCode trimming
+            const outputLine = line.replace(/ /g, '\u00A0');
             console.log(outputLine);
         }
     }

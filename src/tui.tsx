@@ -19,6 +19,29 @@ function getPackageVersion(): string {
     }
 }
 
+// Get default color for each item type (matching ccstatusline.ts defaults)
+function getDefaultColor(type: string): string {
+    switch (type) {
+        case 'model': return 'cyan';
+        case 'git-branch': return 'magenta';
+        case 'git-changes': return 'yellow';
+        case 'session-clock': return 'yellow';
+        case 'version': return 'green';
+        case 'tokens-input': return 'blue';
+        case 'tokens-output': return 'white';
+        case 'tokens-cached': return 'cyan';
+        case 'tokens-total': return 'cyan';
+        case 'context-length': return 'gray';
+        case 'context-percentage': return 'blue';
+        case 'context-percentage-usable': return 'green';
+        case 'terminal-width': return 'gray';
+        case 'custom-text': return 'white';
+        case 'custom-command': return 'white';
+        case 'separator': return 'gray';
+        default: return 'white';
+    }
+}
+
 // Check if terminal width detection is available
 function canDetectTerminalWidth(): boolean {
     try {
@@ -240,7 +263,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                     // Apply the previous element's colors to the separator (with overrides)
                     const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
                         ? settings.overrideForegroundColor
-                        : prevElem.item.color;
+                        : (prevElem.item.color || getDefaultColor(prevElem.item.type));
                     const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
                         ? settings.overrideBackgroundColor
                         : prevElem.item.backgroundColor;
@@ -836,27 +859,6 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
         }
     });
 
-    // Helper to get the default color for each item type
-    const getDefaultColor = (type: string): string => {
-        switch (type) {
-            case 'model': return 'cyan';
-            case 'git-branch': return 'magenta';
-            case 'git-changes': return 'yellow';
-            case 'session-clock': return 'yellow';
-            case 'version': return 'green';
-            case 'tokens-input': return 'blue';
-            case 'tokens-output': return 'white';
-            case 'tokens-cached': return 'cyan';
-            case 'tokens-total': return 'cyan';
-            case 'context-length': return 'dim';
-            case 'context-percentage': return 'blue';
-            case 'context-percentage-usable': return 'green';
-            case 'terminal-width': return 'gray';
-            case 'custom-text': return 'white';
-            case 'custom-command': return 'white';
-            default: return 'white';
-        }
-    };
 
     const getItemDisplay = (item: StatusItem) => {
         // Get the color for this item (use custom color if set, otherwise default)
@@ -1017,28 +1019,6 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const [highlightedItemId, setHighlightedItemId] = useState<string | null>(colorableItems[0]?.id || null);
     const [editingBackground, setEditingBackground] = useState(false);
 
-    // Get default color for each item type (matching ccstatusline.ts defaults)
-    const getDefaultColor = (type: string): string => {
-        switch (type) {
-            case 'model': return 'cyan';
-            case 'git-branch': return 'magenta';
-            case 'git-changes': return 'yellow';
-            case 'session-clock': return 'yellow';
-            case 'version': return 'green';
-            case 'tokens-input': return 'blue';
-            case 'tokens-output': return 'white';
-            case 'tokens-cached': return 'cyan';
-            case 'tokens-total': return 'cyan';
-            case 'context-length': return 'gray';
-            case 'context-percentage': return 'blue';
-            case 'context-percentage-usable': return 'green';
-            case 'terminal-width': return 'gray';
-            case 'custom-text': return 'white';
-            case 'custom-command': return 'white';
-            case 'separator': return 'gray';
-            default: return 'white';
-        }
-    };
 
     // Handle keyboard input
     const hasNoItems = colorableItems.length === 0;
@@ -1239,9 +1219,11 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                     initialIndex={0}
                 />
             </Box>
-            <Box marginTop={1}>
-                <Text color='yellow'>⚠ VSCode users: </Text>
-                <Text dimColor>If colors appear incorrect, your VSCode theme may be overriding them.</Text>
+            <Box marginTop={1} flexDirection='column'>
+                <Text color='yellow'>⚠ VSCode Users: </Text>
+                <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio"</Text>
+                <Text dimColor wrap='wrap'>(`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors.</Text>
+                <Text dimColor wrap='wrap'>You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
             </Box>
         </Box>
     );
@@ -1613,9 +1595,11 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                         <Text dimColor wrap='wrap'>
                             • Override colors: All items will use these colors instead of their configured colors
                         </Text>
-                        <Box marginTop={1}>
-                            <Text color='yellow'>⚠ VSCode users: </Text>
-                            <Text dimColor>If colors appear incorrect, your VSCode theme may be overriding them.</Text>
+                        <Box marginTop={1} flexDirection='column'>
+                            <Text color='yellow'>⚠ VSCode Users: </Text>
+                            <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio"</Text>
+                            <Text dimColor wrap='wrap'>(`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors.</Text>
+                            <Text dimColor wrap='wrap'>You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
                         </Box>
                     </Box>
                 </>

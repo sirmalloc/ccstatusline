@@ -129,7 +129,7 @@ Configure global formatting preferences that apply to all status items:
 
 > 💡 **Note:** These settings are applied during rendering and don't add items to your widget list. They provide a consistent look across your entire status line without modifying individual item configurations.
 
-> ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, your VSCode theme may be overriding the ANSI color codes. This is a known limitation of VSCode's terminal rendering. The status line will display correctly in standalone terminals.
+> ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
 
 ### 🔤 Raw Value Mode
 

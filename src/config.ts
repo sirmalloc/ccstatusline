@@ -31,11 +31,6 @@ export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
 export interface Settings {
     items?: StatusItem[]; // Legacy single line support
     lines?: StatusItem[][]; // Multiple lines (up to 3)
-    colors: {
-        model: string;
-        gitBranch: string;
-        separator: string;
-    };
     flexMode?: FlexMode; // How to handle terminal width for flex separators
     compactThreshold?: number; // Context percentage (50-99) for 'full-until-compact' mode
     defaultSeparator?: string; // Default separator character to insert between items
@@ -86,11 +81,6 @@ export const DEFAULT_SETTINGS: Settings = {
             }
         ]
     ],
-    colors: {
-        model: 'cyan',
-        gitBranch: 'magenta',
-        separator: 'gray',
-    },
     flexMode: 'full-minus-40',
     compactThreshold: 60,
 };
@@ -167,7 +157,6 @@ function migrateOldSettings(old: any): Settings {
 
     return {
         lines: [items], // Put migrated items in first line
-        colors: old.colors || DEFAULT_SETTINGS.colors,
         flexMode: DEFAULT_SETTINGS.flexMode,
         compactThreshold: DEFAULT_SETTINGS.compactThreshold,
     };
