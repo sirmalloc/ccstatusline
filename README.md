@@ -120,11 +120,16 @@ Configure global formatting preferences that apply to all status items:
   - Press **(i)** to toggle
 - **Global Bold** - Apply bold formatting to all text regardless of individual item settings
   - Press **(o)** to toggle
+- **Override Foreground Color** - Force all items to use the same text color
+  - Press **(f)** to cycle through colors
+  - Press **(v)** to clear override
 - **Override Background Color** - Force all items to use the same background color
   - Press **(b)** to cycle through colors
   - Press **(c)** to clear override
 
 > 💡 **Note:** These settings are applied during rendering and don't add items to your widget list. They provide a consistent look across your entire status line without modifying individual item configurations.
+
+> ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, your VSCode theme may be overriding the ANSI color codes. This is a known limitation of VSCode's terminal rendering. The status line will display correctly in standalone terminals.
 
 ### 🔤 Raw Value Mode
 

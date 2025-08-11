@@ -42,6 +42,7 @@ export interface Settings {
     defaultPadding?: string; // Default padding to add around all items
     inheritSeparatorColors?: boolean; // Whether default separators inherit colors from preceding widget
     overrideBackgroundColor?: string; // Override background color for all items (e.g., 'none', 'bgRed', etc.)
+    overrideForegroundColor?: string; // Override foreground color for all items (e.g., 'red', 'cyan', etc.)
     globalBold?: boolean; // Apply bold formatting to all items
 }
 

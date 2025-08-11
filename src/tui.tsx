@@ -96,13 +96,22 @@ const applyColors = (text: string, foregroundColor?: string, backgroundColor?: s
 };
 
 const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
-    // Helper to apply colors with optional background override
+    // Helper to apply colors with optional background and foreground override
     const applyItemColors = (text: string, item: StatusItem, defaultColor?: string): string => {
-        const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none' 
-            ? settings.overrideBackgroundColor 
-            : item.backgroundColor;
+        // Override foreground color takes precedence over EVERYTHING
+        let fgColor = item.color || defaultColor;
+        if (settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+            fgColor = settings.overrideForegroundColor;
+        }
+        
+        // Override background color takes precedence over EVERYTHING
+        let bgColor = item.backgroundColor;
+        if (settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
+            bgColor = settings.overrideBackgroundColor;
+        }
+        
         const shouldBold = settings?.globalBold || item.bold;
-        return applyColors(text, item.color || defaultColor, bgColor, shouldBold);
+        return applyColors(text, fgColor, bgColor, shouldBold);
     };
     // Calculate effective width based on flex mode settings
     let effectiveWidth: number | null = null;
@@ -228,18 +237,26 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
             if (settings?.inheritSeparatorColors && index > 0) {
                 const prevElem = rawElements[index - 1];
                 if (prevElem && prevElem.item) {
-                    // Apply the previous element's colors to the separator (with override)
+                    // Apply the previous element's colors to the separator (with overrides)
+                    const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                        ? settings.overrideForegroundColor
+                        : prevElem.item.color;
                     const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
                         ? settings.overrideBackgroundColor
                         : prevElem.item.backgroundColor;
-                    const coloredSep = applyColors(defaultSep, prevElem.item.color, bgColor, prevElem.item.bold);
+                    const shouldBold = settings?.globalBold || prevElem.item.bold;
+                    const coloredSep = applyColors(defaultSep, fgColor, bgColor, shouldBold);
                     elements.push(coloredSep);
                 } else {
                     elements.push(defaultSep);
                 }
-            } else if (settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
-                // Apply override background even when not inheriting colors
-                const coloredSep = applyColors(defaultSep, undefined, settings.overrideBackgroundColor);
+            } else if (settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none' || 
+                       settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+                // Apply override colors even when not inheriting colors
+                const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                    ? settings.overrideForegroundColor
+                    : undefined;
+                const coloredSep = applyColors(defaultSep, fgColor, settings.overrideBackgroundColor, settings?.globalBold);
                 elements.push(coloredSep);
             } else {
                 elements.push(defaultSep);
@@ -250,19 +267,22 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
         if (elem.type === 'separator' || elem.type === 'flex-separator') {
             elements.push(elem.content);
         } else {
-            // Apply padding with the same background color as the item (or override)
+            // Apply padding with the same colors as the item (or overrides)
+            const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                ? settings.overrideForegroundColor
+                : undefined;
             const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
                 ? settings.overrideBackgroundColor
                 : elem.item?.backgroundColor;
             
-            if (padding && bgColor) {
-                // Apply background color to padding
-                const paddedContent = applyColors(padding, undefined, bgColor) + 
+            if (padding && (bgColor || fgColor)) {
+                // Apply colors to padding
+                const paddedContent = applyColors(padding, fgColor, bgColor, settings?.globalBold) + 
                                      elem.content + 
-                                     applyColors(padding, undefined, bgColor);
+                                     applyColors(padding, fgColor, bgColor, settings?.globalBold);
                 elements.push(paddedContent);
             } else {
-                // No background color or no padding
+                // No colors or no padding
                 elements.push(padding + elem.content + padding);
             }
         }
@@ -1219,6 +1239,10 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                     initialIndex={0}
                 />
             </Box>
+            <Box marginTop={1}>
+                <Text color='yellow'>⚠ VSCode users: </Text>
+                <Text dimColor>If colors appear incorrect, your VSCode theme may be overriding them.</Text>
+            </Box>
         </Box>
     );
 };
@@ -1393,6 +1417,12 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
         'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright', 
         'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
     const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor || 'none');
+    
+    // Foreground color override
+    const fgColors = ['none', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+        'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
+        'magentaBright', 'cyanBright', 'whiteBright'];
+    const currentFgIndex = fgColors.indexOf(settings.overrideForegroundColor || 'none');
 
     useInput((input, key) => {
         if (editingPadding) {
@@ -1467,6 +1497,22 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                     globalBold: newGlobalBold
                 };
                 onUpdate(updatedSettings);
+            } else if (input === 'f' || input === 'F') {
+                // Cycle through foreground colors
+                const nextIndex = (currentFgIndex + 1) % fgColors.length;
+                const nextFgColor = fgColors[nextIndex];
+                const updatedSettings = {
+                    ...settings,
+                    overrideForegroundColor: nextFgColor === 'none' ? undefined : nextFgColor
+                };
+                onUpdate(updatedSettings);
+            } else if (input === 'g' || input === 'G') {
+                // Clear override foreground color
+                const updatedSettings = {
+                    ...settings,
+                    overrideForegroundColor: undefined
+                };
+                onUpdate(updatedSettings);
             }
         }
     });
@@ -1495,31 +1541,31 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                 </Box>
             ) : (
                 <>
-                    <Box marginTop={1}>
+                    <Box>
                         <Text>  Default Padding: </Text>
                         <Text color="cyan">{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
                         <Text dimColor> - Press (p) to edit</Text>
                     </Box>
                     
-                    <Box marginTop={1}>
+                    <Box>
                         <Text>Default Separator: </Text>
                         <Text color="cyan">{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
                         <Text dimColor> - Press (s) to edit</Text>
                     </Box>
                     
-                    <Box marginTop={1}>
+                    <Box>
                         <Text>   Inherit Colors: </Text>
                         <Text color={inheritColors ? "green" : "red"}>{inheritColors ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (i) to toggle</Text>
                     </Box>
                     
-                    <Box marginTop={1}>
+                    <Box>
                         <Text>      Global Bold: </Text>
                         <Text color={globalBold ? "green" : "red"}>{globalBold ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (o) to toggle</Text>
                     </Box>
                     
-                    <Box marginTop={1}>
+                    <Box>
                         <Text>Override BG Color: </Text>
                         {(() => {
                             const bgColor = settings.overrideBackgroundColor || 'none';
@@ -1533,6 +1579,21 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                             }
                         })()}
                         <Text dimColor> - (b) cycle, (c) clear</Text>
+                    </Box>
+                    
+                    <Box>
+                        <Text>Override FG Color: </Text>
+                        {(() => {
+                            const fgColor = settings.overrideForegroundColor || 'none';
+                            if (fgColor === 'none') {
+                                return <Text color="gray">(none)</Text>;
+                            } else {
+                                const fgFunc = (chalk as any)[fgColor];
+                                const display = fgFunc ? fgFunc(fgColor) : fgColor;
+                                return <Text>{display}</Text>;
+                            }
+                        })()}
+                        <Text dimColor> - (f) cycle, (g) clear</Text>
                     </Box>
                     
                     <Box marginTop={2}>
@@ -1550,8 +1611,12 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                             • Global Bold: Makes all text bold regardless of individual settings
                         </Text>
                         <Text dimColor wrap='wrap'>
-                            • Override BG: All items will use this background color instead of their configured colors
+                            • Override colors: All items will use these colors instead of their configured colors
                         </Text>
+                        <Box marginTop={1}>
+                            <Text color='yellow'>⚠ VSCode users: </Text>
+                            <Text dimColor>If colors appear incorrect, your VSCode theme may be overriding them.</Text>
+                        </Box>
                     </Box>
                 </>
             )}
@@ -1735,7 +1800,8 @@ const App: React.FC = () => {
                         onBack={() => {
                             // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
-                            setMenuSelections({ ...menuSelections, main: 0, lines: undefined });
+                            const { lines: _, ...restMenuSelections } = menuSelections;
+                            setMenuSelections({ ...restMenuSelections, main: 0 });
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines || 0}

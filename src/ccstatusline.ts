@@ -16,6 +16,7 @@ chalk.level = 3;
 function applyColors(text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string {
     let result = text;
     
+    // Standard color application
     // Ignore 'dim' color - it causes issues with terminal rendering
     if (foregroundColor && foregroundColor !== 'dim') {
         const fgFunc = (chalk as any)[foregroundColor];
@@ -335,11 +336,20 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
 function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, tokenMetrics: any, sessionDuration: string | null): string {
     // Helper to apply colors with optional background and bold override  
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
-        const bgColor = settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none' 
-            ? settings.overrideBackgroundColor 
-            : backgroundColor;
+        // Override foreground color takes precedence over EVERYTHING, including passed foreground color
+        let fgColor = foregroundColor;
+        if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+            fgColor = settings.overrideForegroundColor;
+        }
+        
+        // Override background color takes precedence over EVERYTHING, including passed background color
+        let bgColor = backgroundColor;
+        if (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
+            bgColor = settings.overrideBackgroundColor;
+        }
+        
         const shouldBold = settings.globalBold || bold;
-        return applyColors(text, foregroundColor, bgColor, shouldBold);
+        return applyColors(text, fgColor, bgColor, shouldBold);
     };
     const detectedWidth = getTerminalWidth();
     // Calculate terminal width based on flex mode settings
@@ -384,7 +394,9 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'model':
                 if (data.model) {
                     const text = item.rawValue ? data.model.display_name : `Model: ${data.model.display_name}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || settings.colors.model, item.backgroundColor, item.bold), type: 'model', item });
+                    // Use item.color first, then fall back to settings.colors.model
+                    const defaultColor = item.color || settings.colors.model;
+                    elements.push({ content: applyColorsWithOverride(text, defaultColor, item.backgroundColor, item.bold), type: 'model', item });
                 }
                 break;
 
@@ -602,8 +614,9 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 } else {
                     finalElements.push(defaultSep);
                 }
-            } else if (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
-                // Apply override background even when not inheriting colors
+            } else if ((settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') ||
+                       (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none')) {
+                // Apply override colors even when not inheriting colors
                 const coloredSep = applyColorsWithOverride(defaultSep, undefined, undefined);
                 finalElements.push(coloredSep);
             } else {
@@ -615,19 +628,18 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         if (elem.type === 'separator' || elem.type === 'flex-separator') {
             finalElements.push(elem.content);
         } else {
-            // Apply padding with the same background color as the item (or override)
-            const bgColor = settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
-                ? settings.overrideBackgroundColor
-                : elem.item?.backgroundColor;
+            // Apply padding with colors (using overrides if set)
+            const hasColorOverride = (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') ||
+                                    (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
             
-            if (padding && bgColor) {
-                // Apply background color to padding
-                const paddedContent = applyColorsWithOverride(padding, undefined, bgColor) + 
+            if (padding && (elem.item?.backgroundColor || hasColorOverride)) {
+                // Apply colors to padding - applyColorsWithOverride will handle the overrides
+                const paddedContent = applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor) + 
                                      elem.content + 
-                                     applyColorsWithOverride(padding, undefined, bgColor);
+                                     applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
                 finalElements.push(paddedContent);
             } else {
-                // No background color or no padding
+                // No colors or no padding
                 finalElements.push(padding + elem.content + padding);
             }
         }
@@ -643,11 +655,11 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         
         for (let i = 0; i < finalElements.length; i++) {
             const elem = finalElements[i];
-            if (elem === 'FLEX' || (elements[i] && elements[i].type === 'flex-separator')) {
+            if (elem === 'FLEX' || (elements[i] && elements[i]?.type === 'flex-separator')) {
                 currentPart++;
                 parts[currentPart] = [];
             } else {
-                parts[currentPart]!.push(elem);
+                parts[currentPart]?.push(elem!);
             }
         }
 
@@ -770,7 +782,7 @@ async function renderStatusLine(data: StatusJSON) {
     // Render each line
     for (let i = 0; i < lines.length; i++) {
         const lineItems = lines[i];
-        if (lineItems.length > 0) {
+        if (lineItems && lineItems.length > 0) {
             const line = renderSingleLine(lineItems, settings, data, tokenMetrics, sessionDuration);
             // Add zero-width non-joiner at start of second+ lines to prevent trimming
             const outputLine = i > 0 ? '\u200C' + line : line;
