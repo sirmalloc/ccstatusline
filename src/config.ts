@@ -9,7 +9,7 @@ const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
 const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
 
 export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' |
-    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
+    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
 
 export interface StatusItem {
     id: string;

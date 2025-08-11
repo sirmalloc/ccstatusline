@@ -423,6 +423,16 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 }
                 break;
 
+            case 'context-percentage-usable':
+                if (tokenMetrics) {
+                    // Calculate percentage out of 160,000 (80% of full context for auto-compact)
+                    const percentage = Math.min(100, (tokenMetrics.contextLength / 160000) * 100);
+                    const color = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
+                    const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
+                    elements.push({ content: color(text), type: 'context-percentage-usable' });
+                }
+                break;
+
             case 'terminal-width':
                 const detectedWidth = terminalWidth || getTerminalWidth();
                 if (detectedWidth) {
@@ -668,7 +678,7 @@ async function renderStatusLine(data: StatusJSON) {
     // Get token metrics if needed (check all lines)
     const hasTokenItems = lines.some(line =>
         line.some(item =>
-            ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage'].includes(item.type)
+            ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)
         )
     );
 

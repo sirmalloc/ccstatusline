@@ -128,6 +128,10 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
                 const ctxPctColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
                 elements.push(ctxPctColor(item.rawValue ? '9.3%' : 'Ctx: 9.3%'));
                 break;
+            case 'context-percentage-usable':
+                const ctxUsableColor = (chalk as any)[item.color || 'green'] || chalk.green;
+                elements.push(ctxUsableColor(item.rawValue ? '11.6%' : 'Ctx(u): 11.6%'));
+                break;
             case 'session-clock':
                 const sessionColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
                 elements.push(sessionColor(item.rawValue ? '2hr 15m' : 'Session: 2hr 15m'));
@@ -584,7 +588,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (key.leftArrow && items.length > 0) {
                 // Toggle item type backwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
+                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
                     'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -601,7 +605,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (key.rightArrow && items.length > 0) {
                 // Toggle item type forwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage',
+                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
                     'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
@@ -723,6 +727,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             case 'tokens-total': return 'cyan';
             case 'context-length': return 'dim';
             case 'context-percentage': return 'blue';
+            case 'context-percentage-usable': return 'green';
             case 'terminal-width': return 'gray';
             case 'custom-text': return 'white';
             case 'custom-command': return 'white';
@@ -761,6 +766,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 return colorFunc('Context Length');
             case 'context-percentage':
                 return colorFunc('Context %');
+            case 'context-percentage-usable':
+                return colorFunc('Context % (usable)');
             case 'session-clock':
                 return colorFunc('Session Clock');
             case 'terminal-width':
@@ -880,7 +887,7 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
+        ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
         !(item.type === 'custom-command' && item.preserveColors) // Exclude custom-command items with preserveColors
     );
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -899,6 +906,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'tokens-total': return 'cyan';
             case 'context-length': return 'dim';
             case 'context-percentage': return 'blue';
+            case 'context-percentage-usable': return 'green';
             case 'terminal-width': return 'gray';
             case 'custom-text': return 'white';
             case 'custom-command': return 'white';
@@ -940,6 +948,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'tokens-total': return 'Tokens Total';
             case 'context-length': return 'Context Length';
             case 'context-percentage': return 'Context Percentage';
+            case 'context-percentage-usable': return 'Context % (usable)';
             case 'session-clock': return 'Session Clock';
             case 'terminal-width': return 'Terminal Width';
             case 'version': return 'Version';
@@ -958,7 +967,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
         const color = item.color || getDefaultColor(item.type);
         const colorFunc = (chalk as any)[color] || chalk.white;
         return {
-            label: colorFunc(`${getItemLabel(item)} #${index + 1}`),
+            label: colorFunc(`${index + 1}: ${getItemLabel(item)}`),
             value: item.id,
         };
     });
