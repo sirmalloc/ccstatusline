@@ -207,6 +207,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - GitHub: [@sirmalloc](https://github.com/sirmalloc)
 
+## 🔗 Related Projects
+
+- [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
+
 ## 🙏 Acknowledgments
 
 - Built for use with [Claude Code CLI](https://claude.ai/code) by Anthropic
