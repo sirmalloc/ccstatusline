@@ -55,7 +55,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Context Percentage** - Shows percentage of context limit used
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Custom Text** - Add your own custom text to the status line
-- **Custom Command** - Execute shell commands and display their output (refreshes every 5 seconds)
+- **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
 - **Separator** - Visual divider between items (customizable: |, -, comma, space)
 - **Flex Separator** - Expands to fill available space
 
@@ -107,7 +107,7 @@ Add static text to your status line. Perfect for:
 
 #### Custom Command Widget
 Execute shell commands and display their output dynamically:
-- Refreshes automatically every 5 seconds
+- Refreshes whenever the statusline is updated by Claude Code
 - Displays command output inline in your status line
 - Examples:
   - `pwd | xargs basename` - Show current directory name
