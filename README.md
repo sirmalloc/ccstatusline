@@ -122,7 +122,7 @@ Configure global formatting preferences that apply to all status items:
   - Press **(o)** to toggle
 - **Override Foreground Color** - Force all items to use the same text color
   - Press **(f)** to cycle through colors
-  - Press **(v)** to clear override
+  - Press **(g)** to clear override
 - **Override Background Color** - Force all items to use the same background color
   - Press **(b)** to cycle through colors
   - Press **(c)** to clear override
