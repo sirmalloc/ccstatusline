@@ -76,6 +76,9 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **c** - Clear entire line
 - **r** - Toggle raw value mode (no labels)
 - **e** - Edit value (for custom-text and custom-command items)
+- **w** - Set max width (for custom-command items)
+- **t** - Set timeout in milliseconds (for custom-command items)
+- **p** - Toggle preserve colors (for custom-command items)
 - **Space** - Change separator character (for separator items)
 - **ESC** - Go back
 
@@ -108,15 +111,33 @@ Add static text to your status line. Perfect for:
 #### Custom Command Widget
 Execute shell commands and display their output dynamically:
 - Refreshes whenever the statusline is updated by Claude Code
+- Receives the full Claude Code JSON data via stdin (model info, session ID, transcript path, etc.)
 - Displays command output inline in your status line
+- Configurable timeout (default: 1000ms)
 - Examples:
   - `pwd | xargs basename` - Show current directory name
   - `node -v` - Display Node.js version
   - `git rev-parse --short HEAD` - Show current commit hash
   - `date +%H:%M` - Display current time
   - `curl -s wttr.in?format="%t"` - Show current temperature
+  - `npx -y ccusage statusline` - Display Claude usage metrics (set timeout: 5000ms)
 
-> ⚠️ **Note:** Commands should complete quickly (<1s) to avoid delays. Long-running commands will be killed after timeout.
+> ⚠️ **Note:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
+
+> 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters! They receive the same JSON via stdin that ccstatusline receives from Claude Code, allowing you to chain or combine multiple status line tools.
+
+### 🔗 Integration Example: ccusage
+
+[ccusage](https://github.com/samuelint/ccusage) is a tool that tracks and displays Claude Code usage metrics. You can integrate it directly into your status line:
+
+1. Add a Custom Command widget
+2. Set command: `npx -y ccusage statusline`
+3. Set timeout: `5000` (5 seconds for initial download)
+4. Enable "preserve colors" to keep ccusage's color formatting
+
+![ccusage integration](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/ccusage.png)
+
+The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
 
 ### ✂️ Smart Truncation
 

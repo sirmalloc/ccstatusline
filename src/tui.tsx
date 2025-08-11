@@ -416,6 +416,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     const [commandCursorPos, setCommandCursorPos] = useState(0);
     const [editingMaxWidth, setEditingMaxWidth] = useState(false);
     const [maxWidthInput, setMaxWidthInput] = useState('');
+    const [editingTimeout, setEditingTimeout] = useState(false);
+    const [timeoutInput, setTimeoutInput] = useState('');
     const separatorChars = ['|', '-', ',', ' '];
 
     useInput((input, key) => {
@@ -520,6 +522,34 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 setMaxWidthInput(maxWidthInput.slice(0, -1));
             } else if (input && /\d/.test(input)) {
                 setMaxWidthInput(maxWidthInput + input);
+            }
+        } else if (editingTimeout) {
+            // In timeout editing mode
+            if (key.return) {
+                // Save the timeout
+                const currentItem = items[selectedIndex];
+                if (currentItem) {
+                    const timeout = parseInt(timeoutInput, 10);
+                    const newItems = [...items];
+                    if (!isNaN(timeout) && timeout > 0) {
+                        newItems[selectedIndex] = { ...currentItem, timeout: timeout };
+                    } else {
+                        // Remove timeout if invalid (will use default 1000ms)
+                        const { timeout: _, ...rest } = currentItem;
+                        newItems[selectedIndex] = rest;
+                    }
+                    onUpdate(newItems);
+                }
+                setEditingTimeout(false);
+                setTimeoutInput('');
+            } else if (key.escape) {
+                // Cancel editing
+                setEditingTimeout(false);
+                setTimeoutInput('');
+            } else if (key.backspace || key.delete) {
+                setTimeoutInput(timeoutInput.slice(0, -1));
+            } else if (input && /\d/.test(input)) {
+                setTimeoutInput(timeoutInput + input);
             }
         } else if (moveMode) {
             // In move mode, use up/down to move the selected item
@@ -658,6 +688,13 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                     setMaxWidthInput(currentItem.maxWidth ? currentItem.maxWidth.toString() : '');
                     setEditingMaxWidth(true);
                 }
+            } else if (input === 't' && items.length > 0) {
+                // Edit timeout for custom command
+                const currentItem = items[selectedIndex];
+                if (currentItem && currentItem.type === 'custom-command') {
+                    setTimeoutInput(currentItem.timeout ? currentItem.timeout.toString() : '1000');
+                    setEditingTimeout(true);
+                }
             } else if (input === 'p' && items.length > 0) {
                 // Toggle preserve colors for custom command
                 const currentItem = items[selectedIndex];
@@ -764,7 +801,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
         helpText += ', (e)dit text';
     }
     if (isCustomCommand) {
-        helpText += ', (e)dit cmd, (w)idth, (p)reserve colors';
+        helpText += ', (e)dit cmd, (w)idth, (t)imeout, (p)reserve colors';
     }
     helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
     if (canToggleRaw) {
@@ -796,6 +833,11 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             ) : editingMaxWidth ? (
                 <Box flexDirection='column'>
                     <Text>Enter max width (blank for no limit): {maxWidthInput}</Text>
+                    <Text dimColor>Press Enter to save, ESC to cancel</Text>
+                </Box>
+            ) : editingTimeout ? (
+                <Box flexDirection='column'>
+                    <Text>Enter timeout in milliseconds (default 1000): {timeoutInput}</Text>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
                 </Box>
             ) : moveMode ? (
@@ -902,7 +944,11 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'terminal-width': return 'Terminal Width';
             case 'version': return 'Version';
             case 'custom-text': return `Custom Text (${item.customText || 'Empty'})`;
-            case 'custom-command': return `Custom Command (${item.commandPath ? item.commandPath.substring(0, 20) + (item.commandPath.length > 20 ? '...' : '') : 'No command'})`;
+            case 'custom-command': {
+                const cmd = item.commandPath ? item.commandPath.substring(0, 20) + (item.commandPath.length > 20 ? '...' : '') : 'No command';
+                const timeout = item.timeout ? ` ${item.timeout}ms` : '';
+                return `Custom Command (${cmd}${timeout})`;
+            }
             default: return item.type;
         }
     };

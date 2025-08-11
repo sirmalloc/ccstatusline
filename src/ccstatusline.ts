@@ -480,11 +480,13 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             case 'custom-command':
                 if (item.commandPath) {
                     try {
-                        // Execute the command with a timeout
+                        // Execute the command with JSON input via stdin
+                        const timeout = item.timeout || 1000; // Default to 1000ms if not specified
                         const output = execSync(item.commandPath, {
                             encoding: 'utf8',
+                            input: JSON.stringify(data),
                             stdio: ['pipe', 'pipe', 'ignore'],
-                            timeout: 1000 // 1 second timeout
+                            timeout: timeout
                         }).trim();
                         
                         if (output) {

@@ -21,6 +21,7 @@ export interface StatusItem {
     commandPath?: string; // For custom-command type - the command to execute
     maxWidth?: number; // For custom-command type - max width of output
     preserveColors?: boolean; // For custom-command type - preserve ANSI colors from command output
+    timeout?: number; // For custom-command type - timeout in milliseconds (default: 1000)
 }
 
 export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
