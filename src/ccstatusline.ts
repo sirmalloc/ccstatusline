@@ -12,6 +12,32 @@ const readFile = fs.promises?.readFile || promisify(fs.readFile);
 // Force chalk to use colors even when piped
 chalk.level = 3;
 
+// Helper function to apply foreground, background colors and bold
+function applyColors(text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string {
+    let result = text;
+    
+    // Ignore 'dim' color - it causes issues with terminal rendering
+    if (foregroundColor && foregroundColor !== 'dim') {
+        const fgFunc = (chalk as any)[foregroundColor];
+        if (fgFunc) {
+            result = fgFunc(result);
+        }
+    }
+    
+    if (backgroundColor && backgroundColor !== 'none') {
+        const bgFunc = (chalk as any)[backgroundColor];
+        if (bgFunc) {
+            result = bgFunc(result);
+        }
+    }
+    
+    if (bold) {
+        result = chalk.bold(result);
+    }
+    
+    return result;
+}
+
 interface StatusJSON {
     session_id: string;
     transcript_path: string;
@@ -307,6 +333,14 @@ async function getTokenMetrics(transcriptPath: string): Promise<{
 }
 
 function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, tokenMetrics: any, sessionDuration: string | null): string {
+    // Helper to apply colors with optional background and bold override  
+    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
+        const bgColor = settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none' 
+            ? settings.overrideBackgroundColor 
+            : backgroundColor;
+        const shouldBold = settings.globalBold || bold;
+        return applyColors(text, foregroundColor, bgColor, shouldBold);
+    };
     const detectedWidth = getTerminalWidth();
     // Calculate terminal width based on flex mode settings
     let terminalWidth: number | null = null;
@@ -334,7 +368,7 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
             }
         }
     }
-    const elements: { content: string, type: string }[] = [];
+    const elements: { content: string, type: string, item?: StatusItem }[] = [];
     let hasFlexSeparator = false;
 
     // Helper function to format token counts
@@ -349,77 +383,68 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         switch (item.type) {
             case 'model':
                 if (data.model) {
-                    const color = (chalk as any)[item.color || settings.colors.model] || chalk.cyan;
                     const text = item.rawValue ? data.model.display_name : `Model: ${data.model.display_name}`;
-                    elements.push({ content: color(text), type: 'model' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || settings.colors.model, item.backgroundColor, item.bold), type: 'model', item });
                 }
                 break;
 
             case 'git-branch':
                 const branch = getGitBranch();
                 if (branch) {
-                    const color = (chalk as any)[item.color || settings.colors.gitBranch] || chalk.magenta;
                     const text = item.rawValue ? branch : `⎇ ${branch}`;
-                    elements.push({ content: color(text), type: 'git-branch' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || settings.colors.gitBranch, item.backgroundColor, item.bold), type: 'git-branch', item });
                 }
                 break;
 
             case 'git-changes':
                 const changes = getGitChanges();
                 if (changes !== null) {
-                    const color = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
                     // Compact format: (+42,-10)
                     const changeStr = `(+${changes.insertions},-${changes.deletions})`;
-                    elements.push({ content: color(changeStr), type: 'git-changes' });
+                    elements.push({ content: applyColorsWithOverride(changeStr, item.color || 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
                 }
                 break;
 
             case 'tokens-input':
                 if (tokenMetrics) {
-                    const color = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
                     const text = item.rawValue ? formatTokens(tokenMetrics.inputTokens) : `In: ${formatTokens(tokenMetrics.inputTokens)}`;
-                    elements.push({ content: color(text), type: 'tokens-input' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'yellow', item.backgroundColor, item.bold), type: 'tokens-input', item });
                 }
                 break;
 
             case 'tokens-output':
                 if (tokenMetrics) {
-                    const color = (chalk as any)[item.color || 'green'] || chalk.green;
                     const text = item.rawValue ? formatTokens(tokenMetrics.outputTokens) : `Out: ${formatTokens(tokenMetrics.outputTokens)}`;
-                    elements.push({ content: color(text), type: 'tokens-output' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'green', item.backgroundColor, item.bold), type: 'tokens-output', item });
                 }
                 break;
 
             case 'tokens-cached':
                 if (tokenMetrics) {
-                    const color = (chalk as any)[item.color || 'blue'] || chalk.blue;
                     const text = item.rawValue ? formatTokens(tokenMetrics.cachedTokens) : `Cached: ${formatTokens(tokenMetrics.cachedTokens)}`;
-                    elements.push({ content: color(text), type: 'tokens-cached' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'tokens-cached', item });
                 }
                 break;
 
             case 'tokens-total':
                 if (tokenMetrics) {
-                    const color = (chalk as any)[item.color || 'white'] || chalk.white;
                     const text = item.rawValue ? formatTokens(tokenMetrics.totalTokens) : `Total: ${formatTokens(tokenMetrics.totalTokens)}`;
-                    elements.push({ content: color(text), type: 'tokens-total' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'white', item.backgroundColor, item.bold), type: 'tokens-total', item });
                 }
                 break;
 
             case 'context-length':
                 if (tokenMetrics) {
-                    const color = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
                     const text = item.rawValue ? formatTokens(tokenMetrics.contextLength) : `Ctx: ${formatTokens(tokenMetrics.contextLength)}`;
-                    elements.push({ content: color(text), type: 'context-length' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'context-length', item });
                 }
                 break;
 
             case 'context-percentage':
                 if (tokenMetrics) {
                     const percentage = Math.min(100, (tokenMetrics.contextLength / 200000) * 100);
-                    const color = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
                     const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
-                    elements.push({ content: color(text), type: 'context-percentage' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'context-percentage', item });
                 }
                 break;
 
@@ -427,64 +452,60 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                 if (tokenMetrics) {
                     // Calculate percentage out of 160,000 (80% of full context for auto-compact)
                     const percentage = Math.min(100, (tokenMetrics.contextLength / 160000) * 100);
-                    const color = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
                     const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
-                    elements.push({ content: color(text), type: 'context-percentage-usable' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
                 }
                 break;
 
             case 'terminal-width':
                 const detectedWidth = terminalWidth || getTerminalWidth();
                 if (detectedWidth) {
-                    const color = (chalk as any)[item.color || 'dim'] || chalk.dim;
                     const text = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
-                    elements.push({ content: color(text), type: 'terminal-width' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'gray', item.backgroundColor, item.bold), type: 'terminal-width', item });
                 }
                 break;
 
             case 'session-clock':
                 if (sessionDuration) {
-                    const color = (chalk as any)[item.color || 'blue'] || chalk.blue;
                     const text = item.rawValue ? sessionDuration : `Session: ${sessionDuration}`;
-                    elements.push({ content: color(text), type: 'session-clock' });
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'session-clock', item });
                 }
                 break;
 
             case 'version':
                 const versionString = data.version || 'Unknown';
-                const versionColor = (chalk as any)[item.color || 'green'] || chalk.green;
-                const text = item.rawValue ? versionString : `Version: ${versionString}`;
-                elements.push({ content: versionColor(text), type: 'version' });
+                const versionText = item.rawValue ? versionString : `Version: ${versionString}`;
+                elements.push({ content: applyColorsWithOverride(versionText, item.color || 'green', item.backgroundColor, item.bold), type: 'version', item });
                 break;
 
             case 'separator':
                 // Only add separator if there are already elements and the last one isn't a separator
                 const lastElement = elements[elements.length - 1];
                 if (elements.length > 0 && lastElement && lastElement.type !== 'separator') {
-                    const sepColor = (chalk as any)[settings.colors.separator] || chalk.dim;
                     const sepChar = item.character || '|';
                     // Handle special separator cases
-                    let sepContent;
+                    let sepText;
                     if (sepChar === ',') {
-                        sepContent = sepColor(`${sepChar} `);
+                        sepText = `${sepChar} `;
                     } else if (sepChar === ' ') {
-                        sepContent = sepColor(' ');
+                        sepText = ' ';
                     } else {
-                        sepContent = sepColor(` ${sepChar} `);
+                        sepText = ` ${sepChar} `;
                     }
-                    elements.push({ content: sepContent, type: 'separator' });
+                    // Use item color if specified, otherwise use settings color or default to gray
+                    const sepContent = applyColorsWithOverride(sepText, item.color || settings.colors.separator || 'gray', item.backgroundColor, item.bold);
+                    elements.push({ content: sepContent, type: 'separator', item });
                 }
                 break;
 
             case 'flex-separator':
-                elements.push({ content: 'FLEX', type: 'flex-separator' });
+                elements.push({ content: 'FLEX', type: 'flex-separator', item });
                 hasFlexSeparator = true;
                 break;
 
             case 'custom-text':
-                const customTextColor = (chalk as any)[item.color || 'white'] || chalk.white;
                 const customText = item.customText || '';
-                elements.push({ content: customTextColor(customText), type: 'custom-text' });
+                elements.push({ content: applyColorsWithOverride(customText, item.color || 'white', item.backgroundColor, item.bold), type: 'custom-text', item });
                 break;
 
             case 'custom-command':
@@ -542,11 +563,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
                             if (!item.preserveColors) {
                                 // Strip existing ANSI codes and apply new color
                                 const stripped = finalOutput.replace(/\x1b\[[0-9;]*m/g, '');
-                                const cmdColor = (chalk as any)[item.color || 'white'] || chalk.white;
-                                elements.push({ content: cmdColor(stripped), type: 'custom-command' });
+                                elements.push({ content: applyColorsWithOverride(stripped, item.color || 'white', item.backgroundColor, item.bold), type: 'custom-command', item });
                             } else {
                                 // Preserve original colors from command output - ignore any color property
-                                elements.push({ content: finalOutput, type: 'custom-command' });
+                                elements.push({ content: finalOutput, type: 'custom-command', item });
                             }
                         }
                     } catch {
@@ -563,21 +583,71 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
     while (elements.length > 0 && elements[elements.length - 1]?.type === 'separator') {
         elements.pop();
     }
+    
+    // Apply default padding and separators
+    const finalElements: string[] = [];
+    const padding = settings.defaultPadding || '';
+    const defaultSep = settings.defaultSeparator || '';
+    
+    elements.forEach((elem, index) => {
+        // Add default separator between any two items (but not before first item)
+        if (defaultSep && index > 0) {
+            // Check if we should inherit colors from the previous element
+            if (settings.inheritSeparatorColors && index > 0) {
+                const prevElem = elements[index - 1];
+                if (prevElem && prevElem.item) {
+                    // Apply the previous element's colors to the separator (already handles override)
+                    const coloredSep = applyColorsWithOverride(defaultSep, prevElem.item.color, prevElem.item.backgroundColor, prevElem.item.bold);
+                    finalElements.push(coloredSep);
+                } else {
+                    finalElements.push(defaultSep);
+                }
+            } else if (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
+                // Apply override background even when not inheriting colors
+                const coloredSep = applyColorsWithOverride(defaultSep, undefined, undefined);
+                finalElements.push(coloredSep);
+            } else {
+                finalElements.push(defaultSep);
+            }
+        }
+        
+        // Add element with padding (separators don't get padding)
+        if (elem.type === 'separator' || elem.type === 'flex-separator') {
+            finalElements.push(elem.content);
+        } else {
+            // Apply padding with the same background color as the item (or override)
+            const bgColor = settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
+                ? settings.overrideBackgroundColor
+                : elem.item?.backgroundColor;
+            
+            if (padding && bgColor) {
+                // Apply background color to padding
+                const paddedContent = applyColorsWithOverride(padding, undefined, bgColor) + 
+                                     elem.content + 
+                                     applyColorsWithOverride(padding, undefined, bgColor);
+                finalElements.push(paddedContent);
+            } else {
+                // No background color or no padding
+                finalElements.push(padding + elem.content + padding);
+            }
+        }
+    });
 
     // Build the final status line
     let statusLine = '';
 
     if (hasFlexSeparator && terminalWidth) {
-// Split elements by flex separators
+        // Split elements by flex separators
         const parts: string[][] = [[]];
         let currentPart = 0;
-
-        for (const elem of elements) {
-            if (elem.type === 'flex-separator') {
+        
+        for (let i = 0; i < finalElements.length; i++) {
+            const elem = finalElements[i];
+            if (elem === 'FLEX' || (elements[i] && elements[i].type === 'flex-separator')) {
                 currentPart++;
                 parts[currentPart] = [];
             } else {
-                parts[currentPart]!.push(elem.content);
+                parts[currentPart]!.push(elem);
             }
         }
 
@@ -611,10 +681,10 @@ function renderSingleLine(items: StatusItem[], settings: any, data: StatusJSON, 
         // No flex separator OR no width detected
         if (hasFlexSeparator && !terminalWidth) {
 // Treat flex separators as normal separators when width detection fails
-            statusLine = elements.map(e => e.type === 'flex-separator' ? chalk.dim(' | ') : e.content).join('');
+            statusLine = finalElements.map(e => e === 'FLEX' ? chalk.gray(' | ') : e).join('');
         } else {
             // Just join all elements normally
-            statusLine = elements.map(e => e.content).join('');
+            statusLine = finalElements.join('');
         }
     }
 
@@ -698,10 +768,13 @@ async function renderStatusLine(data: StatusJSON) {
     }
 
     // Render each line
-    for (const lineItems of lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const lineItems = lines[i];
         if (lineItems.length > 0) {
             const line = renderSingleLine(lineItems, settings, data, tokenMetrics, sessionDuration);
-            console.log(line);
+            // Add zero-width non-joiner at start of second+ lines to prevent trimming
+            const outputLine = i > 0 ? '\u200C' + line : line;
+            console.log(outputLine);
         }
     }
 }

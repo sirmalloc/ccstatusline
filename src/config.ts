@@ -15,6 +15,8 @@ export interface StatusItem {
     id: string;
     type: StatusItemType;
     color?: string;
+    backgroundColor?: string; // Background color for the item
+    bold?: boolean; // Bold text styling
     character?: string; // For separator and flex-separator types
     rawValue?: boolean; // Show value without label prefix
     customText?: string; // For custom-text type
@@ -36,6 +38,11 @@ export interface Settings {
     };
     flexMode?: FlexMode; // How to handle terminal width for flex separators
     compactThreshold?: number; // Context percentage (50-99) for 'full-until-compact' mode
+    defaultSeparator?: string; // Default separator character to insert between items
+    defaultPadding?: string; // Default padding to add around all items
+    inheritSeparatorColors?: boolean; // Whether default separators inherit colors from preceding widget
+    overrideBackgroundColor?: string; // Override background color for all items (e.g., 'none', 'bgRed', etc.)
+    globalBold?: boolean; // Apply bold formatting to all items
 }
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
@@ -56,7 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
             {
                 "id": "3",
                 "type": "context-length",
-                "color": "dim"
+                "color": "gray"
             },
             {
                 "id": "4",
@@ -81,7 +88,7 @@ export const DEFAULT_SETTINGS: Settings = {
     colors: {
         model: 'cyan',
         gitBranch: 'magenta',
-        separator: 'dim',
+        separator: 'gray',
     },
     flexMode: 'full-minus-40',
     compactThreshold: 60,

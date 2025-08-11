@@ -69,7 +69,41 @@ interface StatusLinePreviewProps {
     settings?: Settings;
 }
 
+// Helper function to apply foreground, background colors and bold
+const applyColors = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
+    let result = text;
+    
+    // Ignore 'dim' color - it causes issues with terminal rendering
+    if (foregroundColor && foregroundColor !== 'dim') {
+        const fgFunc = (chalk as any)[foregroundColor];
+        if (fgFunc) {
+            result = fgFunc(result);
+        }
+    }
+    
+    if (backgroundColor && backgroundColor !== 'none') {
+        const bgFunc = (chalk as any)[backgroundColor];
+        if (bgFunc) {
+            result = bgFunc(result);
+        }
+    }
+    
+    if (bold) {
+        result = chalk.bold(result);
+    }
+    
+    return result;
+};
+
 const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
+    // Helper to apply colors with optional background override
+    const applyItemColors = (text: string, item: StatusItem, defaultColor?: string): string => {
+        const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none' 
+            ? settings.overrideBackgroundColor 
+            : item.backgroundColor;
+        const shouldBold = settings?.globalBold || item.bold;
+        return applyColors(text, item.color || defaultColor, bgColor, shouldBold);
+    };
     // Calculate effective width based on flex mode settings
     let effectiveWidth: number | null = null;
     if (widthDetectionAvailable && terminalWidth) {
@@ -87,97 +121,150 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
     // Always ensure we have a width for truncation
     const width = terminalWidth; // Always use terminal width for truncation
     const flexWidth = effectiveWidth; // Use this for flex separator calculations
-    const elements: string[] = [];
+    const rawElements: { content: string; type: string; item?: StatusItem }[] = [];
     let hasFlexSeparator = false;
 
-    items.forEach(item => {
+    items.forEach((item, index) => {
         switch (item.type) {
             case 'model':
-                const modelColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                elements.push(modelColor(item.rawValue ? 'Claude' : 'Model: Claude'));
+                const modelText = item.rawValue ? 'Claude' : 'Model: Claude';
+                rawElements.push({ content: applyItemColors(modelText, item, 'cyan'), type: 'model', item });
                 break;
             case 'git-branch':
-                const branchColor = (chalk as any)[item.color || 'magenta'] || chalk.magenta;
-                elements.push(branchColor('⎇ main'));
+                const branchText = '⎇ main';
+                rawElements.push({ content: applyItemColors(branchText, item, 'magenta'), type: 'git-branch', item });
                 break;
             case 'git-changes':
-                const changesColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
-                elements.push(changesColor('(+42,-10)'));
+                const changesText = '(+42,-10)';
+                rawElements.push({ content: applyItemColors(changesText, item, 'yellow'), type: 'git-changes', item });
                 break;
             case 'tokens-input':
-                const inputColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
-                elements.push(inputColor(item.rawValue ? '15.2k' : 'In: 15.2k'));
+                const inputText = item.rawValue ? '15.2k' : 'In: 15.2k';
+                rawElements.push({ content: applyItemColors(inputText, item, 'blue'), type: 'tokens-input', item });
                 break;
             case 'tokens-output':
-                const outputColor = (chalk as any)[item.color || 'white'] || chalk.white;
-                elements.push(outputColor(item.rawValue ? '3.4k' : 'Out: 3.4k'));
+                const outputText = item.rawValue ? '3.4k' : 'Out: 3.4k';
+                rawElements.push({ content: applyItemColors(outputText, item, 'white'), type: 'tokens-output', item });
                 break;
             case 'tokens-cached':
-                const cachedColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                elements.push(cachedColor(item.rawValue ? '12k' : 'Cached: 12k'));
+                const cachedText = item.rawValue ? '12k' : 'Cached: 12k';
+                rawElements.push({ content: applyItemColors(cachedText, item, 'cyan'), type: 'tokens-cached', item });
                 break;
             case 'tokens-total':
-                const totalColor = (chalk as any)[item.color || 'cyan'] || chalk.cyan;
-                elements.push(totalColor(item.rawValue ? '30.6k' : 'Total: 30.6k'));
+                const totalText = item.rawValue ? '30.6k' : 'Total: 30.6k';
+                rawElements.push({ content: applyItemColors(totalText, item, 'cyan'), type: 'tokens-total', item });
                 break;
             case 'context-length':
-                const ctxColor = (chalk as any)[item.color || 'dim'] || chalk.dim;
-                elements.push(ctxColor(item.rawValue ? '18.6k' : 'Ctx: 18.6k'));
+                const ctxText = item.rawValue ? '18.6k' : 'Ctx: 18.6k';
+                rawElements.push({ content: applyItemColors(ctxText, item, 'gray'), type: 'context-length', item });
                 break;
             case 'context-percentage':
-                const ctxPctColor = (chalk as any)[item.color || 'blue'] || chalk.blue;
-                elements.push(ctxPctColor(item.rawValue ? '9.3%' : 'Ctx: 9.3%'));
+                const ctxPctText = item.rawValue ? '9.3%' : 'Ctx: 9.3%';
+                rawElements.push({ content: applyItemColors(ctxPctText, item, 'blue'), type: 'context-percentage', item });
                 break;
             case 'context-percentage-usable':
-                const ctxUsableColor = (chalk as any)[item.color || 'green'] || chalk.green;
-                elements.push(ctxUsableColor(item.rawValue ? '11.6%' : 'Ctx(u): 11.6%'));
+                const ctxUsableText = item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
+                rawElements.push({ content: applyItemColors(ctxUsableText, item, 'green'), type: 'context-percentage-usable', item });
                 break;
             case 'session-clock':
-                const sessionColor = (chalk as any)[item.color || 'yellow'] || chalk.yellow;
-                elements.push(sessionColor(item.rawValue ? '2hr 15m' : 'Session: 2hr 15m'));
+                const sessionText = item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
+                rawElements.push({ content: applyItemColors(sessionText, item, 'yellow'), type: 'session-clock', item });
                 break;
             case 'version':
-                const versionColor = (chalk as any)[item.color || 'green'] || chalk.green;
-                elements.push(versionColor(item.rawValue ? '1.0.72' : 'Version: 1.0.72'));
+                const versionText = item.rawValue ? '1.0.72' : 'Version: 1.0.72';
+                rawElements.push({ content: applyItemColors(versionText, item, 'green'), type: 'version', item });
                 break;
             case 'terminal-width':
-                const termColor = (chalk as any)[item.color || 'gray'] || chalk.gray;
                 const detectedWidth = canDetectTerminalWidth() ? terminalWidth : '??';
-                elements.push(termColor(item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`));
+                const termText = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+                rawElements.push({ content: applyItemColors(termText, item, 'gray'), type: 'terminal-width', item });
                 break;
             case 'separator':
                 const sepChar = item.character || '|';
                 // Handle special separator cases
                 let sepContent;
                 if (sepChar === ',') {
-                    sepContent = chalk.dim(`${sepChar} `);
+                    sepContent = `${sepChar} `;
                 } else if (sepChar === ' ') {
-                    sepContent = chalk.dim(' ');
+                    sepContent = ' ';
                 } else {
-                    sepContent = chalk.dim(` ${sepChar} `);
+                    sepContent = ` ${sepChar} `;
                 }
-                elements.push(sepContent);
+                rawElements.push({ content: applyItemColors(sepContent, item, 'gray'), type: 'separator', item });
                 break;
             case 'flex-separator':
-                elements.push('FLEX');
+                rawElements.push({ content: 'FLEX', type: 'flex-separator', item });
                 hasFlexSeparator = true;
                 break;
             case 'custom-text':
-                const customTextColor = (chalk as any)[item.color || 'white'] || chalk.white;
                 const customText = item.customText || '';
-                elements.push(customTextColor(customText));
+                rawElements.push({ content: applyItemColors(customText, item, 'white'), type: 'custom-text', item });
                 break;
             case 'custom-command':
                 const cmdText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
                 // Only apply color if not preserving colors
                 if (!item.preserveColors) {
-                    const cmdColor = (chalk as any)[item.color || 'white'] || chalk.white;
-                    elements.push(cmdColor(cmdText));
+                    rawElements.push({ content: applyItemColors(cmdText, item, 'white'), type: 'custom-command', item });
                 } else {
-                    // When preserving colors, just show the text without color
-                    elements.push(chalk.white(cmdText));
+                    // When preserving colors, just show the text without applying our colors
+                    rawElements.push({ content: cmdText, type: 'custom-command', item });
                 }
                 break;
+        }
+    });
+
+    // Apply default padding and separators
+    const elements: string[] = [];
+    const padding = settings?.defaultPadding || '';
+    const defaultSep = settings?.defaultSeparator || '';
+    
+    // Debug: Check if we have a default separator
+    // console.log('Default separator:', JSON.stringify(defaultSep), 'Length:', defaultSep.length);
+    
+    rawElements.forEach((elem, index) => {
+        // Add default separator between any two items (but not before first item)
+        if (defaultSep && index > 0) {
+            // Check if we should inherit colors from the previous element
+            if (settings?.inheritSeparatorColors && index > 0) {
+                const prevElem = rawElements[index - 1];
+                if (prevElem && prevElem.item) {
+                    // Apply the previous element's colors to the separator (with override)
+                    const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
+                        ? settings.overrideBackgroundColor
+                        : prevElem.item.backgroundColor;
+                    const coloredSep = applyColors(defaultSep, prevElem.item.color, bgColor, prevElem.item.bold);
+                    elements.push(coloredSep);
+                } else {
+                    elements.push(defaultSep);
+                }
+            } else if (settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
+                // Apply override background even when not inheriting colors
+                const coloredSep = applyColors(defaultSep, undefined, settings.overrideBackgroundColor);
+                elements.push(coloredSep);
+            } else {
+                elements.push(defaultSep);
+            }
+        }
+        
+        // Add the element itself
+        if (elem.type === 'separator' || elem.type === 'flex-separator') {
+            elements.push(elem.content);
+        } else {
+            // Apply padding with the same background color as the item (or override)
+            const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
+                ? settings.overrideBackgroundColor
+                : elem.item?.backgroundColor;
+            
+            if (padding && bgColor) {
+                // Apply background color to padding
+                const paddedContent = applyColors(padding, undefined, bgColor) + 
+                                     elem.content + 
+                                     applyColors(padding, undefined, bgColor);
+                elements.push(paddedContent);
+            } else {
+                // No background color or no padding
+                elements.push(padding + elem.content + padding);
+            }
         }
     });
 
@@ -228,7 +315,7 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
         }
     } else {
         // No width detection available - treat flex separators as normal separators
-        statusLine = elements.map(e => e === 'FLEX' ? chalk.dim(' | ') : e).join('');
+        statusLine = elements.map(e => e === 'FLEX' ? chalk.gray(' | ') : e).join('');
     }
 
     // Truncate if the line exceeds the maximum width
@@ -278,9 +365,9 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWi
     const widthDetectionAvailable = canDetectTerminalWidth();
     // Build the Claude Code input box - account for ink's padding
     const boxWidth = Math.min(terminalWidth - 4, process.stdout.columns - 4 || 76);
-    const topLine = chalk.dim('╭' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╮');
-    const middleLine = chalk.dim('│') + ' > ' + ' '.repeat(Math.max(0, boxWidth - 5)) + chalk.dim('│');
-    const bottomLine = chalk.dim('╰' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╯');
+    const topLine = chalk.gray('╭' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╮');
+    const middleLine = chalk.gray('│') + ' > ' + ' '.repeat(Math.max(0, boxWidth - 5)) + chalk.gray('│');
+    const bottomLine = chalk.gray('╰' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╯');
 
     // Render each configured line - account for 2-space prefix in display
     const availableWidth = boxWidth - 2; // Account for 2-space indent
@@ -331,7 +418,14 @@ interface LineSelectorProps {
     onBack: () => void;
 }
 
-const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack }) => {
+interface LineSelectorProps {
+    lines: StatusItem[][];
+    onSelect: (line: number) => void;
+    onBack: () => void;
+    initialSelection?: number;
+}
+
+const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, initialSelection = 0 }) => {
     const items = [
         { label: `📝 Line 1${lines[0] && lines[0].length > 0 ? ` (${lines[0].length} items)` : ' (empty)'}`, value: 0 },
         { label: `📝 Line 2${lines[1] && lines[1].length > 0 ? ` (${lines[1].length} items)` : ' (empty)'}`, value: 1 },
@@ -363,6 +457,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack }) 
                 <SelectInput
                     items={items}
                     onSelect={handleSelect}
+                    initialIndex={Math.min(initialSelection, items.length - 1)}
                 />
             </Box>
         </Box>
@@ -373,13 +468,15 @@ interface MainMenuProps {
     onSelect: (value: string) => void;
     isClaudeInstalled: boolean;
     hasChanges: boolean;
+    initialSelection?: number;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0 }) => {
     const items = [
         { label: '📝 Edit Lines', value: 'lines' },
         { label: '🎨 Configure Colors', value: 'colors' },
         { label: '⚡ Flex Options', value: 'flex' },
+        { label: '🔧 Global Options', value: 'globalOptions' },
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install' },
     ];
 
@@ -396,7 +493,11 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
             <Box marginTop={1}>
-                <SelectInput items={items} onSelect={(item) => onSelect(item.value)} />
+                <SelectInput 
+                    items={items} 
+                    onSelect={(item) => onSelect(item.value)} 
+                    initialIndex={Math.min(initialSelection, items.length - 1)}
+                />
             </Box>
         </Box>
     );
@@ -623,14 +724,16 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Enter move mode
                 setMoveMode(true);
             } else if (input === 'a') {
-                // Add item at end
+                // Add item after selected
                 const newItem: StatusItem = {
                     id: Date.now().toString(),
                     type: 'separator',
                 };
-                const newItems = [...items, newItem];
+                const newItems = [...items];
+                const insertIndex = items.length > 0 ? selectedIndex + 1 : 0;
+                newItems.splice(insertIndex, 0, newItem);
                 onUpdate(newItems);
-                setSelectedIndex(newItems.length - 1); // Move selection to new item
+                setSelectedIndex(insertIndex); // Move selection to new item
             } else if (input === 'i') {
                 // Insert item before selected
                 const newItem: StatusItem = {
@@ -750,7 +853,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             case 'separator': {
                 const char = item.character || '|';
                 const charDisplay = char === ' ' ? '(space)' : char;
-                return chalk.dim(`Separator ${charDisplay}`);
+                // Apply the separator's color to its display
+                return applyColors(`Separator ${charDisplay}`, item.color || 'gray', item.backgroundColor, item.bold);
             }
             case 'flex-separator':
                 return chalk.yellow('Flex Separator');
@@ -890,7 +994,8 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
         ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
         !(item.type === 'custom-command' && item.preserveColors) // Exclude custom-command items with preserveColors
     );
-    const [selectedIndex, setSelectedIndex] = useState(0);
+    const [highlightedItemId, setHighlightedItemId] = useState<string | null>(colorableItems[0]?.id || null);
+    const [editingBackground, setEditingBackground] = useState(false);
 
     // Get default color for each item type (matching ccstatusline.ts defaults)
     const getDefaultColor = (type: string): string => {
@@ -904,35 +1009,77 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'tokens-output': return 'white';
             case 'tokens-cached': return 'cyan';
             case 'tokens-total': return 'cyan';
-            case 'context-length': return 'dim';
+            case 'context-length': return 'gray';
             case 'context-percentage': return 'blue';
             case 'context-percentage-usable': return 'green';
             case 'terminal-width': return 'gray';
             case 'custom-text': return 'white';
             case 'custom-command': return 'white';
+            case 'separator': return 'gray';
             default: return 'white';
         }
     };
 
-    // Handle ESC key
+    // Handle keyboard input
+    const hasNoItems = colorableItems.length === 0;
     useInput((input, key) => {
-        if (key.escape) {
+        // If no items, any key goes back
+        if (hasNoItems) {
             onBack();
+            return;
+        }
+        
+        // Normal keyboard handling when there are items
+        if (key.escape) {
+            if (editingBackground) {
+                setEditingBackground(false);
+            } else {
+                onBack();
+            }
+        } else if (input === 'f' || input === 'F') {
+            if (colorableItems.length > 0) {
+                setEditingBackground(!editingBackground);
+            }
+        } else if (input === 'b' || input === 'B') {
+            if (highlightedItemId && highlightedItemId !== 'back') {
+                // Toggle bold for the highlighted item
+                const selectedItem = colorableItems.find(item => item.id === highlightedItemId);
+                if (selectedItem) {
+                    const newItems = items.map(item => {
+                        if (item.id === selectedItem.id) {
+                            return { ...item, bold: !item.bold };
+                        }
+                        return item;
+                    });
+                    onUpdate(newItems);
+                }
+            }
+        } else if (input === 'r' || input === 'R') {
+            if (highlightedItemId && highlightedItemId !== 'back') {
+                // Reset all styling (color, background, and bold) for the highlighted item
+                const selectedItem = colorableItems.find(item => item.id === highlightedItemId);
+                if (selectedItem) {
+                    const newItems = items.map(item => {
+                        if (item.id === selectedItem.id) {
+                            // Remove color, backgroundColor, and bold properties
+                            const { color, backgroundColor, bold, ...restItem } = item;
+                            return restItem;
+                        }
+                        return item;
+                    });
+                    onUpdate(newItems);
+                }
+            }
         }
     });
 
-    if (colorableItems.length === 0) {
+    if (hasNoItems) {
         return (
             <Box flexDirection='column'>
                 <Text bold>Configure Colors</Text>
                 <Box marginTop={1}><Text dimColor>No colorable items in the status line.</Text></Box>
                 <Text dimColor>Add a Model or Git Branch item first.</Text>
                 <Box marginTop={1}><Text>Press any key to go back...</Text></Box>
-                {/* Press any key handler */}
-                {(() => {
-                    useInput(() => { onBack(); });
-                    return null;
-                })()}
             </Box>
         );
     }
@@ -958,16 +1105,22 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                 const timeout = item.timeout ? ` ${item.timeout}ms` : '';
                 return `Custom Command (${cmd}${timeout})`;
             }
+            case 'separator': {
+                const char = item.character || '|';
+                const charDisplay = char === ' ' ? '(space)' : char;
+                return `Separator ${charDisplay}`;
+            }
             default: return item.type;
         }
     };
 
     // Create menu items with colored labels
     const menuItems = colorableItems.map((item, index) => {
-        const color = item.color || getDefaultColor(item.type);
-        const colorFunc = (chalk as any)[color] || chalk.white;
+        const label = `${index + 1}: ${getItemLabel(item)}`;
+        // Apply both foreground and background colors
+        const styledLabel = applyColors(label, item.color || getDefaultColor(item.type), item.backgroundColor, item.bold);
         return {
-            label: colorFunc(`${index + 1}: ${getItemLabel(item)}`),
+            label: styledLabel,
             value: item.id,
         };
     });
@@ -980,9 +1133,25 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             // Cycle through colors
             const newItems = items.map(item => {
                 if (item.id === selected.value) {
-                    const currentColorIndex = colors.indexOf(item.color || 'white');
-                    const nextColor = colors[(currentColorIndex + 1) % colors.length];
-                    return { ...item, color: nextColor };
+                    if (editingBackground) {
+                        const currentBgColor = item.backgroundColor || 'none';
+                        let currentBgColorIndex = bgColors.indexOf(currentBgColor);
+                        // If color not found, start from beginning
+                        if (currentBgColorIndex === -1) currentBgColorIndex = 0;
+                        const nextBgColor = bgColors[(currentBgColorIndex + 1) % bgColors.length];
+                        return { ...item, backgroundColor: nextBgColor === 'none' ? undefined : nextBgColor };
+                    } else {
+                        let currentColor = item.color || getDefaultColor(item.type);
+                        // If color is 'dim', treat as if no color was set
+                        if (currentColor === 'dim') {
+                            currentColor = getDefaultColor(item.type);
+                        }
+                        let currentColorIndex = colors.indexOf(currentColor);
+                        // If color not found, start from beginning
+                        if (currentColorIndex === -1) currentColorIndex = 0;
+                        const nextColor = colors[(currentColorIndex + 1) % colors.length];
+                        return { ...item, color: nextColor };
+                    }
                 }
                 return item;
             });
@@ -991,33 +1160,55 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     };
 
     const handleHighlight = (item: { value: string }) => {
-        if (item.value !== 'back') {
-            const itemIndex = colorableItems.findIndex(i => i.id === item.value);
-            if (itemIndex !== -1) {
-                setSelectedIndex(itemIndex);
-            }
-        }
+        setHighlightedItemId(item.value);
     };
 
     // Color list for cycling
     const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
         'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
         'magentaBright', 'cyanBright', 'whiteBright'];
+    
+    // Background colors list (includes 'none' as first option)
+    // Note: chalk doesn't support bgDim, so we exclude it from background colors
+    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 
+        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright', 
+        'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
 
-    // Get current color for selected item (if a valid colorable item is selected)
-    const selectedItem = selectedIndex < colorableItems.length ? colorableItems[selectedIndex] : null;
-    const currentColor = selectedItem ? (selectedItem.color || getDefaultColor(selectedItem.type)) : 'white';
-    const colorIndex = colors.indexOf(currentColor);
-    const colorNumber = colorIndex === -1 ? 8 : colorIndex + 1; // Default to white (8) if not found
-    const colorDisplay = (chalk as any)[currentColor] ? (chalk as any)[currentColor](currentColor) : chalk.white(currentColor);
+    // Get current color for highlighted item
+    const selectedItem = highlightedItemId && highlightedItemId !== 'back' 
+        ? colorableItems.find(item => item.id === highlightedItemId) 
+        : null;
+    const currentColor = editingBackground 
+        ? (selectedItem?.backgroundColor || 'none')
+        : (selectedItem ? (selectedItem.color || getDefaultColor(selectedItem.type)) : 'white');
+    
+    const colorList = editingBackground ? bgColors : colors;
+    const colorIndex = colorList.indexOf(currentColor);
+    const colorNumber = colorIndex === -1 ? (editingBackground ? 1 : 8) : colorIndex + 1;
+    
+    let colorDisplay;
+    if (editingBackground) {
+        if (currentColor === 'none') {
+            colorDisplay = chalk.gray('(no background)');
+        } else {
+            const bgColorName = currentColor.replace(/^bg/, '').toLowerCase();
+            const bgFunc = (chalk as any)[currentColor];
+            colorDisplay = bgFunc ? bgFunc(` ${bgColorName} `) : chalk.white(currentColor);
+        }
+    } else {
+        colorDisplay = (chalk as any)[currentColor] ? (chalk as any)[currentColor](currentColor) : chalk.white(currentColor);
+    }
 
     return (
         <Box flexDirection='column'>
-            <Text bold>Configure Colors</Text>
-            <Text dimColor>↑↓ to select item, Enter to cycle color, ESC to go back</Text>
+            <Text bold>Configure Colors {editingBackground && chalk.yellow('[Background Mode]')}</Text>
+            <Text dimColor>↑↓ to select, Enter to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle bg/fg, (b)old, (r)eset, ESC to go back</Text>
             {selectedItem && (
                 <Box marginTop={1}>
-                    <Text>Current color ({colorNumber}/{colors.length}): {colorDisplay}</Text>
+                    <Text>
+                        Current {editingBackground ? 'background' : 'foreground'} ({colorNumber}/{colorList.length}): {colorDisplay}
+                        {selectedItem.bold && chalk.bold(' [BOLD]')}
+                    </Text>
                 </Box>
             )}
             <Box marginTop={1}>
@@ -1025,7 +1216,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                     items={menuItems}
                     onSelect={handleSelect}
                     onHighlight={handleHighlight}
-                    initialIndex={selectedIndex}
+                    initialIndex={0}
                 />
             </Box>
         </Box>
@@ -1183,13 +1374,199 @@ const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack })
     );
 };
 
+interface GlobalOptionsMenuProps {
+    settings: Settings;
+    onUpdate: (settings: Settings) => void;
+    onBack: () => void;
+}
+
+const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdate, onBack }) => {
+    const [editingPadding, setEditingPadding] = useState(false);
+    const [editingSeparator, setEditingSeparator] = useState(false);
+    const [paddingInput, setPaddingInput] = useState(settings.defaultPadding || '');
+    const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator || '');
+    const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors || false);
+    const [globalBold, setGlobalBold] = useState(settings.globalBold || false);
+    
+    // Background color override
+    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 
+        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright', 
+        'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
+    const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor || 'none');
+
+    useInput((input, key) => {
+        if (editingPadding) {
+            if (key.return) {
+                const updatedSettings = {
+                    ...settings,
+                    defaultPadding: paddingInput
+                };
+                onUpdate(updatedSettings);
+                setEditingPadding(false);
+            } else if (key.escape) {
+                setPaddingInput(settings.defaultPadding || '');
+                setEditingPadding(false);
+            } else if (key.backspace || key.delete) {
+                setPaddingInput(paddingInput.slice(0, -1));
+            } else if (input) {
+                setPaddingInput(paddingInput + input);
+            }
+        } else if (editingSeparator) {
+            if (key.return) {
+                const updatedSettings = {
+                    ...settings,
+                    defaultSeparator: separatorInput
+                };
+                onUpdate(updatedSettings);
+                setEditingSeparator(false);
+            } else if (key.escape) {
+                setSeparatorInput(settings.defaultSeparator || '');
+                setEditingSeparator(false);
+            } else if (key.backspace || key.delete) {
+                setSeparatorInput(separatorInput.slice(0, -1));
+            } else if (input) {
+                setSeparatorInput(separatorInput + input);
+            }
+        } else {
+            if (key.escape) {
+                onBack();
+            } else if (input === 'p' || input === 'P') {
+                setEditingPadding(true);
+            } else if (input === 's' || input === 'S') {
+                setEditingSeparator(true);
+            } else if (input === 'i' || input === 'I') {
+                const newInheritColors = !inheritColors;
+                setInheritColors(newInheritColors);
+                const updatedSettings = {
+                    ...settings,
+                    inheritSeparatorColors: newInheritColors
+                };
+                onUpdate(updatedSettings);
+            } else if (input === 'b' || input === 'B') {
+                // Cycle through background colors
+                const nextIndex = (currentBgIndex + 1) % bgColors.length;
+                const nextBgColor = bgColors[nextIndex];
+                const updatedSettings = {
+                    ...settings,
+                    overrideBackgroundColor: nextBgColor === 'none' ? undefined : nextBgColor
+                };
+                onUpdate(updatedSettings);
+            } else if (input === 'c' || input === 'C') {
+                // Clear override background color
+                const updatedSettings = {
+                    ...settings,
+                    overrideBackgroundColor: undefined
+                };
+                onUpdate(updatedSettings);
+            } else if (input === 'o' || input === 'O') {
+                // Toggle global bold
+                const newGlobalBold = !globalBold;
+                setGlobalBold(newGlobalBold);
+                const updatedSettings = {
+                    ...settings,
+                    globalBold: newGlobalBold
+                };
+                onUpdate(updatedSettings);
+            }
+        }
+    });
+
+    return (
+        <Box flexDirection='column'>
+            <Text bold>Global Options</Text>
+            <Text dimColor>Configure automatic padding and separators between items</Text>
+            <Box marginTop={1} />
+            
+            {editingPadding ? (
+                <Box flexDirection="column">
+                    <Box>
+                        <Text>Enter default padding (applied to left and right of each item): </Text>
+                        <Text color="cyan">{paddingInput ? `"${paddingInput}"` : '(empty)'}</Text>
+                    </Box>
+                    <Text dimColor>Press Enter to save, ESC to cancel</Text>
+                </Box>
+            ) : editingSeparator ? (
+                <Box flexDirection="column">
+                    <Box>
+                        <Text>Enter default separator (placed between items): </Text>
+                        <Text color="cyan">{separatorInput ? `"${separatorInput}"` : '(empty - no separator will be added)'}</Text>
+                    </Box>
+                    <Text dimColor>Press Enter to save, ESC to cancel</Text>
+                </Box>
+            ) : (
+                <>
+                    <Box marginTop={1}>
+                        <Text>  Default Padding: </Text>
+                        <Text color="cyan">{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
+                        <Text dimColor> - Press (p) to edit</Text>
+                    </Box>
+                    
+                    <Box marginTop={1}>
+                        <Text>Default Separator: </Text>
+                        <Text color="cyan">{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
+                        <Text dimColor> - Press (s) to edit</Text>
+                    </Box>
+                    
+                    <Box marginTop={1}>
+                        <Text>   Inherit Colors: </Text>
+                        <Text color={inheritColors ? "green" : "red"}>{inheritColors ? '✓ Enabled' : '✗ Disabled'}</Text>
+                        <Text dimColor> - Press (i) to toggle</Text>
+                    </Box>
+                    
+                    <Box marginTop={1}>
+                        <Text>      Global Bold: </Text>
+                        <Text color={globalBold ? "green" : "red"}>{globalBold ? '✓ Enabled' : '✗ Disabled'}</Text>
+                        <Text dimColor> - Press (o) to toggle</Text>
+                    </Box>
+                    
+                    <Box marginTop={1}>
+                        <Text>Override BG Color: </Text>
+                        {(() => {
+                            const bgColor = settings.overrideBackgroundColor || 'none';
+                            if (bgColor === 'none') {
+                                return <Text color="gray">(none)</Text>;
+                            } else {
+                                const bgColorName = bgColor.replace(/^bg/, '').toLowerCase();
+                                const bgFunc = (chalk as any)[bgColor];
+                                const display = bgFunc ? bgFunc(` ${bgColorName} `) : bgColorName;
+                                return <Text>{display}</Text>;
+                            }
+                        })()}
+                        <Text dimColor> - (b) cycle, (c) clear</Text>
+                    </Box>
+                    
+                    <Box marginTop={2}>
+                        <Text dimColor>Press ESC to go back</Text>
+                    </Box>
+                    
+                    <Box marginTop={1} flexDirection='column'>
+                        <Text dimColor wrap='wrap'>
+                            Note: These settings are applied during rendering and don't add items to your widget list.
+                        </Text>
+                        <Text dimColor wrap='wrap'>
+                            • Inherit colors: Default separators will use colors from the preceding widget
+                        </Text>
+                        <Text dimColor wrap='wrap'>
+                            • Global Bold: Makes all text bold regardless of individual settings
+                        </Text>
+                        <Text dimColor wrap='wrap'>
+                            • Override BG: All items will use this background color instead of their configured colors
+                        </Text>
+                    </Box>
+                </>
+            )}
+        </Box>
+    );
+};
+
 const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'flex' | 'confirm'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'flex' | 'globalOptions' | 'confirm'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
+    const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -1286,6 +1663,9 @@ const App: React.FC = () => {
             case 'flex':
                 setScreen('flex');
                 break;
+            case 'globalOptions':
+                setScreen('globalOptions');
+                break;
             case 'install':
                 await handleInstallUninstall();
                 break;
@@ -1324,19 +1704,52 @@ const App: React.FC = () => {
             <StatusLinePreview lines={settings.lines || [[]]} terminalWidth={terminalWidth} settings={settings} />
 
             <Box marginTop={2}>
-                {screen === 'main' && <MainMenu onSelect={handleMainMenuSelect} isClaudeInstalled={isClaudeInstalled} hasChanges={hasChanges} />}
+                {screen === 'main' && (
+                    <MainMenu 
+                        onSelect={(value) => {
+                            // Only persist menu selection if not exiting
+                            if (value !== 'save' && value !== 'exit') {
+                                const menuMap: Record<string, number> = {
+                                    'lines': 0,
+                                    'colors': 1,
+                                    'flex': 2,
+                                    'globalOptions': 3,
+                                    'install': 4
+                                };
+                                setMenuSelections({ ...menuSelections, main: menuMap[value] || 0 });
+                            }
+                            handleMainMenuSelect(value);
+                        }}
+                        isClaudeInstalled={isClaudeInstalled} 
+                        hasChanges={hasChanges}
+                        initialSelection={menuSelections.main || 0}
+                    />
+                )}
                 {screen === 'lines' && (
                     <LineSelector
                         lines={settings.lines || [[]]}
-                        onSelect={handleLineSelect}
-                        onBack={() => setScreen('main')}
+                        onSelect={(line) => {
+                            setMenuSelections({ ...menuSelections, lines: line });
+                            handleLineSelect(line);
+                        }}
+                        onBack={() => {
+                            // Save that we came from 'lines' menu (index 0)
+                            // Clear the line selection so it resets next time we enter
+                            setMenuSelections({ ...menuSelections, main: 0, lines: undefined });
+                            setScreen('main');
+                        }}
+                        initialSelection={menuSelections.lines || 0}
                     />
                 )}
                 {screen === 'items' && settings.lines && (
                     <ItemsEditor
                         items={settings.lines[selectedLine] || []}
                         onUpdate={(items) => updateLine(selectedLine, items)}
-                        onBack={() => setScreen('lines')}
+                        onBack={() => {
+                            // When going back to lines menu, preserve which line was selected
+                            setMenuSelections({ ...menuSelections, lines: selectedLine });
+                            setScreen('lines');
+                        }}
                         lineNumber={selectedLine + 1}
                     />
                 )}
@@ -1361,7 +1774,11 @@ const App: React.FC = () => {
                             }
                             setSettings({ ...settings, lines: newLines });
                         }}
-                        onBack={() => setScreen('main')}
+                        onBack={() => {
+                            // Save that we came from 'colors' menu (index 1)
+                            setMenuSelections({ ...menuSelections, main: 1 });
+                            setScreen('main');
+                        }}
                     />
                 )}
                 {screen === 'flex' && (
@@ -1370,7 +1787,24 @@ const App: React.FC = () => {
                         onUpdate={(updatedSettings) => {
                             setSettings(updatedSettings);
                         }}
-                        onBack={() => setScreen('main')}
+                        onBack={() => {
+                            // Save that we came from 'flex' menu (index 2)
+                            setMenuSelections({ ...menuSelections, main: 2 });
+                            setScreen('main');
+                        }}
+                    />
+                )}
+                {screen === 'globalOptions' && (
+                    <GlobalOptionsMenu
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
+                        }}
+                        onBack={() => {
+                            // Save that we came from 'globalOptions' menu (index 3)
+                            setMenuSelections({ ...menuSelections, main: 3 });
+                            setScreen('main');
+                        }}
                     />
                 )}
                 {screen === 'confirm' && confirmDialog && (

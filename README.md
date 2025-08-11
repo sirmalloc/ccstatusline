@@ -4,12 +4,20 @@
 
 ![Demo](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/demo.gif)
 
+## 🆕 Recent Updates
+
+### v1.1.0 - Enhanced Customization
+- **🎨 Background Colors** - Set background colors for individual status items in Color Configuration menu
+- **🔤 Bold Text Styling** - Toggle bold formatting for individual items in Color Configuration menu
+- **⚙️ Global Options Menu** - New menu for global formatting preferences including padding, separators, color inheritance, and overrides
+
 ## ✨ Features
 
 - **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **📐 Multi-line Support** - Configure up to 3 independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
+- **⚙️ Global Options** - Apply consistent formatting across all items (padding, separators, bold, background)
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
 - **⚡ Zero Config** - Sensible defaults that work out of the box
@@ -76,6 +84,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **d** - Delete selected item
 - **c** - Clear entire line
 - **r** - Toggle raw value mode (no labels)
+- **b** - Toggle bold text for this item
 - **e** - Edit value (for custom-text and custom-command items)
 - **w** - Set max width (for custom-command items)
 - **t** - Set timeout in milliseconds (for custom-command items)
@@ -93,6 +102,29 @@ Configure how flex separators calculate available width:
 - **Full width always** - Uses full terminal width (may wrap with auto-compact message)
 - **Full width minus 40** - Leaves space for auto-compact message (default)
 - **Full width until compact** - Switches based on context percentage threshold
+
+### ⚙️ Global Options
+
+Configure global formatting preferences that apply to all status items:
+
+![Global Options](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/global.png)
+
+#### Default Padding & Separators
+- **Default Padding** - Add consistent padding to the left and right of each item
+- **Default Separator** - Automatically insert a separator between all items
+  - Press **(p)** to edit padding
+  - Press **(s)** to edit separator
+
+#### Global Formatting
+- **Inherit Colors** - Default separators inherit foreground and background colors from the preceding widget
+  - Press **(i)** to toggle
+- **Global Bold** - Apply bold formatting to all text regardless of individual item settings
+  - Press **(o)** to toggle
+- **Override Background Color** - Force all items to use the same background color
+  - Press **(b)** to cycle through colors
+  - Press **(c)** to clear override
+
+> 💡 **Note:** These settings are applied during rendering and don't add items to your widget list. They provide a consistent look across your entire status line without modifying individual item configurations.
 
 ### 🔤 Raw Value Mode
 
