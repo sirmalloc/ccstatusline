@@ -130,11 +130,11 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Enter** - Cycle through colors
 - **ESC** - Go back
 
-#### Flex Options
-Configure how flex separators calculate available width:
-- **Full width always** - Uses full terminal width (may wrap with auto-compact message)
-- **Full width minus 40** - Leaves space for auto-compact message (default)
-- **Full width until compact** - Switches based on context percentage threshold
+#### Terminal Width Options
+These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators:
+- **Full width always** - Uses full terminal width (may wrap if auto-compact message appears or IDE integration adds text)
+- **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping (default)
+- **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
 
 ---
 
