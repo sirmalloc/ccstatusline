@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
+import Gradient from 'ink-gradient';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import { execSync } from 'child_process';
@@ -101,7 +102,7 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWi
 
     return (
         <Box flexDirection='column'>
-            <Box borderStyle="round" borderColor="gray" width="100%" paddingLeft={1}>
+            <Box borderStyle="round" borderColor="gray" borderDimColor width="100%" paddingLeft={1}>
                 <Text>&gt;</Text>
             </Box>
             {renderedLines.map((line, index) => (
@@ -1462,7 +1463,12 @@ const App: React.FC = () => {
     return (
         <Box flexDirection='column' padding={1}>
             <Box marginBottom={1}>
-                <Text bold color='cyan'>CCStatusline Configuration {getPackageVersion() && `v${getPackageVersion()}`}</Text>
+                <Text bold>
+                    <Gradient name="retro">
+                        CCStatusline Configuration
+                    </Gradient>
+                </Text>
+                <Text bold> | {getPackageVersion() && `v${getPackageVersion()}`}</Text>
             </Box>
 
             <Box marginBottom={1}>

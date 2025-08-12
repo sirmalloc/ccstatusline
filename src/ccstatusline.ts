@@ -79,7 +79,9 @@ async function renderMultipleLines(data: StatusJSON) {
         if (lineItems && lineItems.length > 0) {
             const line = renderStatusLine(lineItems, settings, context);
             // Replace all spaces with non-breaking spaces to prevent VSCode trimming
-            const outputLine = line.replace(/ /g, '\u00A0');
+            let outputLine = line.replace(/ /g, '\u00A0');
+            // Add reset code at the beginning to override Claude Code's dim setting
+            outputLine = '\x1b[0m' + outputLine;
             console.log(outputLine);
         }
     }
