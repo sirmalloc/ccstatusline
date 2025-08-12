@@ -3,10 +3,16 @@ import { render, Box, Text, useInput, useApp } from 'ink';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import { execSync } from 'child_process';
-import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType, type FlexMode } from './config';
-import { isInstalled, installStatusLine, uninstallStatusLine, getExistingStatusLine } from './claude-settings';
+import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType, type FlexMode } from './utils/config';
+import { isInstalled, installStatusLine, uninstallStatusLine, getExistingStatusLine } from './utils/claude-settings';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+    renderStatusLine as renderLine,
+    getItemDefaultColor,
+    applyColors,
+    type RenderContext
+} from './utils/renderer';
 
 // Get package version
 function getPackageVersion(): string {
@@ -20,27 +26,8 @@ function getPackageVersion(): string {
 }
 
 // Get default color for each item type (matching ccstatusline.ts defaults)
-function getDefaultColor(type: string): string {
-    switch (type) {
-        case 'model': return 'cyan';
-        case 'git-branch': return 'magenta';
-        case 'git-changes': return 'yellow';
-        case 'session-clock': return 'yellow';
-        case 'version': return 'green';
-        case 'tokens-input': return 'blue';
-        case 'tokens-output': return 'white';
-        case 'tokens-cached': return 'cyan';
-        case 'tokens-total': return 'cyan';
-        case 'context-length': return 'gray';
-        case 'context-percentage': return 'blue';
-        case 'context-percentage-usable': return 'green';
-        case 'terminal-width': return 'gray';
-        case 'custom-text': return 'white';
-        case 'custom-command': return 'white';
-        case 'separator': return 'gray';
-        default: return 'white';
-    }
-}
+// Re-export from shared renderer module
+const getDefaultColor = getItemDefaultColor;
 
 // Check if terminal width detection is available
 function canDetectTerminalWidth(): boolean {
@@ -92,337 +79,31 @@ interface StatusLinePreviewProps {
     settings?: Settings;
 }
 
-// Helper function to apply foreground, background colors and bold
-const applyColors = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
-    let result = text;
-    
-    // Ignore 'dim' color - it causes issues with terminal rendering
-    if (foregroundColor && foregroundColor !== 'dim') {
-        const fgFunc = (chalk as any)[foregroundColor];
-        if (fgFunc) {
-            result = fgFunc(result);
-        }
-    }
-    
-    if (backgroundColor && backgroundColor !== 'none') {
-        const bgFunc = (chalk as any)[backgroundColor];
-        if (bgFunc) {
-            result = bgFunc(result);
-        }
-    }
-    
-    if (bold) {
-        result = chalk.bold(result);
-    }
-    
-    return result;
-};
-
 const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
-    // Helper to apply colors with optional background and foreground override
-    const applyItemColors = (text: string, item: StatusItem, defaultColor?: string): string => {
-        // Override foreground color takes precedence over EVERYTHING
-        let fgColor = item.color || defaultColor;
-        if (settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
-            fgColor = settings.overrideForegroundColor;
-        }
-        
-        // Override background color takes precedence over EVERYTHING
-        let bgColor = item.backgroundColor;
-        if (settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') {
-            bgColor = settings.overrideBackgroundColor;
-        }
-        
-        const shouldBold = settings?.globalBold || item.bold;
-        return applyColors(text, fgColor, bgColor, shouldBold);
+    // Create render context for preview
+    const context: RenderContext = {
+        terminalWidth,
+        isPreview: true
     };
-    // Calculate effective width based on flex mode settings
-    let effectiveWidth: number | null = null;
-    if (widthDetectionAvailable && terminalWidth) {
-        const flexMode = settings?.flexMode || 'full-minus-40';
 
-        if (flexMode === 'full') {
-            effectiveWidth = terminalWidth - 2; // Subtract 2 for terminal padding in preview
-        } else if (flexMode === 'full-minus-40') {
-            effectiveWidth = terminalWidth - 40;
-        } else if (flexMode === 'full-until-compact') {
-            // For preview, always show full width
-            effectiveWidth = terminalWidth - 2; // Subtract 2 for terminal padding in preview
-        }
-    }
-    // Always ensure we have a width for truncation
-    const width = terminalWidth; // Always use terminal width for truncation
-    const flexWidth = effectiveWidth; // Use this for flex separator calculations
-    const rawElements: { content: string; type: string; item?: StatusItem }[] = [];
-    let hasFlexSeparator = false;
-
-    items.forEach((item, index) => {
-        switch (item.type) {
-            case 'model':
-                const modelText = item.rawValue ? 'Claude' : 'Model: Claude';
-                rawElements.push({ content: applyItemColors(modelText, item, 'cyan'), type: 'model', item });
-                break;
-            case 'git-branch':
-                const branchText = '⎇ main';
-                rawElements.push({ content: applyItemColors(branchText, item, 'magenta'), type: 'git-branch', item });
-                break;
-            case 'git-changes':
-                const changesText = '(+42,-10)';
-                rawElements.push({ content: applyItemColors(changesText, item, 'yellow'), type: 'git-changes', item });
-                break;
-            case 'tokens-input':
-                const inputText = item.rawValue ? '15.2k' : 'In: 15.2k';
-                rawElements.push({ content: applyItemColors(inputText, item, 'blue'), type: 'tokens-input', item });
-                break;
-            case 'tokens-output':
-                const outputText = item.rawValue ? '3.4k' : 'Out: 3.4k';
-                rawElements.push({ content: applyItemColors(outputText, item, 'white'), type: 'tokens-output', item });
-                break;
-            case 'tokens-cached':
-                const cachedText = item.rawValue ? '12k' : 'Cached: 12k';
-                rawElements.push({ content: applyItemColors(cachedText, item, 'cyan'), type: 'tokens-cached', item });
-                break;
-            case 'tokens-total':
-                const totalText = item.rawValue ? '30.6k' : 'Total: 30.6k';
-                rawElements.push({ content: applyItemColors(totalText, item, 'cyan'), type: 'tokens-total', item });
-                break;
-            case 'context-length':
-                const ctxText = item.rawValue ? '18.6k' : 'Ctx: 18.6k';
-                rawElements.push({ content: applyItemColors(ctxText, item, 'gray'), type: 'context-length', item });
-                break;
-            case 'context-percentage':
-                const ctxPctText = item.rawValue ? '9.3%' : 'Ctx: 9.3%';
-                rawElements.push({ content: applyItemColors(ctxPctText, item, 'blue'), type: 'context-percentage', item });
-                break;
-            case 'context-percentage-usable':
-                const ctxUsableText = item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
-                rawElements.push({ content: applyItemColors(ctxUsableText, item, 'green'), type: 'context-percentage-usable', item });
-                break;
-            case 'session-clock':
-                const sessionText = item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
-                rawElements.push({ content: applyItemColors(sessionText, item, 'yellow'), type: 'session-clock', item });
-                break;
-            case 'version':
-                const versionText = item.rawValue ? '1.0.72' : 'Version: 1.0.72';
-                rawElements.push({ content: applyItemColors(versionText, item, 'green'), type: 'version', item });
-                break;
-            case 'terminal-width':
-                const detectedWidth = canDetectTerminalWidth() ? terminalWidth : '??';
-                const termText = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
-                rawElements.push({ content: applyItemColors(termText, item, 'gray'), type: 'terminal-width', item });
-                break;
-            case 'separator':
-                const sepChar = item.character || '|';
-                // Handle special separator cases
-                let sepContent;
-                if (sepChar === ',') {
-                    sepContent = `${sepChar} `;
-                } else if (sepChar === ' ') {
-                    sepContent = ' ';
-                } else {
-                    sepContent = ` ${sepChar} `;
-                }
-                rawElements.push({ content: applyItemColors(sepContent, item, 'gray'), type: 'separator', item });
-                break;
-            case 'flex-separator':
-                rawElements.push({ content: 'FLEX', type: 'flex-separator', item });
-                hasFlexSeparator = true;
-                break;
-            case 'custom-text':
-                const customText = item.customText || '';
-                rawElements.push({ content: applyItemColors(customText, item, 'white'), type: 'custom-text', item });
-                break;
-            case 'custom-command':
-                const cmdText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
-                // Only apply color if not preserving colors
-                if (!item.preserveColors) {
-                    rawElements.push({ content: applyItemColors(cmdText, item, 'white'), type: 'custom-command', item });
-                } else {
-                    // When preserving colors, just show the text without applying our colors
-                    rawElements.push({ content: cmdText, type: 'custom-command', item });
-                }
-                break;
-        }
-    });
-
-    // Apply default padding and separators
-    const elements: string[] = [];
-    const padding = settings?.defaultPadding || '';
-    const defaultSep = settings?.defaultSeparator || '';
-    
-    // Debug: Check if we have a default separator
-    // console.log('Default separator:', JSON.stringify(defaultSep), 'Length:', defaultSep.length);
-    
-    rawElements.forEach((elem, index) => {
-        // Add default separator between any two items (but not before first item)
-        if (defaultSep && index > 0) {
-            // Check if we should inherit colors from the previous element
-            if (settings?.inheritSeparatorColors && index > 0) {
-                const prevElem = rawElements[index - 1];
-                if (prevElem && prevElem.item) {
-                    // Apply the previous element's colors to the separator (with overrides)
-                    const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                        ? settings.overrideForegroundColor
-                        : (prevElem.item.color || getDefaultColor(prevElem.item.type));
-                    const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
-                        ? settings.overrideBackgroundColor
-                        : prevElem.item.backgroundColor;
-                    const shouldBold = settings?.globalBold || prevElem.item.bold;
-                    const coloredSep = applyColors(defaultSep, fgColor, bgColor, shouldBold);
-                    elements.push(coloredSep);
-                } else {
-                    elements.push(defaultSep);
-                }
-            } else if (settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none' || 
-                       settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
-                // Apply override colors even when not inheriting colors
-                const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                    ? settings.overrideForegroundColor
-                    : undefined;
-                const coloredSep = applyColors(defaultSep, fgColor, settings.overrideBackgroundColor, settings?.globalBold);
-                elements.push(coloredSep);
-            } else {
-                elements.push(defaultSep);
-            }
-        }
-        
-        // Add the element itself
-        if (elem.type === 'separator' || elem.type === 'flex-separator') {
-            elements.push(elem.content);
-        } else {
-            // Apply padding with the same colors as the item (or overrides)
-            const fgColor = settings?.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                ? settings.overrideForegroundColor
-                : undefined;
-            const bgColor = settings?.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none'
-                ? settings.overrideBackgroundColor
-                : elem.item?.backgroundColor;
-            
-            if (padding && (bgColor || fgColor)) {
-                // Apply colors to padding
-                const paddedContent = applyColors(padding, fgColor, bgColor, settings?.globalBold) + 
-                                     elem.content + 
-                                     applyColors(padding, fgColor, bgColor, settings?.globalBold);
-                elements.push(paddedContent);
-            } else {
-                // No colors or no padding
-                elements.push(padding + elem.content + padding);
-            }
-        }
-    });
-
-    // Build the status line with flex separator support
-    let statusLine = '';
-    if (hasFlexSeparator && flexWidth) {
-        const parts: string[][] = [[]];
-        let currentPart = 0;
-
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item && item.type === 'flex-separator') {
-                currentPart++;
-                parts[currentPart] = [];
-            } else {
-                const element = elements[i];
-                if (element !== 'FLEX' && parts[currentPart]) {
-                    parts[currentPart]!.push(element as string);
-                }
-            }
-        }
-
-        // Calculate total length of all non-flex content
-        const partLengths = parts.map(part => {
-            const joined = part.join('');
-            return joined.replace(/\x1b\[[0-9;]*m/g, '').length;
-        });
-        const totalContentLength = partLengths.reduce((sum, len) => sum + len, 0);
-
-        // Calculate space to distribute among flex separators
-        const flexCount = parts.length - 1; // Number of flex separators
-        const totalSpace = Math.max(0, flexWidth - totalContentLength);
-        const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
-        const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
-
-        // Build the status line with distributed spacing
-        statusLine = '';
-        for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
-            if (part) {
-                statusLine += part.join('');
-            }
-            if (i < parts.length - 1) {
-                // Add flex spacing
-                const spaces = spacePerFlex + (i < extraSpace ? 1 : 0);
-                statusLine += ' '.repeat(spaces);
-            }
-        }
-    } else {
-        // No width detection available - treat flex separators as normal separators
-        statusLine = elements.map(e => e === 'FLEX' ? chalk.gray(' | ') : e).join('');
-    }
-
-    // Truncate if the line exceeds the maximum width
-    if (width && width > 0) {
-        // Remove ANSI escape codes to get actual length
-        const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
-
-        if (plainLength > width) {
-            // Need to truncate - preserve ANSI codes while truncating
-            let truncated = '';
-            let currentLength = 0;
-            let inAnsiCode = false;
-            let ansiBuffer = '';
-            const targetLength = width - 5; // Reserve 3 chars for ellipsis + 2 for proper fit in preview
-
-            for (let i = 0; i < statusLine.length; i++) {
-                const char = statusLine[i];
-
-                if (char === '\x1b') {
-                    inAnsiCode = true;
-                    ansiBuffer = char;
-                } else if (inAnsiCode) {
-                    ansiBuffer += char;
-                    if (char === 'm') {
-                        truncated += ansiBuffer;
-                        inAnsiCode = false;
-                        ansiBuffer = '';
-                    }
-                } else {
-                    if (currentLength < targetLength) {
-                        truncated += char;
-                        currentLength++;
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            statusLine = truncated + '...';
-        }
-    }
-
-    return statusLine;
+    return renderLine(items, settings || {}, context);
 };
+
 
 const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {
     const widthDetectionAvailable = canDetectTerminalWidth();
-    // Build the Claude Code input box - account for ink's padding
-    const boxWidth = Math.min(terminalWidth - 4, process.stdout.columns - 4 || 76);
-    const topLine = chalk.gray('╭' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╮');
-    const middleLine = chalk.gray('│') + ' > ' + ' '.repeat(Math.max(0, boxWidth - 5)) + chalk.gray('│');
-    const bottomLine = chalk.gray('╰' + '─'.repeat(Math.max(0, boxWidth - 2)) + '╯');
 
-    // Render each configured line - account for 2-space prefix in display
-    const availableWidth = boxWidth - 2; // Account for 2-space indent
+    // Render each configured line
+    // Pass the full terminal width - the renderer will handle preview adjustments
     const renderedLines = lines.map(lineItems =>
-        lineItems.length > 0 ? renderSingleLine(lineItems, availableWidth, widthDetectionAvailable, settings) : ''
+        lineItems.length > 0 ? renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings) : ''
     ).filter(line => line !== ''); // Remove empty lines
 
     return (
         <Box flexDirection='column'>
-            <Text>{topLine}</Text>
-            <Text>{middleLine}</Text>
-            <Text>{bottomLine}</Text>
+            <Box borderStyle="round" borderColor="gray" width="100%" paddingLeft={1}>
+                <Text>&gt;</Text>
+            </Box>
             {renderedLines.map((line, index) => (
                 <Text key={index}>  {line}</Text>
             ))}
@@ -518,7 +199,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
     const items = [
         { label: '📝 Edit Lines', value: 'lines' },
         { label: '🎨 Configure Colors', value: 'colors' },
-        { label: '⚡ Flex Options', value: 'flex' },
+        { label: '📏 Terminal Width Options', value: 'terminalWidth' },
         { label: '🔧 Global Options', value: 'globalOptions' },
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install' },
     ];
@@ -536,9 +217,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
             <Box marginTop={1}>
-                <SelectInput 
-                    items={items} 
-                    onSelect={(item) => onSelect(item.value)} 
+                <SelectInput
+                    items={items}
+                    onSelect={(item) => onSelect(item.value)}
                     initialIndex={Math.min(initialSelection, items.length - 1)}
                 />
             </Box>
@@ -597,10 +278,14 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (key.ctrl && key.rightArrow) {
                 // Move to end
                 setTextCursorPos(textInput.length);
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 if (textCursorPos > 0) {
                     setTextInput(textInput.slice(0, textCursorPos - 1) + textInput.slice(textCursorPos));
                     setTextCursorPos(textCursorPos - 1);
+                }
+            } else if (key.delete) {
+                if (textCursorPos < textInput.length) {
+                    setTextInput(textInput.slice(0, textCursorPos) + textInput.slice(textCursorPos + 1));
                 }
             } else if (input && input.length === 1) {
                 setTextInput(textInput.slice(0, textCursorPos) + input + textInput.slice(textCursorPos));
@@ -634,10 +319,14 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
             } else if (key.ctrl && key.rightArrow) {
                 // Move to end
                 setCommandCursorPos(commandInput.length);
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 if (commandCursorPos > 0) {
                     setCommandInput(commandInput.slice(0, commandCursorPos - 1) + commandInput.slice(commandCursorPos));
                     setCommandCursorPos(commandCursorPos - 1);
+                }
+            } else if (key.delete) {
+                if (commandCursorPos < commandInput.length) {
+                    setCommandInput(commandInput.slice(0, commandCursorPos) + commandInput.slice(commandCursorPos + 1));
                 }
             } else if (input) {
                 setCommandInput(commandInput.slice(0, commandCursorPos) + input + commandInput.slice(commandCursorPos));
@@ -666,8 +355,10 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Cancel editing
                 setEditingMaxWidth(false);
                 setMaxWidthInput('');
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 setMaxWidthInput(maxWidthInput.slice(0, -1));
+            } else if (key.delete) {
+                // For simple number inputs, forward delete does nothing since there's no cursor position
             } else if (input && /\d/.test(input)) {
                 setMaxWidthInput(maxWidthInput + input);
             }
@@ -694,8 +385,10 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Cancel editing
                 setEditingTimeout(false);
                 setTimeoutInput('');
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 setTimeoutInput(timeoutInput.slice(0, -1));
+            } else if (key.delete) {
+                // For simple number inputs, forward delete does nothing since there's no cursor position
             } else if (input && /\d/.test(input)) {
                 setTimeoutInput(timeoutInput + input);
             }
@@ -864,7 +557,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
         // Get the color for this item (use custom color if set, otherwise default)
         const colorName = item.color || getDefaultColor(item.type);
         const colorFunc = (chalk as any)[colorName] || chalk.white;
-        
+
         switch (item.type) {
             case 'model':
                 return colorFunc('Model');
@@ -1012,10 +705,16 @@ interface ColorMenuProps {
 }
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
-    const colorableItems = items.filter(item =>
-        ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
-        !(item.type === 'custom-command' && item.preserveColors) // Exclude custom-command items with preserveColors
-    );
+    const [showSeparators, setShowSeparators] = useState(false);
+
+    const colorableItems = items.filter(item => {
+        // Include separators only if showSeparators is true
+        if (item.type === 'separator') {
+            return showSeparators;
+        }
+        return ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
+            !(item.type === 'custom-command' && item.preserveColors); // Exclude custom-command items with preserveColors
+    });
     const [highlightedItemId, setHighlightedItemId] = useState<string | null>(colorableItems[0]?.id || null);
     const [editingBackground, setEditingBackground] = useState(false);
 
@@ -1028,13 +727,27 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             onBack();
             return;
         }
-        
+
         // Normal keyboard handling when there are items
         if (key.escape) {
             if (editingBackground) {
                 setEditingBackground(false);
             } else {
                 onBack();
+            }
+        } else if (input === 's' || input === 'S') {
+            // Toggle show separators
+            setShowSeparators(!showSeparators);
+            // Reset highlight to first item if there are items
+            const newColorableItems = items.filter(item => {
+                if (item.type === 'separator') {
+                    return !showSeparators; // Will be toggled
+                }
+                return ['model', 'git-branch', 'git-changes', 'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable', 'session-clock', 'terminal-width', 'version', 'custom-text', 'custom-command'].includes(item.type) &&
+                    !(item.type === 'custom-command' && item.preserveColors);
+            });
+            if (newColorableItems.length > 0) {
+                setHighlightedItemId(newColorableItems[0]!.id);
             }
         } else if (input === 'f' || input === 'F') {
             if (colorableItems.length > 0) {
@@ -1099,6 +812,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             case 'session-clock': return 'Session Clock';
             case 'terminal-width': return 'Terminal Width';
             case 'version': return 'Version';
+            case 'separator': return `Separator (${item.character || '|'})`;
             case 'custom-text': return `Custom Text (${item.customText || 'Empty'})`;
             case 'custom-command': {
                 const cmd = item.commandPath ? item.commandPath.substring(0, 20) + (item.commandPath.length > 20 ? '...' : '') : 'No command';
@@ -1167,25 +881,25 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
         'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
         'magentaBright', 'cyanBright', 'whiteBright'];
-    
+
     // Background colors list (includes 'none' as first option)
     // Note: chalk doesn't support bgDim, so we exclude it from background colors
-    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 
-        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright', 
+    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta',
+        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright',
         'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
 
     // Get current color for highlighted item
-    const selectedItem = highlightedItemId && highlightedItemId !== 'back' 
-        ? colorableItems.find(item => item.id === highlightedItemId) 
+    const selectedItem = highlightedItemId && highlightedItemId !== 'back'
+        ? colorableItems.find(item => item.id === highlightedItemId)
         : null;
-    const currentColor = editingBackground 
+    const currentColor = editingBackground
         ? (selectedItem?.backgroundColor || 'none')
         : (selectedItem ? (selectedItem.color || getDefaultColor(selectedItem.type)) : 'white');
-    
+
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
     const colorNumber = colorIndex === -1 ? (editingBackground ? 1 : 8) : colorIndex + 1;
-    
+
     let colorDisplay;
     if (editingBackground) {
         if (currentColor === 'none') {
@@ -1203,6 +917,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
         <Box flexDirection='column'>
             <Text bold>Configure Colors {editingBackground && chalk.yellow('[Background Mode]')}</Text>
             <Text dimColor>↑↓ to select, Enter to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle bg/fg, (b)old, (r)eset, ESC to go back</Text>
+            <Text dimColor>(s)how separators: {showSeparators ? chalk.green('ON') : chalk.gray('OFF')}</Text>
             {selectedItem && (
                 <Box marginTop={1}>
                     <Text>
@@ -1221,21 +936,19 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             </Box>
             <Box marginTop={1} flexDirection='column'>
                 <Text color='yellow'>⚠ VSCode Users: </Text>
-                <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio"</Text>
-                <Text dimColor wrap='wrap'>(`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors.</Text>
-                <Text dimColor wrap='wrap'>You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
+                <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
             </Box>
         </Box>
     );
 };
 
-interface FlexOptionsProps {
+interface TerminalWidthOptionsProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
     onBack: () => void;
 }
 
-const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack }) => {
+const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ settings, onUpdate, onBack }) => {
     const [selectedOption, setSelectedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
     const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold || 60);
     const [editingThreshold, setEditingThreshold] = useState(false);
@@ -1267,9 +980,11 @@ const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack })
                 setThresholdInput(String(compactThreshold));
                 setEditingThreshold(false);
                 setValidationError(null);
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 setThresholdInput(thresholdInput.slice(0, -1));
                 setValidationError(null);
+            } else if (key.delete) {
+                // For simple number inputs, forward delete does nothing since there's no cursor position
             } else if (input && /\d/.test(input)) {
                 const newValue = thresholdInput + input;
                 if (newValue.length <= 2) {
@@ -1292,7 +1007,7 @@ const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack })
         },
         {
             value: 'full-minus-40' as FlexMode,
-            label: 'Full width minus 40',
+            label: 'Full width minus 40 (default)',
             description: 'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
         },
         {
@@ -1330,8 +1045,9 @@ const FlexOptions: React.FC<FlexOptionsProps> = ({ settings, onUpdate, onBack })
 
     return (
         <Box flexDirection='column'>
-            <Text bold>Flex Separator Width Options</Text>
-            <Text dimColor>Select how flex separators calculate available width</Text>
+            <Text bold>Terminal Width Options</Text>
+            <Text color="white">These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators</Text>
+            <Text dimColor wrap="wrap">These settings are necessary because claude code does not currently provide an available width variable for the statusline and features like IDE integration, auto-compaction notices, and rate limit messages can all cause the statusline to wrap if we do not truncate it</Text>
 
             {editingThreshold ? (
                 <Box marginTop={1} flexDirection='column'>
@@ -1393,13 +1109,13 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator || '');
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors || false);
     const [globalBold, setGlobalBold] = useState(settings.globalBold || false);
-    
+
     // Background color override
-    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 
-        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright', 
+    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta',
+        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright',
         'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
     const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor || 'none');
-    
+
     // Foreground color override
     const fgColors = ['none', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
         'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
@@ -1418,8 +1134,10 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
             } else if (key.escape) {
                 setPaddingInput(settings.defaultPadding || '');
                 setEditingPadding(false);
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 setPaddingInput(paddingInput.slice(0, -1));
+            } else if (key.delete) {
+                // For simple text inputs without cursor, forward delete does nothing
             } else if (input) {
                 setPaddingInput(paddingInput + input);
             }
@@ -1434,8 +1152,10 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
             } else if (key.escape) {
                 setSeparatorInput(settings.defaultSeparator || '');
                 setEditingSeparator(false);
-            } else if (key.backspace || key.delete) {
+            } else if (key.backspace) {
                 setSeparatorInput(separatorInput.slice(0, -1));
+            } else if (key.delete) {
+                // For simple text inputs without cursor, forward delete does nothing
             } else if (input) {
                 setSeparatorInput(separatorInput + input);
             }
@@ -1504,7 +1224,7 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
             <Text bold>Global Options</Text>
             <Text dimColor>Configure automatic padding and separators between items</Text>
             <Box marginTop={1} />
-            
+
             {editingPadding ? (
                 <Box flexDirection="column">
                     <Box>
@@ -1528,25 +1248,25 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                         <Text color="cyan">{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
                         <Text dimColor> - Press (p) to edit</Text>
                     </Box>
-                    
+
                     <Box>
                         <Text>Default Separator: </Text>
                         <Text color="cyan">{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
                         <Text dimColor> - Press (s) to edit</Text>
                     </Box>
-                    
+
                     <Box>
                         <Text>   Inherit Colors: </Text>
                         <Text color={inheritColors ? "green" : "red"}>{inheritColors ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (i) to toggle</Text>
                     </Box>
-                    
+
                     <Box>
                         <Text>      Global Bold: </Text>
                         <Text color={globalBold ? "green" : "red"}>{globalBold ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (o) to toggle</Text>
                     </Box>
-                    
+
                     <Box>
                         <Text>Override BG Color: </Text>
                         {(() => {
@@ -1562,7 +1282,7 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                         })()}
                         <Text dimColor> - (b) cycle, (c) clear</Text>
                     </Box>
-                    
+
                     <Box>
                         <Text>Override FG Color: </Text>
                         {(() => {
@@ -1577,11 +1297,11 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                         })()}
                         <Text dimColor> - (f) cycle, (g) clear</Text>
                     </Box>
-                    
+
                     <Box marginTop={2}>
                         <Text dimColor>Press ESC to go back</Text>
                     </Box>
-                    
+
                     <Box marginTop={1} flexDirection='column'>
                         <Text dimColor wrap='wrap'>
                             Note: These settings are applied during rendering and don't add items to your widget list.
@@ -1597,9 +1317,7 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
                         </Text>
                         <Box marginTop={1} flexDirection='column'>
                             <Text color='yellow'>⚠ VSCode Users: </Text>
-                            <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio"</Text>
-                            <Text dimColor wrap='wrap'>(`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors.</Text>
-                            <Text dimColor wrap='wrap'>You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
+                            <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
                         </Box>
                     </Box>
                 </>
@@ -1613,7 +1331,7 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'flex' | 'globalOptions' | 'confirm'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'globalOptions' | 'confirm'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
@@ -1709,8 +1427,8 @@ const App: React.FC = () => {
             case 'colors':
                 setScreen('colors');
                 break;
-            case 'flex':
-                setScreen('flex');
+            case 'terminalWidth':
+                setScreen('terminalWidth');
                 break;
             case 'globalOptions':
                 setScreen('globalOptions');
@@ -1754,14 +1472,14 @@ const App: React.FC = () => {
 
             <Box marginTop={2}>
                 {screen === 'main' && (
-                    <MainMenu 
+                    <MainMenu
                         onSelect={(value) => {
                             // Only persist menu selection if not exiting
                             if (value !== 'save' && value !== 'exit') {
                                 const menuMap: Record<string, number> = {
                                     'lines': 0,
                                     'colors': 1,
-                                    'flex': 2,
+                                    'terminalWidth': 2,
                                     'globalOptions': 3,
                                     'install': 4
                                 };
@@ -1769,7 +1487,7 @@ const App: React.FC = () => {
                             }
                             handleMainMenuSelect(value);
                         }}
-                        isClaudeInstalled={isClaudeInstalled} 
+                        isClaudeInstalled={isClaudeInstalled}
                         hasChanges={hasChanges}
                         initialSelection={menuSelections.main || 0}
                     />
@@ -1831,14 +1549,14 @@ const App: React.FC = () => {
                         }}
                     />
                 )}
-                {screen === 'flex' && (
-                    <FlexOptions
+                {screen === 'terminalWidth' && (
+                    <TerminalWidthOptions
                         settings={settings}
                         onUpdate={(updatedSettings) => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'flex' menu (index 2)
+                            // Save that we came from 'terminalWidth' menu (index 2)
                             setMenuSelections({ ...menuSelections, main: 2 });
                             setScreen('main');
                         }}
