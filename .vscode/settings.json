@@ -1,0 +1,20 @@
+{
+  // Disable trimming trailing whitespace for markdown files to preserve ASCII art
+  "[markdown]": {
+    "files.trimTrailingWhitespace": false
+  },
+  
+  // Keep trimming enabled for other file types
+  "[typescript]": {
+    "files.trimTrailingWhitespace": true
+  },
+  "[typescriptreact]": {
+    "files.trimTrailingWhitespace": true
+  },
+  "[json]": {
+    "files.trimTrailingWhitespace": true
+  },
+  "[javascript]": {
+    "files.trimTrailingWhitespace": true
+  }
+}

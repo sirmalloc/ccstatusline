@@ -1,8 +1,17 @@
 <div align="center">
 
+```
+              _        _             _ _            
+  ___ ___ ___| |_ __ _| |_ _   _ ___| (_)_ __   ___ 
+ / __/ __/ __| __/ _` | __| | | / __| | | '_ \ / _ \
+| (_| (__\__ \ || (_| | |_| |_| \__ \ | | | | |  __/
+ \___\___|___/\__\__,_|\__|\__,_|___/_|_|_| |_|\___|
+                                                     
+```
+
 # ccstatusline
 
-**🎨 A highly customizable status line formatter for Claude Code CLI**  
+**🎨 A highly customizable status line formatter for Claude Code CLI**
 *Display model info, git branch, token usage, and other metrics in your terminal*
 
 [![npm version](https://img.shields.io/npm/v/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
