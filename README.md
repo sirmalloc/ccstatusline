@@ -1,8 +1,33 @@
+<div align="center">
+
 # ccstatusline
 
-> 🎨 A highly customizable status line formatter for Claude Code CLI that displays model info, git branch, token usage, and other metrics in your terminal.
+**🎨 A highly customizable status line formatter for Claude Code CLI**  
+*Display model info, git branch, token usage, and other metrics in your terminal*
+
+[![npm version](https://img.shields.io/npm/v/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
+[![npm downloads](https://img.shields.io/npm/dm/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/sirmalloc/ccstatusline/blob/main/LICENSE)
+[![Node.js Version](https://img.shields.io/node/v/ccstatusline.svg)](https://nodejs.org)
+[![install size](https://packagephobia.com/badge?p=ccstatusline)](https://packagephobia.com/result?p=ccstatusline)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/sirmalloc/ccstatusline/graphs/commit-activity)
 
 ![Demo](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/demo.gif)
+
+</div>
+
+## 📚 Table of Contents
+
+- [Recent Updates](#-recent-updates)
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [Usage](#-usage)
+- [Development](#️-development)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Related Projects](#-related-projects)
+
+---
 
 ## 🆕 Recent Updates
 
@@ -10,6 +35,8 @@
 - **🎨 Background Colors** - Set background colors for individual status items in Color Configuration menu
 - **🔤 Bold Text Styling** - Toggle bold formatting for individual items in Color Configuration menu
 - **⚙️ Global Options Menu** - New menu for global formatting preferences including padding, separators, color inheritance, and overrides
+
+---
 
 ## ✨ Features
 
@@ -21,6 +48,8 @@
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
 - **⚡ Zero Config** - Sensible defaults that work out of the box
+
+---
 
 ## 🚀 Quick Start
 
@@ -43,6 +72,8 @@ The interactive configuration tool provides a terminal UI where you can:
 - Preview your status line in real-time
 
 > 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
+
+---
 
 ## 📖 Usage
 
@@ -67,6 +98,8 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
 - **Separator** - Visual divider between items (customizable: |, -, comma, space)
 - **Flex Separator** - Expands to fill available space
+
+---
 
 ### ⌨️ TUI Controls
 
@@ -103,6 +136,8 @@ Configure how flex separators calculate available width:
 - **Full width minus 40** - Leaves space for auto-compact message (default)
 - **Full width until compact** - Switches based on context percentage threshold
 
+---
+
 ### ⚙️ Global Options
 
 Configure global formatting preferences that apply to all status items:
@@ -115,7 +150,9 @@ Configure global formatting preferences that apply to all status items:
   - Press **(p)** to edit padding
   - Press **(s)** to edit separator
 
-#### Global Formatting
+<details>
+<summary><b>Global Formatting Options</b></summary>
+
 - **Inherit Colors** - Default separators inherit foreground and background colors from the preceding widget
   - Press **(i)** to toggle
 - **Global Bold** - Apply bold formatting to all text regardless of individual item settings
@@ -127,6 +164,8 @@ Configure global formatting preferences that apply to all status items:
   - Press **(b)** to cycle through colors
   - Press **(c)** to clear override
 
+</details>
+
 > 💡 **Note:** These settings are applied during rendering and don't add items to your widget list. They provide a consistent look across your entire status line without modifying individual item configurations.
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
@@ -137,6 +176,8 @@ Some items support "raw value" mode which displays just the value without a labe
 - Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
 - Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
+
+---
 
 ### 🔧 Custom Widgets
 
@@ -160,9 +201,11 @@ Execute shell commands and display their output dynamically:
   - `curl -s wttr.in?format="%t"` - Show current temperature
   - `npx -y ccusage statusline` - Display Claude usage metrics (set timeout: 5000ms)
 
-> ⚠️ **Note:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
+> ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
 
 > 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters! They receive the same JSON via stdin that ccstatusline receives from Claude Code, allowing you to chain or combine multiple status line tools.
+
+---
 
 ### 🔗 Integration Example: ccusage
 
@@ -175,11 +218,13 @@ Execute shell commands and display their output dynamically:
 
 ![ccusage integration](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/ccusage.png)
 
-The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
+> 📄 **How it works:** The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
 
 ### ✂️ Smart Truncation
 
 When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
+
+---
 
 ## 🛠️ Development
 
@@ -234,9 +279,13 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+---
+
 ## 📄 License
 
 [MIT](LICENSE) © Matthew Breedlove
+
+---
 
 ## 👤 Author
 
@@ -244,9 +293,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - GitHub: [@sirmalloc](https://github.com/sirmalloc)
 
+---
+
 ## 🔗 Related Projects
 
 - [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
+- [ccusage](https://github.com/samuelint/ccusage) - Track and display Claude Code usage metrics.
+
+---
 
 ## 🙏 Acknowledgments
 
@@ -256,11 +310,27 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/ccstatusline">
-    <img src="https://img.shields.io/npm/v/ccstatusline.svg" alt="npm version">
-  </a>
-  <a href="https://github.com/sirmalloc/ccstatusline/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
-  </a>
-</p>
+<div align="center">
+
+### 🌟 Show Your Support
+
+Give a ⭐ if this project helped you!
+
+[![GitHub stars](https://img.shields.io/github/stars/sirmalloc/ccstatusline?style=social)](https://github.com/sirmalloc/ccstatusline/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/sirmalloc/ccstatusline?style=social)](https://github.com/sirmalloc/ccstatusline/network/members)
+[![GitHub watchers](https://img.shields.io/github/watchers/sirmalloc/ccstatusline?style=social)](https://github.com/sirmalloc/ccstatusline/watchers)
+
+[![npm version](https://img.shields.io/npm/v/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
+[![npm downloads](https://img.shields.io/npm/dm/ccstatusline.svg)](https://www.npmjs.com/package/ccstatusline)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/sirmalloc/ccstatusline/blob/main/LICENSE)
+[![Made with Bun](https://img.shields.io/badge/Made%20with-Bun-000000.svg?logo=bun)](https://bun.sh)
+
+[![Issues](https://img.shields.io/github/issues/sirmalloc/ccstatusline)](https://github.com/sirmalloc/ccstatusline/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/sirmalloc/ccstatusline)](https://github.com/sirmalloc/ccstatusline/pulls)
+[![Contributors](https://img.shields.io/github/contributors/sirmalloc/ccstatusline)](https://github.com/sirmalloc/ccstatusline/graphs/contributors)
+
+### 💬 Connect
+
+[Report Bug](https://github.com/sirmalloc/ccstatusline/issues) · [Request Feature](https://github.com/sirmalloc/ccstatusline/issues) · [Discussions](https://github.com/sirmalloc/ccstatusline/discussions)
+
+</div>

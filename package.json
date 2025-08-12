@@ -1,6 +1,6 @@
 {
   "name": "ccstatusline",
-  "version": "1.1.7",
+  "version": "1.2.0",
   "description": "A customizable status line formatter for Claude Code CLI",
   "module": "src/ccstatusline.ts",
   "type": "module",
@@ -20,16 +20,12 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.1.9",
-    "patch-package": "^8.0.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
+    "typescript": "^5",
     "chalk": "^5.5.0",
     "ink": "^6.1.0",
     "ink-gradient": "^3.0.0",
     "ink-select-input": "^6.2.0",
+    "patch-package": "^8.0.0",
     "react": "^19.1.1"
   },
   "keywords": [
