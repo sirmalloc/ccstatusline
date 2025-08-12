@@ -1,6 +1,6 @@
 {
   "name": "ccstatusline",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "A customizable status line formatter for Claude Code CLI",
   "module": "src/ccstatusline.ts",
   "type": "module",
@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "start": "bun run patch && bun run src/ccstatusline.ts",
+    "statusline": "bun run src/ccstatusline.ts",
     "patch": "patch-package",
     "build": "bun run patch && rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
     "prepublishOnly": "bun run build"

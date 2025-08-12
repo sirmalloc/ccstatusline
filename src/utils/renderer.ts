@@ -718,9 +718,14 @@ export function renderStatusLine(
                                      elem.content +
                                      applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
                 finalElements.push(paddedContent);
+            } else if (padding) {
+                // Wrap padding in ANSI reset codes to prevent trimming
+                // This ensures leading spaces aren't trimmed by terminals
+                const protectedPadding = chalk.reset(padding);
+                finalElements.push(protectedPadding + elem.content + protectedPadding);
             } else {
-                // No colors or no padding
-                finalElements.push(padding + elem.content + padding);
+                // No padding
+                finalElements.push(elem.content);
             }
         }
     });
