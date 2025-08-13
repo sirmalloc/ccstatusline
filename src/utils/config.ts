@@ -48,6 +48,7 @@ export interface Settings {
     overrideForegroundColor?: string; // Override foreground color for all items (e.g., 'red', 'cyan', etc.)
     globalBold?: boolean; // Apply bold formatting to all items
     powerline?: PowerlineConfig; // Powerline mode configuration
+    colorLevel?: 0 | 1 | 2 | 3; // Chalk color level: 0=none, 1=basic, 2=256, 3=truecolor (default)
 }
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');

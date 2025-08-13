@@ -546,7 +546,7 @@ function renderPowerlineStatusLine(
     // Add start cap if specified
     if (startCap && widgets.length > 0) {
         const firstWidget = widgets[0];
-        if (firstWidget.bgColor) {
+        if (firstWidget && firstWidget.bgColor) {
             // Start cap uses first widget's background as foreground
             const capFg = bgToFg(firstWidget.bgColor);
             const capColored = applyColors(startCap, capFg, undefined, false);
@@ -560,6 +560,8 @@ function renderPowerlineStatusLine(
     for (let i = 0; i < widgets.length; i++) {
         const widget = widgets[i];
         const nextWidget = widgets[i + 1];
+        
+        if (!widget) continue;
 
         // Apply colors to widget content
         let widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, widget.item.bold);
@@ -582,16 +584,16 @@ function renderPowerlineStatusLine(
 
             if (isLeftFacing) {
                 // Left-facing separator - reversed logic
-                if (widget.bgColor && nextWidget.bgColor) {
+                if (widget && widget.bgColor && nextWidget.bgColor) {
                     // Both have backgrounds
                     const separatorFg = bgToFg(nextWidget.bgColor);
                     const separatorColored = applyColors(separator, separatorFg, widget.bgColor, false);
                     result += separatorColored;
-                } else if (widget.bgColor && !nextWidget.bgColor) {
+                } else if (widget && widget.bgColor && !nextWidget.bgColor) {
                     // Only previous widget has background
                     const separatorColored = applyColors(separator, undefined, widget.bgColor, false);
                     result += separatorColored;
-                } else if (!widget.bgColor && nextWidget.bgColor) {
+                } else if (widget && !widget.bgColor && nextWidget.bgColor) {
                     // Only next widget has background
                     const separatorFg = bgToFg(nextWidget.bgColor);
                     const separatorColored = applyColors(separator, separatorFg, undefined, false);
@@ -602,17 +604,17 @@ function renderPowerlineStatusLine(
                 }
             } else {
                 // Right-facing separator - standard logic
-                if (widget.bgColor && nextWidget.bgColor) {
+                if (widget && widget.bgColor && nextWidget.bgColor) {
                     // Both have backgrounds
                     const separatorFg = bgToFg(widget.bgColor);
                     const separatorColored = applyColors(separator, separatorFg, nextWidget.bgColor, false);
                     result += separatorColored;
-                } else if (widget.bgColor && !nextWidget.bgColor) {
+                } else if (widget && widget.bgColor && !nextWidget.bgColor) {
                     // Only previous widget has background
                     const separatorFg = bgToFg(widget.bgColor);
                     const separatorColored = applyColors(separator, separatorFg, undefined, false);
                     result += separatorColored;
-                } else if (!widget.bgColor && nextWidget.bgColor) {
+                } else if (widget && !widget.bgColor && nextWidget.bgColor) {
                     // Only next widget has background
                     const separatorFg = bgToFg(nextWidget.bgColor);
                     const separatorColored = applyColors(separator, separatorFg, undefined, false);
@@ -628,7 +630,7 @@ function renderPowerlineStatusLine(
     // Add end cap if specified
     if (endCap && widgets.length > 0) {
         const lastWidget = widgets[widgets.length - 1];
-        if (lastWidget.bgColor) {
+        if (lastWidget && lastWidget.bgColor) {
             // Reset colors before applying end cap colors to avoid inheritance issues
             result += '\x1b[0m';
             // End cap uses last widget's background as foreground (converted from bg to fg)
@@ -685,20 +687,16 @@ export function renderStatusLine(
     context: RenderContext
 ): string {
     // Force 24-bit color for non-preview statusline rendering
-    // This will be made configurable later
-    const originalChalkLevel = chalk.level;
-    if (!context.isPreview) {
-        chalk.level = 3;
-    }
+    // Chalk level is now set globally in ccstatusline.ts and tui.tsx
+    // No need to override here
     
-    try {
-        // Check if powerline mode is enabled
-        const isPowerlineMode = settings.powerline?.enabled || false;
+    // Check if powerline mode is enabled
+    const isPowerlineMode = settings.powerline?.enabled || false;
 
-        // If powerline mode is enabled, use powerline renderer
-        if (isPowerlineMode) {
-            return renderPowerlineStatusLine(items, settings, context);
-        }
+    // If powerline mode is enabled, use powerline renderer
+    if (isPowerlineMode) {
+        return renderPowerlineStatusLine(items, settings, context);
+    }
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground color
@@ -1178,10 +1176,4 @@ export function renderStatusLine(
     }
 
         return statusLine;
-    } finally {
-        // Restore original chalk level
-        if (!context.isPreview) {
-            chalk.level = originalChalkLevel;
-        }
-    }
 }

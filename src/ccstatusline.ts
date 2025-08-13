@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import chalk from 'chalk';
 import { runTUI } from './tui.tsx';
 import { loadSettings } from './utils/config';
 import {
@@ -40,6 +41,9 @@ async function readStdin(): Promise<string | null> {
 
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
+    
+    // Set global chalk level based on settings
+    chalk.level = settings.colorLevel ?? 3;
 
     // Get all lines to render (support both old items format and new lines format)
     let lines = settings.lines || (settings.items ? [settings.items] : [[]]);

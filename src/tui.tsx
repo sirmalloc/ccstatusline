@@ -212,7 +212,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
         { label: '🎨 Configure Colors', value: 'colors', selectable: true },
         { label: '🔤 Powerline Configuration', value: 'powerline', selectable: true },
         { label: '', value: '_gap1', selectable: false },  // Visual gap
-        { label: '📏 Terminal Width Options', value: 'terminalWidth', selectable: true },
+        { label: '📏 Terminal Configuration', value: 'terminalConfig', selectable: true },
         { 
             label: isPowerlineEnabled 
                 ? '🔧 Global Overrides (disabled while using Powerline)' 
@@ -1106,6 +1106,104 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     );
 };
 
+interface TerminalConfigMenuProps {
+    settings: Settings;
+    onUpdate: (settings: Settings) => void;
+    onBack: (target?: string) => void;
+}
+
+const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpdate, onBack }) => {
+    const [selectedIndex, setSelectedIndex] = useState(0);
+
+    const menuItems = [
+        { label: '📏 Terminal Width Options', value: 'width', selectable: true },
+        { label: `🎨 Color Level: ${getColorLevelLabel(settings.colorLevel)}`, value: 'color', selectable: true },
+        { label: '', value: '_gap', selectable: false },
+        { label: '← Back', value: 'back', selectable: true },
+    ];
+
+    // Filter selectable items for navigation
+    const selectableItems = menuItems.filter(item => item.selectable);
+    const actualIndex = menuItems.findIndex(item => item === selectableItems[selectedIndex]);
+
+    useInput((input, key) => {
+        if (key.upArrow) {
+            setSelectedIndex((prev) => (prev - 1 + selectableItems.length) % selectableItems.length);
+        } else if (key.downArrow) {
+            setSelectedIndex((prev) => (prev + 1) % selectableItems.length);
+        } else if (key.return) {
+            const selectedItem = selectableItems[selectedIndex];
+            if (!selectedItem) return;
+            
+            if (selectedItem.value === 'back') {
+                onBack();
+            } else if (selectedItem.value === 'width') {
+                // Navigate to width options screen
+                onBack('width');
+            } else if (selectedItem.value === 'color') {
+                // Toggle color level
+                const currentLevel = settings.colorLevel ?? 3;
+                const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
+                
+                // Update chalk level immediately
+                chalk.level = nextLevel;
+                
+                onUpdate({
+                    ...settings,
+                    colorLevel: nextLevel
+                });
+            }
+        } else if (key.escape) {
+            onBack();
+        }
+    });
+
+    return (
+        <Box flexDirection='column'>
+            <Text bold>Terminal Configuration</Text>
+            <Text color="white">Configure terminal-specific settings for optimal display</Text>
+            <Box marginTop={1} flexDirection='column'>
+                {menuItems.map((item, index) => {
+                    const isSelected = index === actualIndex;
+                    if (!item.selectable) {
+                        return <Text key={index}>{item.label}</Text>;
+                    }
+                    return (
+                        <Text
+                            key={index}
+                            color={isSelected ? 'cyan' : 'white'}
+                            bold={isSelected}
+                        >
+                            {isSelected ? '> ' : '  '}{item.label}
+                        </Text>
+                    );
+                })}
+            </Box>
+            
+            {selectableItems[selectedIndex]?.value === 'color' && (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text dimColor>Color level affects how colors are rendered:</Text>
+                    <Text dimColor>• Truecolor: Full 24-bit RGB colors (16.7M colors)</Text>
+                    <Text dimColor>• 256 Color: Extended color palette (256 colors)</Text>
+                    <Text dimColor>• Basic: Standard 16-color terminal palette</Text>
+                    <Text dimColor>• No Color: Disables all color output</Text>
+                </Box>
+            )}
+        </Box>
+    );
+};
+
+const getColorLevelLabel = (level?: 0 | 1 | 2 | 3): string => {
+    switch (level) {
+        case 0: return 'No Color';
+        case 1: return 'Basic';
+        case 2: return '256 Color';
+        case 3:
+        case undefined: return 'Truecolor (default)';
+        default: return 'Truecolor (default)';
+    }
+};
+
 interface TerminalWidthOptionsProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
@@ -1741,7 +1839,7 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'globalOverrides' | 'confirm' | 'powerline'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
@@ -1753,6 +1851,8 @@ const App: React.FC = () => {
 
     useEffect(() => {
         loadSettings().then(loadedSettings => {
+            // Set global chalk level based on settings
+            chalk.level = loadedSettings.colorLevel ?? 3;
             // Ensure lines array exists and has 3 slots
             if (!loadedSettings.lines) {
                 loadedSettings.lines = [[]];
@@ -1849,8 +1949,8 @@ const App: React.FC = () => {
             case 'colors':
                 setScreen('colors');
                 break;
-            case 'terminalWidth':
-                setScreen('terminalWidth');
+            case 'terminalConfig':
+                setScreen('terminalConfig');
                 break;
             case 'globalOverrides':
                 setScreen('globalOverrides');
@@ -1982,6 +2082,23 @@ const App: React.FC = () => {
                         }}
                     />
                 )}
+                {screen === 'terminalConfig' && (
+                    <TerminalConfigMenu
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
+                        }}
+                        onBack={(target?: string) => {
+                            if (target === 'width') {
+                                setScreen('terminalWidth');
+                            } else {
+                                // Save that we came from 'terminalConfig' menu (index 3)
+                                setMenuSelections({ ...menuSelections, main: 3 });
+                                setScreen('main');
+                            }
+                        }}
+                    />
+                )}
                 {screen === 'terminalWidth' && (
                     <TerminalWidthOptions
                         settings={settings}
@@ -1989,9 +2106,7 @@ const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'terminalWidth' menu (index 3)
-                            setMenuSelections({ ...menuSelections, main: 3 });
-                            setScreen('main');
+                            setScreen('terminalConfig');
                         }}
                     />
                 )}
