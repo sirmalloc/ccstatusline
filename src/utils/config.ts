@@ -24,6 +24,7 @@ export interface StatusItem {
     maxWidth?: number; // For custom-command type - max width of output
     preserveColors?: boolean; // For custom-command type - preserve ANSI colors from command output
     timeout?: number; // For custom-command type - timeout in milliseconds (default: 1000)
+    merge?: boolean | 'no-padding'; // Merge with next item: true = merge with padding, 'no-padding' = merge without padding
 }
 
 export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';

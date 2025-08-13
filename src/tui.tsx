@@ -293,7 +293,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
                     }
                     const selectableIdx = selectableItems.indexOf(item);
                     const isSelected = selectableIdx === selectedIndex;
-                    const isDisabled = 'disabled' in item && item.disabled;
+                    const isDisabled = false; // None of our menu items are disabled
 
                     return (
                         <Text
@@ -634,6 +634,31 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                     newItems[selectedIndex] = { ...currentItem, preserveColors: !currentItem.preserveColors };
                     onUpdate(newItems);
                 }
+            } else if (input === 'm' && items.length > 0) {
+                // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
+                const currentItem = items[selectedIndex];
+                // Don't allow merge on the last item or on separators
+                if (currentItem && selectedIndex < items.length - 1 && 
+                    currentItem.type !== 'separator' && currentItem.type !== 'flex-separator') {
+                    const newItems = [...items];
+                    let nextMergeState: boolean | 'no-padding' | undefined;
+                    
+                    if (currentItem.merge === undefined) {
+                        nextMergeState = true;
+                    } else if (currentItem.merge === true) {
+                        nextMergeState = 'no-padding';
+                    } else {
+                        nextMergeState = undefined;
+                    }
+                    
+                    if (nextMergeState === undefined) {
+                        const { merge, ...rest } = currentItem;
+                        newItems[selectedIndex] = rest;
+                    } else {
+                        newItems[selectedIndex] = { ...currentItem, merge: nextMergeState };
+                    }
+                    onUpdate(newItems);
+                }
             } else if (key.escape) {
                 onBack();
             }
@@ -706,6 +731,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     const isCustomText = currentItem?.type === 'custom-text';
     const isCustomCommand = currentItem?.type === 'custom-command';
     const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator && !isCustomText && !isCustomCommand;
+    const canMerge = currentItem && selectedIndex < items.length - 1 && !isSeparator && !isFlexSeparator;
 
     let helpText = '↑↓ select, ←→ change type';
     if (isSeparator) {
@@ -720,6 +746,9 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
     helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
     if (canToggleRaw) {
         helpText += ', (r)aw value';
+    }
+    if (canMerge) {
+        helpText += ', (m)erge';
     }
     helpText += ', ESC back';
 
@@ -775,6 +804,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                                 {index === selectedIndex ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                 {index + 1}. {getItemDisplay(item)}
                                 {item.rawValue && <Text dimColor> (raw value)</Text>}
+                                {item.merge === true && <Text dimColor> (merged→)</Text>}
+                                {item.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
                                 {item.type === 'custom-command' && item.maxWidth && <Text dimColor> (max: {item.maxWidth})</Text>}
                                 {item.type === 'custom-command' && item.preserveColors && <Text dimColor> (preserve colors)</Text>}
                             </Text>
@@ -1222,6 +1253,14 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
                         onSelect={handleSelect}
                         onHighlight={handleHighlight}
                         initialIndex={menuItems.findIndex(item => item.value === highlightedItemId) || 0}
+                        indicatorComponent={({isSelected}) => (
+                            <Text>{isSelected ? '▶' : '  '}</Text>
+                        )}
+                        itemComponent={({isSelected, label}) => (
+                            <Text color={isSelected ? 'green' : undefined}>
+                                {' '}{label}
+                            </Text>
+                        )}
                     />
                 )}
             </Box>
@@ -1242,52 +1281,39 @@ interface TerminalConfigMenuProps {
 const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpdate, onBack }) => {
     const [showColorWarning, setShowColorWarning] = useState(false);
     const [pendingColorLevel, setPendingColorLevel] = useState<0 | 1 | 2 | 3 | null>(null);
-    const [selectedIndex, setSelectedIndex] = useState(0);
+    const [highlightedValue, setHighlightedValue] = useState<string>('width');
 
     const menuItems = [
-        { label: '📏 Terminal Width Options', value: 'width', selectable: true },
-        { label: `🎨 Color Level: ${getColorLevelLabel(settings.colorLevel)}`, value: 'color', selectable: true },
-        { label: '', value: '_gap', selectable: false },
-        { label: '← Back', value: 'back', selectable: true },
+        { label: '📏 Terminal Width Options', value: 'width' },
+        { label: `🎨 Color Level: ${getColorLevelLabel(settings.colorLevel)}`, value: 'color' },
+        { label: '← Back', value: 'back' },
     ];
 
-    // Filter selectable items for navigation
-    const selectableItems = menuItems.filter(item => item.selectable);
-    const actualIndex = menuItems.findIndex(item => item === selectableItems[selectedIndex]);
+    const handleSelect = (selected: { value: string }) => {
+        if (selected.value === 'back') {
+            onBack();
+        } else if (selected.value === 'width') {
+            // Navigate to width options screen
+            onBack('width');
+        } else if (selected.value === 'color') {
+            // Check if there are any custom colors that would be lost
+            const hasCustomColors = settings.lines?.some((line: StatusItem[]) =>
+                line.some((item: StatusItem) =>
+                    (item.color && (item.color.startsWith('ansi256:') || item.color.startsWith('hex:'))) ||
+                    (item.backgroundColor && (item.backgroundColor.startsWith('ansi256:') || item.backgroundColor.startsWith('hex:')))
+                )
+            ) || false;
 
-    useInput((input, key) => {
-        if (key.upArrow) {
-            setSelectedIndex((prev) => (prev - 1 + selectableItems.length) % selectableItems.length);
-        } else if (key.downArrow) {
-            setSelectedIndex((prev) => (prev + 1) % selectableItems.length);
-        } else if (key.return) {
-            const selectedItem = selectableItems[selectedIndex];
-            if (!selectedItem) return;
+            const currentLevel = settings.colorLevel ?? 2;
+            const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
 
-            if (selectedItem.value === 'back') {
-                onBack();
-            } else if (selectedItem.value === 'width') {
-                // Navigate to width options screen
-                onBack('width');
-            } else if (selectedItem.value === 'color') {
-                // Check if there are any custom colors that would be lost
-                const hasCustomColors = settings.lines?.some((line: StatusItem[]) =>
-                    line.some((item: StatusItem) =>
-                        (item.color && (item.color.startsWith('ansi256:') || item.color.startsWith('hex:'))) ||
-                        (item.backgroundColor && (item.backgroundColor.startsWith('ansi256:') || item.backgroundColor.startsWith('hex:')))
-                    )
-                ) || false;
-
-                const currentLevel = settings.colorLevel ?? 2;
-                const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
-
-                // Warn if switching away from mode that supports custom colors
-                if (hasCustomColors &&
-                    ((currentLevel === 2 && nextLevel !== 2) || // Switching from 256 color mode
-                     (currentLevel === 3 && nextLevel !== 3))) { // Switching from truecolor mode
-                    setShowColorWarning(true);
-                    setPendingColorLevel(nextLevel);
-                } else {
+            // Warn if switching away from mode that supports custom colors
+            if (hasCustomColors &&
+                ((currentLevel === 2 && nextLevel !== 2) || // Switching from 256 color mode
+                 (currentLevel === 3 && nextLevel !== 3))) { // Switching from truecolor mode
+                setShowColorWarning(true);
+                setPendingColorLevel(nextLevel);
+            } else {
                     // Update chalk level immediately
                     chalk.level = nextLevel;
 
@@ -1332,7 +1358,10 @@ const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpd
                     });
                 }
             }
-        } else if (key.escape) {
+    };
+
+    useInput((input, key) => {
+        if (key.escape) {
             if (showColorWarning) {
                 setShowColorWarning(false);
                 setPendingColorLevel(null);
@@ -1394,25 +1423,24 @@ const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpd
             ) : (
                 <>
                     <Text color="white">Configure terminal-specific settings for optimal display</Text>
-                    <Box marginTop={1} flexDirection='column'>
-                        {menuItems.map((item, index) => {
-                            const isSelected = index === actualIndex;
-                            if (!item.selectable) {
-                                return <Text key={index}>{item.label}</Text>;
-                            }
-                            return (
-                                <Text
-                                    key={index}
-                                    color={isSelected ? 'cyan' : 'white'}
-                                    bold={isSelected}
-                                >
-                                    {isSelected ? '> ' : '  '}{item.label}
+                    <Box marginTop={1}>
+                        <SelectInput
+                            items={menuItems}
+                            onSelect={handleSelect}
+                            onHighlight={(item) => setHighlightedValue(item.value)}
+                            initialIndex={0}
+                            indicatorComponent={({isSelected}) => (
+                                <Text>{isSelected ? '▶' : '  '}</Text>
+                            )}
+                            itemComponent={({isSelected, label}) => (
+                                <Text color={isSelected ? 'green' : undefined}>
+                                    {' '}{label}
                                 </Text>
-                            );
-                        })}
+                            )}
+                        />
                     </Box>
 
-                    {selectableItems[selectedIndex]?.value === 'color' && (
+                    {highlightedValue === 'color' && (
                         <Box marginTop={1} flexDirection='column'>
                             <Text dimColor>Color level affects how colors are rendered:</Text>
                             <Text dimColor>• Truecolor: Full 24-bit RGB colors (16.7M colors)</Text>

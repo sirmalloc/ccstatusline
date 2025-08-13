@@ -361,7 +361,8 @@ function renderPowerlineStatusLine(
     // Build widget elements (similar to regular mode but without separators)
     const widgets: { content: string, bgColor?: string, fgColor?: string, item: StatusItem }[] = [];
 
-    for (const item of filteredItems) {
+    for (let i = 0; i < filteredItems.length; i++) {
+        const item = filteredItems[i];
         let widgetText = '';
         let defaultColor = 'white';
 
@@ -542,7 +543,15 @@ function renderPowerlineStatusLine(
                 widgetText = widgetText.replace(/\x1b\[[0-9;]*m/g, '');
             }
             
-            const paddedText = `${padding}${widgetText}${padding}`;
+            // Check if padding should be omitted due to no-padding merge
+            const prevItem = i > 0 ? filteredItems[i - 1] : null;
+            const nextItem = i < filteredItems.length - 1 ? filteredItems[i + 1] : null;
+            const omitLeadingPadding = prevItem?.merge === 'no-padding';
+            const omitTrailingPadding = item.merge === 'no-padding' && nextItem;
+            
+            const leadingPadding = omitLeadingPadding ? '' : padding;
+            const trailingPadding = omitTrailingPadding ? '' : padding;
+            const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
 
             // Determine colors - apply override FG color if set
             let fgColor = item.color || defaultColor;
@@ -590,8 +599,8 @@ function renderPowerlineStatusLine(
         let widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, shouldBold, colorLevel);
         result += widgetContent;
 
-        // Add separator between widgets (not after last one)
-        if (i < widgets.length - 1 && separator && nextWidget) {
+        // Add separator between widgets (not after last one, and not if current widget is merged with next)
+        if (i < widgets.length - 1 && separator && nextWidget && !widget.item.merge) {
             // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
             const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
 
@@ -1063,7 +1072,8 @@ export function renderStatusLine(
         const prevElem = index > 0 ? elements[index - 1] : null;
         const shouldAddSeparator = defaultSep && index > 0 &&
                                    elem.type !== 'flex-separator' &&
-                                   prevElem?.type !== 'flex-separator';
+                                   prevElem?.type !== 'flex-separator' &&
+                                   !prevElem?.item?.merge; // Don't add separator if previous item is merged with this one
 
         if (shouldAddSeparator) {
             // Check if we should inherit colors from the previous element
@@ -1092,21 +1102,28 @@ export function renderStatusLine(
         if (elem.type === 'separator' || elem.type === 'flex-separator') {
             finalElements.push(elem.content);
         } else {
+            // Check if padding should be omitted due to no-padding merge
+            const nextElem = index < elements.length - 1 ? elements[index + 1] : null;
+            const omitLeadingPadding = prevElem?.item?.merge === 'no-padding';
+            const omitTrailingPadding = elem.item?.merge === 'no-padding' && nextElem;
+            
             // Apply padding with colors (using overrides if set)
             const hasColorOverride = (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') ||
                                     (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
 
             if (padding && (elem.item?.backgroundColor || hasColorOverride)) {
                 // Apply colors to padding - applyColorsWithOverride will handle the overrides
-                const paddedContent = applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor) +
-                                     elem.content +
-                                     applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
+                const leadingPadding = omitLeadingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
+                const trailingPadding = omitTrailingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
+                const paddedContent = leadingPadding + elem.content + trailingPadding;
                 finalElements.push(paddedContent);
             } else if (padding) {
                 // Wrap padding in ANSI reset codes to prevent trimming
                 // This ensures leading spaces aren't trimmed by terminals
                 const protectedPadding = chalk.reset(padding);
-                finalElements.push(protectedPadding + elem.content + protectedPadding);
+                const leadingPadding = omitLeadingPadding ? '' : protectedPadding;
+                const trailingPadding = omitTrailingPadding ? '' : protectedPadding;
+                finalElements.push(leadingPadding + elem.content + trailingPadding);
             } else {
                 // No padding
                 finalElements.push(elem.content);
