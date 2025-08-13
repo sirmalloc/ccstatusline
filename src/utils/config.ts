@@ -93,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
     ],
     flexMode: 'full-minus-40',
     compactThreshold: 60,
+    colorLevel: 2, // Default to 256 colors
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -130,6 +131,11 @@ export async function loadSettings(): Promise<Settings> {
                 loaded.lines = [[]];
             }
             loaded.lines = loaded.lines.slice(0, 3);
+        }
+
+        // Ensure colorLevel is always present (default to 2 for 256 colors)
+        if (loaded.colorLevel === undefined) {
+            loaded.colorLevel = 2;
         }
 
         return { ...DEFAULT_SETTINGS, ...loaded };
