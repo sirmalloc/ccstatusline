@@ -95,6 +95,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
+- **Current Directory** - Shows the name of current working directory (e.g., "directory")
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Version** - Shows Claude Code version
 - **Tokens Input** - Shows input tokens used

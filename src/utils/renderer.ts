@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 import { promisify } from 'util';
 import type { StatusItem } from './config';
 
@@ -101,6 +102,7 @@ export function getItemDefaultColor(type: string): string {
         case 'context-percentage': return 'blue';
         case 'context-percentage-usable': return 'green';
         case 'terminal-width': return 'gray';
+        case 'current-dir': return 'yellow';
         case 'custom-text': return 'white';
         case 'custom-command': return 'white';
         case 'separator': return 'gray';
@@ -448,6 +450,16 @@ export function renderStatusLine(
                         const changeStr = `(+${changes.insertions},-${changes.deletions})`;
                         elements.push({ content: applyColorsWithOverride(changeStr, item.color || 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
                     }
+                }
+                break;
+
+            case 'current-dir':
+                if (context.isPreview) {
+                    const dirText = 'directory';
+                    elements.push({ content: applyColorsWithOverride(dirText, item.color || 'yellow', item.backgroundColor, item.bold), type: 'current-dir', item });
+                } else if (context.data?.cwd) {
+                    const dirName = path.basename(context.data.cwd);
+                    elements.push({ content: applyColorsWithOverride(dirName, item.color || 'yellow', item.backgroundColor, item.bold), type: 'current-dir', item });
                 }
                 break;
 
