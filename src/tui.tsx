@@ -14,6 +14,7 @@ import {
     applyColors,
     type RenderContext
 } from './utils/renderer';
+import { checkPowerlineFonts, checkPowerlineFontsAsync, installPowerlineFonts, getPowerlineStatusMessage, type PowerlineFontStatus } from './utils/powerline';
 
 // Get package version
 function getPackageVersion(): string {
@@ -194,36 +195,100 @@ interface MainMenuProps {
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
+    powerlineFontStatus: PowerlineFontStatus;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0 }) => {
-    const items = [
-        { label: '📝 Edit Lines', value: 'lines' },
-        { label: '🎨 Configure Colors', value: 'colors' },
-        { label: '📏 Terminal Width Options', value: 'terminalWidth' },
-        { label: '🔧 Global Options', value: 'globalOptions' },
-        { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install' },
+const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0, powerlineFontStatus }) => {
+    const [selectedIndex, setSelectedIndex] = useState(initialSelection);
+    
+    // Build menu structure with visual gaps
+    const menuItems = [
+        { label: '📝 Edit Lines', value: 'lines', selectable: true },
+        { label: '🎨 Configure Colors', value: 'colors', selectable: true },
+        { label: '🔤 Powerline Configuration', value: 'powerline', selectable: true },
+        { label: '', value: '_gap1', selectable: false },  // Visual gap
+        { label: '📏 Terminal Width Options', value: 'terminalWidth', selectable: true },
+        { label: '🔧 Global Overrides', value: 'globalOverrides', selectable: true },
+        { label: '', value: '_gap2', selectable: false },  // Visual gap
+        { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install', selectable: true },
     ];
 
     if (hasChanges) {
-        items.push(
-            { label: '💾 Save & Exit', value: 'save' },
-            { label: '❌ Exit without saving', value: 'exit' }
+        menuItems.push(
+            { label: '💾 Save & Exit', value: 'save', selectable: true },
+            { label: '❌ Exit without saving', value: 'exit', selectable: true }
         );
     } else {
-        items.push({ label: '🚪 Exit', value: 'exit' });
+        menuItems.push({ label: '🚪 Exit', value: 'exit', selectable: true });
     }
 
+    // Get only selectable items for navigation
+    const selectableItems = menuItems.filter(item => item.selectable);
+    const selectableToFullIndex = new Map<number, number>();
+    let selectableIdx = 0;
+    menuItems.forEach((item, fullIdx) => {
+        if (item.selectable) {
+            selectableToFullIndex.set(selectableIdx++, fullIdx);
+        }
+    });
+
+    useInput((input, key) => {
+        if (key.upArrow) {
+            setSelectedIndex(Math.max(0, selectedIndex - 1));
+        } else if (key.downArrow) {
+            setSelectedIndex(Math.min(selectableItems.length - 1, selectedIndex + 1));
+        } else if (key.return) {
+            const item = selectableItems[selectedIndex];
+            if (item) {
+                onSelect(item.value);
+            }
+        }
+    });
+    
+    // Get description for selected item
+    const getDescription = (value: string): string => {
+        const descriptions: Record<string, string> = {
+            'lines': 'Configure up to 3 status lines with various widgets like model info, git status, and token usage',
+            'colors': 'Customize colors for each widget including foreground, background, and bold styling',
+            'powerline': 'Install Powerline fonts for enhanced visual separators and symbols in your status line',
+            'terminalWidth': 'Configure how the status line handles terminal width and flex separators',
+            'globalOverrides': 'Set global padding, separators, and color overrides that apply to all widgets',
+            'install': isClaudeInstalled 
+                ? 'Remove ccstatusline from your Claude Code settings' 
+                : 'Add ccstatusline to your Claude Code settings for automatic status line rendering',
+            'save': 'Save all changes and exit the configuration tool',
+            'exit': hasChanges 
+                ? 'Exit without saving your changes' 
+                : 'Exit the configuration tool'
+        };
+        return descriptions[value] || '';
+    };
+    
+    const selectedItem = selectableItems[selectedIndex];
+    const description = selectedItem ? getDescription(selectedItem.value) : '';
+    
     return (
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
-            <Box marginTop={1}>
-                <SelectInput
-                    items={items}
-                    onSelect={(item) => onSelect(item.value)}
-                    initialIndex={Math.min(initialSelection, items.length - 1)}
-                />
+            <Box marginTop={1} flexDirection='column'>
+                {menuItems.map((item, idx) => {
+                    if (!item.selectable) {
+                        return <Text key={item.value}> </Text>;
+                    }
+                    const selectableIdx = selectableItems.indexOf(item);
+                    const isSelected = selectableIdx === selectedIndex;
+                    return (
+                        <Text key={item.value} color={isSelected ? 'green' : undefined}>
+                            {isSelected ? '▶ ' : '  '}{item.label}
+                        </Text>
+                    );
+                })}
             </Box>
+            {description && (
+                <Box marginTop={1} paddingLeft={2}>
+                    <Text dimColor wrap="wrap">{description}</Text>
+                </Box>
+            )}
         </Box>
     );
 };
@@ -1097,13 +1162,13 @@ const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ settings, o
     );
 };
 
-interface GlobalOptionsMenuProps {
+interface GlobalOverridesMenuProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
     onBack: () => void;
 }
 
-const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdate, onBack }) => {
+const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onUpdate, onBack }) => {
     const [editingPadding, setEditingPadding] = useState(false);
     const [editingSeparator, setEditingSeparator] = useState(false);
     const [paddingInput, setPaddingInput] = useState(settings.defaultPadding || '');
@@ -1222,7 +1287,7 @@ const GlobalOptionsMenu: React.FC<GlobalOptionsMenuProps> = ({ settings, onUpdat
 
     return (
         <Box flexDirection='column'>
-            <Text bold>Global Options</Text>
+            <Text bold>Global Overrides</Text>
             <Text dimColor>Configure automatic padding and separators between items</Text>
             <Box marginTop={1} />
 
@@ -1332,12 +1397,15 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'globalOptions' | 'confirm'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'globalOverrides' | 'confirm' | 'powerline'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
+    const [powerlineFontStatus, setPowerlineFontStatus] = useState<PowerlineFontStatus>({ installed: false });
+    const [installingFonts, setInstallingFonts] = useState(false);
+    const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
 
     useEffect(() => {
         loadSettings().then(loadedSettings => {
@@ -1352,6 +1420,15 @@ const App: React.FC = () => {
             setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
         });
         isInstalled().then(setIsClaudeInstalled);
+        
+        // Check for Powerline fonts on startup (use sync version that doesn't call execSync)
+        const fontStatus = checkPowerlineFonts();
+        setPowerlineFontStatus(fontStatus);
+        
+        // Optionally do the async check later (but not blocking React)
+        checkPowerlineFontsAsync().then(asyncStatus => {
+            setPowerlineFontStatus(asyncStatus);
+        });
 
         const handleResize = () => {
             setTerminalWidth(process.stdout.columns || 80);
@@ -1374,6 +1451,29 @@ const App: React.FC = () => {
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
             exit();
+        }
+        
+        // Handle Powerline screen inputs
+        if (screen === 'powerline') {
+            if (fontInstallMessage) {
+                // Any key to continue after installation
+                setFontInstallMessage(null);
+                // Refresh font status
+                const newStatus = checkPowerlineFonts();
+                setPowerlineFontStatus(newStatus);
+                setScreen('main');
+            } else if (!installingFonts) {
+                if (key.escape) {
+                    setScreen('main');
+                } else if (key.return && !powerlineFontStatus.installed) {
+                    // Install fonts
+                    setInstallingFonts(true);
+                    installPowerlineFonts().then(result => {
+                        setInstallingFonts(false);
+                        setFontInstallMessage(result.message);
+                    });
+                }
+            }
         }
     });
 
@@ -1431,8 +1531,11 @@ const App: React.FC = () => {
             case 'terminalWidth':
                 setScreen('terminalWidth');
                 break;
-            case 'globalOptions':
-                setScreen('globalOptions');
+            case 'globalOverrides':
+                setScreen('globalOverrides');
+                break;
+            case 'powerline':
+                setScreen('powerline');
                 break;
             case 'install':
                 await handleInstallUninstall();
@@ -1485,9 +1588,10 @@ const App: React.FC = () => {
                                 const menuMap: Record<string, number> = {
                                     'lines': 0,
                                     'colors': 1,
-                                    'terminalWidth': 2,
-                                    'globalOptions': 3,
-                                    'install': 4
+                                    'powerline': 2,
+                                    'terminalWidth': 3,
+                                    'globalOverrides': 4,
+                                    'install': 5
                                 };
                                 setMenuSelections({ ...menuSelections, main: menuMap[value] || 0 });
                             }
@@ -1496,6 +1600,7 @@ const App: React.FC = () => {
                         isClaudeInstalled={isClaudeInstalled}
                         hasChanges={hasChanges}
                         initialSelection={menuSelections.main || 0}
+                        powerlineFontStatus={powerlineFontStatus}
                     />
                 )}
                 {screen === 'lines' && (
@@ -1562,21 +1667,21 @@ const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'terminalWidth' menu (index 2)
-                            setMenuSelections({ ...menuSelections, main: 2 });
+                            // Save that we came from 'terminalWidth' menu (index 3)
+                            setMenuSelections({ ...menuSelections, main: 3 });
                             setScreen('main');
                         }}
                     />
                 )}
-                {screen === 'globalOptions' && (
-                    <GlobalOptionsMenu
+                {screen === 'globalOverrides' && (
+                    <GlobalOverridesMenu
                         settings={settings}
                         onUpdate={(updatedSettings) => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'globalOptions' menu (index 3)
-                            setMenuSelections({ ...menuSelections, main: 3 });
+                            // Save that we came from 'globalOverrides' menu (index 4)
+                            setMenuSelections({ ...menuSelections, main: 4 });
                             setScreen('main');
                         }}
                     />
@@ -1590,6 +1695,54 @@ const App: React.FC = () => {
                             setConfirmDialog(null);
                         }}
                     />
+                )}
+                {screen === 'powerline' && (
+                    <Box flexDirection='column'>
+                        <Text bold>Powerline Font Installation</Text>
+                        <Box marginTop={1} flexDirection='column'>
+                            <Text>Current status: {getPowerlineStatusMessage(powerlineFontStatus)}</Text>
+                            {powerlineFontStatus.checkedSymbol && (
+                                <Text dimColor>Test symbol: {powerlineFontStatus.checkedSymbol} (should look like a solid triangular arrow, not a box or )</Text>
+                            )}
+                        </Box>
+                        
+                        {installingFonts ? (
+                            <Box marginTop={2}>
+                                <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
+                            </Box>
+                        ) : fontInstallMessage ? (
+                            <Box marginTop={2} flexDirection='column'>
+                                <Text color={fontInstallMessage.includes('success') ? 'green' : 'red'}>
+                                    {fontInstallMessage}
+                                </Text>
+                                <Box marginTop={1}>
+                                    <Text dimColor>Press any key to continue...</Text>
+                                </Box>
+                            </Box>
+                        ) : (
+                            <Box marginTop={2} flexDirection='column'>
+                                {!powerlineFontStatus.installed && (
+                                    <>
+                                        <Text dimColor>Powerline fonts add special symbols for better visual appearance.</Text>
+                                        <Text dimColor>Without them, some separators and icons may display as boxes or question marks.</Text>
+                                        <Box marginTop={1}>
+                                            <Text>Press Enter to install Powerline fonts, or ESC to go back.</Text>
+                                        </Box>
+                                    </>
+                                )}
+                                {powerlineFontStatus.installed && (
+                                    <>
+                                        <Text color='green'>✓ Powerline fonts are already installed!</Text>
+                                        <Text dimColor>If symbols aren't displaying correctly, make sure your terminal is using a Powerline font.</Text>
+                                        <Text dimColor>Popular choices: "Source Code Pro for Powerline", "Meslo LG S for Powerline"</Text>
+                                        <Box marginTop={1}>
+                                            <Text>Press ESC to go back.</Text>
+                                        </Box>
+                                    </>
+                                )}
+                            </Box>
+                        )}
+                    </Box>
                 )}
             </Box>
         </Box>
