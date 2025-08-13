@@ -434,6 +434,9 @@ export function renderStatusLine(
                     if (branch) {
                         const text = item.rawValue ? branch : `⎇ ${branch}`;
                         elements.push({ content: applyColorsWithOverride(text, item.color || 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
+                    } else {
+                        const text = item.rawValue ? 'no git' : '⎇ no git';
+                        elements.push({ content: applyColorsWithOverride(text, item.color || 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
                     }
                 }
                 break;
@@ -446,6 +449,9 @@ export function renderStatusLine(
                     const changes = context.gitChanges || getGitChanges();
                     if (changes !== null) {
                         const changeStr = `(+${changes.insertions},-${changes.deletions})`;
+                        elements.push({ content: applyColorsWithOverride(changeStr, item.color || 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
+                    } else {
+                        const changeStr = '(no git)';
                         elements.push({ content: applyColorsWithOverride(changeStr, item.color || 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
                     }
                 }
