@@ -12,10 +12,11 @@ import {
     renderStatusLine as renderLine,
     type RenderContext
 } from './utils/renderer';
-import { 
+import {
     getItemDefaultColor,
     applyColors,
-    getAvailableColors
+    getAvailableColorsForUI,
+    getAvailableBackgroundColorsForUI
 } from './utils/colors';
 import { checkPowerlineFonts, checkPowerlineFontsAsync, installPowerlineFonts, getPowerlineStatusMessage, type PowerlineFontStatus } from './utils/powerline';
 
@@ -96,13 +97,15 @@ const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetec
 
 
 const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {
-    const widthDetectionAvailable = canDetectTerminalWidth();
+    const widthDetectionAvailable = React.useMemo(() => canDetectTerminalWidth(), []);
 
     // Render each configured line
     // Pass the full terminal width - the renderer will handle preview adjustments
-    const renderedLines = lines.map(lineItems =>
-        lineItems.length > 0 ? renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings) : ''
-    ).filter(line => line !== ''); // Remove empty lines
+    const renderedLines = React.useMemo(() =>
+        lines.map(lineItems =>
+            lineItems.length > 0 ? renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings) : ''
+        ).filter(line => line !== ''), // Remove empty lines
+    [lines, terminalWidth, widthDetectionAvailable, settings]);
 
     return (
         <Box flexDirection='column'>
@@ -110,7 +113,7 @@ const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWi
                 <Text>&gt;</Text>
             </Box>
             {renderedLines.map((line, index) => (
-                <Text key={index}>  {line}</Text>
+                <Text key={index}>  {line}{chalk.reset('')}</Text>
             ))}
         </Box>
     );
@@ -187,6 +190,14 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
                     items={items}
                     onSelect={handleSelect}
                     initialIndex={Math.min(initialSelection, items.length - 1)}
+                    indicatorComponent={({isSelected}) => (
+                        <Text>{isSelected ? '▶' : '  '}</Text>
+                    )}
+                    itemComponent={({isSelected, label}) => (
+                        <Text color={isSelected ? 'green' : undefined}>
+                            {' '}{label}
+                        </Text>
+                    )}
                 />
             </Box>
         </Box>
@@ -205,22 +216,15 @@ interface MainMenuProps {
 const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0, powerlineFontStatus, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const isPowerlineEnabled = settings?.powerline?.enabled || false;
-    
+
     // Build menu structure with visual gaps
     const menuItems = [
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
         { label: '🎨 Configure Colors', value: 'colors', selectable: true },
         { label: '🔤 Powerline Configuration', value: 'powerline', selectable: true },
         { label: '', value: '_gap1', selectable: false },  // Visual gap
+        { label: '🔧 Global Overrides', value: 'globalOverrides', selectable: true },
         { label: '📏 Terminal Configuration', value: 'terminalConfig', selectable: true },
-        { 
-            label: isPowerlineEnabled 
-                ? '🔧 Global Overrides (disabled while using Powerline)' 
-                : '🔧 Global Overrides', 
-            value: 'globalOverrides', 
-            selectable: !isPowerlineEnabled,
-            disabled: isPowerlineEnabled
-        },
         { label: '', value: '_gap2', selectable: false },  // Visual gap
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install', selectable: true },
     ];
@@ -256,7 +260,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
             }
         }
     });
-    
+
     // Get description for selected item
     const getDescription = (value: string): string => {
         const descriptions: Record<string, string> = {
@@ -265,20 +269,20 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
             'powerline': 'Install Powerline fonts for enhanced visual separators and symbols in your status line',
             'terminalWidth': 'Configure how the status line handles terminal width and flex separators',
             'globalOverrides': 'Set global padding, separators, and color overrides that apply to all widgets',
-            'install': isClaudeInstalled 
-                ? 'Remove ccstatusline from your Claude Code settings' 
+            'install': isClaudeInstalled
+                ? 'Remove ccstatusline from your Claude Code settings'
                 : 'Add ccstatusline to your Claude Code settings for automatic status line rendering',
             'save': 'Save all changes and exit the configuration tool',
-            'exit': hasChanges 
-                ? 'Exit without saving your changes' 
+            'exit': hasChanges
+                ? 'Exit without saving your changes'
                 : 'Exit the configuration tool'
         };
         return descriptions[value] || '';
     };
-    
+
     const selectedItem = selectableItems[selectedIndex];
     const description = selectedItem ? getDescription(selectedItem.value) : '';
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Main Menu</Text>
@@ -290,10 +294,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
                     const selectableIdx = selectableItems.indexOf(item);
                     const isSelected = selectableIdx === selectedIndex;
                     const isDisabled = 'disabled' in item && item.disabled;
-                    
+
                     return (
-                        <Text 
-                            key={item.value} 
+                        <Text
+                            key={item.value}
                             color={isSelected && !isDisabled ? 'green' : undefined}
                             dimColor={isDisabled}
                         >
@@ -784,14 +788,17 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
 
 interface ColorMenuProps {
     items: StatusItem[];
+    settings: Settings;
     onUpdate: (items: StatusItem[]) => void;
     onBack: () => void;
 }
 
-const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
+const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack }) => {
     const [showSeparators, setShowSeparators] = useState(false);
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
+    const [ansi256InputMode, setAnsi256InputMode] = useState(false);
+    const [ansi256Input, setAnsi256Input] = useState('');
 
     const colorableItems = items.filter(item => {
         // Include separators only if showSeparators is true
@@ -816,17 +823,22 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
 
         // Handle hex input mode
         if (hexInputMode) {
+            // Disable arrow keys in input mode
+            if (key.upArrow || key.downArrow) {
+                return;
+            }
             if (key.escape) {
                 setHexInputMode(false);
                 setHexInput('');
             } else if (key.return) {
                 // Validate and apply the hex color
                 if (hexInput.length === 6) {
-                    const hexColor = `#${hexInput}`;
+                    const hexColor = `hex:${hexInput}`;
                     const selectedItem = colorableItems.find(item => item.id === highlightedItemId);
                     if (selectedItem) {
+                        // IMPORTANT: Update ALL items (not just colorableItems) to maintain proper indexing
                         const newItems = items.map(item => {
-                            if (item.id === selectedItem.id) {
+                            if (item.id === highlightedItemId) {
                                 if (editingBackground) {
                                     return { ...item, backgroundColor: hexColor };
                                 } else {
@@ -852,6 +864,62 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             return;
         }
 
+        // Handle ansi256 input mode
+        if (ansi256InputMode) {
+            // Disable arrow keys in input mode
+            if (key.upArrow || key.downArrow) {
+                return;
+            }
+            if (key.escape) {
+                setAnsi256InputMode(false);
+                setAnsi256Input('');
+            } else if (key.return) {
+                // Validate and apply the ansi256 color
+                const code = parseInt(ansi256Input, 10);
+                if (!isNaN(code) && code >= 0 && code <= 255) {
+                    const ansiColor = `ansi256:${code}`;
+
+                    const selectedItem = colorableItems.find(item => item.id === highlightedItemId);
+
+                    if (selectedItem) {
+                        // IMPORTANT: Update ALL items (not just colorableItems) to maintain proper indexing
+                        const newItems = items.map(item => {
+                            if (item.id === highlightedItemId) {
+                                if (editingBackground) {
+                                    return { ...item, backgroundColor: ansiColor };
+                                } else {
+                                    return { ...item, color: ansiColor };
+                                }
+                            }
+                            return item;
+                        });
+
+                        onUpdate(newItems);
+                        setAnsi256InputMode(false);
+                        setAnsi256Input('');
+                    }
+                }
+            } else if (key.backspace || key.delete) {
+                setAnsi256Input(ansi256Input.slice(0, -1));
+            } else if (input && ansi256Input.length < 3) {
+                // Only accept numeric characters (0-9)
+                if (/^[0-9]$/.test(input)) {
+                    const newInput = ansi256Input + input;
+                    const code = parseInt(newInput, 10);
+                    // Only allow if it won't exceed 255
+                    if (code <= 255) {
+                        setAnsi256Input(newInput);
+                    }
+                }
+            }
+            return;
+        }
+
+        // Ignore number keys to prevent SelectInput numerical navigation
+        if (input && /^[0-9]$/.test(input)) {
+            return;
+        }
+
         // Normal keyboard handling when there are items
         if (key.escape) {
             if (editingBackground) {
@@ -860,10 +928,16 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                 onBack();
             }
         } else if (input === 'h' || input === 'H') {
-            // Enter hex input mode
-            if (highlightedItemId && highlightedItemId !== 'back') {
+            // Enter hex input mode (only in truecolor mode)
+            if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 3) {
                 setHexInputMode(true);
                 setHexInput('');
+            }
+        } else if (input === 'a' || input === 'A') {
+            // Enter ansi256 input mode (only in 256 color mode)
+            if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 2) {
+                setAnsi256InputMode(true);
+                setAnsi256Input('');
             }
         } else if (input === 's' || input === 'S') {
             // Toggle show separators
@@ -1008,16 +1082,13 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     };
 
     // Color list for cycling
-    // Get available colors from colors.ts (same list for both fg and bg)
-    const colorOptions = getAvailableColors();
-    const colors = colorOptions.map(c => c.hex || '');
-    
-    // For background, add 'none' option at the beginning and filter out 'Default' to avoid duplicate empty strings
-    const bgColorOptions = [
-        { name: 'None', hex: '' }, 
-        ...colorOptions.filter(c => c.name !== 'Default')
-    ];
-    const bgColors = bgColorOptions.map(c => c.hex || '');
+    // Get available colors from colors.ts
+    const colorOptions = getAvailableColorsForUI();
+    const colors = colorOptions.map(c => c.value || '');
+
+    // For background, get background colors
+    const bgColorOptions = getAvailableBackgroundColorsForUI();
+    const bgColors = bgColorOptions.map(c => c.value || '');
 
     // Get current color for highlighted item
     const selectedItem = highlightedItemId && highlightedItemId !== 'back'
@@ -1036,26 +1107,54 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     if (editingBackground) {
         if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(no background)');
-        } else if (currentColor.startsWith('#')) {
-            // Custom hex color or known hex
-            const colorOption = bgColorOptions.find(c => c.hex === currentColor);
-            const displayName = colorOption ? colorOption.name : `Custom ${currentColor}`;
-            colorDisplay = chalk.bgHex(currentColor)(` ${displayName} `);
         } else {
-            // Unknown color name - treat as custom
-            colorDisplay = chalk.white(`Custom: ${currentColor}`);
+            // Determine display name based on format
+            let displayName;
+            if (currentColor.startsWith('ansi256:')) {
+                displayName = `ANSI ${currentColor.substring(8)}`;
+            } else if (currentColor.startsWith('hex:')) {
+                displayName = `#${currentColor.substring(4)}`;
+            } else {
+                const colorOption = bgColorOptions.find(c => c.value === currentColor);
+                displayName = colorOption ? colorOption.name : currentColor;
+            }
+
+            // Apply the color using our applyColors function with the current colorLevel
+            const colorLevel = settings.colorLevel ?? 2;
+            const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
+                0: 'ansi16',
+                1: 'ansi16',
+                2: 'ansi256',
+                3: 'truecolor'
+            };
+            const level = colorLevelMap[colorLevel] || 'ansi256';
+            colorDisplay = applyColors(` ${displayName} `, undefined, currentColor, false, level);
         }
     } else {
         if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(default)');
-        } else if (currentColor.startsWith('#')) {
-            // Custom hex color or known hex
-            const colorOption = colorOptions.find(c => c.hex === currentColor);
-            const displayName = colorOption ? colorOption.name : `Custom ${currentColor}`;
-            colorDisplay = chalk.hex(currentColor)(displayName);
         } else {
-            // Unknown color name - treat as custom
-            colorDisplay = chalk.white(`Custom: ${currentColor}`);
+            // Determine display name based on format
+            let displayName;
+            if (currentColor.startsWith('ansi256:')) {
+                displayName = `ANSI ${currentColor.substring(8)}`;
+            } else if (currentColor.startsWith('hex:')) {
+                displayName = `#${currentColor.substring(4)}`;
+            } else {
+                const colorOption = colorOptions.find(c => c.value === currentColor);
+                displayName = colorOption ? colorOption.name : currentColor;
+            }
+
+            // Apply the color using our applyColors function with the current colorLevel
+            const colorLevel = settings.colorLevel ?? 2;
+            const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
+                0: 'ansi16',
+                1: 'ansi16',
+                2: 'ansi256',
+                3: 'truecolor'
+            };
+            const level = colorLevelMap[colorLevel] || 'ansi256';
+            colorDisplay = applyColors(displayName, currentColor, undefined, false, level);
         }
     }
 
@@ -1072,9 +1171,21 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                     <Text> </Text>
                     <Text dimColor>Press Enter when done, ESC to cancel</Text>
                 </Box>
+            ) : ansi256InputMode ? (
+                <Box flexDirection='column'>
+                    <Text>Enter ANSI 256 color code (0-255):</Text>
+                    <Text>
+                        {ansi256Input}
+                        <Text dimColor>{ansi256Input.length === 0 ? '___' : ansi256Input.length === 1 ? '__' : ansi256Input.length === 2 ? '_' : ''}</Text>
+                    </Text>
+                    <Text> </Text>
+                    <Text dimColor>Press Enter when done, ESC to cancel</Text>
+                </Box>
             ) : (
                 <>
-                    <Text dimColor>↑↓ to select, Enter to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle bg/fg, (b)old, (h)ex, (r)eset, ESC to go back</Text>
+                    <Text dimColor>
+                        ↑↓ to select, Enter to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle bg/fg, (b)old,{settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''} (r)eset, ESC to go back
+                    </Text>
                     <Text dimColor>(s)how separators: {showSeparators ? chalk.green('ON') : chalk.gray('OFF')}</Text>
                     {selectedItem ? (
                         <Box marginTop={1}>
@@ -1091,12 +1202,28 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
                 </>
             )}
             <Box marginTop={1}>
-                <SelectInput
-                    items={menuItems}
-                    onSelect={handleSelect}
-                    onHighlight={handleHighlight}
-                    initialIndex={0}
-                />
+                {(hexInputMode || ansi256InputMode) ? (
+                    // Static list when in input mode - no keyboard interaction
+                    <Box flexDirection="column">
+                        {menuItems.map((item, index) => (
+                            <Text
+                                key={item.value}
+                                color={item.value === highlightedItemId ? 'cyan' : 'white'}
+                                bold={item.value === highlightedItemId}
+                            >
+                                {item.value === highlightedItemId ? '▶ ' : '  '}{item.label}
+                            </Text>
+                        ))}
+                    </Box>
+                ) : (
+                    // Interactive SelectInput when not in input mode
+                    <SelectInput
+                        items={menuItems}
+                        onSelect={handleSelect}
+                        onHighlight={handleHighlight}
+                        initialIndex={menuItems.findIndex(item => item.value === highlightedItemId) || 0}
+                    />
+                )}
             </Box>
             <Box marginTop={1} flexDirection='column'>
                 <Text color='yellow'>⚠ VSCode Users: </Text>
@@ -1113,6 +1240,8 @@ interface TerminalConfigMenuProps {
 }
 
 const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpdate, onBack }) => {
+    const [showColorWarning, setShowColorWarning] = useState(false);
+    const [pendingColorLevel, setPendingColorLevel] = useState<0 | 1 | 2 | 3 | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
 
     const menuItems = [
@@ -1134,60 +1263,165 @@ const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpd
         } else if (key.return) {
             const selectedItem = selectableItems[selectedIndex];
             if (!selectedItem) return;
-            
+
             if (selectedItem.value === 'back') {
                 onBack();
             } else if (selectedItem.value === 'width') {
                 // Navigate to width options screen
                 onBack('width');
             } else if (selectedItem.value === 'color') {
-                // Toggle color level
-                const currentLevel = settings.colorLevel ?? 3;
+                // Check if there are any custom colors that would be lost
+                const hasCustomColors = settings.lines?.some((line: StatusItem[]) =>
+                    line.some((item: StatusItem) =>
+                        (item.color && (item.color.startsWith('ansi256:') || item.color.startsWith('hex:'))) ||
+                        (item.backgroundColor && (item.backgroundColor.startsWith('ansi256:') || item.backgroundColor.startsWith('hex:')))
+                    )
+                ) || false;
+
+                const currentLevel = settings.colorLevel ?? 2;
                 const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
-                
-                // Update chalk level immediately
-                chalk.level = nextLevel;
-                
-                onUpdate({
-                    ...settings,
-                    colorLevel: nextLevel
-                });
+
+                // Warn if switching away from mode that supports custom colors
+                if (hasCustomColors &&
+                    ((currentLevel === 2 && nextLevel !== 2) || // Switching from 256 color mode
+                     (currentLevel === 3 && nextLevel !== 3))) { // Switching from truecolor mode
+                    setShowColorWarning(true);
+                    setPendingColorLevel(nextLevel);
+                } else {
+                    // Update chalk level immediately
+                    chalk.level = nextLevel;
+
+                    // Clean up incompatible custom colors even when no warning is shown
+                    const cleanedLines = settings.lines?.map(line =>
+                        line.map(item => {
+                            const newItem = { ...item };
+                            // Remove custom colors incompatible with the new mode
+                            if (nextLevel === 2) {
+                                // Switching to 256 color mode - remove hex colors
+                                if (item.color?.startsWith('hex:')) {
+                                    newItem.color = getItemDefaultColor(item.type);
+                                }
+                                if (item.backgroundColor?.startsWith('hex:')) {
+                                    newItem.backgroundColor = undefined;
+                                }
+                            } else if (nextLevel === 3) {
+                                // Switching to truecolor mode - remove ansi256 colors
+                                if (item.color?.startsWith('ansi256:')) {
+                                    newItem.color = getItemDefaultColor(item.type);
+                                }
+                                if (item.backgroundColor?.startsWith('ansi256:')) {
+                                    newItem.backgroundColor = undefined;
+                                }
+                            } else if (nextLevel === 0 || nextLevel === 1) {
+                                // Switching to 16 color mode - remove all custom colors
+                                if (item.color?.startsWith('ansi256:') || item.color?.startsWith('hex:')) {
+                                    newItem.color = getItemDefaultColor(item.type);
+                                }
+                                if (item.backgroundColor?.startsWith('ansi256:') || item.backgroundColor?.startsWith('hex:')) {
+                                    newItem.backgroundColor = undefined;
+                                }
+                            }
+                            return newItem;
+                        })
+                    ) || settings.lines;
+
+                    onUpdate({
+                        ...settings,
+                        lines: cleanedLines,
+                        colorLevel: nextLevel
+                    });
+                }
             }
         } else if (key.escape) {
-            onBack();
+            if (showColorWarning) {
+                setShowColorWarning(false);
+                setPendingColorLevel(null);
+            } else {
+                onBack();
+            }
+        } else if (showColorWarning) {
+            if (input === 'y' || input === 'Y') {
+                // Proceed with color level change and clean up custom colors
+                if (pendingColorLevel !== null) {
+                    chalk.level = pendingColorLevel;
+
+                    // Clean up custom colors if switching away from modes that support them
+                    const cleanedLines = settings.lines?.map(line =>
+                        line.map(item => {
+                            const newItem = { ...item };
+                            // Remove custom colors if switching to a mode that doesn't support them
+                            if ((pendingColorLevel !== 2 && pendingColorLevel !== 3) ||
+                                (pendingColorLevel === 2 && (item.color?.startsWith('hex:') || item.backgroundColor?.startsWith('hex:'))) ||
+                                (pendingColorLevel === 3 && (item.color?.startsWith('ansi256:') || item.backgroundColor?.startsWith('ansi256:')))) {
+
+                                // Reset custom colors to defaults
+                                if (item.color?.startsWith('ansi256:') || item.color?.startsWith('hex:')) {
+                                    newItem.color = getItemDefaultColor(item.type);
+                                }
+                                if (item.backgroundColor?.startsWith('ansi256:') || item.backgroundColor?.startsWith('hex:')) {
+                                    newItem.backgroundColor = undefined;
+                                }
+                            }
+                            return newItem;
+                        })
+                    ) || settings.lines;
+
+                    onUpdate({
+                        ...settings,
+                        lines: cleanedLines,
+                        colorLevel: pendingColorLevel
+                    });
+                }
+                setShowColorWarning(false);
+                setPendingColorLevel(null);
+            } else if (input === 'n' || input === 'N') {
+                // Cancel
+                setShowColorWarning(false);
+                setPendingColorLevel(null);
+            }
         }
     });
 
     return (
         <Box flexDirection='column'>
             <Text bold>Terminal Configuration</Text>
-            <Text color="white">Configure terminal-specific settings for optimal display</Text>
-            <Box marginTop={1} flexDirection='column'>
-                {menuItems.map((item, index) => {
-                    const isSelected = index === actualIndex;
-                    if (!item.selectable) {
-                        return <Text key={index}>{item.label}</Text>;
-                    }
-                    return (
-                        <Text
-                            key={index}
-                            color={isSelected ? 'cyan' : 'white'}
-                            bold={isSelected}
-                        >
-                            {isSelected ? '> ' : '  '}{item.label}
-                        </Text>
-                    );
-                })}
-            </Box>
-            
-            {selectableItems[selectedIndex]?.value === 'color' && (
-                <Box marginTop={1} flexDirection='column'>
-                    <Text dimColor>Color level affects how colors are rendered:</Text>
-                    <Text dimColor>• Truecolor: Full 24-bit RGB colors (16.7M colors)</Text>
-                    <Text dimColor>• 256 Color: Extended color palette (256 colors)</Text>
-                    <Text dimColor>• Basic: Standard 16-color terminal palette</Text>
-                    <Text dimColor>• No Color: Disables all color output</Text>
+            {showColorWarning ? (
+                <Box flexDirection='column' marginTop={1}>
+                    <Text color='yellow'>⚠️  Warning: Custom colors detected!</Text>
+                    <Text>Switching color modes will reset custom ansi256 or hex colors to defaults.</Text>
+                    <Text>Continue? (y/n)</Text>
                 </Box>
+            ) : (
+                <>
+                    <Text color="white">Configure terminal-specific settings for optimal display</Text>
+                    <Box marginTop={1} flexDirection='column'>
+                        {menuItems.map((item, index) => {
+                            const isSelected = index === actualIndex;
+                            if (!item.selectable) {
+                                return <Text key={index}>{item.label}</Text>;
+                            }
+                            return (
+                                <Text
+                                    key={index}
+                                    color={isSelected ? 'cyan' : 'white'}
+                                    bold={isSelected}
+                                >
+                                    {isSelected ? '> ' : '  '}{item.label}
+                                </Text>
+                            );
+                        })}
+                    </Box>
+
+                    {selectableItems[selectedIndex]?.value === 'color' && (
+                        <Box marginTop={1} flexDirection='column'>
+                            <Text dimColor>Color level affects how colors are rendered:</Text>
+                            <Text dimColor>• Truecolor: Full 24-bit RGB colors (16.7M colors)</Text>
+                            <Text dimColor>• 256 Color: Extended color palette (256 colors)</Text>
+                            <Text dimColor>• Basic: Standard 16-color terminal palette</Text>
+                            <Text dimColor>• No Color: Disables all color output</Text>
+                        </Box>
+                    )}
+                </>
             )}
         </Box>
     );
@@ -1197,10 +1431,10 @@ const getColorLevelLabel = (level?: 0 | 1 | 2 | 3): string => {
     switch (level) {
         case 0: return 'No Color';
         case 1: return 'Basic';
-        case 2: return '256 Color';
-        case 3:
-        case undefined: return 'Truecolor (default)';
-        default: return 'Truecolor (default)';
+        case 2:
+        case undefined: return '256 Color (default)';
+        case 3: return 'Truecolor';
+        default: return '256 Color (default)';
     }
 };
 
@@ -1338,6 +1572,14 @@ const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ settings, o
                                     handleSelect(item);
                                 }
                             }}
+                            indicatorComponent={({isSelected}) => (
+                                <Text>{isSelected ? '▶' : '  '}</Text>
+                            )}
+                            itemComponent={({isSelected, label}) => (
+                                <Text color={isSelected ? 'green' : undefined}>
+                                    {' '}{label}
+                                </Text>
+                            )}
                         />
                     </Box>
 
@@ -1371,6 +1613,7 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator || '');
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors || false);
     const [globalBold, setGlobalBold] = useState(settings.globalBold || false);
+    const isPowerlineEnabled = settings.powerline?.enabled || false;
 
     // Background color override
     const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta',
@@ -1426,9 +1669,9 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
                 onBack();
             } else if (input === 'p' || input === 'P') {
                 setEditingPadding(true);
-            } else if (input === 's' || input === 'S') {
+            } else if ((input === 's' || input === 'S') && !isPowerlineEnabled) {
                 setEditingSeparator(true);
-            } else if (input === 'i' || input === 'I') {
+            } else if ((input === 'i' || input === 'I') && !isPowerlineEnabled) {
                 const newInheritColors = !inheritColors;
                 setInheritColors(newInheritColors);
                 const updatedSettings = {
@@ -1436,7 +1679,7 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
                     inheritSeparatorColors: newInheritColors
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'b' || input === 'B') {
+            } else if ((input === 'b' || input === 'B') && !isPowerlineEnabled) {
                 // Cycle through background colors
                 const nextIndex = (currentBgIndex + 1) % bgColors.length;
                 const nextBgColor = bgColors[nextIndex];
@@ -1445,7 +1688,7 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
                     overrideBackgroundColor: nextBgColor === 'none' ? undefined : nextBgColor
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'c' || input === 'C') {
+            } else if ((input === 'c' || input === 'C') && !isPowerlineEnabled) {
                 // Clear override background color
                 const updatedSettings = {
                     ...settings,
@@ -1485,6 +1728,11 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
         <Box flexDirection='column'>
             <Text bold>Global Overrides</Text>
             <Text dimColor>Configure automatic padding and separators between items</Text>
+            {isPowerlineEnabled && (
+                <Box marginTop={1}>
+                    <Text color="yellow">⚠ Some options are disabled while Powerline mode is active</Text>
+                </Box>
+            )}
             <Box marginTop={1} />
 
             {editingPadding ? (
@@ -1506,43 +1754,15 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
             ) : (
                 <>
                     <Box>
-                        <Text>  Default Padding: </Text>
-                        <Text color="cyan">{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
-                        <Text dimColor> - Press (p) to edit</Text>
-                    </Box>
-
-                    <Box>
-                        <Text>Default Separator: </Text>
-                        <Text color="cyan">{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
-                        <Text dimColor> - Press (s) to edit</Text>
-                    </Box>
-
-                    <Box>
-                        <Text>   Inherit Colors: </Text>
-                        <Text color={inheritColors ? "green" : "red"}>{inheritColors ? '✓ Enabled' : '✗ Disabled'}</Text>
-                        <Text dimColor> - Press (i) to toggle</Text>
-                    </Box>
-
-                    <Box>
                         <Text>      Global Bold: </Text>
                         <Text color={globalBold ? "green" : "red"}>{globalBold ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (o) to toggle</Text>
                     </Box>
 
                     <Box>
-                        <Text>Override BG Color: </Text>
-                        {(() => {
-                            const bgColor = settings.overrideBackgroundColor || 'none';
-                            if (bgColor === 'none') {
-                                return <Text color="gray">(none)</Text>;
-                            } else {
-                                const bgColorName = bgColor.replace(/^bg/, '').toLowerCase();
-                                const bgFunc = (chalk as any)[bgColor];
-                                const display = bgFunc ? bgFunc(` ${bgColorName} `) : bgColorName;
-                                return <Text>{display}</Text>;
-                            }
-                        })()}
-                        <Text dimColor> - (b) cycle, (c) clear</Text>
+                        <Text>  Default Padding: </Text>
+                        <Text color="cyan">{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
+                        <Text dimColor> - Press (p) to edit</Text>
                     </Box>
 
                     <Box>
@@ -1558,6 +1778,52 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
                             }
                         })()}
                         <Text dimColor> - (f) cycle, (g) clear</Text>
+                    </Box>
+
+                    <Box>
+                        <Text>Override BG Color: </Text>
+                        {isPowerlineEnabled ? (
+                            <Text dimColor>[disabled - Powerline active]</Text>
+                        ) : (
+                            <>
+                                {(() => {
+                                    const bgColor = settings.overrideBackgroundColor || 'none';
+                                    if (bgColor === 'none') {
+                                        return <Text color="gray">(none)</Text>;
+                                    } else {
+                                        const bgColorName = bgColor.replace(/^bg/, '').toLowerCase();
+                                        const bgFunc = (chalk as any)[bgColor];
+                                        const display = bgFunc ? bgFunc(` ${bgColorName} `) : bgColorName;
+                                        return <Text>{display}</Text>;
+                                    }
+                                })()}
+                                <Text dimColor> - (b) cycle, (c) clear</Text>
+                            </>
+                        )}
+                    </Box>
+
+                    <Box>
+                        <Text>   Inherit Colors: </Text>
+                        {isPowerlineEnabled ? (
+                            <Text dimColor>[disabled - Powerline active]</Text>
+                        ) : (
+                            <>
+                                <Text color={inheritColors ? "green" : "red"}>{inheritColors ? '✓ Enabled' : '✗ Disabled'}</Text>
+                                <Text dimColor> - Press (i) to toggle</Text>
+                            </>
+                        )}
+                    </Box>
+
+                    <Box>
+                        <Text>Default Separator: </Text>
+                        {isPowerlineEnabled ? (
+                            <Text dimColor>[disabled - Powerline active]</Text>
+                        ) : (
+                            <>
+                                <Text color="cyan">{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
+                                <Text dimColor> - Press (s) to edit</Text>
+                            </>
+                        )}
                     </Box>
 
                     <Box marginTop={2}>
@@ -1613,7 +1879,7 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     const [editingMode, setEditingMode] = useState<'separator' | 'startCap' | 'endCap' | null>(null);
     const [customInput, setCustomInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
-    
+
     // Common powerline separators (thin ones don't work well, so excluded)
     const separators = [
         { char: '\uE0B0', name: 'Triangle Right', hex: 'E0B0' },
@@ -1621,7 +1887,7 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
         { char: '\uE0B4', name: 'Round Right', hex: 'E0B4' },
         { char: '\uE0B6', name: 'Round Left', hex: 'E0B6' },
     ];
-    
+
     // Start caps (left-facing)
     const startCaps = [
         { char: '', name: 'None', hex: '' },
@@ -1630,7 +1896,7 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
         { char: '\uE0BA', name: 'Lower Triangle', hex: 'E0BA' },
         { char: '\uE0BE', name: 'Diagonal', hex: 'E0BE' },
     ];
-    
+
     // End caps (right-facing)
     const endCaps = [
         { char: '', name: 'None', hex: '' },
@@ -1639,17 +1905,17 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
         { char: '\uE0B8', name: 'Lower Triangle', hex: 'E0B8' },
         { char: '\uE0BC', name: 'Diagonal', hex: 'E0BC' },
     ];
-    
+
     const currentSeparatorIndex = separators.findIndex(s => s.char === (powerlineConfig.separator || '\uE0B0'));
     const currentStartCapIndex = startCaps.findIndex(c => c.char === (powerlineConfig.startCap || ''));
     const currentEndCapIndex = endCaps.findIndex(c => c.char === (powerlineConfig.endCap || ''));
-    
+
     useInput((input, key) => {
         if (fontInstallMessage) {
             onClearMessage();
             return;
         }
-        
+
         if (editingMode) {
             // Custom hex input mode
             if (key.escape) {
@@ -1660,7 +1926,7 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 if (customInput.length === 4) {
                     const char = String.fromCharCode(parseInt(customInput, 16));
                     const newConfig = { ...powerlineConfig };
-                    
+
                     if (editingMode === 'separator') {
                         newConfig.separator = char;
                     } else if (editingMode === 'startCap') {
@@ -1668,7 +1934,7 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     } else if (editingMode === 'endCap') {
                         newConfig.endCap = char;
                     }
-                    
+
                     onUpdate({ ...settings, powerline: newConfig });
                     setEditingMode(null);
                     setCustomInput('');
@@ -1745,15 +2011,15 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
             }
         }
     });
-    
+
     const currentSeparator = separators[currentSeparatorIndex] || { char: powerlineConfig.separator || '\uE0B0', name: 'Custom', hex: 'Custom' };
     const currentStartCap = startCaps[currentStartCapIndex] || { char: powerlineConfig.startCap || '', name: 'Custom', hex: 'Custom' };
     const currentEndCap = endCaps[currentEndCapIndex] || { char: powerlineConfig.endCap || '', name: 'Custom', hex: 'Custom' };
-    
+
     return (
         <Box flexDirection='column'>
             <Text bold>Powerline Configuration</Text>
-            
+
             {installingFonts ? (
                 <Box marginTop={2}>
                     <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
@@ -1793,7 +2059,7 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                             )}
                         </Text>
                     </Box>
-                    
+
                     <Box>
                         <Text>Powerline Mode: </Text>
                         <Text color={powerlineConfig.enabled ? 'green' : 'red'}>
@@ -1801,30 +2067,30 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                         </Text>
                         <Text dimColor> - Press (t) to toggle</Text>
                     </Box>
-                    
+
                     {powerlineConfig.enabled && (
                         <>
                             <Box flexDirection='column'>
                                 <Text dimColor>When enabled, global overrides are disabled and powerline separators are used</Text>
                             </Box>
-                            
+
                             <Box marginTop={2}>
                                 <Text>Separator: {currentSeparator.char ? `${currentSeparator.char} (${currentSeparator.name})` : '(none)'}</Text>
                                 <Text dimColor> - (s/d) cycle, (e) custom hex</Text>
                             </Box>
-                            
+
                             <Box>
                                 <Text>Start Cap: {currentStartCap.char ? `${currentStartCap.char} (${currentStartCap.name})` : '(none)'}</Text>
                                 <Text dimColor> - (a/w) cycle, (q) custom hex</Text>
                             </Box>
-                            
+
                             <Box>
                                 <Text>  End Cap: {currentEndCap.char ? `${currentEndCap.char} (${currentEndCap.name})` : '(none)'}</Text>
                                 <Text dimColor> - (z/x) cycle, (c) custom hex</Text>
                             </Box>
                         </>
                     )}
-                    
+
                     <Box marginTop={2}>
                         <Text dimColor>Press ESC to go back</Text>
                     </Box>
@@ -1851,8 +2117,8 @@ const App: React.FC = () => {
 
     useEffect(() => {
         loadSettings().then(loadedSettings => {
-            // Set global chalk level based on settings
-            chalk.level = loadedSettings.colorLevel ?? 3;
+            // Set global chalk level based on settings (default to 256 colors for compatibility)
+            chalk.level = loadedSettings.colorLevel ?? 2;
             // Ensure lines array exists and has 3 slots
             if (!loadedSettings.lines) {
                 loadedSettings.lines = [[]];
@@ -1864,11 +2130,11 @@ const App: React.FC = () => {
             setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
         });
         isInstalled().then(setIsClaudeInstalled);
-        
+
         // Check for Powerline fonts on startup (use sync version that doesn't call execSync)
         const fontStatus = checkPowerlineFonts();
         setPowerlineFontStatus(fontStatus);
-        
+
         // Optionally do the async check later (but not blocking React)
         checkPowerlineFontsAsync().then(asyncStatus => {
             setPowerlineFontStatus(asyncStatus);
@@ -2056,18 +2322,21 @@ const App: React.FC = () => {
                 )}
                 {screen === 'colors' && (
                     <ColorMenu
-                        items={settings.lines?.flat() || []}
+                        items={settings.lines?.flat().map(item => ({...item})) || []}
+                        settings={settings}
                         onUpdate={(items) => {
                             // This is a bit tricky - we need to update colors across all lines
                             // For now, just update the flat list
-                            const newLines = settings.lines || [[]];
+                            // IMPORTANT: Create a deep copy to avoid mutating the original
+                            const newLines = settings.lines?.map(line => [...line]) || [[]];
                             let flatIndex = 0;
                             for (let lineIndex = 0; lineIndex < newLines.length; lineIndex++) {
                                 const line = newLines[lineIndex];
                                 if (line) {
                                     for (let itemIndex = 0; itemIndex < line.length; itemIndex++) {
                                         if (flatIndex < items.length && items[flatIndex]) {
-                                            line[itemIndex] = items[flatIndex]!;
+                                            // Create a new object to avoid mutation
+                                            line[itemIndex] = { ...items[flatIndex]! };
                                             flatIndex++;
                                         }
                                     }
@@ -2092,8 +2361,8 @@ const App: React.FC = () => {
                             if (target === 'width') {
                                 setScreen('terminalWidth');
                             } else {
-                                // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections({ ...menuSelections, main: 3 });
+                                // Save that we came from 'terminalConfig' menu (index 4 - accounting for gaps)
+                                setMenuSelections({ ...menuSelections, main: 4 });
                                 setScreen('main');
                             }
                         }}
@@ -2117,8 +2386,8 @@ const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections({ ...menuSelections, main: 4 });
+                            // Save that we came from 'globalOverrides' menu (index 3 - accounting for gaps)
+                            setMenuSelections({ ...menuSelections, main: 3 });
                             setScreen('main');
                         }}
                     />

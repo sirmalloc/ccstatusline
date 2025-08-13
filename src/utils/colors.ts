@@ -1,250 +1,250 @@
 import chalk from 'chalk';
 
-// Modern, attractive RGB color palette
-// These colors are carefully chosen for good readability and visual appeal in terminals
-export const COLOR_PALETTE = {
-    // Basic colors with modern, vibrant but readable values
-    black: '#1a1b26',      // Tokyo Night black
-    red: '#f7768e',        // Soft red
-    green: '#9ece6a',      // Soft green  
-    yellow: '#e0af68',     // Warm yellow
-    blue: '#7aa2f7',       // Soft blue
-    magenta: '#bb9af7',    // Soft purple
-    cyan: '#7dcfff',       // Soft cyan
-    white: '#c0caf5',      // Off-white
-    gray: '#565f89',       // Mid gray
-    grey: '#565f89',       // Alias for gray
-    
-    // Bright variants
-    brightBlack: '#414868',
-    brightRed: '#ff9e64',
-    brightGreen: '#73daca',
-    brightYellow: '#ffc777',
-    brightBlue: '#89ddff',
-    brightMagenta: '#ff007c',
-    brightCyan: '#b4f9f8',
-    brightWhite: '#ffffff',
-    
-    // Background colors (slightly adjusted for better contrast)
-    bgBlack: '#1a1b26',
-    bgRed: '#f7768e',
-    bgGreen: '#9ece6a',
-    bgYellow: '#e0af68',
-    bgBlue: '#7aa2f7',
-    bgMagenta: '#bb9af7',
-    bgCyan: '#7dcfff',
-    bgWhite: '#c0caf5',
-    bgGray: '#565f89',
-    bgGrey: '#565f89',
-    
-    // Bright background variants
-    bgBrightBlack: '#414868',
-    bgBrightRed: '#ff9e64',
-    bgBrightGreen: '#73daca',
-    bgBrightYellow: '#ffc777',
-    bgBrightBlue: '#89ddff',
-    bgBrightMagenta: '#ff007c',
-    bgBrightCyan: '#b4f9f8',
-    bgBrightWhite: '#ffffff',
-    
-    // Special values
-    dim: '#565f89',        // For dimmed text
-    none: undefined,       // No color
-    default: undefined,    // Use terminal default
-} as const;
-
-export type ColorName = keyof typeof COLOR_PALETTE;
-
-/**
- * Check if a string is a valid hex color
- */
-export function isHexColor(color: string): boolean {
-    return /^#[0-9A-Fa-f]{6}$/.test(color);
+interface ColorEntry {
+  name: string;
+  displayName: string;
+  isBackground: boolean;
+  ansi16: any;
+  ansi256: any;
+  truecolor: any;
 }
 
-/**
- * Check if a string is an ANSI color name
- */
-export function isAnsiColorName(color: string): boolean {
-    return color in COLOR_PALETTE;
+const COLOR_MAP: ColorEntry[] = [
+  // Regular colors - for ansi256 mode, use fixed palette colors (16-231) instead of theme colors (0-15)
+  { name: 'black', displayName: 'Black', isBackground: false, ansi16: chalk.black, ansi256: chalk.ansi256(16), truecolor: chalk.hex('#000000') },
+  { name: 'red', displayName: 'Red', isBackground: false, ansi16: chalk.red, ansi256: chalk.ansi256(160), truecolor: chalk.hex('#cc0000') },
+  { name: 'green', displayName: 'Green', isBackground: false, ansi16: chalk.green, ansi256: chalk.ansi256(70), truecolor: chalk.hex('#4e9a06') },
+  { name: 'yellow', displayName: 'Yellow', isBackground: false, ansi16: chalk.yellow, ansi256: chalk.ansi256(178), truecolor: chalk.hex('#c4a000') },
+  { name: 'blue', displayName: 'Blue', isBackground: false, ansi16: chalk.blue, ansi256: chalk.ansi256(26), truecolor: chalk.hex('#3465a4') },
+  { name: 'magenta', displayName: 'Magenta', isBackground: false, ansi16: chalk.magenta, ansi256: chalk.ansi256(96), truecolor: chalk.hex('#75507b') },
+  { name: 'cyan', displayName: 'Cyan', isBackground: false, ansi16: chalk.cyan, ansi256: chalk.ansi256(30), truecolor: chalk.hex('#06989a') },
+  { name: 'white', displayName: 'White', isBackground: false, ansi16: chalk.white, ansi256: chalk.ansi256(188), truecolor: chalk.hex('#d3d7cf') },
+  
+  // Bright colors - use brighter fixed palette colors
+  { name: 'brightBlack', displayName: 'Bright Black', isBackground: false, ansi16: chalk.blackBright, ansi256: chalk.ansi256(59), truecolor: chalk.hex('#555753') },
+  { name: 'brightRed', displayName: 'Bright Red', isBackground: false, ansi16: chalk.redBright, ansi256: chalk.ansi256(203), truecolor: chalk.hex('#ef2929') },
+  { name: 'brightGreen', displayName: 'Bright Green', isBackground: false, ansi16: chalk.greenBright, ansi256: chalk.ansi256(155), truecolor: chalk.hex('#8ae234') },
+  { name: 'brightYellow', displayName: 'Bright Yellow', isBackground: false, ansi16: chalk.yellowBright, ansi256: chalk.ansi256(227), truecolor: chalk.hex('#fce94f') },
+  { name: 'brightBlue', displayName: 'Bright Blue', isBackground: false, ansi16: chalk.blueBright, ansi256: chalk.ansi256(111), truecolor: chalk.hex('#729fcf') },
+  { name: 'brightMagenta', displayName: 'Bright Magenta', isBackground: false, ansi16: chalk.magentaBright, ansi256: chalk.ansi256(140), truecolor: chalk.hex('#ad7fa8') },
+  { name: 'brightCyan', displayName: 'Bright Cyan', isBackground: false, ansi16: chalk.cyanBright, ansi256: chalk.ansi256(80), truecolor: chalk.hex('#34e2e2') },
+  { name: 'brightWhite', displayName: 'Bright White', isBackground: false, ansi16: chalk.whiteBright, ansi256: chalk.ansi256(231), truecolor: chalk.hex('#eeeeec') },
+  
+  // Background colors - match foreground indices for consistency
+  { name: 'bgBlack', displayName: 'Black', isBackground: true, ansi16: chalk.bgBlack, ansi256: chalk.bgAnsi256(16), truecolor: chalk.bgHex('#000000') },
+  { name: 'bgRed', displayName: 'Red', isBackground: true, ansi16: chalk.bgRed, ansi256: chalk.bgAnsi256(160), truecolor: chalk.bgHex('#cc0000') },
+  { name: 'bgGreen', displayName: 'Green', isBackground: true, ansi16: chalk.bgGreen, ansi256: chalk.bgAnsi256(70), truecolor: chalk.bgHex('#4e9a06') },
+  { name: 'bgYellow', displayName: 'Yellow', isBackground: true, ansi16: chalk.bgYellow, ansi256: chalk.bgAnsi256(178), truecolor: chalk.bgHex('#c4a000') },
+  { name: 'bgBlue', displayName: 'Blue', isBackground: true, ansi16: chalk.bgBlue, ansi256: chalk.bgAnsi256(26), truecolor: chalk.bgHex('#3465a4') },
+  { name: 'bgMagenta', displayName: 'Magenta', isBackground: true, ansi16: chalk.bgMagenta, ansi256: chalk.bgAnsi256(96), truecolor: chalk.bgHex('#75507b') },
+  { name: 'bgCyan', displayName: 'Cyan', isBackground: true, ansi16: chalk.bgCyan, ansi256: chalk.bgAnsi256(30), truecolor: chalk.bgHex('#06989a') },
+  { name: 'bgWhite', displayName: 'White', isBackground: true, ansi16: chalk.bgWhite, ansi256: chalk.bgAnsi256(188), truecolor: chalk.bgHex('#d3d7cf') },
+  
+  // Bright background colors - match bright foreground indices
+  { name: 'bgBrightBlack', displayName: 'Bright Black', isBackground: true, ansi16: chalk.bgBlackBright, ansi256: chalk.bgAnsi256(59), truecolor: chalk.bgHex('#555753') },
+  { name: 'bgBrightRed', displayName: 'Bright Red', isBackground: true, ansi16: chalk.bgRedBright, ansi256: chalk.bgAnsi256(203), truecolor: chalk.bgHex('#ef2929') },
+  { name: 'bgBrightGreen', displayName: 'Bright Green', isBackground: true, ansi16: chalk.bgGreenBright, ansi256: chalk.bgAnsi256(155), truecolor: chalk.bgHex('#8ae234') },
+  { name: 'bgBrightYellow', displayName: 'Bright Yellow', isBackground: true, ansi16: chalk.bgYellowBright, ansi256: chalk.bgAnsi256(227), truecolor: chalk.bgHex('#fce94f') },
+  { name: 'bgBrightBlue', displayName: 'Bright Blue', isBackground: true, ansi16: chalk.bgBlueBright, ansi256: chalk.bgAnsi256(111), truecolor: chalk.bgHex('#729fcf') },
+  { name: 'bgBrightMagenta', displayName: 'Bright Magenta', isBackground: true, ansi16: chalk.bgMagentaBright, ansi256: chalk.bgAnsi256(140), truecolor: chalk.bgHex('#ad7fa8') },
+  { name: 'bgBrightCyan', displayName: 'Bright Cyan', isBackground: true, ansi16: chalk.bgCyanBright, ansi256: chalk.bgAnsi256(80), truecolor: chalk.bgHex('#34e2e2') },
+  { name: 'bgBrightWhite', displayName: 'Bright White', isBackground: true, ansi16: chalk.bgWhiteBright, ansi256: chalk.bgAnsi256(231), truecolor: chalk.bgHex('#eeeeec') },
+];
+
+export function bgToFg(colorName: string | undefined): string | undefined {
+  if (!colorName) return undefined;
+  
+  // Custom formats pass through unchanged (ansi256:X and hex:XXXXXX)
+  if (colorName.startsWith('ansi256:') || colorName.startsWith('hex:')) {
+    return colorName;
+  }
+  
+  // Convert background color names to foreground equivalents
+  if (colorName.startsWith('bgBright')) {
+    // bgBrightRed -> brightRed
+    const baseName = colorName.substring(8);
+    return 'bright' + baseName.charAt(0).toUpperCase() + baseName.slice(1).toLowerCase();
+  } else if (colorName.startsWith('bg')) {
+    // bgRed -> red
+    const baseName = colorName.substring(2);
+    return baseName.charAt(0).toLowerCase() + baseName.slice(1);
+  }
+  
+  // Already a foreground color
+  return colorName;
 }
 
-/**
- * Convert ANSI color name to RGB hex
- */
-export function ansiToHex(color: string | undefined): string | undefined {
-    if (!color) return undefined;
-    if (isHexColor(color)) return color;
-    if (color in COLOR_PALETTE) {
-        return COLOR_PALETTE[color as ColorName];
+export function getChalkColor(colorName: string | undefined, colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16', isBackground: boolean = false): any {
+  if (!colorName) return undefined;
+  
+  // Handle ansi256:X format
+  if (colorName.startsWith('ansi256:')) {
+    const code = parseInt(colorName.substring(8), 10);
+    if (!isNaN(code) && code >= 0 && code <= 255) {
+      return isBackground ? chalk.bgAnsi256(code) : chalk.ansi256(code);
     }
     return undefined;
-}
-
-/**
- * Convert a background color to its foreground equivalent
- * For example: bgRed -> red, #f7768e -> #f7768e
- */
-export function bgToFg(bgColor: string | undefined): string | undefined {
-    if (!bgColor) return undefined;
-    
-    // If it's a hex color, return as-is
-    if (isHexColor(bgColor)) return bgColor;
-    
-    // If it's a bg color name, convert to fg equivalent
-    if (bgColor.startsWith('bg')) {
-        const fgName = bgColor.substring(2);
-        const fgNameLower = fgName.charAt(0).toLowerCase() + fgName.slice(1);
-        return ansiToHex(fgNameLower);
+  }
+  
+  // Handle hex:XXXXXX format
+  if (colorName.startsWith('hex:')) {
+    const hex = colorName.substring(4);
+    if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
+      return isBackground ? chalk.bgHex('#' + hex) : chalk.hex('#' + hex);
     }
-    
-    // Otherwise convert to hex if it's a color name
-    return ansiToHex(bgColor);
+    return undefined;
+  }
+  
+  const colorEntry = COLOR_MAP.find(c => c.name === colorName);
+  
+  if (!colorEntry) {
+    return undefined;
+  }
+  
+  switch (colorLevel) {
+    case 'ansi256':
+      return colorEntry.ansi256;
+    case 'truecolor':
+      return colorEntry.truecolor;
+    case 'ansi16':
+    default:
+      return colorEntry.ansi16;
+  }
 }
 
-/**
- * Apply colors to text using chalk with RGB hex values
- */
 export function applyColors(
-    text: string, 
-    foregroundColor?: string, 
-    backgroundColor?: string, 
-    bold?: boolean
+  text: string,
+  foregroundColor?: string,
+  backgroundColor?: string,
+  bold?: boolean,
+  colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16'
 ): string {
-    let result = text;
-    
-    // Convert ANSI names to hex if needed
-    const fgHex = ansiToHex(foregroundColor);
-    const bgHex = ansiToHex(backgroundColor);
-    
-    // Apply foreground color
-    if (fgHex && fgHex !== 'dim') {
-        result = chalk.hex(fgHex)(result);
+  if (!foregroundColor && !backgroundColor && !bold) {
+    return text;
+  }
+  
+  let result = text;
+  
+  // Apply background color first
+  // This ensures the background is properly established before other styles
+  if (backgroundColor) {
+    const bgChalk = getChalkColor(backgroundColor, colorLevel, true);
+    if (bgChalk) {
+      result = bgChalk(result);
     }
-    
-    // Apply background color  
-    if (bgHex) {
-        result = chalk.bgHex(bgHex)(result);
+  }
+  
+  // Apply foreground color second
+  if (foregroundColor) {
+    const fgChalk = getChalkColor(foregroundColor, colorLevel, false);
+    if (fgChalk) {
+      result = fgChalk(result);
     }
-    
-    // Apply bold
-    if (bold) {
-        result = chalk.bold(result);
-    }
-    
-    // Add reset code at the end if any styling was applied
-    // This prevents color bleeding in terminals that don't handle it well
-    if (fgHex || bgHex || bold) {
-        result = result + '\x1b[0m';
-    }
-    
-    return result;
+  }
+  
+  // Apply bold last if needed
+  if (bold) {
+    result = chalk.bold(result);
+  }
+  
+  return result;
 }
 
-/**
- * Get the default color for a status item type
- */
+// Get raw ANSI codes for a color without the reset codes
+export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16', isBackground: boolean = false): string {
+  if (!colorName) return '';
+  
+  // Handle ansi256:X format
+  if (colorName.startsWith('ansi256:')) {
+    const code = parseInt(colorName.substring(8), 10);
+    if (!isNaN(code) && code >= 0 && code <= 255) {
+      return isBackground ? `\x1b[48;5;${code}m` : `\x1b[38;5;${code}m`;
+    }
+    return '';
+  }
+  
+  // Handle hex:XXXXXX format
+  if (colorName.startsWith('hex:')) {
+    const hex = colorName.substring(4);
+    if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return isBackground ? `\x1b[48;2;${r};${g};${b}m` : `\x1b[38;2;${r};${g};${b}m`;
+    }
+    return '';
+  }
+  
+  // For standard colors, use chalk to get the codes but extract them
+  const colorEntry = COLOR_MAP.find(c => c.name === colorName);
+  if (!colorEntry) return '';
+  
+  // Apply the color to a test string and extract the ANSI code
+  let chalkFn: any;
+  switch (colorLevel) {
+    case 'ansi256':
+      chalkFn = colorEntry.ansi256;
+      break;
+    case 'truecolor':
+      chalkFn = colorEntry.truecolor;
+      break;
+    case 'ansi16':
+    default:
+      chalkFn = colorEntry.ansi16;
+      break;
+  }
+  
+  if (!chalkFn) return '';
+  
+  // Apply the color and extract the opening ANSI code
+  const colored = chalkFn('TEST');
+  const match = colored.match(/^(\x1b\[[^m]+m)/);
+  return match ? match[1] : '';
+}
+
+export function getAvailableColors(): string[] {
+  return COLOR_MAP.map(c => c.name);
+}
+
+export function getAvailableColorsForUI(): Array<{ name: string; value: string }> {
+  // Add default option, then filter for non-background colors
+  return [
+    { name: 'Default', value: '' },
+    ...COLOR_MAP
+      .filter(c => !c.isBackground)
+      .map(c => ({ name: c.displayName, value: c.name }))
+  ];
+}
+
+export function getAvailableBackgroundColorsForUI(): Array<{ name: string; value: string }> {
+  // Add default/none option, then filter for background colors
+  return [
+    { name: 'Default', value: '' },
+    ...COLOR_MAP
+      .filter(c => c.isBackground)
+      .map(c => ({ name: c.displayName, value: c.name }))
+  ];
+}
+
 export function getItemDefaultColor(type: string): string {
-    const defaults: Record<string, string> = {
-        'model': '#7aa2f7',         // blue
-        'git-branch': '#bb9af7',     // magenta
-        'git-changes': '#e0af68',    // yellow
-        'tokens-input': '#7aa2f7',   // blue
-        'tokens-output': '#c0caf5',  // white
-        'tokens-cached': '#7dcfff',  // cyan
-        'tokens-total': '#7dcfff',   // cyan
-        'context-length': '#565f89', // gray
-        'context-percentage': '#7aa2f7', // blue
-        'context-percentage-usable': '#9ece6a', // green
-        'terminal-width': '#7dcfff', // cyan
-        'session-clock': '#e0af68',  // yellow
-        'version': '#9ece6a',        // green
-        'custom-text': '#c0caf5',    // white
-        'custom-command': '#e0af68', // yellow
-        'separator': '#565f89',      // gray
-    };
-    
-    return defaults[type] || '#c0caf5'; // default to white
-}
-
-/**
- * Migrate color settings from ANSI names to RGB hex
- */
-export function migrateColorToHex(color: string | undefined): string | undefined {
-    if (!color) return undefined;
-    
-    // Already a hex color
-    if (isHexColor(color)) return color;
-    
-    // Convert ANSI name to hex
-    const hex = ansiToHex(color);
-    if (hex) return hex;
-    
-    // If we can't convert, return as-is
-    return color;
-}
-
-/**
- * Migrate all colors in a settings object
- */
-export function migrateSettingsColors(settings: any): any {
-    // Deep clone to avoid mutations
-    const migrated = JSON.parse(JSON.stringify(settings));
-    
-    // Migrate line items
-    if (migrated.lines && Array.isArray(migrated.lines)) {
-        for (const line of migrated.lines) {
-            if (Array.isArray(line)) {
-                for (const item of line) {
-                    if (item.color) {
-                        item.color = migrateColorToHex(item.color);
-                    }
-                    if (item.backgroundColor) {
-                        item.backgroundColor = migrateColorToHex(item.backgroundColor);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Migrate global overrides
-    if (migrated.globalOverrides) {
-        for (const key in migrated.globalOverrides) {
-            const override = migrated.globalOverrides[key];
-            if (override && typeof override === 'object') {
-                if (override.color) {
-                    override.color = migrateColorToHex(override.color);
-                }
-                if (override.backgroundColor) {
-                    override.backgroundColor = migrateColorToHex(override.backgroundColor);
-                }
-            }
-        }
-    }
-    
-    return migrated;
-}
-
-/**
- * Get a list of available colors for the TUI
- */
-export function getAvailableColors(): Array<{ name: string; hex: string }> {
-    return [
-        { name: 'Default', hex: '' },
-        { name: 'Black', hex: '#1a1b26' },
-        { name: 'Red', hex: '#f7768e' },
-        { name: 'Green', hex: '#9ece6a' },
-        { name: 'Yellow', hex: '#e0af68' },
-        { name: 'Blue', hex: '#7aa2f7' },
-        { name: 'Magenta', hex: '#bb9af7' },
-        { name: 'Cyan', hex: '#7dcfff' },
-        { name: 'White', hex: '#c0caf5' },
-        { name: 'Gray', hex: '#565f89' },
-        { name: 'Bright Red', hex: '#ff9e64' },
-        { name: 'Bright Green', hex: '#73daca' },
-        { name: 'Bright Yellow', hex: '#ffc777' },
-        { name: 'Bright Blue', hex: '#89ddff' },
-        { name: 'Bright Magenta', hex: '#ff007c' },
-        { name: 'Bright Cyan', hex: '#b4f9f8' },
-    ];
+  const defaults: Record<string, string> = {
+    'model': 'blue',
+    'git-branch': 'magenta',
+    'git-changes': 'yellow',
+    'tokens-input': 'blue',
+    'tokens-output': 'white',
+    'tokens-cached': 'cyan',
+    'tokens-total': 'cyan',
+    'context-length': 'brightBlack',
+    'context-percentage': 'blue',
+    'context-percentage-usable': 'green',
+    'terminal-width': 'cyan',
+    'session-clock': 'yellow',
+    'version': 'green',
+    'custom-text': 'white',
+    'custom-command': 'yellow',
+    'separator': 'brightBlack',
+  };
+  
+  return defaults[type] || 'white';
 }

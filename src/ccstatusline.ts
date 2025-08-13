@@ -42,8 +42,8 @@ async function readStdin(): Promise<string | null> {
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
     
-    // Set global chalk level based on settings
-    chalk.level = settings.colorLevel ?? 3;
+    // Set global chalk level based on settings (default to 256 colors for compatibility)
+    chalk.level = settings.colorLevel ?? 2;
 
     // Get all lines to render (support both old items format and new lines format)
     let lines = settings.lines || (settings.items ? [settings.items] : [[]]);

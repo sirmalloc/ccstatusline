@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import type { StatusItem } from './config';
-import { applyColors, getItemDefaultColor, bgToFg } from './colors';
+import { applyColors, getItemDefaultColor, bgToFg, getColorAnsiCode } from './colors';
 
 // Ensure fs.promises compatibility for older Node versions
 const readFile = fs.promises?.readFile || promisify(fs.readFile);
@@ -305,6 +305,15 @@ function renderPowerlineStatusLine(
     const separator = powerlineConfig.separator || '\uE0B0';
     const startCap = powerlineConfig.startCap || '';
     const endCap = powerlineConfig.endCap || '';
+    
+    // Get color level from settings and map to our color level type
+    const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
+        0: 'ansi16',  // No colors
+        1: 'ansi16',  // Basic 16 colors
+        2: 'ansi256', // 256 colors
+        3: 'truecolor' // Truecolor
+    };
+    const colorLevel = colorLevelMap[settings.colorLevel ?? 2] || 'ansi256';
 
     // Filter out separator and flex-separator items in powerline mode
     const filteredItems = items.filter(item =>
@@ -522,11 +531,24 @@ function renderPowerlineStatusLine(
         }
 
         if (widgetText) {
-            // Add padding to widget text
-            const paddedText = ` ${widgetText} `;
+            // Apply default padding from settings
+            const padding = settings.defaultPadding || ' ';
+            
+            // If override FG color is set and this is a custom command with preserveColors,
+            // we need to strip the ANSI codes from the widget text
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none' && 
+                item.type === 'custom-command' && item.preserveColors) {
+                // Strip ANSI color codes when override is active
+                widgetText = widgetText.replace(/\x1b\[[0-9;]*m/g, '');
+            }
+            
+            const paddedText = `${padding}${widgetText}${padding}`;
 
-            // Determine colors
-            const fgColor = item.color || defaultColor;
+            // Determine colors - apply override FG color if set
+            let fgColor = item.color || defaultColor;
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+                fgColor = settings.overrideForegroundColor;
+            }
             const bgColor = item.backgroundColor;
 
             widgets.push({
@@ -547,10 +569,10 @@ function renderPowerlineStatusLine(
     if (startCap && widgets.length > 0) {
         const firstWidget = widgets[0];
         if (firstWidget && firstWidget.bgColor) {
-            // Start cap uses first widget's background as foreground
+            // Start cap uses first widget's background as foreground (converted)
             const capFg = bgToFg(firstWidget.bgColor);
-            const capColored = applyColors(startCap, capFg, undefined, false);
-            result += capColored;
+            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+            result += fgCode + startCap + '\x1b[39m';
         } else {
             result += startCap;
         }
@@ -563,14 +585,13 @@ function renderPowerlineStatusLine(
         
         if (!widget) continue;
 
-        // Apply colors to widget content
-        let widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, widget.item.bold);
+        // Apply colors to widget content - include global bold setting
+        const shouldBold = settings.globalBold || widget.item.bold;
+        let widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, shouldBold, colorLevel);
         result += widgetContent;
 
         // Add separator between widgets (not after last one)
         if (i < widgets.length - 1 && separator && nextWidget) {
-            // Reset colors before applying separator colors to avoid inheritance issues
-            result += '\x1b[0m';
             // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
             const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
 
@@ -582,48 +603,56 @@ function renderPowerlineStatusLine(
             //   - Foreground: next widget's background color (converted to fg)
             //   - Background: previous widget's background color
 
+            // Build separator with raw ANSI codes to avoid reset issues
+            let separatorOutput = '';
+            
             if (isLeftFacing) {
                 // Left-facing separator - reversed logic
                 if (widget && widget.bgColor && nextWidget.bgColor) {
                     // Both have backgrounds
-                    const separatorFg = bgToFg(nextWidget.bgColor);
-                    const separatorColored = applyColors(separator, separatorFg, widget.bgColor, false);
-                    result += separatorColored;
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
+                    separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
                 } else if (widget && widget.bgColor && !nextWidget.bgColor) {
-                    // Only previous widget has background
-                    const separatorColored = applyColors(separator, undefined, widget.bgColor, false);
-                    result += separatorColored;
+                    // Only previous widget has background - separator points left from colored to uncolored
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
                 } else if (widget && !widget.bgColor && nextWidget.bgColor) {
                     // Only next widget has background
-                    const separatorFg = bgToFg(nextWidget.bgColor);
-                    const separatorColored = applyColors(separator, separatorFg, undefined, false);
-                    result += separatorColored;
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
                 } else {
                     // Neither has background
-                    result += separator;
+                    separatorOutput = separator;
                 }
             } else {
                 // Right-facing separator - standard logic
                 if (widget && widget.bgColor && nextWidget.bgColor) {
-                    // Both have backgrounds
-                    const separatorFg = bgToFg(widget.bgColor);
-                    const separatorColored = applyColors(separator, separatorFg, nextWidget.bgColor, false);
-                    result += separatorColored;
+                    // Both have backgrounds - separator transitions from one to the other
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    const bgCode = getColorAnsiCode(nextWidget.bgColor, colorLevel, true);
+                    separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
                 } else if (widget && widget.bgColor && !nextWidget.bgColor) {
-                    // Only previous widget has background
-                    const separatorFg = bgToFg(widget.bgColor);
-                    const separatorColored = applyColors(separator, separatorFg, undefined, false);
-                    result += separatorColored;
+                    // Only previous widget has background - separator points right from colored
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
                 } else if (widget && !widget.bgColor && nextWidget.bgColor) {
-                    // Only next widget has background
-                    const separatorFg = bgToFg(nextWidget.bgColor);
-                    const separatorColored = applyColors(separator, separatorFg, undefined, false);
-                    result += separatorColored;
+                    // Only next widget has background - separator points into colored area
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
                 } else {
                     // Neither has background
-                    result += separator;
+                    separatorOutput = separator;
                 }
             }
+            
+            result += separatorOutput;
         }
     }
 
@@ -631,12 +660,10 @@ function renderPowerlineStatusLine(
     if (endCap && widgets.length > 0) {
         const lastWidget = widgets[widgets.length - 1];
         if (lastWidget && lastWidget.bgColor) {
-            // Reset colors before applying end cap colors to avoid inheritance issues
-            result += '\x1b[0m';
-            // End cap uses last widget's background as foreground (converted from bg to fg)
+            // End cap uses last widget's background as foreground (converted)
             const capFg = bgToFg(lastWidget.bgColor);
-            const capColored = applyColors(endCap, capFg, undefined, false);
-            result += capColored;
+            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+            result += fgCode + endCap + '\x1b[39m';
         } else {
             result += endCap;
         }
@@ -690,6 +717,15 @@ export function renderStatusLine(
     // Chalk level is now set globally in ccstatusline.ts and tui.tsx
     // No need to override here
     
+    // Get color level from settings and map to our color level type
+    const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
+        0: 'ansi16',  // No colors
+        1: 'ansi16',  // Basic 16 colors
+        2: 'ansi256', // 256 colors
+        3: 'truecolor' // Truecolor
+    };
+    const colorLevel = colorLevelMap[settings.colorLevel ?? 2] || 'ansi256';
+    
     // Check if powerline mode is enabled
     const isPowerlineMode = settings.powerline?.enabled || false;
 
@@ -712,7 +748,7 @@ export function renderStatusLine(
         }
 
         const shouldBold = settings.globalBold || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold);
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel);
     };
 
     const detectedWidth = context.terminalWidth || getTerminalWidth();
