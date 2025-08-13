@@ -8,10 +8,21 @@ export interface PowerlineFontStatus {
     checkedSymbol?: string;
 }
 
+// Track if fonts were installed during this session (for DEBUG_FONT_INSTALL)
+let fontsInstalledThisSession = false;
+
 /**
  * Check if Powerline fonts are installed by testing if Powerline symbols render correctly
  */
 export function checkPowerlineFonts(): PowerlineFontStatus {
+    // Debug mode: pretend fonts aren't installed (unless we installed them this session)
+    if (process.env.DEBUG_FONT_INSTALL === '1' && !fontsInstalledThisSession) {
+        return {
+            installed: false,
+            checkedSymbol: '\uE0B0'
+        };
+    }
+    
     try {
         // Test if we can display the common Powerline separator symbols
         // These are the key characters that require Powerline fonts
@@ -96,6 +107,14 @@ export function checkPowerlineFonts(): PowerlineFontStatus {
  * Check if Powerline fonts are installed (async version with fc-list check)
  */
 export async function checkPowerlineFontsAsync(): Promise<PowerlineFontStatus> {
+    // Debug mode: pretend fonts aren't installed (unless we installed them this session)
+    if (process.env.DEBUG_FONT_INSTALL === '1' && !fontsInstalledThisSession) {
+        return {
+            installed: false,
+            checkedSymbol: '\uE0B0'
+        };
+    }
+    
     try {
         // First do the quick synchronous check
         const quickCheck = checkPowerlineFonts();
@@ -213,6 +232,11 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                         }
                     }
 
+                    // Mark as installed for DEBUG_FONT_INSTALL mode
+                    if (process.env.DEBUG_FONT_INSTALL === '1') {
+                        fontsInstalledThisSession = true;
+                    }
+                    
                     return {
                         success: true,
                         message: 'Powerline fonts installed successfully! Please restart your terminal and select a Powerline font (e.g., "Source Code Pro for Powerline", "Meslo LG S for Powerline", etc.)'

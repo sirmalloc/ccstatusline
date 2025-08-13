@@ -790,6 +790,8 @@ interface ColorMenuProps {
 
 const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     const [showSeparators, setShowSeparators] = useState(false);
+    const [hexInputMode, setHexInputMode] = useState(false);
+    const [hexInput, setHexInput] = useState('');
 
     const colorableItems = items.filter(item => {
         // Include separators only if showSeparators is true
@@ -812,12 +814,56 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             return;
         }
 
+        // Handle hex input mode
+        if (hexInputMode) {
+            if (key.escape) {
+                setHexInputMode(false);
+                setHexInput('');
+            } else if (key.return) {
+                // Validate and apply the hex color
+                if (hexInput.length === 6) {
+                    const hexColor = `#${hexInput}`;
+                    const selectedItem = colorableItems.find(item => item.id === highlightedItemId);
+                    if (selectedItem) {
+                        const newItems = items.map(item => {
+                            if (item.id === selectedItem.id) {
+                                if (editingBackground) {
+                                    return { ...item, backgroundColor: hexColor };
+                                } else {
+                                    return { ...item, color: hexColor };
+                                }
+                            }
+                            return item;
+                        });
+                        onUpdate(newItems);
+                    }
+                    setHexInputMode(false);
+                    setHexInput('');
+                }
+            } else if (key.backspace || key.delete) {
+                setHexInput(hexInput.slice(0, -1));
+            } else if (input && hexInput.length < 6) {
+                // Only accept hex characters (0-9, A-F, a-f)
+                const upperInput = input.toUpperCase();
+                if (/^[0-9A-F]$/.test(upperInput)) {
+                    setHexInput(hexInput + upperInput);
+                }
+            }
+            return;
+        }
+
         // Normal keyboard handling when there are items
         if (key.escape) {
             if (editingBackground) {
                 setEditingBackground(false);
             } else {
                 onBack();
+            }
+        } else if (input === 'h' || input === 'H') {
+            // Enter hex input mode
+            if (highlightedItemId && highlightedItemId !== 'back') {
+                setHexInputMode(true);
+                setHexInput('');
             }
         } else if (input === 's' || input === 'S') {
             // Toggle show separators
@@ -983,49 +1029,66 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
 
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
-    const colorNumber = colorIndex === -1 ? (editingBackground ? 1 : 8) : colorIndex + 1;
+    const isCustom = currentColor && colorIndex === -1;
+    const colorNumber = colorIndex === -1 ? 'custom' : colorIndex + 1;
 
     let colorDisplay;
     if (editingBackground) {
         if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(no background)');
-        } else {
-            // Find the color option to get both name and hex
+        } else if (currentColor.startsWith('#')) {
+            // Custom hex color or known hex
             const colorOption = bgColorOptions.find(c => c.hex === currentColor);
-            const displayName = colorOption ? colorOption.name : currentColor;
-            
-            if (currentColor.startsWith('#')) {
-                colorDisplay = chalk.bgHex(currentColor)(` ${displayName} `);
-            } else {
-                colorDisplay = chalk.white(displayName);
-            }
+            const displayName = colorOption ? colorOption.name : `Custom ${currentColor}`;
+            colorDisplay = chalk.bgHex(currentColor)(` ${displayName} `);
+        } else {
+            // Unknown color name - treat as custom
+            colorDisplay = chalk.white(`Custom: ${currentColor}`);
         }
     } else {
-        // Find the color option to get both name and hex
-        const colorOption = colorOptions.find(c => c.hex === currentColor);
-        const displayName = colorOption ? colorOption.name : currentColor;
-        
-        if (currentColor && currentColor.startsWith('#')) {
-            colorDisplay = chalk.hex(currentColor)(displayName);
-        } else if (!currentColor || currentColor === '') {
+        if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(default)');
+        } else if (currentColor.startsWith('#')) {
+            // Custom hex color or known hex
+            const colorOption = colorOptions.find(c => c.hex === currentColor);
+            const displayName = colorOption ? colorOption.name : `Custom ${currentColor}`;
+            colorDisplay = chalk.hex(currentColor)(displayName);
         } else {
-            colorDisplay = chalk.white(displayName);
+            // Unknown color name - treat as custom
+            colorDisplay = chalk.white(`Custom: ${currentColor}`);
         }
     }
 
     return (
         <Box flexDirection='column'>
             <Text bold>Configure Colors {editingBackground && chalk.yellow('[Background Mode]')}</Text>
-            <Text dimColor>↑↓ to select, Enter to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle bg/fg, (b)old, (r)eset, ESC to go back</Text>
-            <Text dimColor>(s)how separators: {showSeparators ? chalk.green('ON') : chalk.gray('OFF')}</Text>
-            {selectedItem && (
-                <Box marginTop={1}>
+            {hexInputMode ? (
+                <Box flexDirection='column'>
+                    <Text>Enter 6-digit hex color code (without #):</Text>
                     <Text>
-                        Current {editingBackground ? 'background' : 'foreground'} ({colorNumber}/{colorList.length}): {colorDisplay}
-                        {selectedItem.bold && chalk.bold(' [BOLD]')}
+                        #{hexInput}
+                        <Text dimColor>{hexInput.length < 6 ? '_'.repeat(6 - hexInput.length) : ''}</Text>
                     </Text>
+                    <Text> </Text>
+                    <Text dimColor>Press Enter when done, ESC to cancel</Text>
                 </Box>
+            ) : (
+                <>
+                    <Text dimColor>↑↓ to select, Enter to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle bg/fg, (b)old, (h)ex, (r)eset, ESC to go back</Text>
+                    <Text dimColor>(s)how separators: {showSeparators ? chalk.green('ON') : chalk.gray('OFF')}</Text>
+                    {selectedItem ? (
+                        <Box marginTop={1}>
+                            <Text>
+                                Current {editingBackground ? 'background' : 'foreground'} ({colorNumber === 'custom' ? 'custom' : `${colorNumber}/${colorList.length}`}): {colorDisplay}
+                                {selectedItem.bold && chalk.bold(' [BOLD]')}
+                            </Text>
+                        </Box>
+                    ) : (
+                        <Box marginTop={1}>
+                            <Text> </Text>
+                        </Box>
+                    )}
+                </>
             )}
             <Box marginTop={1}>
                 <SelectInput
@@ -1619,14 +1682,21 @@ const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 </Box>
             ) : (
                 <>
-                    <Box marginTop={1} flexDirection='column'>
-                        <Text>Font Status: {powerlineFontStatus.installed ? <Text color='green'>✓ Installed</Text> : <Text color='yellow'>✗ Not Installed</Text>}</Text>
-                        {!powerlineFontStatus.installed && (
-                            <Text dimColor>Press (i) to install Powerline fonts</Text>
-                        )}
+                    <Box flexDirection='column'>
+                        <Text>
+                            {'   Font Status: '}
+                            {powerlineFontStatus.installed ? (
+                                <Text color='green'>✓ Installed</Text>
+                            ) : (
+                                <>
+                                    <Text color='yellow'>✗ Not Installed</Text>
+                                    <Text dimColor> - Press (i) to install Powerline fonts</Text>
+                                </>
+                            )}
+                        </Text>
                     </Box>
                     
-                    <Box marginTop={2}>
+                    <Box>
                         <Text>Powerline Mode: </Text>
                         <Text color={powerlineConfig.enabled ? 'green' : 'red'}>
                             {powerlineConfig.enabled ? '✓ Enabled' : '✗ Disabled'}
