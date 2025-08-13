@@ -10,10 +10,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     renderStatusLine as renderLine,
-    getItemDefaultColor,
-    applyColors,
     type RenderContext
 } from './utils/renderer';
+import { 
+    getItemDefaultColor,
+    applyColors,
+    getAvailableColors
+} from './utils/colors';
 import { checkPowerlineFonts, checkPowerlineFontsAsync, installPowerlineFonts, getPowerlineStatusMessage, type PowerlineFontStatus } from './utils/powerline';
 
 // Get package version
@@ -929,12 +932,12 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
             const newItems = items.map(item => {
                 if (item.id === selected.value) {
                     if (editingBackground) {
-                        const currentBgColor = item.backgroundColor || 'none';
+                        const currentBgColor = item.backgroundColor || '';  // Empty string for 'none'
                         let currentBgColorIndex = bgColors.indexOf(currentBgColor);
                         // If color not found, start from beginning
                         if (currentBgColorIndex === -1) currentBgColorIndex = 0;
                         const nextBgColor = bgColors[(currentBgColorIndex + 1) % bgColors.length];
-                        return { ...item, backgroundColor: nextBgColor === 'none' ? undefined : nextBgColor };
+                        return { ...item, backgroundColor: nextBgColor === '' ? undefined : nextBgColor };
                     } else {
                         let currentColor = item.color || getDefaultColor(item.type);
                         // If color is 'dim', treat as if no color was set
@@ -959,22 +962,23 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
     };
 
     // Color list for cycling
-    const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
-        'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
-        'magentaBright', 'cyanBright', 'whiteBright'];
-
-    // Background colors list (includes 'none' as first option)
-    // Note: chalk doesn't support bgDim, so we exclude it from background colors
-    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta',
-        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright',
-        'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
+    // Get available colors from colors.ts (same list for both fg and bg)
+    const colorOptions = getAvailableColors();
+    const colors = colorOptions.map(c => c.hex || '');
+    
+    // For background, add 'none' option at the beginning and filter out 'Default' to avoid duplicate empty strings
+    const bgColorOptions = [
+        { name: 'None', hex: '' }, 
+        ...colorOptions.filter(c => c.name !== 'Default')
+    ];
+    const bgColors = bgColorOptions.map(c => c.hex || '');
 
     // Get current color for highlighted item
     const selectedItem = highlightedItemId && highlightedItemId !== 'back'
         ? colorableItems.find(item => item.id === highlightedItemId)
         : null;
     const currentColor = editingBackground
-        ? (selectedItem?.backgroundColor || 'none')
+        ? (selectedItem?.backgroundColor || '')  // Empty string for 'none'
         : (selectedItem ? (selectedItem.color || getDefaultColor(selectedItem.type)) : 'white');
 
     const colorList = editingBackground ? bgColors : colors;
@@ -983,15 +987,31 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, onUpdate, onBack }) => {
 
     let colorDisplay;
     if (editingBackground) {
-        if (currentColor === 'none') {
+        if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(no background)');
         } else {
-            const bgColorName = currentColor.replace(/^bg/, '').toLowerCase();
-            const bgFunc = (chalk as any)[currentColor];
-            colorDisplay = bgFunc ? bgFunc(` ${bgColorName} `) : chalk.white(currentColor);
+            // Find the color option to get both name and hex
+            const colorOption = bgColorOptions.find(c => c.hex === currentColor);
+            const displayName = colorOption ? colorOption.name : currentColor;
+            
+            if (currentColor.startsWith('#')) {
+                colorDisplay = chalk.bgHex(currentColor)(` ${displayName} `);
+            } else {
+                colorDisplay = chalk.white(displayName);
+            }
         }
     } else {
-        colorDisplay = (chalk as any)[currentColor] ? (chalk as any)[currentColor](currentColor) : chalk.white(currentColor);
+        // Find the color option to get both name and hex
+        const colorOption = colorOptions.find(c => c.hex === currentColor);
+        const displayName = colorOption ? colorOption.name : currentColor;
+        
+        if (currentColor && currentColor.startsWith('#')) {
+            colorDisplay = chalk.hex(currentColor)(displayName);
+        } else if (!currentColor || currentColor === '') {
+            colorDisplay = chalk.gray('(default)');
+        } else {
+            colorDisplay = chalk.white(displayName);
+        }
     }
 
     return (

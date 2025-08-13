@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { promisify } from 'util';
+import { migrateSettingsColors } from './colors';
 
 // Ensure fs.promises compatibility
 const readFile = fs.promises?.readFile || promisify(fs.readFile);
@@ -130,7 +131,22 @@ export async function loadSettings(): Promise<Settings> {
             loaded.lines = loaded.lines.slice(0, 3);
         }
 
-        return { ...DEFAULT_SETTINGS, ...loaded };
+        // Migrate ANSI color names to RGB hex values
+        const migrated = migrateSettingsColors({ ...DEFAULT_SETTINGS, ...loaded });
+        
+        // Check if migration occurred by comparing JSON strings
+        const originalJson = JSON.stringify(loaded);
+        const migratedJson = JSON.stringify(migrated);
+        
+        // If colors were migrated, save the updated settings
+        if (originalJson !== migratedJson) {
+            // Save in background, don't await to avoid blocking
+            saveSettings(migrated).catch(err => {
+                console.error('Failed to save migrated color settings:', err);
+            });
+        }
+        
+        return migrated;
     } catch (error) {
         // Any other error, return defaults
         console.error('Error loading settings:', error);

@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import type { StatusItem } from './config';
+import { applyColors, getItemDefaultColor, bgToFg } from './colors';
 
 // Ensure fs.promises compatibility for older Node versions
 const readFile = fs.promises?.readFile || promisify(fs.readFile);
@@ -58,55 +59,9 @@ export interface RenderContext {
     isPreview?: boolean;
 }
 
-// Helper function to apply foreground, background colors and bold
-export function applyColors(text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string {
-    let result = text;
-
-    // Standard color application
-    // Ignore 'dim' color - it causes issues with terminal rendering
-    if (foregroundColor && foregroundColor !== 'dim') {
-        const fgFunc = (chalk as any)[foregroundColor];
-        if (fgFunc) {
-            result = fgFunc(result);
-        }
-    }
-
-    if (backgroundColor && backgroundColor !== 'none') {
-        const bgFunc = (chalk as any)[backgroundColor];
-        if (bgFunc) {
-            result = bgFunc(result);
-        }
-    }
-
-    if (bold) {
-        result = chalk.bold(result);
-    }
-
-    return result;
-}
-
-// Helper to get default color for an item type
-export function getItemDefaultColor(type: string): string {
-    switch (type) {
-        case 'model': return 'cyan';
-        case 'git-branch': return 'magenta';
-        case 'git-changes': return 'yellow';
-        case 'session-clock': return 'yellow';
-        case 'version': return 'green';
-        case 'tokens-input': return 'blue';
-        case 'tokens-output': return 'white';
-        case 'tokens-cached': return 'cyan';
-        case 'tokens-total': return 'cyan';
-        case 'context-length': return 'gray';
-        case 'context-percentage': return 'blue';
-        case 'context-percentage-usable': return 'green';
-        case 'terminal-width': return 'gray';
-        case 'custom-text': return 'white';
-        case 'custom-command': return 'white';
-        case 'separator': return 'gray';
-        default: return 'white';
-    }
-}
+// Color functions moved to colors.ts
+// Re-exported for backward compatibility
+export { applyColors, getItemDefaultColor } from './colors';
 
 // Helper function to format token counts
 export function formatTokens(count: number): string {
@@ -591,16 +546,6 @@ function renderPowerlineStatusLine(
     // Build the final powerline string
     let result = '';
     
-    // Convert background color names to foreground equivalents
-    const bgToFg = (bgColor: string | undefined): string | undefined => {
-        if (!bgColor) return undefined;
-        if (bgColor.startsWith('bg')) {
-            const color = bgColor.substring(2);
-            return color.charAt(0).toLowerCase() + color.slice(1);
-        }
-        return bgColor;
-    };
-    
     // Add start cap if specified
     if (startCap && widgets.length > 0) {
         const firstWidget = widgets[0];
@@ -629,18 +574,6 @@ function renderPowerlineStatusLine(
             result += '\x1b[0m';
             // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
             const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
-            
-            // Get the actual color name from a widget for use as separator foreground
-            // For widgets with backgrounds, we want to use that background color as the separator's foreground
-            const getWidgetColorForSeparator = (widget: any): string | undefined => {
-                if (!widget.bgColor) return undefined;
-                // Convert background color to foreground equivalent
-                if (widget.bgColor.startsWith('bg')) {
-                    const color = widget.bgColor.substring(2);
-                    return color.charAt(0).toLowerCase() + color.slice(1);
-                }
-                return widget.bgColor;
-            };
             
             // Powerline separator coloring:
             // For right-facing separators (default):
