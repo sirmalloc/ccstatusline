@@ -427,7 +427,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type backwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
+                    'session-clock', 'terminal-width', 'version', 'current-dir', 'flex-separator', 'custom-text', 'custom-command'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -444,7 +444,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Toggle item type forwards
                 const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
                     'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
+                    'session-clock', 'terminal-width', 'version', 'current-dir', 'flex-separator', 'custom-text', 'custom-command'];
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
@@ -594,6 +594,8 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 return colorFunc('Terminal Width');
             case 'version':
                 return colorFunc('Version');
+            case 'current-dir':
+                return colorFunc('Current Directory');
             case 'custom-text':
                 const text = item.customText || 'Empty';
                 return colorFunc(`Custom Text (${text})`);
