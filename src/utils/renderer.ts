@@ -8,9 +8,6 @@ import { applyColors, getItemDefaultColor, bgToFg } from './colors';
 // Ensure fs.promises compatibility for older Node versions
 const readFile = fs.promises?.readFile || promisify(fs.readFile);
 
-// Force chalk to use colors even when piped
-chalk.level = 3;
-
 export interface StatusJSON {
     session_id: string;
     transcript_path: string;
@@ -308,16 +305,16 @@ function renderPowerlineStatusLine(
     const separator = powerlineConfig.separator || '\uE0B0';
     const startCap = powerlineConfig.startCap || '';
     const endCap = powerlineConfig.endCap || '';
-    
+
     // Filter out separator and flex-separator items in powerline mode
-    const filteredItems = items.filter(item => 
+    const filteredItems = items.filter(item =>
         item.type !== 'separator' && item.type !== 'flex-separator'
     );
-    
+
     if (filteredItems.length === 0) return '';
-    
+
     const detectedWidth = context.terminalWidth || getTerminalWidth();
-    
+
     // Calculate terminal width based on flex mode settings
     let terminalWidth: number | null = null;
     if (detectedWidth) {
@@ -351,14 +348,14 @@ function renderPowerlineStatusLine(
             }
         }
     }
-    
+
     // Build widget elements (similar to regular mode but without separators)
     const widgets: { content: string, bgColor?: string, fgColor?: string, item: StatusItem }[] = [];
-    
+
     for (const item of filteredItems) {
         let widgetText = '';
         let defaultColor = 'white';
-        
+
         switch (item.type) {
             case 'model':
                 if (context.isPreview) {
@@ -523,15 +520,15 @@ function renderPowerlineStatusLine(
                 defaultColor = 'white';
                 break;
         }
-        
+
         if (widgetText) {
             // Add padding to widget text
             const paddedText = ` ${widgetText} `;
-            
+
             // Determine colors
             const fgColor = item.color || defaultColor;
             const bgColor = item.backgroundColor;
-            
+
             widgets.push({
                 content: paddedText,
                 bgColor: bgColor || undefined,  // Make sure undefined, not empty string
@@ -540,12 +537,12 @@ function renderPowerlineStatusLine(
             });
         }
     }
-    
+
     if (widgets.length === 0) return '';
-    
+
     // Build the final powerline string
     let result = '';
-    
+
     // Add start cap if specified
     if (startCap && widgets.length > 0) {
         const firstWidget = widgets[0];
@@ -558,23 +555,23 @@ function renderPowerlineStatusLine(
             result += startCap;
         }
     }
-    
+
     // Render widgets with powerline separators
     for (let i = 0; i < widgets.length; i++) {
         const widget = widgets[i];
         const nextWidget = widgets[i + 1];
-        
+
         // Apply colors to widget content
         let widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, widget.item.bold);
         result += widgetContent;
-        
+
         // Add separator between widgets (not after last one)
         if (i < widgets.length - 1 && separator && nextWidget) {
             // Reset colors before applying separator colors to avoid inheritance issues
             result += '\x1b[0m';
             // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
             const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
-            
+
             // Powerline separator coloring:
             // For right-facing separators (default):
             //   - Foreground: previous widget's background color (converted to fg)
@@ -582,7 +579,7 @@ function renderPowerlineStatusLine(
             // For left-facing separators:
             //   - Foreground: next widget's background color (converted to fg)
             //   - Background: previous widget's background color
-            
+
             if (isLeftFacing) {
                 // Left-facing separator - reversed logic
                 if (widget.bgColor && nextWidget.bgColor) {
@@ -627,7 +624,7 @@ function renderPowerlineStatusLine(
             }
         }
     }
-    
+
     // Add end cap if specified
     if (endCap && widgets.length > 0) {
         const lastWidget = widgets[widgets.length - 1];
@@ -642,10 +639,10 @@ function renderPowerlineStatusLine(
             result += endCap;
         }
     }
-    
+
     // Reset colors at the end
     result += chalk.reset('');
-    
+
     // Handle truncation if terminal width is known
     if (terminalWidth && terminalWidth > 0) {
         const plainLength = result.replace(/\x1b\[[0-9;]*m/g, '').length;
@@ -654,7 +651,7 @@ function renderPowerlineStatusLine(
             let truncated = '';
             let currentLength = 0;
             let inAnsiCode = false;
-            
+
             for (let i = 0; i < result.length; i++) {
                 const char = result[i];
                 if (char === '\x1b') {
@@ -678,7 +675,7 @@ function renderPowerlineStatusLine(
             result = truncated;
         }
     }
-    
+
     return result;
 }
 
@@ -687,13 +684,21 @@ export function renderStatusLine(
     settings: any,
     context: RenderContext
 ): string {
-    // Check if powerline mode is enabled
-    const isPowerlineMode = settings.powerline?.enabled || false;
-    
-    // If powerline mode is enabled, use powerline renderer
-    if (isPowerlineMode) {
-        return renderPowerlineStatusLine(items, settings, context);
+    // Force 24-bit color for non-preview statusline rendering
+    // This will be made configurable later
+    const originalChalkLevel = chalk.level;
+    if (!context.isPreview) {
+        chalk.level = 3;
     }
+    
+    try {
+        // Check if powerline mode is enabled
+        const isPowerlineMode = settings.powerline?.enabled || false;
+
+        // If powerline mode is enabled, use powerline renderer
+        if (isPowerlineMode) {
+            return renderPowerlineStatusLine(items, settings, context);
+        }
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground color
@@ -713,7 +718,7 @@ export function renderStatusLine(
     };
 
     const detectedWidth = context.terminalWidth || getTerminalWidth();
-    
+
     // Calculate terminal width based on flex mode settings
     let terminalWidth: number | null = null;
     if (detectedWidth) {
@@ -1022,10 +1027,10 @@ export function renderStatusLine(
     elements.forEach((elem, index) => {
         // Add default separator between any two items (but not before first item, and not around flex separators)
         const prevElem = index > 0 ? elements[index - 1] : null;
-        const shouldAddSeparator = defaultSep && index > 0 && 
-                                   elem.type !== 'flex-separator' && 
+        const shouldAddSeparator = defaultSep && index > 0 &&
+                                   elem.type !== 'flex-separator' &&
                                    prevElem?.type !== 'flex-separator';
-        
+
         if (shouldAddSeparator) {
             // Check if we should inherit colors from the previous element
             if (settings.inheritSeparatorColors && index > 0) {
@@ -1172,5 +1177,11 @@ export function renderStatusLine(
         }
     }
 
-    return statusLine;
+        return statusLine;
+    } finally {
+        // Restore original chalk level
+        if (!context.isPreview) {
+            chalk.level = originalChalkLevel;
+        }
+    }
 }

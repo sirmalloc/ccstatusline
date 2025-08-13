@@ -132,6 +132,12 @@ export function applyColors(
         result = chalk.bold(result);
     }
     
+    // Add reset code at the end if any styling was applied
+    // This prevents color bleeding in terminals that don't handle it well
+    if (fgHex || bgHex || bold) {
+        result = result + '\x1b[0m';
+    }
+    
     return result;
 }
 
