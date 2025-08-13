@@ -28,6 +28,13 @@ export interface StatusItem {
 
 export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
 
+export interface PowerlineConfig {
+    enabled?: boolean; // Whether powerline mode is enabled
+    separator?: string; // Powerline separator character (default: \uE0B0)
+    startCap?: string; // Optional start cap character
+    endCap?: string; // Optional end cap character
+}
+
 export interface Settings {
     items?: StatusItem[]; // Legacy single line support
     lines?: StatusItem[][]; // Multiple lines (up to 3)
@@ -39,6 +46,7 @@ export interface Settings {
     overrideBackgroundColor?: string; // Override background color for all items (e.g., 'none', 'bgRed', etc.)
     overrideForegroundColor?: string; // Override foreground color for all items (e.g., 'red', 'cyan', etc.)
     globalBold?: boolean; // Apply bold formatting to all items
+    powerline?: PowerlineConfig; // Powerline mode configuration
 }
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');

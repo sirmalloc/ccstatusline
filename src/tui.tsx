@@ -4,7 +4,7 @@ import Gradient from 'ink-gradient';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import { execSync } from 'child_process';
-import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType, type FlexMode } from './utils/config';
+import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType, type FlexMode, type PowerlineConfig } from './utils/config';
 import { isInstalled, installStatusLine, uninstallStatusLine, getExistingStatusLine } from './utils/claude-settings';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -196,10 +196,12 @@ interface MainMenuProps {
     hasChanges: boolean;
     initialSelection?: number;
     powerlineFontStatus: PowerlineFontStatus;
+    settings: Settings | null;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0, powerlineFontStatus }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0, powerlineFontStatus, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
+    const isPowerlineEnabled = settings?.powerline?.enabled || false;
     
     // Build menu structure with visual gaps
     const menuItems = [
@@ -208,7 +210,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
         { label: '🔤 Powerline Configuration', value: 'powerline', selectable: true },
         { label: '', value: '_gap1', selectable: false },  // Visual gap
         { label: '📏 Terminal Width Options', value: 'terminalWidth', selectable: true },
-        { label: '🔧 Global Overrides', value: 'globalOverrides', selectable: true },
+        { 
+            label: isPowerlineEnabled 
+                ? '🔧 Global Overrides (disabled while using Powerline)' 
+                : '🔧 Global Overrides', 
+            value: 'globalOverrides', 
+            selectable: !isPowerlineEnabled,
+            disabled: isPowerlineEnabled
+        },
         { label: '', value: '_gap2', selectable: false },  // Visual gap
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install', selectable: true },
     ];
@@ -272,14 +281,20 @@ const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasCha
             <Text bold>Main Menu</Text>
             <Box marginTop={1} flexDirection='column'>
                 {menuItems.map((item, idx) => {
-                    if (!item.selectable) {
+                    if (!item.selectable && item.value.startsWith('_gap')) {
                         return <Text key={item.value}> </Text>;
                     }
                     const selectableIdx = selectableItems.indexOf(item);
                     const isSelected = selectableIdx === selectedIndex;
+                    const isDisabled = 'disabled' in item && item.disabled;
+                    
                     return (
-                        <Text key={item.value} color={isSelected ? 'green' : undefined}>
-                            {isSelected ? '▶ ' : '  '}{item.label}
+                        <Text 
+                            key={item.value} 
+                            color={isSelected && !isDisabled ? 'green' : undefined}
+                            dimColor={isDisabled}
+                        >
+                            {isSelected && !isDisabled ? '▶ ' : '  '}{item.label}
                         </Text>
                     );
                 })}
@@ -1392,6 +1407,245 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
     );
 };
 
+interface PowerlineConfigurationProps {
+    settings: Settings;
+    powerlineFontStatus: PowerlineFontStatus;
+    onUpdate: (settings: Settings) => void;
+    onBack: () => void;
+    onInstallFonts: () => void;
+    installingFonts: boolean;
+    fontInstallMessage: string | null;
+    onClearMessage: () => void;
+}
+
+const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
+    settings,
+    powerlineFontStatus,
+    onUpdate,
+    onBack,
+    onInstallFonts,
+    installingFonts,
+    fontInstallMessage,
+    onClearMessage
+}) => {
+    const powerlineConfig = settings.powerline || {};
+    const [editingMode, setEditingMode] = useState<'separator' | 'startCap' | 'endCap' | null>(null);
+    const [customInput, setCustomInput] = useState('');
+    const [cursorPos, setCursorPos] = useState(0);
+    
+    // Common powerline separators (thin ones don't work well, so excluded)
+    const separators = [
+        { char: '\uE0B0', name: 'Triangle Right', hex: 'E0B0' },
+        { char: '\uE0B2', name: 'Triangle Left', hex: 'E0B2' },
+        { char: '\uE0B4', name: 'Round Right', hex: 'E0B4' },
+        { char: '\uE0B6', name: 'Round Left', hex: 'E0B6' },
+    ];
+    
+    // Start caps (left-facing)
+    const startCaps = [
+        { char: '', name: 'None', hex: '' },
+        { char: '\uE0B2', name: 'Triangle', hex: 'E0B2' },
+        { char: '\uE0B6', name: 'Round', hex: 'E0B6' },
+        { char: '\uE0BA', name: 'Lower Triangle', hex: 'E0BA' },
+        { char: '\uE0BE', name: 'Diagonal', hex: 'E0BE' },
+    ];
+    
+    // End caps (right-facing)
+    const endCaps = [
+        { char: '', name: 'None', hex: '' },
+        { char: '\uE0B0', name: 'Triangle', hex: 'E0B0' },
+        { char: '\uE0B4', name: 'Round', hex: 'E0B4' },
+        { char: '\uE0B8', name: 'Lower Triangle', hex: 'E0B8' },
+        { char: '\uE0BC', name: 'Diagonal', hex: 'E0BC' },
+    ];
+    
+    const currentSeparatorIndex = separators.findIndex(s => s.char === (powerlineConfig.separator || '\uE0B0'));
+    const currentStartCapIndex = startCaps.findIndex(c => c.char === (powerlineConfig.startCap || ''));
+    const currentEndCapIndex = endCaps.findIndex(c => c.char === (powerlineConfig.endCap || ''));
+    
+    useInput((input, key) => {
+        if (fontInstallMessage) {
+            onClearMessage();
+            return;
+        }
+        
+        if (editingMode) {
+            // Custom hex input mode
+            if (key.escape) {
+                setEditingMode(null);
+                setCustomInput('');
+                setCursorPos(0);
+            } else if (key.return) {
+                if (customInput.length === 4) {
+                    const char = String.fromCharCode(parseInt(customInput, 16));
+                    const newConfig = { ...powerlineConfig };
+                    
+                    if (editingMode === 'separator') {
+                        newConfig.separator = char;
+                    } else if (editingMode === 'startCap') {
+                        newConfig.startCap = char;
+                    } else if (editingMode === 'endCap') {
+                        newConfig.endCap = char;
+                    }
+                    
+                    onUpdate({ ...settings, powerline: newConfig });
+                    setEditingMode(null);
+                    setCustomInput('');
+                    setCursorPos(0);
+                }
+            } else if (key.backspace && cursorPos > 0) {
+                setCustomInput(customInput.slice(0, cursorPos - 1) + customInput.slice(cursorPos));
+                setCursorPos(cursorPos - 1);
+            } else if (input && /[0-9a-fA-F]/.test(input) && customInput.length < 4) {
+                setCustomInput(customInput.slice(0, cursorPos) + input.toUpperCase() + customInput.slice(cursorPos));
+                setCursorPos(cursorPos + 1);
+            }
+        } else {
+            // Normal navigation mode
+            if (key.escape) {
+                onBack();
+            } else if (input === 't' || input === 'T') {
+                // Toggle powerline mode
+                const newConfig = { ...powerlineConfig, enabled: !powerlineConfig.enabled };
+                onUpdate({ ...settings, powerline: newConfig });
+            } else if (input === 'i' || input === 'I') {
+                // Install fonts
+                if (!installingFonts) {
+                    onInstallFonts();
+                }
+            } else if (powerlineConfig.enabled) {
+                // These options only work when powerline is enabled
+                if (input === 's' || input === 'S') {
+                    // Cycle separator left
+                    const newIndex = currentSeparatorIndex <= 0 ? separators.length - 1 : currentSeparatorIndex - 1;
+                    const newConfig = { ...powerlineConfig, separator: separators[newIndex]?.char || '\uE0B0' };
+                    onUpdate({ ...settings, powerline: newConfig });
+                } else if (input === 'd' || input === 'D') {
+                    // Cycle separator right
+                    const newIndex = (currentSeparatorIndex + 1) % separators.length;
+                    const newConfig = { ...powerlineConfig, separator: separators[newIndex]?.char || '\uE0B0' };
+                    onUpdate({ ...settings, powerline: newConfig });
+                } else if (input === 'e' || input === 'E') {
+                    // Edit separator with custom hex
+                    setEditingMode('separator');
+                    setCustomInput('');
+                    setCursorPos(0);
+                } else if (input === 'a' || input === 'A') {
+                    // Cycle start cap left
+                    const newIndex = currentStartCapIndex <= 0 ? startCaps.length - 1 : currentStartCapIndex - 1;
+                    const newConfig = { ...powerlineConfig, startCap: startCaps[newIndex]?.char || '' };
+                    onUpdate({ ...settings, powerline: newConfig });
+                } else if (input === 'w' || input === 'W') {
+                    // Cycle start cap right
+                    const newIndex = (currentStartCapIndex + 1) % startCaps.length;
+                    const newConfig = { ...powerlineConfig, startCap: startCaps[newIndex]?.char || '' };
+                    onUpdate({ ...settings, powerline: newConfig });
+                } else if (input === 'q' || input === 'Q') {
+                    // Edit start cap with custom hex
+                    setEditingMode('startCap');
+                    setCustomInput('');
+                    setCursorPos(0);
+                } else if (input === 'z' || input === 'Z') {
+                    // Cycle end cap left
+                    const newIndex = currentEndCapIndex <= 0 ? endCaps.length - 1 : currentEndCapIndex - 1;
+                    const newConfig = { ...powerlineConfig, endCap: endCaps[newIndex]?.char || '' };
+                    onUpdate({ ...settings, powerline: newConfig });
+                } else if (input === 'x' || input === 'X') {
+                    // Cycle end cap right
+                    const newIndex = (currentEndCapIndex + 1) % endCaps.length;
+                    const newConfig = { ...powerlineConfig, endCap: endCaps[newIndex]?.char || '' };
+                    onUpdate({ ...settings, powerline: newConfig });
+                } else if (input === 'c' || input === 'C') {
+                    // Edit end cap with custom hex
+                    setEditingMode('endCap');
+                    setCustomInput('');
+                    setCursorPos(0);
+                }
+            }
+        }
+    });
+    
+    const currentSeparator = separators[currentSeparatorIndex] || { char: powerlineConfig.separator || '\uE0B0', name: 'Custom', hex: 'Custom' };
+    const currentStartCap = startCaps[currentStartCapIndex] || { char: powerlineConfig.startCap || '', name: 'Custom', hex: 'Custom' };
+    const currentEndCap = endCaps[currentEndCapIndex] || { char: powerlineConfig.endCap || '', name: 'Custom', hex: 'Custom' };
+    
+    return (
+        <Box flexDirection='column'>
+            <Text bold>Powerline Configuration</Text>
+            
+            {installingFonts ? (
+                <Box marginTop={2}>
+                    <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
+                </Box>
+            ) : fontInstallMessage ? (
+                <Box marginTop={2} flexDirection='column'>
+                    <Text color={fontInstallMessage.includes('success') ? 'green' : 'red'}>
+                        {fontInstallMessage}
+                    </Text>
+                    <Box marginTop={1}>
+                        <Text dimColor>Press any key to continue...</Text>
+                    </Box>
+                </Box>
+            ) : editingMode ? (
+                <Box marginTop={2} flexDirection='column'>
+                    <Text>Enter 4-digit hex code for {editingMode === 'separator' ? 'separator' : editingMode === 'startCap' ? 'start cap' : 'end cap'}:</Text>
+                    <Text>
+                        \u{customInput.slice(0, cursorPos)}
+                        <Text backgroundColor='gray' color='black'>{customInput[cursorPos] || '_'}</Text>
+                        {customInput.slice(cursorPos + 1)}
+                        {customInput.length < 4 && customInput.length === cursorPos && <Text dimColor>{'_'.repeat(4 - customInput.length - 1)}</Text>}
+                    </Text>
+                    <Text dimColor>Enter 4 hex digits (0-9, A-F), then press Enter. ESC to cancel.</Text>
+                </Box>
+            ) : (
+                <>
+                    <Box marginTop={1} flexDirection='column'>
+                        <Text>Font Status: {powerlineFontStatus.installed ? <Text color='green'>✓ Installed</Text> : <Text color='yellow'>✗ Not Installed</Text>}</Text>
+                        {!powerlineFontStatus.installed && (
+                            <Text dimColor>Press (i) to install Powerline fonts</Text>
+                        )}
+                    </Box>
+                    
+                    <Box marginTop={2}>
+                        <Text>Powerline Mode: </Text>
+                        <Text color={powerlineConfig.enabled ? 'green' : 'red'}>
+                            {powerlineConfig.enabled ? '✓ Enabled' : '✗ Disabled'}
+                        </Text>
+                        <Text dimColor> - Press (t) to toggle</Text>
+                    </Box>
+                    
+                    {powerlineConfig.enabled && (
+                        <>
+                            <Box flexDirection='column'>
+                                <Text dimColor>When enabled, global overrides are disabled and powerline separators are used</Text>
+                            </Box>
+                            
+                            <Box marginTop={2}>
+                                <Text>Separator: {currentSeparator.char ? `${currentSeparator.char} (${currentSeparator.name})` : '(none)'}</Text>
+                                <Text dimColor> - (s/d) cycle, (e) custom hex</Text>
+                            </Box>
+                            
+                            <Box>
+                                <Text>Start Cap: {currentStartCap.char ? `${currentStartCap.char} (${currentStartCap.name})` : '(none)'}</Text>
+                                <Text dimColor> - (a/w) cycle, (q) custom hex</Text>
+                            </Box>
+                            
+                            <Box>
+                                <Text>  End Cap: {currentEndCap.char ? `${currentEndCap.char} (${currentEndCap.name})` : '(none)'}</Text>
+                                <Text dimColor> - (z/x) cycle, (c) custom hex</Text>
+                            </Box>
+                        </>
+                    )}
+                    
+                    <Box marginTop={2}>
+                        <Text dimColor>Press ESC to go back</Text>
+                    </Box>
+                </>
+            )}
+        </Box>
+    );
+};
+
 const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
@@ -1451,29 +1705,6 @@ const App: React.FC = () => {
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
             exit();
-        }
-        
-        // Handle Powerline screen inputs
-        if (screen === 'powerline') {
-            if (fontInstallMessage) {
-                // Any key to continue after installation
-                setFontInstallMessage(null);
-                // Refresh font status
-                const newStatus = checkPowerlineFonts();
-                setPowerlineFontStatus(newStatus);
-                setScreen('main');
-            } else if (!installingFonts) {
-                if (key.escape) {
-                    setScreen('main');
-                } else if (key.return && !powerlineFontStatus.installed) {
-                    // Install fonts
-                    setInstallingFonts(true);
-                    installPowerlineFonts().then(result => {
-                        setInstallingFonts(false);
-                        setFontInstallMessage(result.message);
-                    });
-                }
-            }
         }
     });
 
@@ -1601,6 +1832,7 @@ const App: React.FC = () => {
                         hasChanges={hasChanges}
                         initialSelection={menuSelections.main || 0}
                         powerlineFontStatus={powerlineFontStatus}
+                        settings={settings}
                     />
                 )}
                 {screen === 'lines' && (
@@ -1697,52 +1929,30 @@ const App: React.FC = () => {
                     />
                 )}
                 {screen === 'powerline' && (
-                    <Box flexDirection='column'>
-                        <Text bold>Powerline Font Installation</Text>
-                        <Box marginTop={1} flexDirection='column'>
-                            <Text>Current status: {getPowerlineStatusMessage(powerlineFontStatus)}</Text>
-                            {powerlineFontStatus.checkedSymbol && (
-                                <Text dimColor>Test symbol: {powerlineFontStatus.checkedSymbol} (should look like a solid triangular arrow, not a box or )</Text>
-                            )}
-                        </Box>
-                        
-                        {installingFonts ? (
-                            <Box marginTop={2}>
-                                <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
-                            </Box>
-                        ) : fontInstallMessage ? (
-                            <Box marginTop={2} flexDirection='column'>
-                                <Text color={fontInstallMessage.includes('success') ? 'green' : 'red'}>
-                                    {fontInstallMessage}
-                                </Text>
-                                <Box marginTop={1}>
-                                    <Text dimColor>Press any key to continue...</Text>
-                                </Box>
-                            </Box>
-                        ) : (
-                            <Box marginTop={2} flexDirection='column'>
-                                {!powerlineFontStatus.installed && (
-                                    <>
-                                        <Text dimColor>Powerline fonts add special symbols for better visual appearance.</Text>
-                                        <Text dimColor>Without them, some separators and icons may display as boxes or question marks.</Text>
-                                        <Box marginTop={1}>
-                                            <Text>Press Enter to install Powerline fonts, or ESC to go back.</Text>
-                                        </Box>
-                                    </>
-                                )}
-                                {powerlineFontStatus.installed && (
-                                    <>
-                                        <Text color='green'>✓ Powerline fonts are already installed!</Text>
-                                        <Text dimColor>If symbols aren't displaying correctly, make sure your terminal is using a Powerline font.</Text>
-                                        <Text dimColor>Popular choices: "Source Code Pro for Powerline", "Meslo LG S for Powerline"</Text>
-                                        <Box marginTop={1}>
-                                            <Text>Press ESC to go back.</Text>
-                                        </Box>
-                                    </>
-                                )}
-                            </Box>
-                        )}
-                    </Box>
+                    <PowerlineConfiguration
+                        settings={settings}
+                        powerlineFontStatus={powerlineFontStatus}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
+                        }}
+                        onBack={() => {
+                            setScreen('main');
+                        }}
+                        onInstallFonts={() => {
+                            setInstallingFonts(true);
+                            installPowerlineFonts().then(result => {
+                                setInstallingFonts(false);
+                                setFontInstallMessage(result.message);
+                                // Refresh font status
+                                checkPowerlineFontsAsync().then(asyncStatus => {
+                                    setPowerlineFontStatus(asyncStatus);
+                                });
+                            });
+                        }}
+                        installingFonts={installingFonts}
+                        fontInstallMessage={fontInstallMessage}
+                        onClearMessage={() => setFontInstallMessage(null)}
+                    />
                 )}
             </Box>
         </Box>

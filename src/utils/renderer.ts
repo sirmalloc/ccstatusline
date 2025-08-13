@@ -344,11 +344,423 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
     }
 }
 
+function renderPowerlineStatusLine(
+    items: StatusItem[],
+    settings: any,
+    context: RenderContext
+): string {
+    const powerlineConfig = settings.powerline || {};
+    const separator = powerlineConfig.separator || '\uE0B0';
+    const startCap = powerlineConfig.startCap || '';
+    const endCap = powerlineConfig.endCap || '';
+    
+    // Filter out separator and flex-separator items in powerline mode
+    const filteredItems = items.filter(item => 
+        item.type !== 'separator' && item.type !== 'flex-separator'
+    );
+    
+    if (filteredItems.length === 0) return '';
+    
+    const detectedWidth = context.terminalWidth || getTerminalWidth();
+    
+    // Calculate terminal width based on flex mode settings
+    let terminalWidth: number | null = null;
+    if (detectedWidth) {
+        const flexMode = settings.flexMode || 'full-minus-40';
+
+        if (context.isPreview) {
+            // In preview mode, account for box borders and padding (6 chars total)
+            if (flexMode === 'full') {
+                terminalWidth = detectedWidth - 6;
+            } else if (flexMode === 'full-minus-40') {
+                terminalWidth = detectedWidth - 43;
+            } else if (flexMode === 'full-until-compact') {
+                terminalWidth = detectedWidth - 6;
+            }
+        } else {
+            // In actual rendering mode
+            if (flexMode === 'full') {
+                terminalWidth = detectedWidth - 4;
+            } else if (flexMode === 'full-minus-40') {
+                terminalWidth = detectedWidth - 41;
+            } else if (flexMode === 'full-until-compact') {
+                const threshold = settings.compactThreshold || 60;
+                const contextPercentage = context.tokenMetrics ?
+                    Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
+
+                if (contextPercentage >= threshold) {
+                    terminalWidth = detectedWidth - 40;
+                } else {
+                    terminalWidth = detectedWidth - 4;
+                }
+            }
+        }
+    }
+    
+    // Build widget elements (similar to regular mode but without separators)
+    const widgets: { content: string, bgColor?: string, fgColor?: string, item: StatusItem }[] = [];
+    
+    for (const item of filteredItems) {
+        let widgetText = '';
+        let defaultColor = 'white';
+        
+        switch (item.type) {
+            case 'model':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? 'Claude' : 'Model: Claude';
+                } else if (context.data?.model) {
+                    widgetText = item.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
+                }
+                defaultColor = 'cyan';
+                break;
+
+            case 'git-branch':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? 'main' : '⎇ main';
+                } else {
+                    const branch = context.gitBranch || getGitBranch();
+                    if (branch) {
+                        widgetText = item.rawValue ? branch : `⎇ ${branch}`;
+                    }
+                }
+                defaultColor = 'magenta';
+                break;
+
+            case 'git-changes':
+                if (context.isPreview) {
+                    widgetText = '(+42,-10)';
+                } else {
+                    const changes = context.gitChanges || getGitChanges();
+                    if (changes !== null) {
+                        widgetText = `(+${changes.insertions},-${changes.deletions})`;
+                    }
+                }
+                defaultColor = 'yellow';
+                break;
+
+            case 'tokens-input':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '15.2k' : 'In: 15.2k';
+                } else if (context.tokenMetrics) {
+                    widgetText = item.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
+                }
+                defaultColor = 'blue';
+                break;
+
+            case 'tokens-output':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '3.4k' : 'Out: 3.4k';
+                } else if (context.tokenMetrics) {
+                    widgetText = item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
+                }
+                defaultColor = 'white';
+                break;
+
+            case 'tokens-cached':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '12k' : 'Cached: 12k';
+                } else if (context.tokenMetrics) {
+                    widgetText = item.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
+                }
+                defaultColor = 'cyan';
+                break;
+
+            case 'tokens-total':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '30.6k' : 'Total: 30.6k';
+                } else if (context.tokenMetrics) {
+                    widgetText = item.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
+                }
+                defaultColor = 'cyan';
+                break;
+
+            case 'context-length':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '18.6k' : 'Ctx: 18.6k';
+                } else if (context.tokenMetrics) {
+                    widgetText = item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
+                }
+                defaultColor = 'gray';
+                break;
+
+            case 'context-percentage':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '9.3%' : 'Ctx: 9.3%';
+                } else if (context.tokenMetrics) {
+                    const percentage = Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100);
+                    widgetText = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
+                }
+                defaultColor = 'blue';
+                break;
+
+            case 'context-percentage-usable':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
+                } else if (context.tokenMetrics) {
+                    const percentage = Math.min(100, (context.tokenMetrics.contextLength / 160000) * 100);
+                    widgetText = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
+                }
+                defaultColor = 'green';
+                break;
+
+            case 'terminal-width':
+                const width = terminalWidth || getTerminalWidth();
+                if (context.isPreview) {
+                    const detectedWidth = width || '??';
+                    widgetText = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+                } else if (width) {
+                    widgetText = item.rawValue ? `${width}` : `Term: ${width}`;
+                }
+                defaultColor = 'gray';
+                break;
+
+            case 'session-clock':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
+                } else if (context.sessionDuration) {
+                    widgetText = item.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
+                }
+                defaultColor = 'yellow';
+                break;
+
+            case 'version':
+                if (context.isPreview) {
+                    widgetText = item.rawValue ? '1.0.0' : 'v1.0.0';
+                } else if (context.data?.version) {
+                    widgetText = item.rawValue ? context.data.version : `v${context.data.version}`;
+                }
+                defaultColor = 'gray';
+                break;
+
+            case 'custom-text':
+                widgetText = item.customText || '';
+                defaultColor = 'white';
+                break;
+
+            case 'custom-command':
+                if (context.isPreview) {
+                    widgetText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
+                } else if (item.commandPath && context.data) {
+                    try {
+                        const timeout = item.timeout || 1000;
+                        const output = execSync(item.commandPath, {
+                            encoding: 'utf8',
+                            input: JSON.stringify(context.data),
+                            stdio: ['pipe', 'pipe', 'ignore'],
+                            timeout: timeout
+                        }).trim();
+
+                        if (output) {
+                            widgetText = output;
+                            // Handle max width truncation
+                            if (item.maxWidth && item.maxWidth > 0) {
+                                const plainLength = output.replace(/\x1b\[[0-9;]*m/g, '').length;
+                                if (plainLength > item.maxWidth) {
+                                    // Simple truncation for powerline mode
+                                    widgetText = output.substring(0, item.maxWidth);
+                                }
+                            }
+                        }
+                    } catch {
+                        // Command failed - skip
+                    }
+                }
+                defaultColor = 'white';
+                break;
+        }
+        
+        if (widgetText) {
+            // Add padding to widget text
+            const paddedText = ` ${widgetText} `;
+            
+            // Determine colors
+            const fgColor = item.color || defaultColor;
+            const bgColor = item.backgroundColor;
+            
+            widgets.push({
+                content: paddedText,
+                bgColor: bgColor || undefined,  // Make sure undefined, not empty string
+                fgColor: fgColor,
+                item: item
+            });
+        }
+    }
+    
+    if (widgets.length === 0) return '';
+    
+    // Build the final powerline string
+    let result = '';
+    
+    // Convert background color names to foreground equivalents
+    const bgToFg = (bgColor: string | undefined): string | undefined => {
+        if (!bgColor) return undefined;
+        if (bgColor.startsWith('bg')) {
+            const color = bgColor.substring(2);
+            return color.charAt(0).toLowerCase() + color.slice(1);
+        }
+        return bgColor;
+    };
+    
+    // Add start cap if specified
+    if (startCap && widgets.length > 0) {
+        const firstWidget = widgets[0];
+        if (firstWidget.bgColor) {
+            // Start cap uses first widget's background as foreground
+            const capFg = bgToFg(firstWidget.bgColor);
+            const capColored = applyColors(startCap, capFg, undefined, false);
+            result += capColored;
+        } else {
+            result += startCap;
+        }
+    }
+    
+    // Render widgets with powerline separators
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        const nextWidget = widgets[i + 1];
+        
+        // Apply colors to widget content
+        let widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, widget.item.bold);
+        result += widgetContent;
+        
+        // Add separator between widgets (not after last one)
+        if (i < widgets.length - 1 && separator && nextWidget) {
+            // Reset colors before applying separator colors to avoid inheritance issues
+            result += '\x1b[0m';
+            // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
+            const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
+            
+            // Get the actual color name from a widget for use as separator foreground
+            // For widgets with backgrounds, we want to use that background color as the separator's foreground
+            const getWidgetColorForSeparator = (widget: any): string | undefined => {
+                if (!widget.bgColor) return undefined;
+                // Convert background color to foreground equivalent
+                if (widget.bgColor.startsWith('bg')) {
+                    const color = widget.bgColor.substring(2);
+                    return color.charAt(0).toLowerCase() + color.slice(1);
+                }
+                return widget.bgColor;
+            };
+            
+            // Powerline separator coloring:
+            // For right-facing separators (default):
+            //   - Foreground: previous widget's background color (converted to fg)
+            //   - Background: next widget's background color
+            // For left-facing separators:
+            //   - Foreground: next widget's background color (converted to fg)
+            //   - Background: previous widget's background color
+            
+            if (isLeftFacing) {
+                // Left-facing separator - reversed logic
+                if (widget.bgColor && nextWidget.bgColor) {
+                    // Both have backgrounds
+                    const separatorFg = bgToFg(nextWidget.bgColor);
+                    const separatorColored = applyColors(separator, separatorFg, widget.bgColor, false);
+                    result += separatorColored;
+                } else if (widget.bgColor && !nextWidget.bgColor) {
+                    // Only previous widget has background
+                    const separatorColored = applyColors(separator, undefined, widget.bgColor, false);
+                    result += separatorColored;
+                } else if (!widget.bgColor && nextWidget.bgColor) {
+                    // Only next widget has background
+                    const separatorFg = bgToFg(nextWidget.bgColor);
+                    const separatorColored = applyColors(separator, separatorFg, undefined, false);
+                    result += separatorColored;
+                } else {
+                    // Neither has background
+                    result += separator;
+                }
+            } else {
+                // Right-facing separator - standard logic
+                if (widget.bgColor && nextWidget.bgColor) {
+                    // Both have backgrounds
+                    const separatorFg = bgToFg(widget.bgColor);
+                    const separatorColored = applyColors(separator, separatorFg, nextWidget.bgColor, false);
+                    result += separatorColored;
+                } else if (widget.bgColor && !nextWidget.bgColor) {
+                    // Only previous widget has background
+                    const separatorFg = bgToFg(widget.bgColor);
+                    const separatorColored = applyColors(separator, separatorFg, undefined, false);
+                    result += separatorColored;
+                } else if (!widget.bgColor && nextWidget.bgColor) {
+                    // Only next widget has background
+                    const separatorFg = bgToFg(nextWidget.bgColor);
+                    const separatorColored = applyColors(separator, separatorFg, undefined, false);
+                    result += separatorColored;
+                } else {
+                    // Neither has background
+                    result += separator;
+                }
+            }
+        }
+    }
+    
+    // Add end cap if specified
+    if (endCap && widgets.length > 0) {
+        const lastWidget = widgets[widgets.length - 1];
+        if (lastWidget.bgColor) {
+            // Reset colors before applying end cap colors to avoid inheritance issues
+            result += '\x1b[0m';
+            // End cap uses last widget's background as foreground (converted from bg to fg)
+            const capFg = bgToFg(lastWidget.bgColor);
+            const capColored = applyColors(endCap, capFg, undefined, false);
+            result += capColored;
+        } else {
+            result += endCap;
+        }
+    }
+    
+    // Reset colors at the end
+    result += chalk.reset('');
+    
+    // Handle truncation if terminal width is known
+    if (terminalWidth && terminalWidth > 0) {
+        const plainLength = result.replace(/\x1b\[[0-9;]*m/g, '').length;
+        if (plainLength > terminalWidth) {
+            // Truncate to terminal width
+            let truncated = '';
+            let currentLength = 0;
+            let inAnsiCode = false;
+            
+            for (let i = 0; i < result.length; i++) {
+                const char = result[i];
+                if (char === '\x1b') {
+                    inAnsiCode = true;
+                    truncated += char;
+                } else if (inAnsiCode) {
+                    truncated += char;
+                    if (char === 'm') {
+                        inAnsiCode = false;
+                    }
+                } else {
+                    if (currentLength < terminalWidth - 3) {
+                        truncated += char;
+                        currentLength++;
+                    } else {
+                        truncated += '...';
+                        break;
+                    }
+                }
+            }
+            result = truncated;
+        }
+    }
+    
+    return result;
+}
+
 export function renderStatusLine(
     items: StatusItem[],
     settings: any,
     context: RenderContext
 ): string {
+    // Check if powerline mode is enabled
+    const isPowerlineMode = settings.powerline?.enabled || false;
+    
+    // If powerline mode is enabled, use powerline renderer
+    if (isPowerlineMode) {
+        return renderPowerlineStatusLine(items, settings, context);
+    }
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground color
