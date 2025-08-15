@@ -537,6 +537,20 @@ function renderPowerlineStatusLine(
     return result;
 }
 
+// Format separator with appropriate spacing
+function formatSeparator(sep: string): string {
+    if (sep === '|') {
+        return ' | ';
+    } else if (sep === ' ') {
+        return ' ';
+    } else if (sep === ',') {
+        return ', ';
+    } else if (sep === '-') {
+        return ' - ';
+    }
+    return sep;
+}
+
 export function renderStatusLine(
     widgets: WidgetItem[],
     settings: Settings,
@@ -625,7 +639,8 @@ export function renderStatusLine(
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
             const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
-            elements.push({ content: applyColorsWithOverride(sepChar, widget.color ?? 'gray', widget.backgroundColor, widget.bold), type: 'separator', widget });
+            const formattedSep = formatSeparator(sepChar);
+            elements.push({ content: applyColorsWithOverride(formattedSep, widget.color ?? 'gray', widget.backgroundColor, widget.bold), type: 'separator', widget });
             continue;
         }
 
@@ -707,7 +722,7 @@ export function renderStatusLine(
     // Apply default padding and separators
     const finalElements: string[] = [];
     const padding = settings.defaultPadding ?? '';
-    const defaultSep = settings.defaultSeparator ?? '';
+    const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
 
     elements.forEach((elem, index) => {
         // Add default separator between any two items (but not before first item, and not around flex separators)
