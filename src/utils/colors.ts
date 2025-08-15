@@ -5,7 +5,7 @@ import type { ColorEntry } from '../types/ColorEntry';
 // Re-export for backward compatibility
 export type { ColorEntry };
 
-const COLOR_MAP: ColorEntry[] = [
+export const COLOR_MAP: ColorEntry[] = [
     // Regular colors - for ansi256 mode, use fixed palette colors (16-231) instead of theme colors (0-15)
     { name: 'black', displayName: 'Black', isBackground: false, ansi16: chalk.black, ansi256: chalk.ansi256(16), truecolor: chalk.hex('#000000') },
     { name: 'red', displayName: 'Red', isBackground: false, ansi16: chalk.red, ansi256: chalk.ansi256(160), truecolor: chalk.hex('#cc0000') },

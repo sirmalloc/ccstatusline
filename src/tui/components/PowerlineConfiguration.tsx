@@ -35,6 +35,9 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     const [cursorPos, setCursorPos] = useState(0);
     const [confirmingEnable, setConfirmingEnable] = useState(false);
 
+    // Check if there are any separators or flex-separators in the current configuration
+    const hasSeparatorItems = settings.lines.some(line => line.some(item => item.type === 'separator' || item.type === 'flex-separator'));
+
     // Common powerline separators (thin ones don't work well, so excluded)
     const separators = [
         { char: '\uE0B0', name: 'Triangle Right', hex: 'E0B0' },
@@ -129,8 +132,18 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
             } else if (input === 't' || input === 'T') {
                 // Toggle powerline mode
                 if (!powerlineConfig.enabled) {
-                    // Show confirmation when enabling
-                    setConfirmingEnable(true);
+                    // Only show confirmation when enabling if there are separators to remove
+                    if (hasSeparatorItems) {
+                        setConfirmingEnable(true);
+                    } else {
+                        // Enable directly without confirmation since there are no separators
+                        const updatedSettings = {
+                            ...settings,
+                            powerline: { ...powerlineConfig, enabled: true },
+                            defaultPadding: ' '  // Set padding to space when enabling powerline
+                        };
+                        onUpdate(updatedSettings);
+                    }
                 } else {
                     // Disable without confirmation
                     const newConfig = { ...powerlineConfig, enabled: false };
@@ -203,13 +216,17 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
 
             {confirmingEnable ? (
                 <Box flexDirection='column' marginTop={2}>
-                    <Box marginBottom={1}>
-                        <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
-                    </Box>
-                    <Box marginBottom={1}>
-                        <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
-                    </Box>
-                    <Box marginTop={1}>
+                    {hasSeparatorItems && (
+                        <>
+                            <Box marginBottom={1}>
+                                <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
+                            </Box>
+                            <Box marginBottom={1}>
+                                <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
+                            </Box>
+                        </>
+                    )}
+                    <Box marginTop={hasSeparatorItems ? 1 : 0}>
                         <Text>Do you want to continue? </Text>
                         <Text color='green'>(Y)es</Text>
                         <Text> / </Text>

@@ -6,6 +6,7 @@ import {
 import React, { useState } from 'react';
 
 import {
+    COLOR_MAP,
     getChalkColor,
     getColorDisplayName
 } from '../../utils/colors';
@@ -27,16 +28,15 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const [globalBold, setGlobalBold] = useState(settings.globalBold);
     const isPowerlineEnabled = settings.powerline.enabled ?? false;
 
-    // Background color override
-    const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta',
-        'bgCyan', 'bgWhite', 'bgBrightBlack', 'bgBrightRed', 'bgBrightGreen', 'bgBrightYellow',
-        'bgBrightBlue', 'bgBrightMagenta', 'bgBrightCyan', 'bgBrightWhite'];
-    const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor ?? 'none');
+    // Check if there are any manual separators in the current configuration
+    const hasManualSeparators = settings.lines.some(line => line.some(item => item.type === 'separator')
+    );
 
-    // Foreground color override
-    const fgColors = ['none', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
-        'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue',
-        'brightMagenta', 'brightCyan', 'brightWhite'];
+    // Get colors from COLOR_MAP
+    const bgColors = ['none', ...COLOR_MAP.filter(c => c.isBackground).map(c => c.name)];
+    const fgColors = ['none', ...COLOR_MAP.filter(c => !c.isBackground).map(c => c.name)];
+
+    const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor ?? 'none');
     const currentFgIndex = fgColors.indexOf(settings.overrideForegroundColor ?? 'none');
 
     useInput((input, key) => {
@@ -60,9 +60,23 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             }
         } else if (editingSeparator) {
             if (key.return) {
-                // Show confirmation dialog
-                setEditingSeparator(false);
-                setConfirmingSeparator(true);
+                // Only show confirmation if setting a non-empty separator AND there are manual separators
+                if (separatorInput && hasManualSeparators) {
+                    setEditingSeparator(false);
+                    setConfirmingSeparator(true);
+                } else {
+                    // Apply directly without confirmation
+                    const updatedSettings = {
+                        ...settings,
+                        defaultSeparator: separatorInput || undefined,
+                        // Only remove manual separators if we're setting a non-empty default
+                        lines: separatorInput
+                            ? settings.lines.map(line => line.filter(item => item.type !== 'separator'))
+                            : settings.lines
+                    };
+                    onUpdate(updatedSettings);
+                    setEditingSeparator(false);
+                }
             } else if (key.escape) {
                 setSeparatorInput(settings.defaultSeparator ?? '');
                 setEditingSeparator(false);

@@ -364,12 +364,26 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     return (
         <Box flexDirection='column'>
-            <Text bold>
-                Edit Line
-                {lineNumber}
-                {' '}
-                {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}
-            </Text>
+            <Box>
+                <Text bold>
+                    Edit Line
+                    {' '}
+                    {lineNumber}
+                    {' '}
+                    {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}
+                </Text>
+                {(Boolean(settings.powerline.enabled) || Boolean(settings.defaultSeparator)) && (
+                    <Box marginLeft={2}>
+                        <Text color='yellow'>
+                            ⚠
+                            {' '}
+                            {settings.powerline.enabled
+                                ? 'Powerline mode active: separators controlled by powerline settings'
+                                : 'Default separator active: manual separators disabled'}
+                        </Text>
+                    </Box>
+                )}
+            </Box>
             {moveMode ? (
                 <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
             ) : (
@@ -382,17 +396,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 <Box marginTop={1}>
                     <Text color='yellow'>⚠ Note: Terminal width detection is currently unavailable in your environment.</Text>
                     <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
-                </Box>
-            )}
-            {(settings.powerline.enabled ?? settings.defaultSeparator) && (
-                <Box marginTop={1} flexDirection='column'>
-                    <Text color='yellow'>
-                        ⚠
-                        {' '}
-                        {settings.powerline.enabled
-                            ? 'Powerline mode active: separators controlled by powerline settings'
-                            : 'Default separator active: manual separators disabled'}
-                    </Text>
                 </Box>
             )}
             <Box marginTop={1} flexDirection='column'>
