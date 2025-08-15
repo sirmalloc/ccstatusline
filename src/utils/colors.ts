@@ -289,16 +289,16 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
         name: 'Monokai',
         description: 'Dark background with vibrant colors',
         1: {
-            fg: ['black', 'white', 'white', 'white', 'white'],
-            bg: ['bgBrightGreen', 'bgMagenta', 'bgBlue', 'bgRed', 'bgBrightMagenta']
+            fg: ['black', 'black', 'black', 'black', 'black'],
+            bg: ['bgGreen', 'bgMagenta', 'bgYellow', 'bgRed', 'bgCyan']
         },
         2: {
-            fg: ['ansi256:16', 'ansi256:231', 'ansi256:231', 'ansi256:231', 'ansi256:231'],
-            bg: ['ansi256:148', 'ansi256:133', 'ansi256:33', 'ansi256:197', 'ansi256:141']
+            fg: ['ansi256:235', 'ansi256:235', 'ansi256:235', 'ansi256:235', 'ansi256:235'],
+            bg: ['ansi256:148', 'ansi256:141', 'ansi256:186', 'ansi256:197', 'ansi256:81']
         },
         3: {
-            fg: ['hex:1A1A1A', 'hex:F8F8F2', 'hex:F8F8F2', 'hex:F8F8F2', 'hex:F8F8F2'],
-            bg: ['hex:A6E22E', 'hex:AE81FF', 'hex:4A90E2', 'hex:F92672', 'hex:BD93F9']
+            fg: ['hex:272822', 'hex:272822', 'hex:272822', 'hex:272822', 'hex:272822'],
+            bg: ['hex:A6E22E', 'hex:AE81FF', 'hex:E6DB74', 'hex:F92672', 'hex:66D9EF']
         }
     },
     solarized: {
@@ -321,16 +321,16 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
         name: 'Minimal',
         description: 'Clean monochrome theme',
         1: {
-            fg: ['black', 'white', 'black', 'white', 'black'],
-            bg: ['bgWhite', 'bgBrightBlack', 'bgBrightWhite', 'bgBrightBlack', 'bgWhite']
+            fg: ['white', 'black', 'white', 'black', 'brightWhite'],
+            bg: ['bgBrightBlack', 'bgWhite', 'bgBrightBlack', 'bgBrightWhite', 'bgBlack']
         },
         2: {
-            fg: ['ansi256:232', 'ansi256:255', 'ansi256:232', 'ansi256:252', 'ansi256:232'],
-            bg: ['ansi256:251', 'ansi256:240', 'ansi256:248', 'ansi256:236', 'ansi256:254']
+            fg: ['ansi256:255', 'ansi256:232', 'ansi256:252', 'ansi256:232', 'ansi256:255'],
+            bg: ['ansi256:240', 'ansi256:251', 'ansi256:236', 'ansi256:248', 'ansi256:233']
         },
         3: {
-            fg: ['hex:1C1C1C', 'hex:FFFFFF', 'hex:1C1C1C', 'hex:E4E4E4', 'hex:1C1C1C'],
-            bg: ['hex:D0D0D0', 'hex:585858', 'hex:A8A8A8', 'hex:303030', 'hex:F8F8F8']
+            fg: ['hex:FFFFFF', 'hex:1C1C1C', 'hex:E4E4E4', 'hex:1C1C1C', 'hex:FFFFFF'],
+            bg: ['hex:585858', 'hex:D0D0D0', 'hex:303030', 'hex:A8A8A8', 'hex:1A1A1A']
         }
     },
     dracula: {
