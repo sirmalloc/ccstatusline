@@ -1,5 +1,5 @@
 // Central export file for all types
-export type { StatusItem, StatusItemType } from './StatusItem';
+export type { WidgetItem, WidgetItemType } from './WidgetItem';
 export type {
     ColorLevelString,
     FlexMode,

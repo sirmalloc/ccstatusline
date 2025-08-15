@@ -9,16 +9,16 @@ const ANSI_ESC = String.fromCharCode(27);
 
 import type {
     RenderContext,
-    StatusItem,
     TokenMetrics,
-    TranscriptLine
+    TranscriptLine,
+    WidgetItem
 } from '../types';
 
 import {
     applyColors,
     bgToFg,
     getColorAnsiCode,
-    getItemDefaultColor
+    getWidgetDefaultColor
 } from './colors';
 import { getColorLevelString } from './config';
 
@@ -32,7 +32,7 @@ const readFile = promisify(fs.readFile);
 
 // Color functions moved to colors.ts
 // Re-exported for backward compatibility
-export { applyColors, getItemDefaultColor } from './colors';
+export { applyColors, getWidgetDefaultColor } from './colors';
 
 // Helper function to format token counts
 export function formatTokens(count: number): string {
@@ -273,7 +273,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 }
 
 function renderPowerlineStatusLine(
-    items: StatusItem[],
+    widgets: WidgetItem[],
     settings: Record<string, unknown>,
     context: RenderContext
 ): string {
@@ -286,11 +286,11 @@ function renderPowerlineStatusLine(
     // Get color level from settings
     const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
 
-    // Filter out separator and flex-separator items in powerline mode
-    const filteredItems = items.filter(item => item.type !== 'separator' && item.type !== 'flex-separator'
+    // Filter out separator and flex-separator widgets in powerline mode
+    const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
     );
 
-    if (filteredItems.length === 0)
+    if (filteredWidgets.length === 0)
         return '';
 
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
@@ -330,32 +330,32 @@ function renderPowerlineStatusLine(
     }
 
     // Build widget elements (similar to regular mode but without separators)
-    const widgets: { content: string; bgColor?: string; fgColor?: string; item: StatusItem }[] = [];
+    const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
 
-    for (let i = 0; i < filteredItems.length; i++) {
-        const item = filteredItems[i];
-        if (!item)
+    for (let i = 0; i < filteredWidgets.length; i++) {
+        const widget = filteredWidgets[i];
+        if (!widget)
             continue;
         let widgetText = '';
         let defaultColor = 'white';
 
-        switch (item.type) {
+        switch (widget.type) {
         case 'model':
             if (context.isPreview) {
-                widgetText = item.rawValue ? 'Claude' : 'Model: Claude';
+                widgetText = widget.rawValue ? 'Claude' : 'Model: Claude';
             } else if (context.data?.model) {
-                widgetText = item.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
+                widgetText = widget.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
             }
             defaultColor = 'cyan';
             break;
 
         case 'git-branch':
             if (context.isPreview) {
-                widgetText = item.rawValue ? 'main' : '⎇ main';
+                widgetText = widget.rawValue ? 'main' : '⎇ main';
             } else {
                 const branch = context.gitBranch ?? getGitBranch();
                 if (branch) {
-                    widgetText = item.rawValue ? branch : `⎇ ${branch}`;
+                    widgetText = widget.rawValue ? branch : `⎇ ${branch}`;
                 }
             }
             defaultColor = 'magenta';
@@ -375,65 +375,65 @@ function renderPowerlineStatusLine(
 
         case 'tokens-input':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '15.2k' : 'In: 15.2k';
+                widgetText = widget.rawValue ? '15.2k' : 'In: 15.2k';
             } else if (context.tokenMetrics) {
-                widgetText = item.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
+                widgetText = widget.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
             }
             defaultColor = 'blue';
             break;
 
         case 'tokens-output':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '3.4k' : 'Out: 3.4k';
+                widgetText = widget.rawValue ? '3.4k' : 'Out: 3.4k';
             } else if (context.tokenMetrics) {
-                widgetText = item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
+                widgetText = widget.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
             }
             defaultColor = 'white';
             break;
 
         case 'tokens-cached':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '12k' : 'Cached: 12k';
+                widgetText = widget.rawValue ? '12k' : 'Cached: 12k';
             } else if (context.tokenMetrics) {
-                widgetText = item.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
+                widgetText = widget.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
             }
             defaultColor = 'cyan';
             break;
 
         case 'tokens-total':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '30.6k' : 'Total: 30.6k';
+                widgetText = widget.rawValue ? '30.6k' : 'Total: 30.6k';
             } else if (context.tokenMetrics) {
-                widgetText = item.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
+                widgetText = widget.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
             }
             defaultColor = 'cyan';
             break;
 
         case 'context-length':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '18.6k' : 'Ctx: 18.6k';
+                widgetText = widget.rawValue ? '18.6k' : 'Ctx: 18.6k';
             } else if (context.tokenMetrics) {
-                widgetText = item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
+                widgetText = widget.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
             }
             defaultColor = 'gray';
             break;
 
         case 'context-percentage':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '9.3%' : 'Ctx: 9.3%';
+                widgetText = widget.rawValue ? '9.3%' : 'Ctx: 9.3%';
             } else if (context.tokenMetrics) {
                 const percentage = Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100);
-                widgetText = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
+                widgetText = widget.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
             }
             defaultColor = 'blue';
             break;
 
         case 'context-percentage-usable':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
+                widgetText = widget.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
             } else if (context.tokenMetrics) {
                 const percentage = Math.min(100, (context.tokenMetrics.contextLength / 160000) * 100);
-                widgetText = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
+                widgetText = widget.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
             }
             defaultColor = 'green';
             break;
@@ -442,9 +442,9 @@ function renderPowerlineStatusLine(
             const width = terminalWidth ?? getTerminalWidth();
             if (context.isPreview) {
                 const detectedWidth = width ?? '??';
-                widgetText = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+                widgetText = widget.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
             } else if (width) {
-                widgetText = item.rawValue ? `${width}` : `Term: ${width}`;
+                widgetText = widget.rawValue ? `${width}` : `Term: ${width}`;
             }
             defaultColor = 'gray';
             break;
@@ -452,34 +452,34 @@ function renderPowerlineStatusLine(
 
         case 'session-clock':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
+                widgetText = widget.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
             } else if (context.sessionDuration) {
-                widgetText = item.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
+                widgetText = widget.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
             }
             defaultColor = 'yellow';
             break;
 
         case 'version':
             if (context.isPreview) {
-                widgetText = item.rawValue ? '1.0.0' : 'v1.0.0';
+                widgetText = widget.rawValue ? '1.0.0' : 'v1.0.0';
             } else if (context.data?.version) {
-                widgetText = item.rawValue ? context.data.version : `v${context.data.version}`;
+                widgetText = widget.rawValue ? context.data.version : `v${context.data.version}`;
             }
             defaultColor = 'gray';
             break;
 
         case 'custom-text':
-            widgetText = item.customText ?? '';
+            widgetText = widget.customText ?? '';
             defaultColor = 'white';
             break;
 
         case 'custom-command':
             if (context.isPreview) {
-                widgetText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
-            } else if (item.commandPath && context.data) {
+                widgetText = widget.commandPath ? `[cmd: ${widget.commandPath.substring(0, 20)}${widget.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
+            } else if (widget.commandPath && context.data) {
                 try {
-                    const timeout = item.timeout ?? 1000;
-                    const output = execSync(item.commandPath, {
+                    const timeout = widget.timeout ?? 1000;
+                    const output = execSync(widget.commandPath, {
                         encoding: 'utf8',
                         input: JSON.stringify(context.data),
                         stdio: ['pipe', 'pipe', 'ignore'],
@@ -489,11 +489,11 @@ function renderPowerlineStatusLine(
                     if (output) {
                         widgetText = output;
                         // Handle max width truncation
-                        if (item.maxWidth && item.maxWidth > 0) {
+                        if (widget.maxWidth && widget.maxWidth > 0) {
                             const plainLength = output.replace(ANSI_REGEX, '').length;
-                            if (plainLength > item.maxWidth) {
+                            if (plainLength > widget.maxWidth) {
                                 // Simple truncation for powerline mode
-                                widgetText = output.substring(0, item.maxWidth);
+                                widgetText = output.substring(0, widget.maxWidth);
                             }
                         }
                     }
@@ -512,46 +512,46 @@ function renderPowerlineStatusLine(
             // If override FG color is set and this is a custom command with preserveColors,
             // we need to strip the ANSI codes from the widget text
             if ((settings.overrideForegroundColor as string) && (settings.overrideForegroundColor as string) !== 'none'
-                && item.type === 'custom-command' && item.preserveColors) {
+                && widget.type === 'custom-command' && widget.preserveColors) {
                 // Strip ANSI color codes when override is active
                 widgetText = widgetText.replace(ANSI_REGEX, '');
             }
 
             // Check if padding should be omitted due to no-padding merge
-            const prevItem = i > 0 ? filteredItems[i - 1] : null;
-            const nextItem = i < filteredItems.length - 1 ? filteredItems[i + 1] : null;
+            const prevItem = i > 0 ? filteredWidgets[i - 1] : null;
+            const nextItem = i < filteredWidgets.length - 1 ? filteredWidgets[i + 1] : null;
             const omitLeadingPadding = prevItem?.merge === 'no-padding';
-            const omitTrailingPadding = item.merge === 'no-padding' && nextItem;
+            const omitTrailingPadding = widget.merge === 'no-padding' && nextItem;
 
             const leadingPadding = omitLeadingPadding ? '' : padding;
             const trailingPadding = omitTrailingPadding ? '' : padding;
             const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
 
             // Determine colors - apply override FG color if set
-            let fgColor = item.color ?? defaultColor;
+            let fgColor = widget.color ?? defaultColor;
             if ((settings.overrideForegroundColor as string) && (settings.overrideForegroundColor as string) !== 'none') {
                 fgColor = settings.overrideForegroundColor as string;
             }
-            const bgColor = item.backgroundColor;
+            const bgColor = widget.backgroundColor;
 
-            widgets.push({
+            widgetElements.push({
                 content: paddedText,
                 bgColor: bgColor ?? undefined,  // Make sure undefined, not empty string
                 fgColor: fgColor,
-                item: item
+                widget: widget
             });
         }
     }
 
-    if (widgets.length === 0)
+    if (widgetElements.length === 0)
         return '';
 
     // Build the final powerline string
     let result = '';
 
     // Add start cap if specified
-    if (startCap && widgets.length > 0) {
-        const firstWidget = widgets[0];
+    if (startCap && widgetElements.length > 0) {
+        const firstWidget = widgetElements[0];
         if (firstWidget?.bgColor) {
             // Start cap uses first widget's background as foreground (converted)
             const capFg = bgToFg(firstWidget.bgColor);
@@ -563,20 +563,20 @@ function renderPowerlineStatusLine(
     }
 
     // Render widgets with powerline separators
-    for (let i = 0; i < widgets.length; i++) {
-        const widget = widgets[i];
-        const nextWidget = widgets[i + 1];
+    for (let i = 0; i < widgetElements.length; i++) {
+        const widget = widgetElements[i];
+        const nextWidget = widgetElements[i + 1];
 
         if (!widget)
             continue;
 
         // Apply colors to widget content - include global bold setting
-        const shouldBold = (settings.globalBold as boolean) || widget.item.bold;
+        const shouldBold = (settings.globalBold as boolean) || widget.widget.bold;
         const widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, shouldBold, colorLevel);
         result += widgetContent;
 
         // Add separator between widgets (not after last one, and not if current widget is merged with next)
-        if (i < widgets.length - 1 && separator && nextWidget && !widget.item.merge) {
+        if (i < widgetElements.length - 1 && separator && nextWidget && !widget.widget.merge) {
             // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
             const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
 
@@ -642,8 +642,8 @@ function renderPowerlineStatusLine(
     }
 
     // Add end cap if specified
-    if (endCap && widgets.length > 0) {
-        const lastWidget = widgets[widgets.length - 1];
+    if (endCap && widgetElements.length > 0) {
+        const lastWidget = widgetElements[widgetElements.length - 1];
         if (lastWidget?.bgColor) {
             // End cap uses last widget's background as foreground (converted)
             const capFg = bgToFg(lastWidget.bgColor);
@@ -693,7 +693,7 @@ function renderPowerlineStatusLine(
 }
 
 export function renderStatusLine(
-    items: StatusItem[],
+    widgets: WidgetItem[],
     settings: Record<string, unknown>,
     context: RenderContext
 ): string {
@@ -710,7 +710,7 @@ export function renderStatusLine(
 
     // If powerline mode is enabled, use powerline renderer
     if (isPowerlineMode) {
-        return renderPowerlineStatusLine(items, settings, context);
+        return renderPowerlineStatusLine(widgets, settings, context);
     }
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
@@ -772,31 +772,31 @@ export function renderStatusLine(
         }
     }
 
-    const elements: { content: string; type: string; item?: StatusItem }[] = [];
+    const elements: { content: string; type: string; widget?: WidgetItem }[] = [];
     let hasFlexSeparator = false;
 
-    // Build elements based on configured items
-    for (const item of items) {
-        switch (item.type) {
+    // Build elements based on configured widgets
+    for (const widget of widgets) {
+        switch (widget.type) {
         case 'model':
             if (context.isPreview) {
-                const modelText = item.rawValue ? 'Claude' : 'Model: Claude';
-                elements.push({ content: applyColorsWithOverride(modelText, item.color ?? 'cyan', item.backgroundColor, item.bold), type: 'model', item });
+                const modelText = widget.rawValue ? 'Claude' : 'Model: Claude';
+                elements.push({ content: applyColorsWithOverride(modelText, widget.color ?? 'cyan', widget.backgroundColor, widget.bold), type: 'model', widget });
             } else if (context.data?.model) {
-                const text = item.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'cyan', item.backgroundColor, item.bold), type: 'model', item });
+                const text = widget.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'cyan', widget.backgroundColor, widget.bold), type: 'model', widget });
             }
             break;
 
         case 'git-branch':
             if (context.isPreview) {
-                const branchText = item.rawValue ? 'main' : '⎇ main';
-                elements.push({ content: applyColorsWithOverride(branchText, item.color ?? 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
+                const branchText = widget.rawValue ? 'main' : '⎇ main';
+                elements.push({ content: applyColorsWithOverride(branchText, widget.color ?? 'magenta', widget.backgroundColor, widget.bold), type: 'git-branch', widget });
             } else {
                 const branch = context.gitBranch ?? getGitBranch();
                 if (branch) {
-                    const text = item.rawValue ? branch : `⎇ ${branch}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color ?? 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
+                    const text = widget.rawValue ? branch : `⎇ ${branch}`;
+                    elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'magenta', widget.backgroundColor, widget.bold), type: 'git-branch', widget });
                 }
             }
             break;
@@ -804,86 +804,86 @@ export function renderStatusLine(
         case 'git-changes':
             if (context.isPreview) {
                 const changesText = '(+42,-10)';
-                elements.push({ content: applyColorsWithOverride(changesText, item.color ?? 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
+                elements.push({ content: applyColorsWithOverride(changesText, widget.color ?? 'yellow', widget.backgroundColor, widget.bold), type: 'git-changes', widget });
             } else {
                 const changes = context.gitChanges ?? getGitChanges();
                 if (changes !== null) {
                     const changeStr = `(+${changes.insertions},-${changes.deletions})`;
-                    elements.push({ content: applyColorsWithOverride(changeStr, item.color ?? 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
+                    elements.push({ content: applyColorsWithOverride(changeStr, widget.color ?? 'yellow', widget.backgroundColor, widget.bold), type: 'git-changes', widget });
                 }
             }
             break;
 
         case 'tokens-input':
             if (context.isPreview) {
-                const inputText = item.rawValue ? '15.2k' : 'In: 15.2k';
-                elements.push({ content: applyColorsWithOverride(inputText, item.color ?? 'blue', item.backgroundColor, item.bold), type: 'tokens-input', item });
+                const inputText = widget.rawValue ? '15.2k' : 'In: 15.2k';
+                elements.push({ content: applyColorsWithOverride(inputText, widget.color ?? 'blue', widget.backgroundColor, widget.bold), type: 'tokens-input', widget });
             } else if (context.tokenMetrics) {
-                const text = item.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'blue', item.backgroundColor, item.bold), type: 'tokens-input', item });
+                const text = widget.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'blue', widget.backgroundColor, widget.bold), type: 'tokens-input', widget });
             }
             break;
 
         case 'tokens-output':
             if (context.isPreview) {
-                const outputText = item.rawValue ? '3.4k' : 'Out: 3.4k';
-                elements.push({ content: applyColorsWithOverride(outputText, item.color ?? 'white', item.backgroundColor, item.bold), type: 'tokens-output', item });
+                const outputText = widget.rawValue ? '3.4k' : 'Out: 3.4k';
+                elements.push({ content: applyColorsWithOverride(outputText, widget.color ?? 'white', widget.backgroundColor, widget.bold), type: 'tokens-output', widget });
             } else if (context.tokenMetrics) {
-                const text = item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'white', item.backgroundColor, item.bold), type: 'tokens-output', item });
+                const text = widget.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'white', widget.backgroundColor, widget.bold), type: 'tokens-output', widget });
             }
             break;
 
         case 'tokens-cached':
             if (context.isPreview) {
-                const cachedText = item.rawValue ? '12k' : 'Cached: 12k';
-                elements.push({ content: applyColorsWithOverride(cachedText, item.color ?? 'cyan', item.backgroundColor, item.bold), type: 'tokens-cached', item });
+                const cachedText = widget.rawValue ? '12k' : 'Cached: 12k';
+                elements.push({ content: applyColorsWithOverride(cachedText, widget.color ?? 'cyan', widget.backgroundColor, widget.bold), type: 'tokens-cached', widget });
             } else if (context.tokenMetrics) {
-                const text = item.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'cyan', item.backgroundColor, item.bold), type: 'tokens-cached', item });
+                const text = widget.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'cyan', widget.backgroundColor, widget.bold), type: 'tokens-cached', widget });
             }
             break;
 
         case 'tokens-total':
             if (context.isPreview) {
-                const totalText = item.rawValue ? '30.6k' : 'Total: 30.6k';
-                elements.push({ content: applyColorsWithOverride(totalText, item.color ?? 'cyan', item.backgroundColor, item.bold), type: 'tokens-total', item });
+                const totalText = widget.rawValue ? '30.6k' : 'Total: 30.6k';
+                elements.push({ content: applyColorsWithOverride(totalText, widget.color ?? 'cyan', widget.backgroundColor, widget.bold), type: 'tokens-total', widget });
             } else if (context.tokenMetrics) {
-                const text = item.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'cyan', item.backgroundColor, item.bold), type: 'tokens-total', item });
+                const text = widget.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'cyan', widget.backgroundColor, widget.bold), type: 'tokens-total', widget });
             }
             break;
 
         case 'context-length':
             if (context.isPreview) {
-                const ctxText = item.rawValue ? '18.6k' : 'Ctx: 18.6k';
-                elements.push({ content: applyColorsWithOverride(ctxText, item.color ?? 'gray', item.backgroundColor, item.bold), type: 'context-length', item });
+                const ctxText = widget.rawValue ? '18.6k' : 'Ctx: 18.6k';
+                elements.push({ content: applyColorsWithOverride(ctxText, widget.color ?? 'gray', widget.backgroundColor, widget.bold), type: 'context-length', widget });
             } else if (context.tokenMetrics) {
-                const text = item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'gray', item.backgroundColor, item.bold), type: 'context-length', item });
+                const text = widget.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'gray', widget.backgroundColor, widget.bold), type: 'context-length', widget });
             }
             break;
 
         case 'context-percentage':
             if (context.isPreview) {
-                const ctxPctText = item.rawValue ? '9.3%' : 'Ctx: 9.3%';
-                elements.push({ content: applyColorsWithOverride(ctxPctText, item.color ?? 'blue', item.backgroundColor, item.bold), type: 'context-percentage', item });
+                const ctxPctText = widget.rawValue ? '9.3%' : 'Ctx: 9.3%';
+                elements.push({ content: applyColorsWithOverride(ctxPctText, widget.color ?? 'blue', widget.backgroundColor, widget.bold), type: 'context-percentage', widget });
             } else if (context.tokenMetrics) {
                 const percentage = Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100);
-                const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'blue', item.backgroundColor, item.bold), type: 'context-percentage', item });
+                const text = widget.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'blue', widget.backgroundColor, widget.bold), type: 'context-percentage', widget });
             }
             break;
 
         case 'context-percentage-usable':
             if (context.isPreview) {
-                const ctxUsableText = item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
-                elements.push({ content: applyColorsWithOverride(ctxUsableText, item.color ?? 'green', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
+                const ctxUsableText = widget.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
+                elements.push({ content: applyColorsWithOverride(ctxUsableText, widget.color ?? 'green', widget.backgroundColor, widget.bold), type: 'context-percentage-usable', widget });
             } else if (context.tokenMetrics) {
                 // Calculate percentage out of 160,000 (80% of full context for auto-compact)
                 const percentage = Math.min(100, (context.tokenMetrics.contextLength / 160000) * 100);
-                const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'green', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
+                const text = widget.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'green', widget.backgroundColor, widget.bold), type: 'context-percentage-usable', widget });
             }
             break;
 
@@ -891,39 +891,39 @@ export function renderStatusLine(
             const width = terminalWidth ?? getTerminalWidth();
             if (context.isPreview) {
                 const detectedWidth = width ?? '??';
-                const termText = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
-                elements.push({ content: applyColorsWithOverride(termText, item.color ?? 'gray', item.backgroundColor, item.bold), type: 'terminal-width', item });
+                const termText = widget.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+                elements.push({ content: applyColorsWithOverride(termText, widget.color ?? 'gray', widget.backgroundColor, widget.bold), type: 'terminal-width', widget });
             } else if (width) {
-                const text = item.rawValue ? `${width}` : `Term: ${width}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'gray', item.backgroundColor, item.bold), type: 'terminal-width', item });
+                const text = widget.rawValue ? `${width}` : `Term: ${width}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'gray', widget.backgroundColor, widget.bold), type: 'terminal-width', widget });
             }
             break;
         }
 
         case 'session-clock':
             if (context.isPreview) {
-                const sessionText = item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
-                elements.push({ content: applyColorsWithOverride(sessionText, item.color ?? 'yellow', item.backgroundColor, item.bold), type: 'session-clock', item });
+                const sessionText = widget.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
+                elements.push({ content: applyColorsWithOverride(sessionText, widget.color ?? 'yellow', widget.backgroundColor, widget.bold), type: 'session-clock', widget });
             } else if (context.sessionDuration) {
-                const text = item.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
-                elements.push({ content: applyColorsWithOverride(text, item.color ?? 'yellow', item.backgroundColor, item.bold), type: 'session-clock', item });
+                const text = widget.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
+                elements.push({ content: applyColorsWithOverride(text, widget.color ?? 'yellow', widget.backgroundColor, widget.bold), type: 'session-clock', widget });
             }
             break;
 
         case 'version':
             if (context.isPreview) {
-                const versionText = item.rawValue ? '1.0.72' : 'Version: 1.0.72';
-                elements.push({ content: applyColorsWithOverride(versionText, item.color ?? 'green', item.backgroundColor, item.bold), type: 'version', item });
+                const versionText = widget.rawValue ? '1.0.72' : 'Version: 1.0.72';
+                elements.push({ content: applyColorsWithOverride(versionText, widget.color ?? 'green', widget.backgroundColor, widget.bold), type: 'version', widget });
             } else if (context.data?.version) {
                 const versionString = context.data.version ?? 'Unknown';
-                const versionText = item.rawValue ? versionString : `Version: ${versionString}`;
-                elements.push({ content: applyColorsWithOverride(versionText, item.color ?? 'green', item.backgroundColor, item.bold), type: 'version', item });
+                const versionText = widget.rawValue ? versionString : `Version: ${versionString}`;
+                elements.push({ content: applyColorsWithOverride(versionText, widget.color ?? 'green', widget.backgroundColor, widget.bold), type: 'version', widget });
             }
             break;
 
         case 'separator': {
             // Always add separators - users should be able to add multiple if they want
-            const sepChar = item.character ?? '|';
+            const sepChar = widget.character ?? '|';
             // Handle special separator cases
             let sepText;
             if (sepChar === ',') {
@@ -934,37 +934,37 @@ export function renderStatusLine(
                 sepText = ` ${sepChar} `;
             }
             // Use item color if specified, otherwise default to gray
-            const sepContent = applyColorsWithOverride(sepText, item.color ?? 'gray', item.backgroundColor, item.bold);
-            elements.push({ content: sepContent, type: 'separator', item });
+            const sepContent = applyColorsWithOverride(sepText, widget.color ?? 'gray', widget.backgroundColor, widget.bold);
+            elements.push({ content: sepContent, type: 'separator', widget });
             break;
         }
 
         case 'flex-separator':
-            elements.push({ content: 'FLEX', type: 'flex-separator', item });
+            elements.push({ content: 'FLEX', type: 'flex-separator', widget });
             hasFlexSeparator = true;
             break;
 
         case 'custom-text': {
-            const customText = item.customText ?? '';
-            elements.push({ content: applyColorsWithOverride(customText, item.color ?? 'white', item.backgroundColor, item.bold), type: 'custom-text', item });
+            const customText = widget.customText ?? '';
+            elements.push({ content: applyColorsWithOverride(customText, widget.color ?? 'white', widget.backgroundColor, widget.bold), type: 'custom-text', widget });
             break;
         }
 
         case 'custom-command':
             if (context.isPreview) {
-                const cmdText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
+                const cmdText = widget.commandPath ? `[cmd: ${widget.commandPath.substring(0, 20)}${widget.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
                 // Only apply color if not preserving colors
-                if (!item.preserveColors) {
-                    elements.push({ content: applyColorsWithOverride(cmdText, item.color ?? 'white', item.backgroundColor, item.bold), type: 'custom-command', item });
+                if (!widget.preserveColors) {
+                    elements.push({ content: applyColorsWithOverride(cmdText, widget.color ?? 'white', widget.backgroundColor, widget.bold), type: 'custom-command', widget });
                 } else {
                     // When preserving colors, just show the text without applying our colors
-                    elements.push({ content: cmdText, type: 'custom-command', item });
+                    elements.push({ content: cmdText, type: 'custom-command', widget });
                 }
-            } else if (item.commandPath && context.data) {
+            } else if (widget.commandPath && context.data) {
                 try {
                     // Execute the command with JSON input via stdin
-                    const timeout = item.timeout ?? 1000; // Default to 1000ms if not specified
-                    const output = execSync(item.commandPath, {
+                    const timeout = widget.timeout ?? 1000; // Default to 1000ms if not specified
+                    const output = execSync(widget.commandPath, {
                         encoding: 'utf8',
                         input: JSON.stringify(context.data),
                         stdio: ['pipe', 'pipe', 'ignore'],
@@ -975,10 +975,10 @@ export function renderStatusLine(
                         let finalOutput = output;
 
                         // Handle max width truncation
-                        if (item.maxWidth && item.maxWidth > 0) {
+                        if (widget.maxWidth && widget.maxWidth > 0) {
                             // Remove ANSI codes to measure actual length
                             const plainLength = output.replace(ANSI_REGEX, '').length;
-                            if (plainLength > item.maxWidth) {
+                            if (plainLength > widget.maxWidth) {
                                 // Truncate while preserving ANSI codes
                                 let truncated = '';
                                 let currentLength = 0;
@@ -997,7 +997,7 @@ export function renderStatusLine(
                                             ansiBuffer = '';
                                         }
                                     } else {
-                                        if (currentLength < item.maxWidth) {
+                                        if (currentLength < widget.maxWidth) {
                                             truncated += char;
                                             currentLength++;
                                         } else {
@@ -1010,13 +1010,13 @@ export function renderStatusLine(
                         }
 
                         // Apply color if not preserving original colors
-                        if (!item.preserveColors) {
+                        if (!widget.preserveColors) {
                             // Strip existing ANSI codes and apply new color
                             const stripped = finalOutput.replace(ANSI_REGEX, '');
-                            elements.push({ content: applyColorsWithOverride(stripped, item.color ?? 'white', item.backgroundColor, item.bold), type: 'custom-command', item });
+                            elements.push({ content: applyColorsWithOverride(stripped, widget.color ?? 'white', widget.backgroundColor, widget.bold), type: 'custom-command', widget });
                         } else {
                             // Preserve original colors from command output - ignore any color property
-                            elements.push({ content: finalOutput, type: 'custom-command', item });
+                            elements.push({ content: finalOutput, type: 'custom-command', widget });
                         }
                     }
                 } catch {
@@ -1046,17 +1046,17 @@ export function renderStatusLine(
         const shouldAddSeparator = defaultSep && index > 0
             && elem.type !== 'flex-separator'
             && prevElem?.type !== 'flex-separator'
-            && !prevElem?.item?.merge; // Don't add separator if previous item is merged with this one
+            && !prevElem?.widget?.merge; // Don't add separator if previous widget is merged with this one
 
         if (shouldAddSeparator) {
             // Check if we should inherit colors from the previous element
             if (settings.inheritSeparatorColors && index > 0) {
                 const prevElem = elements[index - 1];
-                if (prevElem?.item) {
+                if (prevElem?.widget) {
                     // Apply the previous element's colors to the separator (already handles override)
-                    // Use the item's color if set, otherwise get the default color for that item type
-                    const itemColor = prevElem.item.color ?? getItemDefaultColor(prevElem.item.type);
-                    const coloredSep = applyColorsWithOverride(defaultSep, itemColor, prevElem.item.backgroundColor, prevElem.item.bold);
+                    // Use the widget's color if set, otherwise get the default color for that widget type
+                    const widgetColor = prevElem.widget.color ?? getWidgetDefaultColor(prevElem.widget.type);
+                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);
@@ -1077,17 +1077,17 @@ export function renderStatusLine(
         } else {
             // Check if padding should be omitted due to no-padding merge
             const nextElem = index < elements.length - 1 ? elements[index + 1] : null;
-            const omitLeadingPadding = prevElem?.item?.merge === 'no-padding';
-            const omitTrailingPadding = elem.item?.merge === 'no-padding' && nextElem;
+            const omitLeadingPadding = prevElem?.widget?.merge === 'no-padding';
+            const omitTrailingPadding = elem.widget?.merge === 'no-padding' && nextElem;
 
             // Apply padding with colors (using overrides if set)
             const hasColorOverride = ((settings.overrideBackgroundColor as string) && (settings.overrideBackgroundColor as string) !== 'none')
                 || ((settings.overrideForegroundColor as string) && (settings.overrideForegroundColor as string) !== 'none');
 
-            if (padding && (elem.item?.backgroundColor || hasColorOverride)) {
+            if (padding && (elem.widget?.backgroundColor || hasColorOverride)) {
                 // Apply colors to padding - applyColorsWithOverride will handle the overrides
-                const leadingPadding = omitLeadingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
-                const trailingPadding = omitTrailingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
+                const leadingPadding = omitLeadingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
+                const trailingPadding = omitTrailingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
                 const paddedContent = leadingPadding + elem.content + trailingPadding;
                 finalElements.push(paddedContent);
             } else if (padding) {

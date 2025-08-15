@@ -7,11 +7,11 @@ import type {
     LegacySettings,
     PartialSettings,
     Settings,
-    StatusItem
+    WidgetItem
 } from '../types';
 
 // Re-export types for backward compatibility
-export type { StatusItem, StatusItemType } from '../types';
+export type { WidgetItem, WidgetItemType } from '../types';
 export type { ColorLevelString, FlexMode, LegacySettings, PartialSettings, PowerlineConfig, Settings } from '../types';
 
 // Use fs.promises directly (always available in modern Node.js)
@@ -138,9 +138,9 @@ export async function loadSettings(): Promise<Settings> {
             return normalizeSettings(migrateOldSettings(loaded));
         }
 
-        // Migrate from single items array to lines array
+        // Migrate from single items array to lines array (legacy field name)
         if (loaded.items && !loaded.lines) {
-            loaded.lines = [loaded.items];
+            loaded.lines = [loaded.items]; // items was the old field name
             delete loaded.items;
         }
 
@@ -162,32 +162,32 @@ export async function loadSettings(): Promise<Settings> {
 }
 
 function migrateOldSettings(old: LegacySettings): PartialSettings {
-    const items: StatusItem[] = [];
+    const widgets: WidgetItem[] = [];
     let id = 1;
 
     if (old.elements?.model) {
-        items.push({ id: String(id++), type: 'model', color: old.colors?.model });
+        widgets.push({ id: String(id++), type: 'model', color: old.colors?.model });
     }
 
-    if (items.length > 0 && old.elements?.gitBranch) {
-        items.push({ id: String(id++), type: 'separator' });
+    if (widgets.length > 0 && old.elements?.gitBranch) {
+        widgets.push({ id: String(id++), type: 'separator' });
     }
 
     if (old.elements?.gitBranch) {
-        items.push({ id: String(id++), type: 'git-branch', color: old.colors?.gitBranch });
+        widgets.push({ id: String(id++), type: 'git-branch', color: old.colors?.gitBranch });
     }
 
     if (old.layout?.expandingSeparators) {
         // Replace regular separators with flex separators
-        items.forEach((item) => {
-            if (item.type === 'separator') {
-                item.type = 'flex-separator';
+        widgets.forEach((widget) => {
+            if (widget.type === 'separator') {
+                widget.type = 'flex-separator';
             }
         });
     }
 
     return {
-        lines: [items], // Put migrated items in first line
+        lines: [widgets], // Put migrated widgets in first line
         flexMode: DEFAULT_SETTINGS.flexMode,
         compactThreshold: DEFAULT_SETTINGS.compactThreshold
     };

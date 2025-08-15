@@ -6,10 +6,10 @@ import {
 import SelectInput from 'ink-select-input';
 import React from 'react';
 
-import type { StatusItem } from '../../utils/config';
+import type { WidgetItem } from '../../utils/config';
 
 interface LineSelectorProps {
-    lines: StatusItem[][];
+    lines: WidgetItem[][];
     onSelect: (line: number) => void;
     onBack: () => void;
     initialSelection?: number;
@@ -47,7 +47,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
                 <SelectInput
                     items={items}
                     onSelect={handleSelect}
-                    initialIndex={Math.min(initialSelection, items.length - 1)}
+                    initialIndex={Math.min(initialSelection, lines.length - 1)}
                     indicatorComponent={({ isSelected }) => (
                         <Text>{isSelected ? '▶' : '  '}</Text>
                     )}

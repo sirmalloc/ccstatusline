@@ -7,7 +7,7 @@ import React from 'react';
 
 import {
     type Settings,
-    type StatusItem
+    type WidgetItem
 } from '../../utils/config';
 import {
     renderStatusLine as renderLine,
@@ -16,19 +16,19 @@ import {
 import { canDetectTerminalWidth } from '../utils/terminal';
 
 export interface StatusLinePreviewProps {
-    lines: StatusItem[][];
+    lines: WidgetItem[][];
     terminalWidth: number;
     settings?: Settings;
 }
 
-const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
+const renderSingleLine = (widgets: WidgetItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
     // Create render context for preview
     const context: RenderContext = {
         terminalWidth,
         isPreview: true
     };
 
-    return renderLine(items, (settings ?? {}) as unknown as Record<string, unknown>, context);
+    return renderLine(widgets, (settings ?? {}) as unknown as Record<string, unknown>, context);
 };
 
 export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {

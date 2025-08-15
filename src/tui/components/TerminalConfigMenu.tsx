@@ -7,10 +7,10 @@ import {
 import SelectInput from 'ink-select-input';
 import React, { useState } from 'react';
 
-import { getItemDefaultColor } from '../../utils/colors';
+import { getWidgetDefaultColor } from '../../utils/colors';
 import {
     type Settings,
-    type StatusItem
+    type WidgetItem
 } from '../../utils/config';
 
 export interface TerminalConfigMenuProps {
@@ -38,8 +38,8 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
             onBack('width');
         } else if (selected.value === 'color') {
             // Check if there are any custom colors that would be lost
-            const hasCustomColors = settings.lines.some((line: StatusItem[]) => line.some((item: StatusItem) => Boolean(item.color && (item.color.startsWith('ansi256:') || item.color.startsWith('hex:')))
-                || Boolean(item.backgroundColor && (item.backgroundColor.startsWith('ansi256:') || item.backgroundColor.startsWith('hex:')))
+            const hasCustomColors = settings.lines.some((line: WidgetItem[]) => line.some((widget: WidgetItem) => Boolean(widget.color && (widget.color.startsWith('ansi256:') || widget.color.startsWith('hex:')))
+                || Boolean(widget.backgroundColor && (widget.backgroundColor.startsWith('ansi256:') || widget.backgroundColor.startsWith('hex:')))
             )
             );
 
@@ -57,35 +57,35 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
                 chalk.level = nextLevel;
 
                 // Clean up incompatible custom colors even when no warning is shown
-                const cleanedLines = settings.lines.map(line => line.map((item) => {
-                    const newItem = { ...item };
+                const cleanedLines = settings.lines.map(line => line.map((widget) => {
+                    const newWidget = { ...widget };
                     // Remove custom colors incompatible with the new mode
                     if (nextLevel === 2) {
                         // Switching to 256 color mode - remove hex colors
-                        if (item.color?.startsWith('hex:')) {
-                            newItem.color = getItemDefaultColor(item.type);
+                        if (widget.color?.startsWith('hex:')) {
+                            newWidget.color = getWidgetDefaultColor(widget.type);
                         }
-                        if (item.backgroundColor?.startsWith('hex:')) {
-                            newItem.backgroundColor = undefined;
+                        if (widget.backgroundColor?.startsWith('hex:')) {
+                            newWidget.backgroundColor = undefined;
                         }
                     } else if (nextLevel === 3) {
                         // Switching to truecolor mode - remove ansi256 colors
-                        if (item.color?.startsWith('ansi256:')) {
-                            newItem.color = getItemDefaultColor(item.type);
+                        if (widget.color?.startsWith('ansi256:')) {
+                            newWidget.color = getWidgetDefaultColor(widget.type);
                         }
-                        if (item.backgroundColor?.startsWith('ansi256:')) {
-                            newItem.backgroundColor = undefined;
+                        if (widget.backgroundColor?.startsWith('ansi256:')) {
+                            newWidget.backgroundColor = undefined;
                         }
                     } else {
                         // Switching to 16 color mode - remove all custom colors
-                        if (item.color?.startsWith('ansi256:') || item.color?.startsWith('hex:')) {
-                            newItem.color = getItemDefaultColor(item.type);
+                        if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
+                            newWidget.color = getWidgetDefaultColor(widget.type);
                         }
-                        if (item.backgroundColor?.startsWith('ansi256:') || item.backgroundColor?.startsWith('hex:')) {
-                            newItem.backgroundColor = undefined;
+                        if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
+                            newWidget.backgroundColor = undefined;
                         }
                     }
-                    return newItem;
+                    return newWidget;
                 })
                 );
 
@@ -113,21 +113,21 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
                     chalk.level = pendingColorLevel;
 
                     // Clean up custom colors if switching away from modes that support them
-                    const cleanedLines = settings.lines.map(line => line.map((item) => {
-                        const newItem = { ...item };
+                    const cleanedLines = settings.lines.map(line => line.map((widget) => {
+                        const newWidget = { ...widget };
                         // Remove custom colors if switching to a mode that doesn't support them
                         if ((pendingColorLevel !== 2 && pendingColorLevel !== 3)
-                            || (pendingColorLevel === 2 && (item.color?.startsWith('hex:') || item.backgroundColor?.startsWith('hex:')))
-                            || (pendingColorLevel === 3 && (item.color?.startsWith('ansi256:') || item.backgroundColor?.startsWith('ansi256:')))) {
+                            || (pendingColorLevel === 2 && (widget.color?.startsWith('hex:') || widget.backgroundColor?.startsWith('hex:')))
+                            || (pendingColorLevel === 3 && (widget.color?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('ansi256:')))) {
                             // Reset custom colors to defaults
-                            if (item.color?.startsWith('ansi256:') || item.color?.startsWith('hex:')) {
-                                newItem.color = getItemDefaultColor(item.type);
+                            if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
+                                newWidget.color = getWidgetDefaultColor(widget.type);
                             }
-                            if (item.backgroundColor?.startsWith('ansi256:') || item.backgroundColor?.startsWith('hex:')) {
-                                newItem.backgroundColor = undefined;
+                            if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
+                                newWidget.backgroundColor = undefined;
                             }
                         }
-                        return newItem;
+                        return newWidget;
                     })
                     );
 

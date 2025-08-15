@@ -22,7 +22,7 @@ import {
     loadSettings,
     saveSettings,
     type Settings,
-    type StatusItem
+    type WidgetItem
 } from '../utils/config';
 import {
     checkPowerlineFonts,
@@ -181,9 +181,9 @@ export const App: React.FC = () => {
         }
     };
 
-    const updateLine = (lineIndex: number, items: StatusItem[]) => {
+    const updateLine = (lineIndex: number, widgets: WidgetItem[]) => {
         const newLines = [...settings.lines];
-        newLines[lineIndex] = items;
+        newLines[lineIndex] = widgets;
         setSettings({ ...settings, lines: newLines });
     };
 
@@ -253,8 +253,8 @@ export const App: React.FC = () => {
                 )}
                 {screen === 'items' && (
                     <ItemsEditor
-                        items={settings.lines[selectedLine] ?? []}
-                        onUpdate={(items) => { updateLine(selectedLine, items); }}
+                        widgets={settings.lines[selectedLine] ?? []}
+                        onUpdate={(widgets) => { updateLine(selectedLine, widgets); }}
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
                             setMenuSelections({ ...menuSelections, lines: selectedLine });
@@ -266,20 +266,20 @@ export const App: React.FC = () => {
                 )}
                 {screen === 'colors' && (
                     <ColorMenu
-                        items={settings.lines.flat().map(item => ({ ...item }))}
+                        widgets={settings.lines.flat().map(widget => ({ ...widget }))}
                         settings={settings}
-                        onUpdate={(items) => {
+                        onUpdate={(updatedWidgets) => {
                             // This is a bit tricky - we need to update colors across all lines
                             // For now, just update the flat list
                             // IMPORTANT: Create a deep copy to avoid mutating the original
                             const newLines = settings.lines.map(line => [...line]);
                             let flatIndex = 0;
                             for (const line of newLines) {
-                                for (let itemIndex = 0; itemIndex < line.length; itemIndex++) {
-                                    const item = items[flatIndex];
-                                    if (flatIndex < items.length && item) {
+                                for (let widgetIndex = 0; widgetIndex < line.length; widgetIndex++) {
+                                    const widget = updatedWidgets[flatIndex];
+                                    if (flatIndex < updatedWidgets.length && widget) {
                                         // Create a new object to avoid mutation
-                                        line[itemIndex] = { ...item };
+                                        line[widgetIndex] = { ...widget };
                                         flatIndex++;
                                     }
                                 }

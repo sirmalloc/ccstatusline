@@ -8,24 +8,24 @@ import React, { useState } from 'react';
 
 import {
     applyColors,
-    getItemDefaultColor
+    getWidgetDefaultColor
 } from '../../utils/colors';
 import {
     type Settings,
-    type StatusItem,
-    type StatusItemType
+    type WidgetItem,
+    type WidgetItemType
 } from '../../utils/config';
 import { canDetectTerminalWidth } from '../utils/terminal';
 
 export interface ItemsEditorProps {
-    items: StatusItem[];
-    onUpdate: (items: StatusItem[]) => void;
+    widgets: WidgetItem[];
+    onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber, settings }) => {
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
     const [editingText, setEditingText] = useState(false);
@@ -41,8 +41,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
     const separatorChars = ['|', '-', ',', ' '];
 
     // Determine which item types are allowed based on settings
-    const getAllowedTypes = (): StatusItemType[] => {
-        const allTypes: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
+    const getAllowedTypes = (): WidgetItemType[] => {
+        const allTypes: WidgetItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
             'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
             'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
 
@@ -61,8 +61,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         return allowedTypes;
     };
 
-    // Get the default type for new items (first non-separator type)
-    const getDefaultItemType = (): StatusItemType => {
+    // Get the default type for new widgets (first non-separator type)
+    const getDefaultItemType = (): WidgetItemType => {
         const allowedTypes = getAllowedTypes();
         return allowedTypes.includes('model') ? 'model' : (allowedTypes[0] ?? 'model');
     };
@@ -81,11 +81,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         ];
 
         // Get colors of adjacent items
-        const prevItem = insertIndex > 0 ? items[insertIndex - 1] : null;
-        const nextItem = insertIndex < items.length ? items[insertIndex] : null;
+        const prevWidget = insertIndex > 0 ? widgets[insertIndex - 1] : null;
+        const nextWidget = insertIndex < widgets.length ? widgets[insertIndex] : null;
 
-        const prevBg = prevItem?.backgroundColor;
-        const nextBg = nextItem?.backgroundColor;
+        const prevBg = prevWidget?.backgroundColor;
+        const nextBg = nextWidget?.backgroundColor;
 
         // Filter out colors that match neighbors
         const availableColors = bgColors.filter(color => color !== prevBg && color !== nextBg);
@@ -106,11 +106,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
             // In text editing mode
             if (key.return) {
                 // Save the custom text
-                const currentItem = items[selectedIndex];
-                if (currentItem) {
-                    const newItems = [...items];
-                    newItems[selectedIndex] = { ...currentItem, customText: textInput };
-                    onUpdate(newItems);
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget) {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = { ...currentWidget, customText: textInput };
+                    onUpdate(newWidgets);
                 }
                 setEditingText(false);
                 setTextInput('');
@@ -147,11 +147,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
             // In command editing mode
             if (key.return) {
                 // Save the command path
-                const currentItem = items[selectedIndex];
-                if (currentItem) {
-                    const newItems = [...items];
-                    newItems[selectedIndex] = { ...currentItem, commandPath: commandInput };
-                    onUpdate(newItems);
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget) {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = { ...currentWidget, commandPath: commandInput };
+                    onUpdate(newWidgets);
                 }
                 setEditingCommand(false);
                 setCommandInput('');
@@ -188,19 +188,19 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
             // In max width editing mode
             if (key.return) {
                 // Save the max width
-                const currentItem = items[selectedIndex];
-                if (currentItem) {
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget) {
                     const width = parseInt(maxWidthInput, 10);
-                    const newItems = [...items];
+                    const newWidgets = [...widgets];
                     if (!isNaN(width) && width > 0) {
-                        newItems[selectedIndex] = { ...currentItem, maxWidth: width };
+                        newWidgets[selectedIndex] = { ...currentWidget, maxWidth: width };
                     } else {
                         // Remove max width if invalid
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { maxWidth: _, ...rest } = currentItem;
-                        newItems[selectedIndex] = rest;
+                        const { maxWidth: _, ...rest } = currentWidget;
+                        newWidgets[selectedIndex] = rest;
                     }
-                    onUpdate(newItems);
+                    onUpdate(newWidgets);
                 }
                 setEditingMaxWidth(false);
                 setMaxWidthInput('');
@@ -219,19 +219,19 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
             // In timeout editing mode
             if (key.return) {
                 // Save the timeout
-                const currentItem = items[selectedIndex];
-                if (currentItem) {
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget) {
                     const timeout = parseInt(timeoutInput, 10);
-                    const newItems = [...items];
+                    const newWidgets = [...widgets];
                     if (!isNaN(timeout) && timeout > 0) {
-                        newItems[selectedIndex] = { ...currentItem, timeout: timeout };
+                        newWidgets[selectedIndex] = { ...currentWidget, timeout: timeout };
                     } else {
                         // Remove timeout if invalid (will use default 1000ms)
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { timeout: _timeout, ...rest } = currentItem;
-                        newItems[selectedIndex] = rest;
+                        const { timeout: _timeout, ...rest } = currentWidget;
+                        newWidgets[selectedIndex] = rest;
                     }
-                    onUpdate(newItems);
+                    onUpdate(newWidgets);
                 }
                 setEditingTimeout(false);
                 setTimeoutInput('');
@@ -249,22 +249,22 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         } else if (moveMode) {
             // In move mode, use up/down to move the selected item
             if (key.upArrow && selectedIndex > 0) {
-                const newItems = [...items];
-                const temp = newItems[selectedIndex];
-                const prev = newItems[selectedIndex - 1];
+                const newWidgets = [...widgets];
+                const temp = newWidgets[selectedIndex];
+                const prev = newWidgets[selectedIndex - 1];
                 if (temp && prev) {
-                    [newItems[selectedIndex], newItems[selectedIndex - 1]] = [prev, temp];
+                    [newWidgets[selectedIndex], newWidgets[selectedIndex - 1]] = [prev, temp];
                 }
-                onUpdate(newItems);
+                onUpdate(newWidgets);
                 setSelectedIndex(selectedIndex - 1);
-            } else if (key.downArrow && selectedIndex < items.length - 1) {
-                const newItems = [...items];
-                const temp = newItems[selectedIndex];
-                const next = newItems[selectedIndex + 1];
+            } else if (key.downArrow && selectedIndex < widgets.length - 1) {
+                const newWidgets = [...widgets];
+                const temp = newWidgets[selectedIndex];
+                const next = newWidgets[selectedIndex + 1];
                 if (temp && next) {
-                    [newItems[selectedIndex], newItems[selectedIndex + 1]] = [next, temp];
+                    [newWidgets[selectedIndex], newWidgets[selectedIndex + 1]] = [next, temp];
                 }
-                onUpdate(newItems);
+                onUpdate(newWidgets);
                 setSelectedIndex(selectedIndex + 1);
             } else if (key.escape || key.return) {
                 // Exit move mode
@@ -275,152 +275,152 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
             if (key.upArrow) {
                 setSelectedIndex(Math.max(0, selectedIndex - 1));
             } else if (key.downArrow) {
-                setSelectedIndex(Math.min(items.length - 1, selectedIndex + 1));
-            } else if (key.leftArrow && items.length > 0) {
+                setSelectedIndex(Math.min(widgets.length - 1, selectedIndex + 1));
+            } else if (key.leftArrow && widgets.length > 0) {
                 // Toggle item type backwards
                 const types = getAllowedTypes();
-                const currentItem = items[selectedIndex];
-                if (currentItem) {
-                    const currentType = currentItem.type;
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget) {
+                    const currentType = currentWidget.type;
                     let currentIndex = types.indexOf(currentType);
                     // If current type is not in allowed types (e.g., separator when disabled), find a valid type
                     if (currentIndex === -1) {
                         currentIndex = 0;
                     }
                     const prevIndex = currentIndex === 0 ? types.length - 1 : currentIndex - 1;
-                    const newItems = [...items];
+                    const newWidgets = [...widgets];
                     const prevType = types[prevIndex];
                     if (prevType) {
-                        newItems[selectedIndex] = { ...currentItem, type: prevType };
-                        onUpdate(newItems);
+                        newWidgets[selectedIndex] = { ...currentWidget, type: prevType };
+                        onUpdate(newWidgets);
                     }
                 }
-            } else if (key.rightArrow && items.length > 0) {
+            } else if (key.rightArrow && widgets.length > 0) {
                 // Toggle item type forwards
                 const types = getAllowedTypes();
-                const currentItem = items[selectedIndex];
-                if (currentItem) {
-                    const currentType = currentItem.type;
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget) {
+                    const currentType = currentWidget.type;
                     let currentIndex = types.indexOf(currentType);
                     // If current type is not in allowed types (e.g., separator when disabled), find a valid type
                     if (currentIndex === -1) {
                         currentIndex = 0;
                     }
                     const nextIndex = (currentIndex + 1) % types.length;
-                    const newItems = [...items];
+                    const newWidgets = [...widgets];
                     const nextType = types[nextIndex];
                     if (nextType) {
-                        newItems[selectedIndex] = { ...currentItem, type: nextType };
-                        onUpdate(newItems);
+                        newWidgets[selectedIndex] = { ...currentWidget, type: nextType };
+                        onUpdate(newWidgets);
                     }
                 }
-            } else if (key.return && items.length > 0) {
+            } else if (key.return && widgets.length > 0) {
                 // Enter move mode
                 setMoveMode(true);
             } else if (input === 'a') {
-                // Add item after selected
-                const insertIndex = items.length > 0 ? selectedIndex + 1 : 0;
+                // Add widget after selected
+                const insertIndex = widgets.length > 0 ? selectedIndex + 1 : 0;
                 const backgroundColor = getUniqueBackgroundColor(insertIndex);
-                const newItem: StatusItem = {
+                const newWidget: WidgetItem = {
                     id: Date.now().toString(),
                     type: getDefaultItemType(),
                     ...(backgroundColor && { backgroundColor })
                 };
-                const newItems = [...items];
-                newItems.splice(insertIndex, 0, newItem);
-                onUpdate(newItems);
-                setSelectedIndex(insertIndex); // Move selection to new item
+                const newWidgets = [...widgets];
+                newWidgets.splice(insertIndex, 0, newWidget);
+                onUpdate(newWidgets);
+                setSelectedIndex(insertIndex); // Move selection to new widget
             } else if (input === 'i') {
                 // Insert item before selected
                 const insertIndex = selectedIndex;
                 const backgroundColor = getUniqueBackgroundColor(insertIndex);
-                const newItem: StatusItem = {
+                const newWidget: WidgetItem = {
                     id: Date.now().toString(),
                     type: getDefaultItemType(),
                     ...(backgroundColor && { backgroundColor })
                 };
-                const newItems = [...items];
-                newItems.splice(insertIndex, 0, newItem);
-                onUpdate(newItems);
-                // Keep selection on the new item (which is now at selectedIndex)
-            } else if (input === 'd' && items.length > 0) {
+                const newWidgets = [...widgets];
+                newWidgets.splice(insertIndex, 0, newWidget);
+                onUpdate(newWidgets);
+                // Keep selection on the new widget (which is now at selectedIndex)
+            } else if (input === 'd' && widgets.length > 0) {
                 // Delete selected item
-                const newItems = items.filter((_, i) => i !== selectedIndex);
-                onUpdate(newItems);
-                if (selectedIndex >= newItems.length && selectedIndex > 0) {
+                const newWidgets = widgets.filter((_, i) => i !== selectedIndex);
+                onUpdate(newWidgets);
+                if (selectedIndex >= newWidgets.length && selectedIndex > 0) {
                     setSelectedIndex(selectedIndex - 1);
                 }
             } else if (input === 'c') {
                 // Clear entire line
                 onUpdate([]);
                 setSelectedIndex(0);
-            } else if (input === ' ' && items.length > 0) {
+            } else if (input === ' ' && widgets.length > 0) {
                 // Space key - cycle separator character for separator types only (not flex)
-                const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type === 'separator') {
-                    const currentChar = currentItem.character ?? '|';
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type === 'separator') {
+                    const currentChar = currentWidget.character ?? '|';
                     const currentCharIndex = separatorChars.indexOf(currentChar);
                     const nextChar = separatorChars[(currentCharIndex + 1) % separatorChars.length];
-                    const newItems = [...items];
-                    newItems[selectedIndex] = { ...currentItem, character: nextChar };
-                    onUpdate(newItems);
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = { ...currentWidget, character: nextChar };
+                    onUpdate(newWidgets);
                 }
-            } else if (input === 'r' && items.length > 0) {
+            } else if (input === 'r' && widgets.length > 0) {
                 // Toggle raw value for non-separator items
-                const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type !== 'separator' && currentItem.type !== 'flex-separator' && currentItem.type !== 'custom-text') {
-                    const newItems = [...items];
-                    newItems[selectedIndex] = { ...currentItem, rawValue: !currentItem.rawValue };
-                    onUpdate(newItems);
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator' && currentWidget.type !== 'custom-text') {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
+                    onUpdate(newWidgets);
                 }
-            } else if (input === 'e' && items.length > 0) {
+            } else if (input === 'e' && widgets.length > 0) {
                 // Edit custom text or custom command
-                const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type === 'custom-text') {
-                    const text = currentItem.customText ?? '';
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type === 'custom-text') {
+                    const text = currentWidget.customText ?? '';
                     setTextInput(text);
                     setTextCursorPos(text.length); // Start cursor at end
                     setEditingText(true);
-                } else if (currentItem && currentItem.type === 'custom-command') {
-                    const cmd = currentItem.commandPath ?? '';
+                } else if (currentWidget && currentWidget.type === 'custom-command') {
+                    const cmd = currentWidget.commandPath ?? '';
                     setCommandInput(cmd);
                     setCommandCursorPos(cmd.length); // Start cursor at end
                     setEditingCommand(true);
                 }
-            } else if (input === 'w' && items.length > 0) {
+            } else if (input === 'w' && widgets.length > 0) {
                 // Edit max width for custom command
-                const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type === 'custom-command') {
-                    setMaxWidthInput(currentItem.maxWidth ? currentItem.maxWidth.toString() : '');
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type === 'custom-command') {
+                    setMaxWidthInput(currentWidget.maxWidth ? currentWidget.maxWidth.toString() : '');
                     setEditingMaxWidth(true);
                 }
-            } else if (input === 't' && items.length > 0) {
+            } else if (input === 't' && widgets.length > 0) {
                 // Edit timeout for custom command
-                const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type === 'custom-command') {
-                    setTimeoutInput(currentItem.timeout ? currentItem.timeout.toString() : '1000');
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type === 'custom-command') {
+                    setTimeoutInput(currentWidget.timeout ? currentWidget.timeout.toString() : '1000');
                     setEditingTimeout(true);
                 }
-            } else if (input === 'p' && items.length > 0) {
+            } else if (input === 'p' && widgets.length > 0) {
                 // Toggle preserve colors for custom command
-                const currentItem = items[selectedIndex];
-                if (currentItem && currentItem.type === 'custom-command') {
-                    const newItems = [...items];
-                    newItems[selectedIndex] = { ...currentItem, preserveColors: !currentItem.preserveColors };
-                    onUpdate(newItems);
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type === 'custom-command') {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = { ...currentWidget, preserveColors: !currentWidget.preserveColors };
+                    onUpdate(newWidgets);
                 }
-            } else if (input === 'm' && items.length > 0) {
+            } else if (input === 'm' && widgets.length > 0) {
                 // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
-                const currentItem = items[selectedIndex];
+                const currentWidget = widgets[selectedIndex];
                 // Don't allow merge on the last item or on separators
-                if (currentItem && selectedIndex < items.length - 1
-                    && currentItem.type !== 'separator' && currentItem.type !== 'flex-separator') {
-                    const newItems = [...items];
+                if (currentWidget && selectedIndex < widgets.length - 1
+                    && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+                    const newWidgets = [...widgets];
                     let nextMergeState: boolean | 'no-padding' | undefined;
 
-                    if (currentItem.merge === undefined) {
+                    if (currentWidget.merge === undefined) {
                         nextMergeState = true;
-                    } else if (currentItem.merge === true) {
+                    } else if (currentWidget.merge === true) {
                         nextMergeState = 'no-padding';
                     } else {
                         nextMergeState = undefined;
@@ -428,12 +428,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
 
                     if (nextMergeState === undefined) {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { merge: _merge, ...rest } = currentItem;
-                        newItems[selectedIndex] = rest;
+                        const { merge: _merge, ...rest } = currentWidget;
+                        newWidgets[selectedIndex] = rest;
                     } else {
-                        newItems[selectedIndex] = { ...currentItem, merge: nextMergeState };
+                        newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
                     }
-                    onUpdate(newItems);
+                    onUpdate(newWidgets);
                 }
             } else if (key.escape) {
                 onBack();
@@ -441,12 +441,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         }
     });
 
-    const getItemDisplay = (item: StatusItem) => {
+    const getWidgetDisplay = (widget: WidgetItem) => {
         // Get the color for this item (use custom color if set, otherwise default)
-        const colorName = item.color ?? getItemDefaultColor(item.type);
+        const colorName = widget.color ?? getWidgetDefaultColor(widget.type);
         const colorFunc = (chalk as unknown as Record<string, typeof chalk.white>)[colorName] ?? chalk.white;
 
-        switch (item.type) {
+        switch (widget.type) {
         case 'model':
             return colorFunc('Model');
         case 'git-branch':
@@ -454,10 +454,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         case 'git-changes':
             return colorFunc('Git Changes');
         case 'separator': {
-            const char = item.character ?? '|';
+            const char = widget.character ?? '|';
             const charDisplay = char === ' ' ? '(space)' : char;
             // Apply the separator's color to its display
-            return applyColors(`Separator ${charDisplay}`, item.color ?? 'gray', item.backgroundColor, item.bold);
+            return applyColors(`Separator ${charDisplay}`, widget.color ?? 'gray', widget.backgroundColor, widget.bold);
         }
         case 'flex-separator':
             return chalk.yellow('Flex Separator');
@@ -482,14 +482,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         case 'version':
             return colorFunc('Version');
         case 'custom-text': {
-            const text = item.customText ?? 'Empty';
+            const text = widget.customText ?? 'Empty';
             return colorFunc(`Custom Text (${text})`);
         }
         case 'custom-command': {
-            const cmd = item.commandPath ?? 'No command';
+            const cmd = widget.commandPath ?? 'No command';
             const truncatedCmd = cmd.length > 30 ? `${cmd.substring(0, 27)}...` : cmd;
             // Only apply color if not preserving colors
-            if (!item.preserveColors) {
+            if (!widget.preserveColors) {
                 return colorFunc(`Custom Command (${truncatedCmd})`);
             } else {
                 return chalk.white(`Custom Command (${truncatedCmd}) [preserving colors]`);
@@ -498,17 +498,17 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         }
     };
 
-    const hasFlexSeparator = items.some(item => item.type === 'flex-separator');
+    const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
 
     // Build dynamic help text based on selected item
-    const currentItem = items[selectedIndex];
-    const isSeparator = currentItem?.type === 'separator';
-    const isFlexSeparator = currentItem?.type === 'flex-separator';
-    const isCustomText = currentItem?.type === 'custom-text';
-    const isCustomCommand = currentItem?.type === 'custom-command';
-    const canToggleRaw = currentItem && !isSeparator && !isFlexSeparator && !isCustomText && !isCustomCommand;
-    const canMerge = currentItem && selectedIndex < items.length - 1 && !isSeparator && !isFlexSeparator;
+    const currentWidget = widgets[selectedIndex];
+    const isSeparator = currentWidget?.type === 'separator';
+    const isFlexSeparator = currentWidget?.type === 'flex-separator';
+    const isCustomText = currentWidget?.type === 'custom-text';
+    const isCustomCommand = currentWidget?.type === 'custom-command';
+    const canToggleRaw = currentWidget && !isSeparator && !isFlexSeparator && !isCustomText && !isCustomCommand;
+    const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
 
     let helpText = '↑↓ select, ←→ change type';
     if (isSeparator) {
@@ -598,29 +598,29 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
                 </Box>
             )}
             <Box marginTop={1} flexDirection='column'>
-                {items.length === 0 ? (
+                {widgets.length === 0 ? (
                     <Text dimColor>No items. Press 'a' to add one.</Text>
                 ) : (
-                    items.map((item, index) => (
-                        <Box key={item.id}>
+                    widgets.map((widget, index) => (
+                        <Box key={widget.id}>
                             <Text color={index === selectedIndex ? (moveMode ? 'yellow' : 'green') : undefined}>
                                 {index === selectedIndex ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                 {index + 1}
                                 .
                                 {' '}
-                                {getItemDisplay(item)}
-                                {item.rawValue && <Text dimColor> (raw value)</Text>}
-                                {item.merge === true && <Text dimColor> (merged→)</Text>}
-                                {item.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                {item.type === 'custom-command' && item.maxWidth && (
+                                {getWidgetDisplay(widget)}
+                                {widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                {widget.merge === true && <Text dimColor> (merged→)</Text>}
+                                {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                {widget.type === 'custom-command' && widget.maxWidth && (
                                     <Text dimColor>
                                         {' '}
                                         (max:
-                                        {item.maxWidth}
+                                        {widget.maxWidth}
                                         )
                                     </Text>
                                 )}
-                                {item.type === 'custom-command' && item.preserveColors && <Text dimColor> (preserve colors)</Text>}
+                                {widget.type === 'custom-command' && widget.preserveColors && <Text dimColor> (preserve colors)</Text>}
                             </Text>
                         </Box>
                     ))

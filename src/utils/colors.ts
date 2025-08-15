@@ -231,7 +231,7 @@ export function getAvailableBackgroundColorsForUI(): { name: string; value: stri
     ];
 }
 
-export function getItemDefaultColor(type: string): string {
+export function getWidgetDefaultColor(type: string): string {
     const defaults: Record<string, string> = {
         'model': 'blue',
         'git-branch': 'magenta',

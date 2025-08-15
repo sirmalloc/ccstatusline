@@ -285,10 +285,6 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         <Text dimColor wrap='wrap'>
                             • Override colors: All items will use these colors instead of their configured colors
                         </Text>
-                        <Box marginTop={1} flexDirection='column'>
-                            <Text color='yellow'>⚠ VSCode Users: </Text>
-                            <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
-                        </Box>
                     </Box>
                 </>
             )}
