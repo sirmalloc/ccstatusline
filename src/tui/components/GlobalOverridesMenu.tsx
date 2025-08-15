@@ -26,7 +26,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator ?? '');
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
     const [globalBold, setGlobalBold] = useState(settings.globalBold);
-    const isPowerlineEnabled = settings.powerline.enabled ?? false;
+    const isPowerlineEnabled = settings.powerline.enabled;
 
     // Check if there are any manual separators in the current configuration
     const hasManualSeparators = settings.lines.some(line => line.some(item => item.type === 'separator')

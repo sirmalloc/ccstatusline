@@ -56,5 +56,8 @@
   },
   "trustedDependencies": [
     "unrs-resolver"
-  ]
+  ],
+  "dependencies": {
+    "zod": "^4.0.17"
+  }
 }

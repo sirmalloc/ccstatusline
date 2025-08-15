@@ -54,7 +54,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
 
     // Helper functions for display
     const getSeparatorDisplay = (): string => {
-        const seps = powerlineConfig.separators ?? ['\uE0B0'];
+        const seps = powerlineConfig.separators;
         if (seps.length > 1) {
             return 'multiple';
         }
@@ -74,8 +74,8 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
 
     const getCapDisplay = (type: 'start' | 'end'): string => {
         const caps = type === 'start'
-            ? (powerlineConfig.startCaps ?? [])
-            : (powerlineConfig.endCaps ?? []);
+            ? powerlineConfig.startCaps
+            : powerlineConfig.endCaps;
 
         if (caps.length === 0)
             return 'none';
@@ -114,14 +114,19 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
 
     useInput((input, key) => {
         if (fontInstallMessage) {
-            onClearMessage();
+            // Ignore escape key during font installation
+            if (!key.escape) {
+                onClearMessage();
+            }
             return;
         }
 
         if (confirmingEnable) {
             if (input === 'y' || input === 'Y') {
-                // Set default theme if none is set
-                const theme = powerlineConfig.theme ?? getDefaultPowerlineTheme();
+                // Set to nord theme if currently custom or undefined (first time enabling)
+                const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
+                    ? getDefaultPowerlineTheme()
+                    : powerlineConfig.theme;
 
                 // Remove all separators and flex-separators from lines
                 // Also set default padding to a space when enabling powerline
@@ -131,9 +136,9 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                         ...powerlineConfig,
                         enabled: true,
                         theme,
-                        // Initialize separators array if not present
-                        separators: powerlineConfig.separators ?? ['\uE0B0'],
-                        separatorInvertBackground: powerlineConfig.separatorInvertBackground ?? [false]
+                        // Separators are already initialized by Zod
+                        separators: powerlineConfig.separators,
+                        separatorInvertBackground: powerlineConfig.separatorInvertBackground
                     },
                     defaultPadding: ' ',  // Set padding to space when enabling powerline
                     lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
@@ -172,8 +177,10 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     if (hasSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
-                        // Set default theme if none is set
-                        const theme = powerlineConfig.theme ?? getDefaultPowerlineTheme();
+                        // Set to nord theme if currently custom or undefined (first time enabling)
+                        const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
+                            ? getDefaultPowerlineTheme()
+                            : powerlineConfig.theme;
 
                         // Enable directly without confirmation since there are no separators
                         const updatedSettings = {
@@ -182,9 +189,9 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                                 ...powerlineConfig,
                                 enabled: true,
                                 theme,
-                                // Initialize separators array if not present
-                                separators: powerlineConfig.separators ?? ['\uE0B0'],
-                                separatorInvertBackground: powerlineConfig.separatorInvertBackground ?? [false]
+                                // Separators are already initialized by Zod
+                                separators: powerlineConfig.separators,
+                                separatorInvertBackground: powerlineConfig.separatorInvertBackground
                             },
                             defaultPadding: ' '  // Set padding to space when enabling powerline
                         };

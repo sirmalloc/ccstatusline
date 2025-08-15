@@ -28,17 +28,17 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     const getItems = () => {
         switch (mode) {
         case 'separator':
-            return powerlineConfig.separators ?? ['\uE0B0'];
+            return powerlineConfig.separators;
         case 'startCap':
-            return powerlineConfig.startCaps ?? [];
+            return powerlineConfig.startCaps;
         case 'endCap':
-            return powerlineConfig.endCaps ?? [];
+            return powerlineConfig.endCaps;
         }
     };
 
     const separators = getItems();
     const invertBgs = mode === 'separator'
-        ? (powerlineConfig.separatorInvertBackground ?? separators.map(() => false))
+        ? powerlineConfig.separatorInvertBackground
         : [];
 
     const [selectedIndex, setSelectedIndex] = useState(0);

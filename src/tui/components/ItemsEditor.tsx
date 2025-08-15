@@ -12,6 +12,7 @@ import {
     type WidgetItem,
     type WidgetItemType
 } from '../../utils/config';
+import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     getAllWidgetTypes,
@@ -178,7 +179,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 const insertIndex = widgets.length > 0 ? selectedIndex + 1 : 0;
                 const backgroundColor = getUniqueBackgroundColor(insertIndex);
                 const newWidget: WidgetItem = {
-                    id: Date.now().toString(),
+                    id: generateGuid(),
                     type: getDefaultItemType(),
                     ...(backgroundColor && { backgroundColor })
                 };
@@ -191,7 +192,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 const insertIndex = selectedIndex;
                 const backgroundColor = getUniqueBackgroundColor(insertIndex);
                 const newWidget: WidgetItem = {
-                    id: Date.now().toString(),
+                    id: generateGuid(),
                     type: getDefaultItemType(),
                     ...(backgroundColor && { backgroundColor })
                 };
@@ -372,7 +373,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {' '}
                     {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}
                 </Text>
-                {(Boolean(settings.powerline.enabled) || Boolean(settings.defaultSeparator)) && (
+                {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
                         <Text color='yellow'>
                             ⚠

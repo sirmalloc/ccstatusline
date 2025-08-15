@@ -1,18 +1,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { z } from 'zod';
 
-import type {
-    ColorLevelString,
-    LegacySettings,
-    PartialSettings,
-    Settings,
-    WidgetItem
-} from '../types';
-
-// Re-export types for backward compatibility
-export type { WidgetItem, WidgetItemType } from '../types';
-export type { ColorLevelString, FlexMode, LegacySettings, PartialSettings, PowerlineConfig, Settings } from '../types';
+import {
+    migrateConfig,
+    needsMigration
+} from './migrations';
 
 // Use fs.promises directly (always available in modern Node.js)
 const readFile = fs.promises.readFile;
@@ -22,88 +16,150 @@ const mkdir = fs.promises.mkdir;
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
 const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
 
-// Centralized defaults - NEVER use inline defaults, always reference these
-export const DEFAULT_SETTINGS: Settings = {
-    lines: [
-        [
-            {
-                id: '1',
-                type: 'model',
-                color: 'cyan'
-            },
-            {
-                id: '2',
-                type: 'separator'
-            },
-            {
-                id: '3',
-                type: 'context-length',
-                color: 'brightBlack'
-            },
-            {
-                id: '4',
-                type: 'separator'
-            },
-            {
-                id: '5',
-                type: 'git-branch',
-                color: 'magenta'
-            },
-            {
-                id: '6',
-                type: 'separator'
-            },
-            {
-                id: '7',
-                type: 'git-changes',
-                color: 'yellow'
+// Current version - bump this when making breaking changes to the schema
+const CURRENT_VERSION = 2;
+
+// Known widget types
+const KNOWN_WIDGET_TYPES = [
+    'model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
+    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total',
+    'context-length', 'context-percentage', 'context-percentage-usable',
+    'terminal-width', 'session-clock', 'version', 'custom-text', 'custom-command'
+] as const;
+
+// Widget item type enum - strict for type safety
+const WidgetItemTypeSchema = z.enum(KNOWN_WIDGET_TYPES);
+
+// Safe widget type schema for loading - accepts unknown types
+const SafeWidgetTypeSchema = z.union([
+    WidgetItemTypeSchema,
+    z.string() // Accept any string for forward compatibility
+]);
+
+// Widget item schema for type exports
+const WidgetItemSchema = z.object({
+    id: z.string(),
+    type: WidgetItemTypeSchema,
+    color: z.string().optional(),
+    backgroundColor: z.string().optional(),
+    bold: z.boolean().optional(),
+    character: z.string().optional(),
+    rawValue: z.boolean().optional(),
+    customText: z.string().optional(),
+    commandPath: z.string().optional(),
+    maxWidth: z.number().optional(),
+    preserveColors: z.boolean().optional(),
+    timeout: z.number().optional(),
+    merge: z.union([z.boolean(), z.literal('no-padding')]).optional()
+});
+
+// Safe widget item schema for loading - handles unknown types
+const SafeWidgetItemSchema = z.object({
+    id: z.string(),
+    type: SafeWidgetTypeSchema, // Accept any string type
+    color: z.string().optional(),
+    backgroundColor: z.string().optional(),
+    bold: z.boolean().optional(),
+    character: z.string().optional(),
+    rawValue: z.boolean().optional(),
+    customText: z.string().optional(),
+    commandPath: z.string().optional(),
+    maxWidth: z.number().optional(),
+    preserveColors: z.boolean().optional(),
+    timeout: z.number().optional(),
+    merge: z.union([z.boolean(), z.literal('no-padding')]).optional()
+});
+
+// Flex mode enum
+const FlexModeSchema = z.enum(['full', 'full-minus-40', 'full-until-compact']);
+
+// Color level schema
+const ColorLevelSchema = z.union([
+    z.literal(0),
+    z.literal(1),
+    z.literal(2),
+    z.literal(3)
+]);
+
+// Powerline configuration schema with defaults
+const PowerlineConfigSchema = z.object({
+    enabled: z.boolean().default(false),
+    separators: z.array(z.string()).default(['\uE0B0']),
+    separatorInvertBackground: z.array(z.boolean()).default([false]),
+    startCaps: z.array(z.string()).default([]),
+    endCaps: z.array(z.string()).default([]),
+    theme: z.string().optional()
+});
+
+// Helper to filter and validate widget items
+const filterValidWidgets = (items: unknown[]): z.infer<typeof WidgetItemSchema>[] => {
+    const validItems: z.infer<typeof WidgetItemSchema>[] = [];
+
+    for (const item of items) {
+        const parsed = SafeWidgetItemSchema.safeParse(item);
+        if (parsed.success) {
+            // Check if it's a known widget type
+            const typeStr = parsed.data.type;
+            if (KNOWN_WIDGET_TYPES.includes(typeStr as typeof KNOWN_WIDGET_TYPES[number])) {
+                validItems.push(parsed.data as z.infer<typeof WidgetItemSchema>);
+            } else {
+                console.warn(`Warning: Skipping unknown widget type '${parsed.data.type}' (id: ${parsed.data.id}). This may be from a newer version.`);
             }
-        ]
-    ],
-    flexMode: 'full-minus-40',
-    compactThreshold: 60,
-    colorLevel: 2, // Default to 256 colors
-    defaultSeparator: undefined,
-    defaultPadding: undefined,
-    inheritSeparatorColors: false,
-    overrideBackgroundColor: undefined,
-    overrideForegroundColor: undefined,
-    globalBold: false,
-    powerline: {
+        }
+    }
+
+    return validItems;
+};
+
+// Main settings schema with defaults
+const SettingsSchema = z.object({
+    version: z.number().default(CURRENT_VERSION),
+    lines: z.array(z.array(WidgetItemSchema))
+        .min(1)
+        .max(3)
+        .default([
+            [
+                { id: '1', type: 'model', color: 'cyan' },
+                { id: '2', type: 'separator' },
+                { id: '3', type: 'context-length', color: 'brightBlack' },
+                { id: '4', type: 'separator' },
+                { id: '5', type: 'git-branch', color: 'magenta' },
+                { id: '6', type: 'separator' },
+                { id: '7', type: 'git-changes', color: 'yellow' }
+            ]
+        ])
+        .transform(lines => lines.slice(0, 3)), // Ensure max 3 lines
+    flexMode: FlexModeSchema.default('full-minus-40'),
+    compactThreshold: z.number().min(1).max(99).default(60),
+    colorLevel: ColorLevelSchema.default(2),
+    defaultSeparator: z.string().optional(),
+    defaultPadding: z.string().optional(),
+    inheritSeparatorColors: z.boolean().default(false),
+    overrideBackgroundColor: z.string().optional(),
+    overrideForegroundColor: z.string().optional(),
+    globalBold: z.boolean().default(false),
+    powerline: PowerlineConfigSchema.default({
         enabled: false,
-        separators: ['\uE0B0'],  // Default single separator
+        separators: ['\uE0B0'],
         separatorInvertBackground: [false],
         startCaps: [],
         endCaps: [],
-        theme: undefined  // Will be set to 'nord' when first enabled
-    }
-};
+        theme: undefined
+    })
+});
 
-// Helper function to ensure settings have all required values
-export function normalizeSettings(settings: PartialSettings): Settings {
-    // Deep merge with defaults to ensure all values are present
-    const normalized: Settings = {
-        lines: settings.lines ?? DEFAULT_SETTINGS.lines,
-        flexMode: settings.flexMode ?? DEFAULT_SETTINGS.flexMode,
-        compactThreshold: settings.compactThreshold ?? DEFAULT_SETTINGS.compactThreshold,
-        colorLevel: settings.colorLevel ?? DEFAULT_SETTINGS.colorLevel,
-        defaultSeparator: settings.defaultSeparator,
-        defaultPadding: settings.defaultPadding,
-        inheritSeparatorColors: settings.inheritSeparatorColors ?? DEFAULT_SETTINGS.inheritSeparatorColors,
-        overrideBackgroundColor: settings.overrideBackgroundColor,
-        overrideForegroundColor: settings.overrideForegroundColor,
-        globalBold: settings.globalBold ?? DEFAULT_SETTINGS.globalBold,
-        powerline: {
-            ...DEFAULT_SETTINGS.powerline,
-            ...(settings.powerline ?? {})
-        }
-    };
+// Inferred types from Zod schemas
+export type WidgetItem = z.infer<typeof WidgetItemSchema>;
+export type WidgetItemType = z.infer<typeof WidgetItemTypeSchema>;
+export type FlexMode = z.infer<typeof FlexModeSchema>;
+export type PowerlineConfig = z.infer<typeof PowerlineConfigSchema>;
+export type Settings = z.infer<typeof SettingsSchema>;
+export type ColorLevelString = 'ansi16' | 'ansi256' | 'truecolor';
 
-    return normalized;
-}
+// Re-export for backward compatibility
+export { WidgetItemSchema, WidgetItemTypeSchema };
 
 // Helper to get color level as string for chalk
-
 export function getColorLevelString(level: 0 | 1 | 2 | 3 | undefined): ColorLevelString {
     switch (level) {
     case 0:
@@ -117,88 +173,105 @@ export function getColorLevelString(level: 0 | 1 | 2 | 3 | undefined): ColorLeve
     }
 }
 
+// Schema for loading legacy settings (before version field)
+const LegacyLoadSchema = z.object({
+    // Support old 'items' field name (single line)
+    items: z.array(SafeWidgetItemSchema).optional(),
+    // Current 'lines' field (multiple lines)
+    lines: z.array(z.array(SafeWidgetItemSchema)).optional(),
+    flexMode: FlexModeSchema.optional(),
+    compactThreshold: z.number().optional(),
+    colorLevel: ColorLevelSchema.optional(),
+    defaultSeparator: z.string().optional(),
+    defaultPadding: z.string().optional(),
+    inheritSeparatorColors: z.boolean().optional(),
+    overrideBackgroundColor: z.string().optional(),
+    overrideForegroundColor: z.string().optional(),
+    globalBold: z.boolean().optional(),
+    powerline: z.object({
+        enabled: z.boolean().optional(),
+        separators: z.array(z.string()).optional(),
+        separatorInvertBackground: z.array(z.boolean()).optional(),
+        startCaps: z.array(z.string()).optional(),
+        endCaps: z.array(z.string()).optional(),
+        theme: z.string().optional()
+    }).optional(),
+    // Version might not exist in old configs
+    version: z.number().optional()
+}); // Remove passthrough as it's deprecated
+
 export async function loadSettings(): Promise<Settings> {
     try {
-        // Use Node.js-compatible file reading
+        // Check if settings file exists
         if (!fs.existsSync(SETTINGS_PATH)) {
-            return normalizeSettings({});
+            // Return default settings
+            return SettingsSchema.parse({});
         }
 
         const content = await readFile(SETTINGS_PATH, 'utf-8');
-        let loaded: LegacySettings;
+        let rawData: unknown;
 
         try {
-            loaded = JSON.parse(content) as LegacySettings;
+            rawData = JSON.parse(content);
         } catch {
-            // If we can't parse the settings, return defaults
+            // If we can't parse the JSON, return defaults
             console.error('Failed to parse settings.json, using defaults');
-            return normalizeSettings({});
+            return SettingsSchema.parse({});
         }
 
-        // Migrate from old format with elements/layout
-        if (loaded.elements || loaded.layout) {
-            return normalizeSettings(migrateOldSettings(loaded));
+        // Check if migration is needed
+        if (needsMigration(rawData, CURRENT_VERSION)) {
+            rawData = migrateConfig(rawData, CURRENT_VERSION);
+            // Save the migrated settings back to disk
+            await writeFile(SETTINGS_PATH, JSON.stringify(rawData, null, 2), 'utf-8');
         }
 
-        // Migrate from single items array to lines array (legacy field name)
-        if (loaded.items && !loaded.lines) {
-            loaded.lines = [loaded.items]; // items was the old field name
-            delete loaded.items;
+        // Try to parse with legacy schema to get a loose validation
+        const legacyParsed = LegacyLoadSchema.safeParse(rawData);
+
+        if (!legacyParsed.success) {
+            console.error('Invalid settings format after migration, using defaults');
+            return SettingsSchema.parse({});
         }
 
-        // Ensure lines is an array and limit to 3 lines
-        if (loaded.lines) {
-            if (!Array.isArray(loaded.lines)) {
-                loaded.lines = [[]];
+        const data = legacyParsed.data;
+
+        // Prepare data for main schema parsing
+        const settingsInput: Record<string, unknown> = { ...data };
+
+        // Filter out unknown widget types from lines
+        if (settingsInput.lines && Array.isArray(settingsInput.lines)) {
+            settingsInput.lines = settingsInput.lines.map(line => Array.isArray(line) ? filterValidWidgets(line) : []
+            ).filter(line => line.length > 0); // Remove empty lines
+
+            // If all lines were filtered out, use defaults
+            if ((settingsInput.lines as unknown[]).length === 0) {
+                delete settingsInput.lines;
             }
-            loaded.lines = loaded.lines.slice(0, 3);
         }
 
-        // Use normalizeSettings to ensure all values are present
-        return normalizeSettings(loaded as PartialSettings);
+        // Parse with main schema which will apply all defaults
+        return SettingsSchema.parse(settingsInput);
     } catch (error) {
         // Any other error, return defaults
         console.error('Error loading settings:', error);
-        return normalizeSettings({});
+        return SettingsSchema.parse({});
     }
-}
-
-function migrateOldSettings(old: LegacySettings): PartialSettings {
-    const widgets: WidgetItem[] = [];
-    let id = 1;
-
-    if (old.elements?.model) {
-        widgets.push({ id: String(id++), type: 'model', color: old.colors?.model });
-    }
-
-    if (widgets.length > 0 && old.elements?.gitBranch) {
-        widgets.push({ id: String(id++), type: 'separator' });
-    }
-
-    if (old.elements?.gitBranch) {
-        widgets.push({ id: String(id++), type: 'git-branch', color: old.colors?.gitBranch });
-    }
-
-    if (old.layout?.expandingSeparators) {
-        // Replace regular separators with flex separators
-        widgets.forEach((widget) => {
-            if (widget.type === 'separator') {
-                widget.type = 'flex-separator';
-            }
-        });
-    }
-
-    return {
-        lines: [widgets], // Put migrated widgets in first line
-        flexMode: DEFAULT_SETTINGS.flexMode,
-        compactThreshold: DEFAULT_SETTINGS.compactThreshold
-    };
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
     // Ensure config directory exists
     await mkdir(CONFIG_DIR, { recursive: true });
 
+    // Always include version when saving
+    const settingsWithVersion = {
+        ...settings,
+        version: CURRENT_VERSION
+    };
+
     // Write settings using Node.js-compatible API
-    await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+    await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
 }
+
+// Export a default settings constant for reference
+export const DEFAULT_SETTINGS: Settings = SettingsSchema.parse({});
