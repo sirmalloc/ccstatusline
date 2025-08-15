@@ -19,10 +19,10 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/react": "^19.1.9",
-    "typescript": "^5",
+    "@types/react": "^19.1.10",
+    "typescript": "^5.9.2",
     "chalk": "^5.5.0",
-    "ink": "^6.1.0",
+    "ink": "^6.2.0",
     "ink-gradient": "^3.0.0",
     "ink-select-input": "^6.2.0",
     "patch-package": "^8.0.0",
