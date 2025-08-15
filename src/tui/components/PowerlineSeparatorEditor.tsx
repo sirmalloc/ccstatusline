@@ -74,15 +74,13 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
 
     const presetSeparators = getPresets();
 
-    const isCustomSeparator = (char: string): boolean => {
-        return !presetSeparators.some(p => p.char === char);
-    };
-
     const getSeparatorDisplay = (char: string, index: number): string => {
         const preset = presetSeparators.find(p => p.char === char);
         const invertBg = invertBgs[index] ?? false;
         if (preset) {
-            return `${preset.char} - ${preset.name}`;
+            // Show inversion status for all separators in separator mode
+            const inversionText = mode === 'separator' && invertBg ? ' [Inverted]' : '';
+            return `${preset.char} - ${preset.name}${inversionText}`;
         }
         const hexCode = char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0');
         return `${char} - Custom (\\u${hexCode})${invertBg ? ' [Inverted]' : ''}`;
@@ -152,6 +150,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 const currentChar = separators[selectedIndex] ?? '\uE0B0';
                 const currentPresetIndex = presetSeparators.findIndex(p => p.char === currentChar);
                 const newSeparators = [...separators];
+                const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
 
                 let newIndex;
                 if (currentPresetIndex !== -1) {
@@ -170,18 +169,27 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     }
                 }
 
-                newSeparators[selectedIndex] = presetSeparators[newIndex]?.char ?? presetSeparators[0]?.char ?? '\uE0B0';
-                updateSeparators(newSeparators, mode === 'separator' ? invertBgs : undefined);
+                const newChar = presetSeparators[newIndex]?.char ?? presetSeparators[0]?.char ?? '\uE0B0';
+                newSeparators[selectedIndex] = newChar;
+
+                // Auto-set inversion for left-facing separators (Triangle Left \uE0B2 or Round Left \uE0B6)
+                if (mode === 'separator') {
+                    const isLeftFacing = newChar === '\uE0B2' || newChar === '\uE0B6';
+                    newInvertBgs[selectedIndex] = isLeftFacing;
+                }
+
+                updateSeparators(newSeparators, mode === 'separator' ? newInvertBgs : undefined);
             } else if ((input === 'a' || input === 'A') && (mode === 'separator' || separators.length < 3)) {
                 // Add after current (max 3 for caps)
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
                 const defaultChar = presetSeparators[0]?.char ?? '\uE0B0';
+                const isLeftFacing = defaultChar === '\uE0B2' || defaultChar === '\uE0B6';
                 if (separators.length === 0) {
                     // If empty, just add at the beginning
                     newSeparators.push(defaultChar);
                     if (mode === 'separator') {
-                        newInvertBgs.push(false);
+                        newInvertBgs.push(isLeftFacing);
                     }
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(0);
@@ -189,7 +197,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     // Add after current selected item
                     newSeparators.splice(selectedIndex + 1, 0, defaultChar);
                     if (mode === 'separator') {
-                        newInvertBgs.splice(selectedIndex + 1, 0, false);
+                        newInvertBgs.splice(selectedIndex + 1, 0, isLeftFacing);
                     }
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(selectedIndex + 1);
@@ -199,11 +207,12 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
                 const defaultChar = presetSeparators[0]?.char ?? '\uE0B0';
+                const isLeftFacing = defaultChar === '\uE0B2' || defaultChar === '\uE0B6';
                 if (separators.length === 0) {
                     // If empty, just add at the beginning
                     newSeparators.push(defaultChar);
                     if (mode === 'separator') {
-                        newInvertBgs.push(false);
+                        newInvertBgs.push(isLeftFacing);
                     }
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(0);
@@ -211,7 +220,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     // Insert before current selected item
                     newSeparators.splice(selectedIndex, 0, defaultChar);
                     if (mode === 'separator') {
-                        newInvertBgs.splice(selectedIndex, 0, false);
+                        newInvertBgs.splice(selectedIndex, 0, isLeftFacing);
                     }
                     updateSeparators(newSeparators, newInvertBgs);
                     // Keep selection on the newly inserted item (which is now at selectedIndex)
@@ -225,6 +234,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
             } else if (input === 'c' || input === 'C') {
                 // Clear all
                 if (mode === 'separator') {
+                    // Reset to default right-facing separator with no inversion
                     updateSeparators(['\uE0B0'], [false]);
                 } else {
                     updateSeparators([]);
@@ -235,8 +245,8 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 setHexInputMode(true);
                 setHexInput('');
                 setCursorPos(0);
-            } else if ((input === 't' || input === 'T') && mode === 'separator' && isCustomSeparator(separators[selectedIndex] ?? '')) {
-                // Toggle background inversion (only for separator mode and custom)
+            } else if ((input === 't' || input === 'T') && mode === 'separator') {
+                // Toggle background inversion (for all separators in separator mode)
                 const newInvertBgs = [...invertBgs];
                 newInvertBgs[selectedIndex] = !(newInvertBgs[selectedIndex] ?? false);
                 updateSeparators(separators, newInvertBgs);
@@ -284,7 +294,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 <>
                     <Box>
                         <Text dimColor>
-                            {`↑↓ select, ← → cycle${canAdd ? ', (a)dd, (i)nsert' : ''}${canDelete ? ', (d)elete' : ''}, (c)lear, (h)ex${mode === 'separator' && isCustomSeparator(separators[selectedIndex] ?? '') ? ', (t)oggle bg' : ''}, ESC back`}
+                            {`↑↓ select, ← → cycle${canAdd ? ', (a)dd, (i)nsert' : ''}${canDelete ? ', (d)elete' : ''}, (c)lear, (h)ex${mode === 'separator' ? ', (t)oggle invert' : ''}, ESC back`}
                         </Text>
                     </Box>
 

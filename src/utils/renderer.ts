@@ -3,8 +3,7 @@ import * as fs from 'fs';
 import { promisify } from 'util';
 
 // ANSI escape sequence for stripping color codes
-const ANSI_REGEX = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g');
-const ANSI_ESC = String.fromCharCode(27);
+const ANSI_REGEX = new RegExp(`\\x1b\\[[0-9;]*m`, 'g');
 
 import type {
     RenderContext,
@@ -346,7 +345,7 @@ function renderPowerlineStatusLine(
             // Start cap uses first widget's background as foreground (converted)
             const capFg = bgToFg(firstWidget.bgColor);
             const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-            result += fgCode + startCap + ANSI_ESC + '[39m';
+            result += fgCode + startCap + '\x1b[39m';
         } else {
             result += startCap;
         }
@@ -369,7 +368,7 @@ function renderPowerlineStatusLine(
 
         let widgetContent = '';
         if (shouldBold) {
-            widgetContent += ANSI_ESC + '[1m';
+            widgetContent += '\x1b[1m';
         }
         if (widget.fgColor) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
@@ -379,12 +378,12 @@ function renderPowerlineStatusLine(
         }
         widgetContent += widget.content;
         // Reset colors after content
-        widgetContent += ANSI_ESC + '[49m' + ANSI_ESC + '[39m';
+        widgetContent += '\x1b[49m\x1b[39m';
         // Only reset bold if there's no separator following AND no end cap
         const isLastWidget = i === widgetElements.length - 1;
         const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
         if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
-            widgetContent += ANSI_ESC + '[22m';
+            widgetContent += '\x1b[22m';
         }
 
         result += widgetContent;
@@ -396,111 +395,78 @@ function renderPowerlineStatusLine(
             const globalIndex = globalSeparatorOffset + i;
             const separatorIndex = Math.min(globalIndex, separators.length - 1);
             const separator = separators[separatorIndex] ?? '\uE0B0';
-            const invertBg = invertBgs[separatorIndex] ?? false;
-
-            // Check if this is a left-facing separator (Triangle Left \uE0B2 or Round Left \uE0B6)
-            const isLeftFacing = separator === '\uE0B2' || separator === '\uE0B6';
+            const shouldInvert = invertBgs[separatorIndex] ?? false;
 
             // Powerline separator coloring:
-            // For right-facing separators (default):
+            // Normal (not inverted):
             //   - Foreground: previous widget's background color (converted to fg)
             //   - Background: next widget's background color
-            // For left-facing separators:
+            // Inverted:
             //   - Foreground: next widget's background color (converted to fg)
             //   - Background: previous widget's background color
-            // When invertBg is true for custom separators, the logic is swapped
 
             // Build separator with raw ANSI codes to avoid reset issues
             let separatorOutput = '';
 
-            // Common preset separators (for checking if custom)
-            const presetSeparators = ['\uE0B0', '\uE0B2', '\uE0B4', '\uE0B6'];
+            // Check if adjacent widgets have the same background color
+            const sameBackground = widget.bgColor && nextWidget.bgColor && widget.bgColor === nextWidget.bgColor;
 
-            // Apply background inversion if enabled for custom separators
-            const shouldInvert = invertBg && !presetSeparators.includes(separator);
-
-            if (isLeftFacing) {
-                // Left-facing separator - reversed logic
-                if (shouldInvert) {
-                    // Inverted: swap fg/bg logic
-                    if (widget.bgColor && nextWidget.bgColor) {
-                        const fgColor = bgToFg(widget.bgColor);
+            if (shouldInvert) {
+                // Inverted: swap fg/bg logic
+                if (widget.bgColor && nextWidget.bgColor) {
+                    if (sameBackground) {
+                        // Same background: use next widget's foreground color
+                        const fgColor = nextWidget.fgColor;
                         const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        const bgCode = getColorAnsiCode(nextWidget.bgColor, colorLevel, true);
-                        separatorOutput = fgCode + bgCode + separator + ANSI_ESC + '[39m' + ANSI_ESC + '[49m';
-                    } else if (widget.bgColor && !nextWidget.bgColor) {
-                        const fgColor = bgToFg(widget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
-                    } else if (!widget.bgColor && nextWidget.bgColor) {
-                        const fgColor = bgToFg(nextWidget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
+                        const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
                     } else {
-                        separatorOutput = separator;
-                    }
-                } else {
-                    // Normal left-facing
-                    if (widget.bgColor && nextWidget.bgColor) {
+                        // Different backgrounds: use standard inverted logic
                         const fgColor = bgToFg(nextWidget.bgColor);
                         const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
                         const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
-                        separatorOutput = fgCode + bgCode + separator + ANSI_ESC + '[39m' + ANSI_ESC + '[49m';
-                    } else if (widget.bgColor && !nextWidget.bgColor) {
-                    // Only previous widget has background - separator points left from colored to uncolored
-                        const fgColor = bgToFg(widget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
-                    } else if (!widget.bgColor && nextWidget.bgColor) {
-                    // Only next widget has background
-                        const fgColor = bgToFg(nextWidget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
-                    } else {
-                    // Neither has background
-                        separatorOutput = separator;
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
                     }
+                } else if (widget.bgColor && !nextWidget.bgColor) {
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else if (!widget.bgColor && nextWidget.bgColor) {
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else {
+                    separatorOutput = separator;
                 }
             } else {
-                // Right-facing separator - standard logic
-                if (shouldInvert) {
-                    // Inverted: swap fg/bg logic
-                    if (widget.bgColor && nextWidget.bgColor) {
-                        const fgColor = bgToFg(nextWidget.bgColor);
+                // Normal (not inverted)
+                if (widget.bgColor && nextWidget.bgColor) {
+                    if (sameBackground) {
+                        // Same background: use previous widget's foreground color
+                        const fgColor = widget.fgColor;
                         const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
-                        separatorOutput = fgCode + bgCode + separator + ANSI_ESC + '[39m' + ANSI_ESC + '[49m';
-                    } else if (widget.bgColor && !nextWidget.bgColor) {
-                        const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
-                        separatorOutput = bgCode + separator + ANSI_ESC + '[49m';
-                    } else if (!widget.bgColor && nextWidget.bgColor) {
-                        const fgColor = bgToFg(nextWidget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
+                        const bgCode = getColorAnsiCode(nextWidget.bgColor, colorLevel, true);
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
                     } else {
-                        separatorOutput = separator;
-                    }
-                } else {
-                    // Normal right-facing
-                    if (widget.bgColor && nextWidget.bgColor) {
+                        // Different backgrounds: use standard logic
                         const fgColor = bgToFg(widget.bgColor);
                         const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
                         const bgCode = getColorAnsiCode(nextWidget.bgColor, colorLevel, true);
-                        separatorOutput = fgCode + bgCode + separator + ANSI_ESC + '[39m' + ANSI_ESC + '[49m';
-                    } else if (widget.bgColor && !nextWidget.bgColor) {
-                        // Only previous widget has background - separator points right from colored
-                        const fgColor = bgToFg(widget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
-                    } else if (!widget.bgColor && nextWidget.bgColor) {
-                        // Only next widget has background - separator points into colored area
-                        const fgColor = bgToFg(nextWidget.bgColor);
-                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
-                        separatorOutput = fgCode + separator + ANSI_ESC + '[39m';
-                    } else {
-                        // Neither has background
-                        separatorOutput = separator;
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
                     }
+                } else if (widget.bgColor && !nextWidget.bgColor) {
+                    // Only previous widget has background
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else if (!widget.bgColor && nextWidget.bgColor) {
+                    // Only next widget has background
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else {
+                    // Neither has background
+                    separatorOutput = separator;
                 }
             }
 
@@ -508,7 +474,7 @@ function renderPowerlineStatusLine(
 
             // Reset bold after separator if it was set
             if (shouldBold) {
-                result += ANSI_ESC + '[22m';
+                result += '\x1b[22m';
             }
         }
     }
@@ -521,7 +487,7 @@ function renderPowerlineStatusLine(
             // End cap uses last widget's background as foreground (converted)
             const capFg = bgToFg(lastWidget.bgColor);
             const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-            result += fgCode + endCap + ANSI_ESC + '[39m';
+            result += fgCode + endCap + '\x1b[39m';
         } else {
             result += endCap;
         }
@@ -529,7 +495,7 @@ function renderPowerlineStatusLine(
         // Reset bold after end cap if needed
         const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
         if (lastWidgetBold) {
-            result += ANSI_ESC + '[22m';
+            result += '\x1b[22m';
         }
     }
 
@@ -546,7 +512,7 @@ function renderPowerlineStatusLine(
             let inAnsiCode = false;
 
             for (const char of result) {
-                if (char === ANSI_ESC) {
+                if (char === '\x1b') {
                     inAnsiCode = true;
                     truncated += char;
                 } else if (inAnsiCode) {
@@ -691,7 +657,7 @@ export function renderStatusLine(
                             let ansiBuffer = '';
 
                             for (const char of widgetText) {
-                                if (char === ANSI_ESC) {
+                                if (char === '\x1b') {
                                     inAnsiCode = true;
                                     ansiBuffer = char;
                                 } else if (inAnsiCode) {
@@ -881,7 +847,7 @@ export function renderStatusLine(
             const targetLength = context.isPreview ? maxWidth - 3 : maxWidth - 3; // Reserve 3 chars for ellipsis
 
             for (const char of statusLine) {
-                if (char === ANSI_ESC) {
+                if (char === '\x1b') {
                     inAnsiCode = true;
                     ansiBuffer = char;
                 } else if (inAnsiCode) {

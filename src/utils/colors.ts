@@ -69,11 +69,11 @@ export function bgToFg(colorName: string | undefined): string | undefined {
 
     // Convert background color names to foreground equivalents
     if (colorName.startsWith('bgBright')) {
-    // bgBrightRed -> brightRed
+        // bgBrightRed -> brightRed
         const baseName = colorName.substring(8);
         return 'bright' + baseName.charAt(0).toUpperCase() + baseName.slice(1).toLowerCase();
     } else if (colorName.startsWith('bg')) {
-    // bgRed -> red
+        // bgRed -> red
         const baseName = colorName.substring(2);
         return baseName.charAt(0).toLowerCase() + baseName.slice(1);
     }
