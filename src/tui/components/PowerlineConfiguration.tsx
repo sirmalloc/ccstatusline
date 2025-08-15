@@ -3,6 +3,7 @@ import {
     Text,
     useInput
 } from 'ink';
+import * as os from 'os';
 import React, { useState } from 'react';
 
 import { getDefaultPowerlineTheme } from '../../utils/colors';
@@ -39,6 +40,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     const [screen, setScreen] = useState<Screen>('menu');
     const [selectedMenuItem, setSelectedMenuItem] = useState(0);
     const [confirmingEnable, setConfirmingEnable] = useState(false);
+    const [confirmingFontInstall, setConfirmingFontInstall] = useState(false);
 
     // Check if there are any separators or flex-separators in the current configuration
     const hasSeparatorItems = settings.lines.some(line => line.some(item => item.type === 'separator' || item.type === 'flex-separator'));
@@ -120,6 +122,18 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 onClearMessage();
             }
             // Always return early to prevent any other input handling
+            return;
+        }
+
+        if (confirmingFontInstall) {
+            if (input === 'y' || input === 'Y') {
+                // User confirmed, proceed with font installation
+                setConfirmingFontInstall(false);
+                onInstallFonts();
+            } else if (input === 'n' || input === 'N' || key.escape) {
+                // Cancel font installation
+                setConfirmingFontInstall(false);
+            }
             return;
         }
 
@@ -205,8 +219,8 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     onUpdate({ ...settings, powerline: newConfig });
                 }
             } else if (input === 'i' || input === 'I') {
-                // Install fonts
-                onInstallFonts();
+                // Show font installation consent prompt
+                setConfirmingFontInstall(true);
             } else if (/^[1-5]$/.test(input)) {
                 // Number key navigation for menu items
                 const index = parseInt(input, 10) - 1;
@@ -269,9 +283,67 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     // Main menu screen
     return (
         <Box flexDirection='column'>
-            <Text bold>Powerline Configuration</Text>
+            {!confirmingFontInstall && !installingFonts && !fontInstallMessage && (
+                <Text bold>Powerline Configuration</Text>
+            )}
 
-            {confirmingEnable ? (
+            {confirmingFontInstall ? (
+                <Box flexDirection='column'>
+                    <Box marginBottom={1}>
+                        <Text color='cyan' bold>Font Installation</Text>
+                    </Box>
+
+                    <Box marginBottom={1} flexDirection='column'>
+                        <Text bold>What will happen:</Text>
+                        <Text>
+                            <Text dimColor>• Clone fonts from </Text>
+                            <Text color='blue'>https://github.com/powerline/fonts</Text>
+                        </Text>
+                        {os.platform() === 'darwin' && (
+                            <>
+                                <Text dimColor>• Run install.sh script which will:</Text>
+                                <Text dimColor>  - Copy all .ttf/.otf files to ~/Library/Fonts</Text>
+                                <Text dimColor>  - Register fonts with macOS</Text>
+                            </>
+                        )}
+                        {os.platform() === 'linux' && (
+                            <>
+                                <Text dimColor>• Run install.sh script which will:</Text>
+                                <Text dimColor>  - Copy all .ttf/.otf files to ~/.local/share/fonts</Text>
+                                <Text dimColor>  - Run fc-cache to update font cache</Text>
+                            </>
+                        )}
+                        {os.platform() === 'win32' && (
+                            <>
+                                <Text dimColor>• Copy Powerline .ttf/.otf files to:</Text>
+                                <Text dimColor>  AppData\Local\Microsoft\Windows\Fonts</Text>
+                            </>
+                        )}
+                        <Text dimColor>• Clean up temporary files</Text>
+                    </Box>
+
+                    <Box marginBottom={1}>
+                        <Text color='yellow' bold>Requirements: </Text>
+                        <Text dimColor>Git installed, Internet connection, Write permissions</Text>
+                    </Box>
+
+                    <Box marginBottom={1} flexDirection='column'>
+                        <Text color='green' bold>After install:</Text>
+                        <Text dimColor>• Restart terminal</Text>
+                        <Text dimColor>• Select a Powerline font</Text>
+                        <Text dimColor>  (e.g. "Meslo LG S for Powerline")</Text>
+                    </Box>
+
+                    <Box marginTop={1}>
+                        <Text>Proceed? </Text>
+                        <Text color='green'>(Y)es</Text>
+                        <Text> / </Text>
+                        <Text color='red'>(N)o</Text>
+                        <Text> / </Text>
+                        <Text dimColor>(Esc) Cancel</Text>
+                    </Box>
+                </Box>
+            ) : confirmingEnable ? (
                 <Box flexDirection='column' marginTop={2}>
                     {hasSeparatorItems && (
                         <>
@@ -291,11 +363,11 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     </Box>
                 </Box>
             ) : installingFonts ? (
-                <Box marginTop={2}>
+                <Box>
                     <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
                 </Box>
             ) : fontInstallMessage ? (
-                <Box marginTop={2} flexDirection='column'>
+                <Box flexDirection='column'>
                     <Text color={fontInstallMessage.includes('success') ? 'green' : 'red'}>
                         {fontInstallMessage}
                     </Text>
