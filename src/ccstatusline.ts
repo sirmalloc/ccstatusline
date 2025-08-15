@@ -6,6 +6,7 @@ import {
     renderStatusLine,
     getTokenMetrics,
     getSessionDuration,
+    getSessionResetTime,
     type RenderContext
 } from './utils/renderer';
 
@@ -56,6 +57,11 @@ async function renderMultipleLines(data: StatusJSON) {
         line.some(item => item.type === 'session-clock')
     );
 
+    // Check if session reset time is needed
+    const hasSessionResetTime = lines.some(line =>
+        line.some(item => item.type === 'session-reset-time')
+    );
+
     let tokenMetrics = null;
     if (hasTokenItems && data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -66,11 +72,17 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
+    let sessionResetTime = null;
+    if (hasSessionResetTime && data.transcript_path) {
+        sessionResetTime = await getSessionResetTime(data.transcript_path);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
         sessionDuration,
+        sessionResetTime,
         isPreview: false
     };
 
