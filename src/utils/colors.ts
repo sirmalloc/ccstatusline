@@ -206,6 +206,11 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
     return match?.[1] ?? '';
 }
 
+export function getColorDisplayName(colorName: string): string {
+    const colorEntry = COLOR_MAP.find(c => c.name === colorName);
+    return colorEntry?.displayName ?? colorName;
+}
+
 export function getAvailableColors(): string[] {
     return COLOR_MAP.map(c => c.name);
 }

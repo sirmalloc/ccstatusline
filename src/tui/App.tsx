@@ -261,6 +261,7 @@ export const App: React.FC = () => {
                             setScreen('lines');
                         }}
                         lineNumber={selectedLine + 1}
+                        settings={settings}
                     />
                 )}
                 {screen === 'colors' && (

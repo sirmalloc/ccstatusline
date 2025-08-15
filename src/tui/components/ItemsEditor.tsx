@@ -11,6 +11,7 @@ import {
     getItemDefaultColor
 } from '../../utils/colors';
 import {
+    type Settings,
     type StatusItem,
     type StatusItemType
 } from '../../utils/config';
@@ -21,9 +22,10 @@ export interface ItemsEditorProps {
     onUpdate: (items: StatusItem[]) => void;
     onBack: () => void;
     lineNumber: number;
+    settings: Settings;
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber }) => {
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
     const [editingText, setEditingText] = useState(false);
@@ -37,6 +39,67 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
     const [editingTimeout, setEditingTimeout] = useState(false);
     const [timeoutInput, setTimeoutInput] = useState('');
     const separatorChars = ['|', '-', ',', ' '];
+
+    // Determine which item types are allowed based on settings
+    const getAllowedTypes = (): StatusItemType[] => {
+        const allTypes: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
+            'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
+            'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
+        
+        let allowedTypes = [...allTypes];
+        
+        // Remove separator if default separator is set
+        if (settings.defaultSeparator) {
+            allowedTypes = allowedTypes.filter(t => t !== 'separator');
+        }
+        
+        // Remove both separator and flex-separator if powerline mode is enabled
+        if (settings.powerline.enabled) {
+            allowedTypes = allowedTypes.filter(t => t !== 'separator' && t !== 'flex-separator');
+        }
+        
+        return allowedTypes;
+    };
+
+    // Get the default type for new items (first non-separator type)
+    const getDefaultItemType = (): StatusItemType => {
+        const allowedTypes = getAllowedTypes();
+        return allowedTypes.includes('model') ? 'model' : (allowedTypes[0] ?? 'model');
+    };
+
+    // Get a unique background color for powerline mode
+    const getUniqueBackgroundColor = (insertIndex: number): string | undefined => {
+        if (!settings.powerline.enabled) {
+            return undefined;
+        }
+
+        // All available background colors (excluding black for better visibility)
+        const bgColors = [
+            'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 'bgCyan', 'bgWhite',
+            'bgBrightRed', 'bgBrightGreen', 'bgBrightYellow', 'bgBrightBlue', 
+            'bgBrightMagenta', 'bgBrightCyan', 'bgBrightWhite'
+        ];
+        
+        // Get colors of adjacent items
+        const prevItem = insertIndex > 0 ? items[insertIndex - 1] : null;
+        const nextItem = insertIndex < items.length ? items[insertIndex] : null;
+        
+        const prevBg = prevItem?.backgroundColor;
+        const nextBg = nextItem?.backgroundColor;
+        
+        // Filter out colors that match neighbors
+        const availableColors = bgColors.filter(color => color !== prevBg && color !== nextBg);
+        
+        // If we have available colors, pick one randomly
+        if (availableColors.length > 0) {
+            const randomIndex = Math.floor(Math.random() * availableColors.length);
+            return availableColors[randomIndex];
+        }
+        
+        // Fallback: if somehow both neighbors use all 14 colors (impossible with 2 neighbors),
+        // just pick any color that's different from the previous
+        return bgColors.find(c => c !== prevBg) ?? bgColors[0];
+    };
 
     useInput((input, key) => {
         if (editingText) {
@@ -215,13 +278,15 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
                 setSelectedIndex(Math.min(items.length - 1, selectedIndex + 1));
             } else if (key.leftArrow && items.length > 0) {
                 // Toggle item type backwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
+                const types = getAllowedTypes();
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
-                    const currentIndex = types.indexOf(currentType);
+                    let currentIndex = types.indexOf(currentType);
+                    // If current type is not in allowed types (e.g., separator when disabled), find a valid type
+                    if (currentIndex === -1) {
+                        currentIndex = 0;
+                    }
                     const prevIndex = currentIndex === 0 ? types.length - 1 : currentIndex - 1;
                     const newItems = [...items];
                     const prevType = types[prevIndex];
@@ -232,13 +297,15 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
                 }
             } else if (key.rightArrow && items.length > 0) {
                 // Toggle item type forwards
-                const types: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-                    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
-                    'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
+                const types = getAllowedTypes();
                 const currentItem = items[selectedIndex];
                 if (currentItem) {
                     const currentType = currentItem.type;
-                    const currentIndex = types.indexOf(currentType);
+                    let currentIndex = types.indexOf(currentType);
+                    // If current type is not in allowed types (e.g., separator when disabled), find a valid type
+                    if (currentIndex === -1) {
+                        currentIndex = 0;
+                    }
                     const nextIndex = (currentIndex + 1) % types.length;
                     const newItems = [...items];
                     const nextType = types[nextIndex];
@@ -252,23 +319,28 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
                 setMoveMode(true);
             } else if (input === 'a') {
                 // Add item after selected
+                const insertIndex = items.length > 0 ? selectedIndex + 1 : 0;
+                const backgroundColor = getUniqueBackgroundColor(insertIndex);
                 const newItem: StatusItem = {
                     id: Date.now().toString(),
-                    type: 'separator'
+                    type: getDefaultItemType(),
+                    ...(backgroundColor && { backgroundColor })
                 };
                 const newItems = [...items];
-                const insertIndex = items.length > 0 ? selectedIndex + 1 : 0;
                 newItems.splice(insertIndex, 0, newItem);
                 onUpdate(newItems);
                 setSelectedIndex(insertIndex); // Move selection to new item
             } else if (input === 'i') {
                 // Insert item before selected
+                const insertIndex = selectedIndex;
+                const backgroundColor = getUniqueBackgroundColor(insertIndex);
                 const newItem: StatusItem = {
                     id: Date.now().toString(),
-                    type: 'separator'
+                    type: getDefaultItemType(),
+                    ...(backgroundColor && { backgroundColor })
                 };
                 const newItems = [...items];
-                newItems.splice(selectedIndex, 0, newItem);
+                newItems.splice(insertIndex, 0, newItem);
                 onUpdate(newItems);
                 // Keep selection on the new item (which is now at selectedIndex)
             } else if (input === 'd' && items.length > 0) {
@@ -512,6 +584,15 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
                 <Box marginTop={1}>
                     <Text color='yellow'>⚠ Note: Terminal width detection is currently unavailable in your environment.</Text>
                     <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
+                </Box>
+            )}
+            {(settings.powerline.enabled || settings.defaultSeparator) && (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text color='yellow'>
+                        ⚠ {settings.powerline.enabled 
+                            ? 'Powerline mode active: separators controlled by powerline settings' 
+                            : 'Default separator active: manual separators disabled'}
+                    </Text>
                 </Box>
             )}
             <Box marginTop={1} flexDirection='column'>

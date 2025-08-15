@@ -1,4 +1,3 @@
-import chalk, { type ChalkInstance } from 'chalk';
 import {
     Box,
     Text,
@@ -6,10 +5,11 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
+import {
+    getChalkColor,
+    getColorDisplayName
+} from '../../utils/colors';
 import { type Settings } from '../../utils/config';
-
-// Type for chalk color functions
-type ChalkColorFunction = (text: string) => string;
 
 export interface GlobalOverridesMenuProps {
     settings: Settings;
@@ -20,6 +20,7 @@ export interface GlobalOverridesMenuProps {
 export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onUpdate, onBack }) => {
     const [editingPadding, setEditingPadding] = useState(false);
     const [editingSeparator, setEditingSeparator] = useState(false);
+    const [confirmingSeparator, setConfirmingSeparator] = useState(false);
     const [paddingInput, setPaddingInput] = useState(settings.defaultPadding ?? '');
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator ?? '');
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
@@ -28,14 +29,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
 
     // Background color override
     const bgColors = ['none', 'bgBlack', 'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta',
-        'bgCyan', 'bgWhite', 'bgGray', 'bgRedBright', 'bgGreenBright', 'bgYellowBright',
-        'bgBlueBright', 'bgMagentaBright', 'bgCyanBright', 'bgWhiteBright'];
+        'bgCyan', 'bgWhite', 'bgBrightBlack', 'bgBrightRed', 'bgBrightGreen', 'bgBrightYellow',
+        'bgBrightBlue', 'bgBrightMagenta', 'bgBrightCyan', 'bgBrightWhite'];
     const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor ?? 'none');
 
     // Foreground color override
     const fgColors = ['none', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
-        'gray', 'redBright', 'greenBright', 'yellowBright', 'blueBright',
-        'magentaBright', 'cyanBright', 'whiteBright'];
+        'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue',
+        'brightMagenta', 'brightCyan', 'brightWhite'];
     const currentFgIndex = fgColors.indexOf(settings.overrideForegroundColor ?? 'none');
 
     useInput((input, key) => {
@@ -59,12 +60,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             }
         } else if (editingSeparator) {
             if (key.return) {
-                const updatedSettings = {
-                    ...settings,
-                    defaultSeparator: separatorInput
-                };
-                onUpdate(updatedSettings);
+                // Show confirmation dialog
                 setEditingSeparator(false);
+                setConfirmingSeparator(true);
             } else if (key.escape) {
                 setSeparatorInput(settings.defaultSeparator ?? '');
                 setEditingSeparator(false);
@@ -74,6 +72,23 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 // For simple text inputs without cursor, forward delete does nothing
             } else if (input) {
                 setSeparatorInput(separatorInput + input);
+            }
+        } else if (confirmingSeparator) {
+            if (input === 'y' || input === 'Y') {
+                // Remove all manual separators from lines
+                const updatedSettings = {
+                    ...settings,
+                    defaultSeparator: separatorInput,
+                    lines: settings.lines.map(line => 
+                        line ? line.filter(item => item.type !== 'separator') : []
+                    )
+                };
+                onUpdate(updatedSettings);
+                setConfirmingSeparator(false);
+            } else if (input === 'n' || input === 'N' || key.escape) {
+                // Cancel without applying changes
+                setSeparatorInput(settings.defaultSeparator ?? '');
+                setConfirmingSeparator(false);
             }
         } else {
             if (key.escape) {
@@ -162,6 +177,22 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
                 </Box>
+            ) : confirmingSeparator ? (
+                <Box flexDirection='column'>
+                    <Box marginBottom={1}>
+                        <Text color='yellow'>⚠ Warning: Setting a default separator will remove all existing manual separators from your status lines.</Text>
+                    </Box>
+                    <Box>
+                        <Text>New default separator: </Text>
+                        <Text color='cyan'>{separatorInput ? `"${separatorInput}"` : '(empty)'}</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <Text>Do you want to continue? </Text>
+                        <Text color='green'>(Y)es</Text>
+                        <Text> / </Text>
+                        <Text color='red'>(N)o</Text>
+                    </Box>
+                </Box>
             ) : (
                 <>
                     <Box>
@@ -183,8 +214,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                             if (fgColor === 'none') {
                                 return <Text color='gray'>(none)</Text>;
                             } else {
-                                const fgFunc = (chalk as ChalkInstance & Record<string, ChalkColorFunction>)[fgColor] as ChalkColorFunction | undefined;
-                                const display = fgFunc ? fgFunc(fgColor) : fgColor;
+                                const displayName = getColorDisplayName(fgColor);
+                                const fgChalk = getChalkColor(fgColor, 'ansi16', false);
+                                const display = fgChalk ? fgChalk(displayName) : displayName;
                                 return <Text>{display}</Text>;
                             }
                         })()}
@@ -202,9 +234,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                                     if (bgColor === 'none') {
                                         return <Text color='gray'>(none)</Text>;
                                     } else {
-                                        const bgColorName = bgColor.replace(/^bg/, '').toLowerCase();
-                                        const bgFunc = (chalk as ChalkInstance & Record<string, ChalkColorFunction>)[bgColor] as ChalkColorFunction | undefined;
-                                        const display = bgFunc ? bgFunc(` ${bgColorName} `) : bgColorName;
+                                        const displayName = getColorDisplayName(bgColor);
+                                        const bgChalk = getChalkColor(bgColor, 'ansi16', true);
+                                        const display = bgChalk ? bgChalk(` ${displayName} `) : displayName;
                                         return <Text>{display}</Text>;
                                     }
                                 })()}

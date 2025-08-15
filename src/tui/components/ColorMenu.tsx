@@ -382,7 +382,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate,
         <Box flexDirection='column'>
             <Text bold>
                 Configure Colors
-                {editingBackground && chalk.yellow('[Background Mode]')}
+                {editingBackground && chalk.yellow(' [Background Mode]')}
             </Text>
             {hexInputMode ? (
                 <Box flexDirection='column'>

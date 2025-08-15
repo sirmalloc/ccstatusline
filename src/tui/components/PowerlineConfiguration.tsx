@@ -33,6 +33,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     const [editingMode, setEditingMode] = useState<'separator' | 'startCap' | 'endCap' | null>(null);
     const [customInput, setCustomInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
+    const [confirmingEnable, setConfirmingEnable] = useState(false);
 
     // Common powerline separators (thin ones don't work well, so excluded)
     const separators = [
@@ -67,6 +68,25 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     useInput((input, key) => {
         if (fontInstallMessage) {
             onClearMessage();
+            return;
+        }
+
+        if (confirmingEnable) {
+            if (input === 'y' || input === 'Y') {
+                // Remove all separators and flex-separators from lines
+                const updatedSettings = {
+                    ...settings,
+                    powerline: { ...powerlineConfig, enabled: true },
+                    lines: settings.lines.map(line => 
+                        line ? line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator') : []
+                    )
+                };
+                onUpdate(updatedSettings);
+                setConfirmingEnable(false);
+            } else if (input === 'n' || input === 'N' || key.escape) {
+                // Cancel without enabling
+                setConfirmingEnable(false);
+            }
             return;
         }
 
@@ -107,8 +127,14 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 onBack();
             } else if (input === 't' || input === 'T') {
                 // Toggle powerline mode
-                const newConfig = { ...powerlineConfig, enabled: !powerlineConfig.enabled };
-                onUpdate({ ...settings, powerline: newConfig });
+                if (!powerlineConfig.enabled) {
+                    // Show confirmation when enabling
+                    setConfirmingEnable(true);
+                } else {
+                    // Disable without confirmation
+                    const newConfig = { ...powerlineConfig, enabled: false };
+                    onUpdate({ ...settings, powerline: newConfig });
+                }
             } else if (input === 'i' || input === 'I') {
                 // Install fonts
                 if (!installingFonts) {
@@ -116,12 +142,12 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 }
             } else if (powerlineConfig.enabled) {
                 // These options only work when powerline is enabled
-                if (input === 's' || input === 'S') {
+                if (input === 'q' || input === 'Q') {
                     // Cycle separator left
                     const newIndex = currentSeparatorIndex <= 0 ? separators.length - 1 : currentSeparatorIndex - 1;
                     const newConfig = { ...powerlineConfig, separator: separators[newIndex]?.char ?? '\uE0B0' };
                     onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'd' || input === 'D') {
+                } else if (input === 'w' || input === 'W') {
                     // Cycle separator right
                     const newIndex = (currentSeparatorIndex + 1) % separators.length;
                     const newConfig = { ...powerlineConfig, separator: separators[newIndex]?.char ?? '\uE0B0' };
@@ -136,12 +162,12 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     const newIndex = currentStartCapIndex <= 0 ? startCaps.length - 1 : currentStartCapIndex - 1;
                     const newConfig = { ...powerlineConfig, startCap: startCaps[newIndex]?.char ?? '' };
                     onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'w' || input === 'W') {
+                } else if (input === 's' || input === 'S') {
                     // Cycle start cap right
                     const newIndex = (currentStartCapIndex + 1) % startCaps.length;
                     const newConfig = { ...powerlineConfig, startCap: startCaps[newIndex]?.char ?? '' };
                     onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'q' || input === 'Q') {
+                } else if (input === 'd' || input === 'D') {
                     // Edit start cap with custom hex
                     setEditingMode('startCap');
                     setCustomInput('');
@@ -174,7 +200,22 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
         <Box flexDirection='column'>
             <Text bold>Powerline Configuration</Text>
 
-            {installingFonts ? (
+            {confirmingEnable ? (
+                <Box flexDirection='column' marginTop={2}>
+                    <Box marginBottom={1}>
+                        <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
+                    </Box>
+                    <Box marginBottom={1}>
+                        <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <Text>Do you want to continue? </Text>
+                        <Text color='green'>(Y)es</Text>
+                        <Text> / </Text>
+                        <Text color='red'>(N)o</Text>
+                    </Box>
+                </Box>
+            ) : installingFonts ? (
                 <Box marginTop={2}>
                     <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
                 </Box>
@@ -236,23 +277,26 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                             <Box marginTop={2}>
                                 <Text>
                                     Separator:
+                                    {' '}
                                     {currentSeparator.char ? `${currentSeparator.char} (${currentSeparator.name})` : '(none)'}
                                 </Text>
-                                <Text dimColor> - (s/d) cycle, (e) custom hex</Text>
+                                <Text dimColor> - (q/w) cycle, (e) custom hex</Text>
                             </Box>
 
                             <Box>
                                 <Text>
                                     Start Cap:
+                                    {' '}
                                     {currentStartCap.char ? `${currentStartCap.char} (${currentStartCap.name})` : '(none)'}
                                 </Text>
-                                <Text dimColor> - (a/w) cycle, (q) custom hex</Text>
+                                <Text dimColor> - (a/s) cycle, (d) custom hex</Text>
                             </Box>
 
                             <Box>
                                 <Text>
-                                    {' '}
+                                    {'  '}
                                     End Cap:
+                                    {' '}
                                     {currentEndCap.char ? `${currentEndCap.char} (${currentEndCap.name})` : '(none)'}
                                 </Text>
                                 <Text dimColor> - (z/x) cycle, (c) custom hex</Text>
