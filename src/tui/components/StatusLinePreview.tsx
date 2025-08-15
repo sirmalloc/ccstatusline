@@ -13,7 +13,7 @@ import {
     renderStatusLine as renderLine,
     type RenderContext
 } from '../../utils/renderer';
-import { canDetectTerminalWidth } from '../utils/terminal';
+import { canDetectTerminalWidth } from '../../utils/terminal';
 
 export interface StatusLinePreviewProps {
     lines: WidgetItem[][];

@@ -7,11 +7,11 @@ import {
 import SelectInput from 'ink-select-input';
 import React, { useState } from 'react';
 
-import { getWidgetDefaultColor } from '../../utils/colors';
 import {
     type Settings,
     type WidgetItem
 } from '../../utils/config';
+import { getWidget } from '../../utils/widgets';
 
 export interface TerminalConfigMenuProps {
     settings: Settings;
@@ -63,7 +63,10 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
                     if (nextLevel === 2) {
                         // Switching to 256 color mode - remove hex colors
                         if (widget.color?.startsWith('hex:')) {
-                            newWidget.color = getWidgetDefaultColor(widget.type);
+                            if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+                                const widgetImpl = getWidget(widget.type);
+                                newWidget.color = widgetImpl.getDefaultColor();
+                            }
                         }
                         if (widget.backgroundColor?.startsWith('hex:')) {
                             newWidget.backgroundColor = undefined;
@@ -71,7 +74,10 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
                     } else if (nextLevel === 3) {
                         // Switching to truecolor mode - remove ansi256 colors
                         if (widget.color?.startsWith('ansi256:')) {
-                            newWidget.color = getWidgetDefaultColor(widget.type);
+                            if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+                                const widgetImpl = getWidget(widget.type);
+                                newWidget.color = widgetImpl.getDefaultColor();
+                            }
                         }
                         if (widget.backgroundColor?.startsWith('ansi256:')) {
                             newWidget.backgroundColor = undefined;
@@ -79,7 +85,10 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
                     } else {
                         // Switching to 16 color mode - remove all custom colors
                         if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
-                            newWidget.color = getWidgetDefaultColor(widget.type);
+                            if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+                                const widgetImpl = getWidget(widget.type);
+                                newWidget.color = widgetImpl.getDefaultColor();
+                            }
                         }
                         if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
                             newWidget.backgroundColor = undefined;
@@ -121,7 +130,10 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
                             || (pendingColorLevel === 3 && (widget.color?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('ansi256:')))) {
                             // Reset custom colors to defaults
                             if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
-                                newWidget.color = getWidgetDefaultColor(widget.type);
+                                if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+                                    const widgetImpl = getWidget(widget.type);
+                                    newWidget.color = widgetImpl.getDefaultColor();
+                                }
                             }
                             if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
                                 newWidget.backgroundColor = undefined;

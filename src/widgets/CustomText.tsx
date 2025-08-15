@@ -10,6 +10,7 @@ import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
+    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
@@ -17,6 +18,11 @@ import type {
 export class CustomTextWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
     getDisplayName(): string { return 'Custom Text'; }
+
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const text = item.customText ?? 'Empty';
+        return { displayText: `${this.getDisplayName()} (${text})` };
+    }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         return item.customText ?? '';

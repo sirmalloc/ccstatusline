@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import {
     Box,
     Text,
@@ -6,17 +5,18 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import { applyColors } from '../../utils/colors';
+import type { Widget } from '../../types/Widget';
+import { getBackgroundColorsForPowerline } from '../../utils/colors';
 import {
     type Settings,
     type WidgetItem,
     type WidgetItemType
 } from '../../utils/config';
+import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     getAllWidgetTypes,
     getWidget
 } from '../../utils/widgets';
-import { canDetectTerminalWidth } from '../utils/terminal';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -29,16 +29,7 @@ export interface ItemsEditorProps {
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    const [editingText, setEditingText] = useState(false);
-    const [textInput, setTextInput] = useState('');
-    const [textCursorPos, setTextCursorPos] = useState(0);
-    const [editingCommand, setEditingCommand] = useState(false);
-    const [commandInput, setCommandInput] = useState('');
-    const [commandCursorPos, setCommandCursorPos] = useState(0);
-    const [editingMaxWidth, setEditingMaxWidth] = useState(false);
-    const [maxWidthInput, setMaxWidthInput] = useState('');
-    const [editingTimeout, setEditingTimeout] = useState(false);
-    const [timeoutInput, setTimeoutInput] = useState('');
+    const [customEditorWidget, setCustomEditorWidget] = useState<{ widget: WidgetItem; impl: Widget } | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 
     // Determine which item types are allowed based on settings
@@ -70,12 +61,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return undefined;
         }
 
-        // All available background colors (excluding black for better visibility)
-        const bgColors = [
-            'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 'bgCyan', 'bgWhite',
-            'bgBrightRed', 'bgBrightGreen', 'bgBrightYellow', 'bgBrightBlue',
-            'bgBrightMagenta', 'bgBrightCyan', 'bgBrightWhite'
-        ];
+        // Get all available background colors (excluding black for better visibility)
+        const bgColors = getBackgroundColorsForPowerline();
 
         // Get colors of adjacent items
         const prevWidget = insertIndex > 0 ? widgets[insertIndex - 1] : null;
@@ -98,152 +85,24 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         return bgColors.find(c => c !== prevBg) ?? bgColors[0];
     };
 
+    const handleEditorComplete = (updatedWidget: WidgetItem) => {
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = updatedWidget;
+        onUpdate(newWidgets);
+        setCustomEditorWidget(null);
+    };
+
+    const handleEditorCancel = () => {
+        setCustomEditorWidget(null);
+    };
+
     useInput((input, key) => {
-        if (editingText) {
-            // In text editing mode
-            if (key.return) {
-                // Save the custom text
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget) {
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, customText: textInput };
-                    onUpdate(newWidgets);
-                }
-                setEditingText(false);
-                setTextInput('');
-                setTextCursorPos(0);
-            } else if (key.escape) {
-                // Cancel editing
-                setEditingText(false);
-                setTextInput('');
-                setTextCursorPos(0);
-            } else if (key.leftArrow) {
-                setTextCursorPos(Math.max(0, textCursorPos - 1));
-            } else if (key.rightArrow) {
-                setTextCursorPos(Math.min(textInput.length, textCursorPos + 1));
-            } else if (key.ctrl && input === 'ArrowLeft') {
-                // Move to beginning
-                setTextCursorPos(0);
-            } else if (key.ctrl && input === 'ArrowRight') {
-                // Move to end
-                setTextCursorPos(textInput.length);
-            } else if (key.backspace) {
-                if (textCursorPos > 0) {
-                    setTextInput(textInput.slice(0, textCursorPos - 1) + textInput.slice(textCursorPos));
-                    setTextCursorPos(textCursorPos - 1);
-                }
-            } else if (key.delete) {
-                if (textCursorPos < textInput.length) {
-                    setTextInput(textInput.slice(0, textCursorPos) + textInput.slice(textCursorPos + 1));
-                }
-            } else if (input && input.length === 1) {
-                setTextInput(textInput.slice(0, textCursorPos) + input + textInput.slice(textCursorPos));
-                setTextCursorPos(textCursorPos + 1);
-            }
-        } else if (editingCommand) {
-            // In command editing mode
-            if (key.return) {
-                // Save the command path
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget) {
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, commandPath: commandInput };
-                    onUpdate(newWidgets);
-                }
-                setEditingCommand(false);
-                setCommandInput('');
-                setCommandCursorPos(0);
-            } else if (key.escape) {
-                // Cancel editing
-                setEditingCommand(false);
-                setCommandInput('');
-                setCommandCursorPos(0);
-            } else if (key.leftArrow) {
-                setCommandCursorPos(Math.max(0, commandCursorPos - 1));
-            } else if (key.rightArrow) {
-                setCommandCursorPos(Math.min(commandInput.length, commandCursorPos + 1));
-            } else if (key.ctrl && input === 'ArrowLeft') {
-                // Move to beginning
-                setCommandCursorPos(0);
-            } else if (key.ctrl && input === 'ArrowRight') {
-                // Move to end
-                setCommandCursorPos(commandInput.length);
-            } else if (key.backspace) {
-                if (commandCursorPos > 0) {
-                    setCommandInput(commandInput.slice(0, commandCursorPos - 1) + commandInput.slice(commandCursorPos));
-                    setCommandCursorPos(commandCursorPos - 1);
-                }
-            } else if (key.delete) {
-                if (commandCursorPos < commandInput.length) {
-                    setCommandInput(commandInput.slice(0, commandCursorPos) + commandInput.slice(commandCursorPos + 1));
-                }
-            } else if (input) {
-                setCommandInput(commandInput.slice(0, commandCursorPos) + input + commandInput.slice(commandCursorPos));
-                setCommandCursorPos(commandCursorPos + input.length);
-            }
-        } else if (editingMaxWidth) {
-            // In max width editing mode
-            if (key.return) {
-                // Save the max width
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget) {
-                    const width = parseInt(maxWidthInput, 10);
-                    const newWidgets = [...widgets];
-                    if (!isNaN(width) && width > 0) {
-                        newWidgets[selectedIndex] = { ...currentWidget, maxWidth: width };
-                    } else {
-                        // Remove max width if invalid
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { maxWidth: _, ...rest } = currentWidget;
-                        newWidgets[selectedIndex] = rest;
-                    }
-                    onUpdate(newWidgets);
-                }
-                setEditingMaxWidth(false);
-                setMaxWidthInput('');
-            } else if (key.escape) {
-                // Cancel editing
-                setEditingMaxWidth(false);
-                setMaxWidthInput('');
-            } else if (key.backspace) {
-                setMaxWidthInput(maxWidthInput.slice(0, -1));
-            } else if (key.delete) {
-                // For simple number inputs, forward delete does nothing since there's no cursor position
-            } else if (input && /\d/.test(input)) {
-                setMaxWidthInput(maxWidthInput + input);
-            }
-        } else if (editingTimeout) {
-            // In timeout editing mode
-            if (key.return) {
-                // Save the timeout
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget) {
-                    const timeout = parseInt(timeoutInput, 10);
-                    const newWidgets = [...widgets];
-                    if (!isNaN(timeout) && timeout > 0) {
-                        newWidgets[selectedIndex] = { ...currentWidget, timeout: timeout };
-                    } else {
-                        // Remove timeout if invalid (will use default 1000ms)
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { timeout: _timeout, ...rest } = currentWidget;
-                        newWidgets[selectedIndex] = rest;
-                    }
-                    onUpdate(newWidgets);
-                }
-                setEditingTimeout(false);
-                setTimeoutInput('');
-            } else if (key.escape) {
-                // Cancel editing
-                setEditingTimeout(false);
-                setTimeoutInput('');
-            } else if (key.backspace) {
-                setTimeoutInput(timeoutInput.slice(0, -1));
-            } else if (key.delete) {
-                // For simple number inputs, forward delete does nothing since there's no cursor position
-            } else if (input && /\d/.test(input)) {
-                setTimeoutInput(timeoutInput + input);
-            }
-        } else if (moveMode) {
+        // Skip input if custom editor is active
+        if (customEditorWidget) {
+            return;
+        }
+
+        if (moveMode) {
             // In move mode, use up/down to move the selected item
             if (key.upArrow && selectedIndex > 0) {
                 const newWidgets = [...widgets];
@@ -370,42 +229,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
                     onUpdate(newWidgets);
                 }
-            } else if (input === 'e' && widgets.length > 0) {
-                // Edit custom text or custom command
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'custom-text') {
-                    const text = currentWidget.customText ?? '';
-                    setTextInput(text);
-                    setTextCursorPos(text.length); // Start cursor at end
-                    setEditingText(true);
-                } else if (currentWidget && currentWidget.type === 'custom-command') {
-                    const cmd = currentWidget.commandPath ?? '';
-                    setCommandInput(cmd);
-                    setCommandCursorPos(cmd.length); // Start cursor at end
-                    setEditingCommand(true);
-                }
-            } else if (input === 'w' && widgets.length > 0) {
-                // Edit max width for custom command
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'custom-command') {
-                    setMaxWidthInput(currentWidget.maxWidth ? currentWidget.maxWidth.toString() : '');
-                    setEditingMaxWidth(true);
-                }
-            } else if (input === 't' && widgets.length > 0) {
-                // Edit timeout for custom command
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'custom-command') {
-                    setTimeoutInput(currentWidget.timeout ? currentWidget.timeout.toString() : '1000');
-                    setEditingTimeout(true);
-                }
-            } else if (input === 'p' && widgets.length > 0) {
-                // Toggle preserve colors for custom command
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'custom-command') {
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, preserveColors: !currentWidget.preserveColors };
-                    onUpdate(newWidgets);
-                }
             } else if (input === 'm' && widgets.length > 0) {
                 // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
                 const currentWidget = widgets[selectedIndex];
@@ -434,6 +257,36 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 }
             } else if (key.escape) {
                 onBack();
+            } else if (widgets.length > 0) {
+                // Check for custom widget keybinds
+                const currentWidget = widgets[selectedIndex];
+                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+                    try {
+                        const widgetImpl = getWidget(currentWidget.type);
+                        if (widgetImpl.getCustomKeybinds) {
+                            const customKeybinds = widgetImpl.getCustomKeybinds();
+                            const matchedKeybind = customKeybinds.find(kb => kb.key === input);
+
+                            if (matchedKeybind) {
+                                // Handle toggle actions directly
+                                if (matchedKeybind.action === 'toggle-preserve') {
+                                    const newWidgets = [...widgets];
+                                    newWidgets[selectedIndex] = { ...currentWidget, preserveColors: !currentWidget.preserveColors };
+                                    onUpdate(newWidgets);
+                                } else if (widgetImpl.renderEditor) {
+                                    // Set the action on the widget if it supports it
+                                    if (widgetImpl.setEditorAction) {
+                                        widgetImpl.setEditorAction(matchedKeybind.action);
+                                    }
+                                    // Open the widget's custom editor
+                                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl });
+                                }
+                            }
+                        }
+                    } catch {
+                        // Widget not found or doesn't support custom keybinds
+                    }
+                }
             }
         }
     });
@@ -443,34 +296,18 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         if (widget.type === 'separator') {
             const char = widget.character ?? '|';
             const charDisplay = char === ' ' ? '(space)' : char;
-            return applyColors(`Separator ${charDisplay}`, widget.color ?? 'gray', widget.backgroundColor, widget.bold);
+            return `Separator ${charDisplay}`;
         }
         if (widget.type === 'flex-separator') {
-            return chalk.yellow('Flex Separator');
+            return 'Flex Separator';
         }
 
-        // Handle regular widgets
+        // Handle regular widgets - delegate to widget for display
         const widgetImpl = getWidget(widget.type);
-        const colorName = widget.color ?? widgetImpl.getDefaultColor();
-        const colorFunc = (chalk as unknown as Record<string, typeof chalk.white>)[colorName] ?? chalk.white;
+        const { displayText, modifierText } = widgetImpl.getEditorDisplay(widget);
 
-        let display = widgetImpl.getDisplayName();
-
-        // Add special suffixes for custom widgets
-        if (widget.type === 'custom-text') {
-            const text = widget.customText ?? 'Empty';
-            display = `${display} (${text})`;
-        } else if (widget.type === 'custom-command') {
-            const cmd = widget.commandPath ?? 'No command';
-            const truncatedCmd = cmd.length > 30 ? `${cmd.substring(0, 27)}...` : cmd;
-            if (!widget.preserveColors) {
-                return colorFunc(`${display} (${truncatedCmd})`);
-            } else {
-                return chalk.white(`${display} (${truncatedCmd}) [preserving colors]`);
-            }
-        }
-
-        return colorFunc(display);
+        // Return plain text without colors
+        return displayText + (modifierText ? ` ${modifierText}` : '');
     };
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
@@ -480,15 +317,18 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const currentWidget = widgets[selectedIndex];
     const isSeparator = currentWidget?.type === 'separator';
     const isFlexSeparator = currentWidget?.type === 'flex-separator';
-    const isCustomText = currentWidget?.type === 'custom-text';
-    const isCustomCommand = currentWidget?.type === 'custom-command';
 
     // Check if widget supports raw value using registry
     let canToggleRaw = false;
+    let customKeybinds: { key: string; label: string; action: string }[] = [];
     if (currentWidget && !isSeparator && !isFlexSeparator) {
         try {
             const widgetImpl = getWidget(currentWidget.type);
             canToggleRaw = widgetImpl.supportsRawValue();
+            // Get custom keybinds from the widget
+            if (widgetImpl.getCustomKeybinds) {
+                customKeybinds = widgetImpl.getCustomKeybinds();
+            }
         } catch {
             canToggleRaw = false;
         }
@@ -496,15 +336,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
 
+    // Build main help text (without custom keybinds)
     let helpText = '↑↓ select, ←→ change type';
     if (isSeparator) {
         helpText += ', Space edit separator';
-    }
-    if (isCustomText) {
-        helpText += ', (e)dit text';
-    }
-    if (isCustomCommand) {
-        helpText += ', (e)dit cmd, (w)idth, (t)imeout, (p)reserve colors';
     }
     helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
     if (canToggleRaw) {
@@ -515,6 +350,18 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
     helpText += ', ESC back';
 
+    // Build custom keybinds text
+    const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
+
+    // If custom editor is active, render it instead of the normal UI
+    if (customEditorWidget?.impl.renderEditor) {
+        return customEditorWidget.impl.renderEditor({
+            widget: customEditorWidget.widget,
+            onComplete: handleEditorComplete,
+            onCancel: handleEditorCancel
+        });
+    }
+
     return (
         <Box flexDirection='column'>
             <Text bold>
@@ -523,48 +370,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 {' '}
                 {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}
             </Text>
-            {editingText ? (
-                <Box flexDirection='column'>
-                    <Text>
-                        Enter custom text:
-                        {' '}
-                        {textInput.slice(0, textCursorPos)}
-                        <Text backgroundColor='gray' color='black'>{textInput[textCursorPos] ?? ' '}</Text>
-                        {textInput.slice(textCursorPos + 1)}
-                    </Text>
-                    <Text dimColor>←→ move cursor, Ctrl+←→ jump to start/end, Enter save, ESC cancel</Text>
-                </Box>
-            ) : editingCommand ? (
-                <Box flexDirection='column'>
-                    <Text>
-                        Enter command path:
-                        {' '}
-                        {commandInput.slice(0, commandCursorPos)}
-                        <Text backgroundColor='gray' color='black'>{commandInput[commandCursorPos] ?? ' '}</Text>
-                        {commandInput.slice(commandCursorPos + 1)}
-                    </Text>
-                    <Text dimColor>←→ move cursor, Ctrl+←→ jump to start/end, Enter save, ESC cancel</Text>
-                </Box>
-            ) : editingMaxWidth ? (
-                <Box flexDirection='column'>
-                    <Text>
-                        Enter max width (blank for no limit):
-                        {maxWidthInput}
-                    </Text>
-                    <Text dimColor>Press Enter to save, ESC to cancel</Text>
-                </Box>
-            ) : editingTimeout ? (
-                <Box flexDirection='column'>
-                    <Text>
-                        Enter timeout in milliseconds (default 1000):
-                        {timeoutInput}
-                    </Text>
-                    <Text dimColor>Press Enter to save, ESC to cancel</Text>
-                </Box>
-            ) : moveMode ? (
+            {moveMode ? (
                 <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
             ) : (
-                <Text dimColor>{helpText}</Text>
+                <Box flexDirection='column'>
+                    <Text dimColor>{helpText}</Text>
+                    <Text dimColor>{customKeybindsText || ' '}</Text>
+                </Box>
             )}
             {hasFlexSeparator && !widthDetectionAvailable && (
                 <Box marginTop={1}>
@@ -587,29 +399,31 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 {widgets.length === 0 ? (
                     <Text dimColor>No items. Press 'a' to add one.</Text>
                 ) : (
-                    widgets.map((widget, index) => (
-                        <Box key={widget.id}>
-                            <Text color={index === selectedIndex ? (moveMode ? 'yellow' : 'green') : undefined}>
-                                {index === selectedIndex ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                {index + 1}
-                                .
-                                {' '}
-                                {getWidgetDisplay(widget)}
-                                {widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                {widget.type === 'custom-command' && widget.maxWidth && (
-                                    <Text dimColor>
-                                        {' '}
-                                        (max:
-                                        {widget.maxWidth}
-                                        )
+                    widgets.map((widget, index) => {
+                        const isSelected = index === selectedIndex;
+                        const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
+                        const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
+
+                        return (
+                            <Box key={widget.id}>
+                                <Text>
+                                    <Text color={isSelected ? (moveMode ? 'yellow' : 'blue') : undefined}>
+                                        {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
+                                        {` ${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
                                     </Text>
-                                )}
-                                {widget.type === 'custom-command' && widget.preserveColors && <Text dimColor> (preserve colors)</Text>}
-                            </Text>
-                        </Box>
-                    ))
+                                    {modifierText && (
+                                        <Text dimColor>
+                                            {' '}
+                                            {modifierText}
+                                        </Text>
+                                    )}
+                                    {widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                    {widget.merge === true && <Text dimColor> (merged→)</Text>}
+                                    {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                </Text>
+                            </Box>
+                        );
+                    })
                 )}
             </Box>
         </Box>

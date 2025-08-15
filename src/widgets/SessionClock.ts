@@ -2,12 +2,16 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     Widget,
+    WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 
 export class SessionClockWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDisplayName(): string { return 'Session Clock'; }
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        return { displayText: this.getDisplayName() };
+    }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {

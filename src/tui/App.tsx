@@ -30,6 +30,7 @@ import {
     installPowerlineFonts,
     type PowerlineFontStatus
 } from '../utils/powerline';
+import { getPackageVersion } from '../utils/terminal';
 
 import {
     ColorMenu,
@@ -43,7 +44,6 @@ import {
     TerminalConfigMenu,
     TerminalWidthOptions
 } from './components';
-import { getPackageVersion } from './utils/terminal';
 
 export const App: React.FC = () => {
     const { exit } = useApp();

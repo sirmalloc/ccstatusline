@@ -4,12 +4,16 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     Widget,
+    WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 
 export class GitChangesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDisplayName(): string { return 'Git Changes'; }
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        return { displayText: this.getDisplayName() };
+    }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
@@ -17,10 +21,10 @@ export class GitChangesWidget implements Widget {
         }
 
         const changes = this.getGitChanges();
-        if (changes !== null) {
+        if (changes)
             return `(+${changes.insertions},-${changes.deletions})`;
-        }
-        return null;
+        else
+            return '(no git)';
     }
 
     private getGitChanges(): { insertions: number; deletions: number } | null {

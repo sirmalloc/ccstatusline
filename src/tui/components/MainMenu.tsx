@@ -96,7 +96,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                             key={item.value}
                             color={isSelected ? 'green' : undefined}
                         >
-                            {isSelected ? '▶ ' : '  '}
+                            {isSelected ? '▶  ' : '   '}
                             {item.label}
                         </Text>
                     );

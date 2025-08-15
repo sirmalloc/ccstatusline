@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 import { promisify } from 'util';
 
@@ -18,10 +17,10 @@ import type { Settings } from '../types/Settings';
 import {
     applyColors,
     bgToFg,
-    getColorAnsiCode,
-    getWidgetDefaultColor
+    getColorAnsiCode
 } from './colors';
 import { getColorLevelString } from './config';
+import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
 // Re-export types for backward compatibility
@@ -34,7 +33,10 @@ const readFile = promisify(fs.readFile);
 
 // Color functions moved to colors.ts
 // Re-exported for backward compatibility
-export { applyColors, getWidgetDefaultColor } from './colors';
+export { applyColors } from './colors';
+
+// Re-export getTerminalWidth for backward compatibility
+export { getTerminalWidth };
 
 // Helper function to format token counts
 export function formatTokens(count: number): string {
@@ -43,54 +45,6 @@ export function formatTokens(count: number): string {
     if (count >= 1000)
         return `${(count / 1000).toFixed(1)}k`;
     return count.toString();
-}
-
-export function getTerminalWidth(): number | null {
-    try {
-        // First try to get the tty of the parent process
-        const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
-        }).trim();
-
-        // Check if we got a valid tty (not ?? which means no tty)
-        if (tty && tty !== '??' && tty !== '?') {
-            // Now get the terminal size
-            const width = execSync(
-                `stty size < /dev/${tty} | awk '{print $2}'`,
-                {
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    shell: '/bin/sh'
-                }
-            ).trim();
-
-            const parsed = parseInt(width, 10);
-            if (!isNaN(parsed) && parsed > 0) {
-                return parsed;
-            }
-        }
-    } catch {
-        // Command failed, width detection not available
-    }
-
-    // Fallback: try tput cols which might work in some environments
-    try {
-        const width = execSync('tput cols 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-        }).trim();
-
-        const parsed = parseInt(width, 10);
-        if (!isNaN(parsed) && parsed > 0) {
-            return parsed;
-        }
-    } catch {
-        // tput also failed
-    }
-
-    return null;
 }
 
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
@@ -679,7 +633,11 @@ export function renderStatusLine(
                 if (prevElem?.widget) {
                     // Apply the previous element's colors to the separator (already handles override)
                     // Use the widget's color if set, otherwise get the default color for that widget type
-                    const widgetColor = prevElem.widget.color ?? getWidgetDefaultColor(prevElem.widget.type);
+                    let widgetColor = prevElem.widget.color;
+                    if (!widgetColor && prevElem.widget.type !== 'separator' && prevElem.widget.type !== 'flex-separator') {
+                        const widgetImpl = getWidget(prevElem.widget.type);
+                        widgetColor = widgetImpl.getDefaultColor();
+                    }
                     const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
                     finalElements.push(coloredSep);
                 } else {

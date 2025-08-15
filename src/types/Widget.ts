@@ -20,13 +20,20 @@ export interface WidgetItem {
     merge?: boolean | 'no-padding'; // Merge with next widget: true = merge with padding, 'no-padding' = merge without padding
 }
 
+export interface WidgetEditorDisplay {
+    displayText: string;
+    modifierText?: string;
+}
+
 export interface Widget {
     getDefaultColor(): string;
     getDisplayName(): string;
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay;
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
     getCustomKeybinds?(): CustomKeybind[];
     renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
     supportsRawValue(): boolean;
+    setEditorAction?(action: string): void;
 }
 
 export interface WidgetEditorProps {

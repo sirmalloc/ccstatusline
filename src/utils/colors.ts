@@ -231,27 +231,9 @@ export function getAvailableBackgroundColorsForUI(): { name: string; value: stri
     ];
 }
 
-export function getWidgetDefaultColor(type: string): string {
-    // Hardcode defaults to avoid circular dependency
-    const defaults: Record<string, string> = {
-        'model': 'cyan',
-        'git-branch': 'magenta',
-        'git-changes': 'yellow',
-        'tokens-input': 'blue',
-        'tokens-output': 'white',
-        'tokens-cached': 'cyan',
-        'tokens-total': 'cyan',
-        'context-length': 'brightBlack',
-        'context-percentage': 'blue',
-        'context-percentage-usable': 'green',
-        'terminal-width': 'gray',
-        'session-clock': 'yellow',
-        'version': 'gray',
-        'custom-text': 'white',
-        'custom-command': 'white',
-        'separator': 'gray',
-        'flex-separator': 'gray'
-    };
-
-    return defaults[type] ?? 'white';
+export function getBackgroundColorsForPowerline(): string[] {
+    // Get background colors excluding black for better visibility in powerline mode
+    return COLOR_MAP
+        .filter(c => c.isBackground && c.name !== 'bgBlack')
+        .map(c => c.name);
 }

@@ -10,8 +10,7 @@ import React, { useState } from 'react';
 import {
     applyColors,
     getAvailableBackgroundColorsForUI,
-    getAvailableColorsForUI,
-    getWidgetDefaultColor
+    getAvailableColorsForUI
 } from '../../utils/colors';
 import {
     getColorLevelString,
@@ -221,6 +220,59 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
                     onUpdate(newItems);
                 }
             }
+        } else if (key.leftArrow || key.rightArrow) {
+            // Cycle through colors with arrow keys
+            if (highlightedItemId && highlightedItemId !== 'back') {
+                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                if (selectedWidget) {
+                    const newItems = widgets.map((widget) => {
+                        if (widget.id === selectedWidget.id) {
+                            if (editingBackground) {
+                                const currentBgColor = widget.backgroundColor ?? '';  // Empty string for 'none'
+                                let currentBgColorIndex = bgColors.indexOf(currentBgColor);
+                                // If color not found, start from beginning
+                                if (currentBgColorIndex === -1)
+                                    currentBgColorIndex = 0;
+
+                                let nextBgColorIndex;
+                                if (key.rightArrow) {
+                                    nextBgColorIndex = (currentBgColorIndex + 1) % bgColors.length;
+                                } else {
+                                    nextBgColorIndex = currentBgColorIndex === 0 ? bgColors.length - 1 : currentBgColorIndex - 1;
+                                }
+                                const nextBgColor = bgColors[nextBgColorIndex];
+                                return { ...widget, backgroundColor: nextBgColor === '' ? undefined : nextBgColor };
+                            } else {
+                                let defaultColor = 'white';
+                                if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+                                    const widgetImpl = getWidget(widget.type);
+                                    defaultColor = widgetImpl.getDefaultColor();
+                                }
+                                let currentColor = widget.color ?? defaultColor;
+                                // If color is 'dim', treat as if no color was set
+                                if (currentColor === 'dim') {
+                                    currentColor = defaultColor;
+                                }
+                                let currentColorIndex = colors.indexOf(currentColor);
+                                // If color not found, start from beginning
+                                if (currentColorIndex === -1)
+                                    currentColorIndex = 0;
+
+                                let nextColorIndex;
+                                if (key.rightArrow) {
+                                    nextColorIndex = (currentColorIndex + 1) % colors.length;
+                                } else {
+                                    nextColorIndex = currentColorIndex === 0 ? colors.length - 1 : currentColorIndex - 1;
+                                }
+                                const nextColor = colors[nextColorIndex];
+                                return { ...widget, color: nextColor };
+                            }
+                        }
+                        return widget;
+                    });
+                    onUpdate(newItems);
+                }
+            }
         }
     });
 
@@ -262,7 +314,12 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
         const label = `${index + 1}: ${getItemLabel(widget)}`;
         // Apply both foreground and background colors
         const level = getColorLevelString(settings.colorLevel);
-        const styledLabel = applyColors(label, widget.color ?? getWidgetDefaultColor(widget.type), widget.backgroundColor, widget.bold, level);
+        let defaultColor = 'white';
+        if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+            const widgetImpl = getWidget(widget.type);
+            defaultColor = widgetImpl.getDefaultColor();
+        }
+        const styledLabel = applyColors(label, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level);
         return {
             label: styledLabel,
             value: widget.id
@@ -273,36 +330,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
     const handleSelect = (selected: { value: string }) => {
         if (selected.value === 'back') {
             onBack();
-        } else {
-            // Cycle through colors
-            const newItems = widgets.map((widget) => {
-                if (widget.id === selected.value) {
-                    if (editingBackground) {
-                        const currentBgColor = widget.backgroundColor ?? '';  // Empty string for 'none'
-                        let currentBgColorIndex = bgColors.indexOf(currentBgColor);
-                        // If color not found, start from beginning
-                        if (currentBgColorIndex === -1)
-                            currentBgColorIndex = 0;
-                        const nextBgColor = bgColors[(currentBgColorIndex + 1) % bgColors.length];
-                        return { ...widget, backgroundColor: nextBgColor === '' ? undefined : nextBgColor };
-                    } else {
-                        let currentColor = widget.color ?? getWidgetDefaultColor(widget.type);
-                        // If color is 'dim', treat as if no color was set
-                        if (currentColor === 'dim') {
-                            currentColor = getWidgetDefaultColor(widget.type);
-                        }
-                        let currentColorIndex = colors.indexOf(currentColor);
-                        // If color not found, start from beginning
-                        if (currentColorIndex === -1)
-                            currentColorIndex = 0;
-                        const nextColor = colors[(currentColorIndex + 1) % colors.length];
-                        return { ...widget, color: nextColor };
-                    }
-                }
-                return widget;
-            });
-            onUpdate(newItems);
         }
+        // Enter no longer cycles colors - use left/right arrow keys instead
     };
 
     const handleHighlight = (item: { value: string }) => {
@@ -315,7 +344,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
         : null;
     const currentColor = editingBackground
         ? (selectedWidget?.backgroundColor ?? '')  // Empty string for 'none'
-        : (selectedWidget ? (selectedWidget.color ?? getWidgetDefaultColor(selectedWidget.type)) : 'white');
+        : (selectedWidget ? (selectedWidget.color ?? (() => {
+            if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
+                const widgetImpl = getWidget(selectedWidget.type);
+                return widgetImpl.getDefaultColor();
+            }
+            return 'white';
+        })()) : 'white');
 
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
@@ -392,7 +427,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
             ) : (
                 <>
                     <Text dimColor>
-                        ↑↓ to select, Enter to cycle
+                        ↑↓ to select, ←→ to cycle
                         {' '}
                         {editingBackground ? 'background' : 'foreground'}
                         , (f) to toggle bg/fg, (b)old,

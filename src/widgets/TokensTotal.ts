@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     Widget,
+    WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 import { formatTokens } from '../utils/renderer';
@@ -9,6 +10,9 @@ import { formatTokens } from '../utils/renderer';
 export class TokensTotalWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDisplayName(): string { return 'Tokens Total'; }
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        return { displayText: this.getDisplayName() };
+    }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
