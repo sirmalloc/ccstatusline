@@ -2,6 +2,7 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
+import { updateColorMap } from './utils/colors';
 import { loadSettings } from './utils/config';
 import {
     getSessionDuration,
@@ -45,6 +46,8 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Set global chalk level based on settings
     chalk.level = settings.colorLevel;
+    // Update color map after setting chalk level
+    updateColorMap();
 
     // Get all lines to render
     const lines = settings.lines;
