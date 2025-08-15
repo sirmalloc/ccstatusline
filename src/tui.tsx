@@ -638,11 +638,11 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                 // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
                 const currentItem = items[selectedIndex];
                 // Don't allow merge on the last item or on separators
-                if (currentItem && selectedIndex < items.length - 1 && 
+                if (currentItem && selectedIndex < items.length - 1 &&
                     currentItem.type !== 'separator' && currentItem.type !== 'flex-separator') {
                     const newItems = [...items];
                     let nextMergeState: boolean | 'no-padding' | undefined;
-                    
+
                     if (currentItem.merge === undefined) {
                         nextMergeState = true;
                     } else if (currentItem.merge === true) {
@@ -650,7 +650,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
                     } else {
                         nextMergeState = undefined;
                     }
-                    
+
                     if (nextMergeState === undefined) {
                         const { merge, ...rest } = currentItem;
                         newItems[selectedIndex] = rest;
@@ -1067,7 +1067,16 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
     const menuItems = colorableItems.map((item, index) => {
         const label = `${index + 1}: ${getItemLabel(item)}`;
         // Apply both foreground and background colors
-        const styledLabel = applyColors(label, item.color || getDefaultColor(item.type), item.backgroundColor, item.bold);
+        // Use the current color level from settings
+        const colorLevel = settings.colorLevel ?? 2;
+        const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
+            0: 'ansi16',
+            1: 'ansi16',
+            2: 'ansi256',
+            3: 'truecolor'
+        };
+        const level = colorLevelMap[colorLevel] || 'ansi256';
+        const styledLabel = applyColors(label, item.color || getDefaultColor(item.type), item.backgroundColor, item.bold, level);
         return {
             label: styledLabel,
             value: item.id,
@@ -1257,9 +1266,9 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
                             <Text>{isSelected ? '▶' : '  '}</Text>
                         )}
                         itemComponent={({isSelected, label}) => (
-                            <Text color={isSelected ? 'green' : undefined}>
-                                {' '}{label}
-                            </Text>
+                            // The label already has ANSI codes applied via applyColors()
+                            // We need to pass it directly as a single Text child to preserve the codes
+                            <Text>{` ${label}`}</Text>
                         )}
                     />
                 )}
