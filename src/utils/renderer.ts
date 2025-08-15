@@ -52,6 +52,7 @@ export interface RenderContext {
     data?: StatusJSON;
     tokenMetrics?: TokenMetrics | null;
     sessionDuration?: string | null;
+    sessionResetTime?: string | null;
     gitBranch?: string | null;
     gitChanges?: { insertions: number; deletions: number } | null;
     terminalWidth?: number | null;
@@ -92,6 +93,7 @@ export function getItemDefaultColor(type: string): string {
         case 'git-branch': return 'magenta';
         case 'git-changes': return 'yellow';
         case 'session-clock': return 'yellow';
+        case 'session-reset-time': return 'orange';
         case 'version': return 'green';
         case 'tokens-input': return 'blue';
         case 'tokens-output': return 'white';
@@ -266,6 +268,71 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
 
         // Convert to minutes
         const totalMinutes = Math.floor(durationMs / (1000 * 60));
+
+        if (totalMinutes < 1) {
+            return '<1m';
+        }
+
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        if (hours === 0) {
+            return `${minutes}m`;
+        } else if (minutes === 0) {
+            return `${hours}hr`;
+        } else {
+            return `${hours}hr ${minutes}m`;
+        }
+    } catch {
+        return null;
+    }
+}
+
+export async function getSessionResetTime(transcriptPath: string): Promise<string | null> {
+    try {
+        if (!fs.existsSync(transcriptPath)) {
+            return null;
+        }
+
+        const content = await readFile(transcriptPath, 'utf-8');
+        const lines = content.trim().split('\n').filter(line => line.trim());
+
+        if (lines.length === 0) {
+            return null;
+        }
+
+        // Find first valid timestamp (session start)
+        let firstTimestamp: Date | null = null;
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line);
+                if (data.timestamp) {
+                    firstTimestamp = new Date(data.timestamp);
+                    break;
+                }
+            } catch {
+                // Skip invalid lines
+            }
+        }
+
+        if (!firstTimestamp) {
+            return null;
+        }
+
+        // Calculate session reset time (first timestamp + 5 hours)
+        const sessionResetTime = new Date(firstTimestamp.getTime() + (5 * 60 * 60 * 1000));
+        const currentTime = new Date();
+
+        // Calculate time remaining until reset
+        const timeRemainingMs = sessionResetTime.getTime() - currentTime.getTime();
+
+        // If session has already expired, return null
+        if (timeRemainingMs <= 0) {
+            return null;
+        }
+
+        // Convert to minutes
+        const totalMinutes = Math.floor(timeRemainingMs / (1000 * 60));
 
         if (totalMinutes < 1) {
             return '<1m';
@@ -543,6 +610,16 @@ export function renderStatusLine(
                 } else if (context.sessionDuration) {
                     const text = item.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
                     elements.push({ content: applyColorsWithOverride(text, item.color || 'yellow', item.backgroundColor, item.bold), type: 'session-clock', item });
+                }
+                break;
+
+            case 'session-reset-time':
+                if (context.isPreview) {
+                    const resetText = item.rawValue ? '3hr 15m' : 'Reset: 3hr 15m';
+                    elements.push({ content: applyColorsWithOverride(resetText, item.color || 'orange', item.backgroundColor, item.bold), type: 'session-reset-time', item });
+                } else if (context.sessionResetTime) {
+                    const text = item.rawValue ? context.sessionResetTime : `Reset: ${context.sessionResetTime}`;
+                    elements.push({ content: applyColorsWithOverride(text, item.color || 'orange', item.backgroundColor, item.bold), type: 'session-reset-time', item });
                 }
                 break;
 
