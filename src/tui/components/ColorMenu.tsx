@@ -32,6 +32,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
     const [hexInput, setHexInput] = useState('');
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
     const [ansi256Input, setAnsi256Input] = useState('');
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
 
     // Check if powerline mode is enabled with a theme
     const powerlineEnabled = settings.powerline.enabled;
@@ -55,6 +56,24 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
         // If theme-managed or no items, any key goes back
         if (isThemeManaged || hasNoItems) {
             onBack();
+            return;
+        }
+
+        // Handle clear confirmation
+        if (showClearConfirm) {
+            if (input === 'y' || input === 'Y') {
+                // Clear all colors from all widgets
+                const newItems = widgets.map((widget) => {
+                    // Remove color, backgroundColor, and bold properties
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { color, backgroundColor, bold, ...restWidget } = widget;
+                    return restWidget;
+                });
+                onUpdate(newItems);
+                setShowClearConfirm(false);
+            } else if (input === 'n' || input === 'N' || key.escape) {
+                setShowClearConfirm(false);
+            }
             return;
         }
 
@@ -225,6 +244,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
                     onUpdate(newItems);
                 }
             }
+        } else if (input === 'c' || input === 'C') {
+            // Show clear all confirmation
+            setShowClearConfirm(true);
         } else if (key.leftArrow || key.rightArrow) {
             // Cycle through colors with arrow keys
             if (highlightedItemId && highlightedItemId !== 'back') {
@@ -429,6 +451,22 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
         }
     }
 
+    // Show confirmation dialog if clearing all colors
+    if (showClearConfirm) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold color='yellow'>⚠ Confirm Clear All Colors</Text>
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>This will reset all colors for all widgets to their defaults.</Text>
+                    <Text color='red'>This action cannot be undone!</Text>
+                </Box>
+                <Box marginTop={2}>
+                    <Text>Continue? (y/n)</Text>
+                </Box>
+            </Box>
+        );
+    }
+
     return (
         <Box flexDirection='column'>
             <Text bold>
@@ -465,7 +503,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
                         , (f) to toggle bg/fg, (b)old,
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {' '}
-                        (r)eset, ESC to go back
+                        (r)eset, (c)lear all, ESC to go back
                     </Text>
                     <Text dimColor>
                         (s)how separators:

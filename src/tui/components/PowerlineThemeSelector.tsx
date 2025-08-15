@@ -173,9 +173,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
             </Text>
             <Box>
                 <Text dimColor>
-                    ↑↓ navigate, Enter apply
-                    {selectedThemeName && selectedThemeName !== 'custom' ? ', (c)ustomize theme' : ''}
-                    , ESC cancel
+                    {`↑↓ navigate, Enter apply${selectedThemeName && selectedThemeName !== 'custom' ? ', (c)ustomize theme' : ''}, ESC cancel`}
                 </Text>
             </Box>
 

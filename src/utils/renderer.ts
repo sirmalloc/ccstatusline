@@ -360,13 +360,37 @@ function renderPowerlineStatusLine(
         if (!widget)
             continue;
 
-        // Apply colors to widget content - include global bold setting
+        // Apply colors to widget content using raw ANSI codes for powerline mode
+        // This avoids reset codes that interfere with separator rendering
         const shouldBold = (settings.globalBold) || widget.widget.bold;
-        const widgetContent = applyColors(widget.content, widget.fgColor, widget.bgColor, shouldBold, colorLevel);
+
+        // Check if we need a separator after this widget
+        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+
+        let widgetContent = '';
+        if (shouldBold) {
+            widgetContent += ANSI_ESC + '[1m';
+        }
+        if (widget.fgColor) {
+            widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
+        }
+        if (widget.bgColor) {
+            widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
+        }
+        widgetContent += widget.content;
+        // Reset colors after content
+        widgetContent += ANSI_ESC + '[49m' + ANSI_ESC + '[39m';
+        // Only reset bold if there's no separator following AND no end cap
+        const isLastWidget = i === widgetElements.length - 1;
+        const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
+        if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+            widgetContent += ANSI_ESC + '[22m';
+        }
+
         result += widgetContent;
 
         // Add separator between widgets (not after last one, and not if current widget is merged with next)
-        if (i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge) {
+        if (needsSeparator) {
             // Determine which separator to use based on global position
             // Use separators in order, using the last one for all remaining positions
             const globalIndex = globalSeparatorOffset + i;
@@ -481,12 +505,18 @@ function renderPowerlineStatusLine(
             }
 
             result += separatorOutput;
+
+            // Reset bold after separator if it was set
+            if (shouldBold) {
+                result += ANSI_ESC + '[22m';
+            }
         }
     }
 
     // Add end cap if specified
     if (endCap && widgetElements.length > 0) {
         const lastWidget = widgetElements[widgetElements.length - 1];
+
         if (lastWidget?.bgColor) {
             // End cap uses last widget's background as foreground (converted)
             const capFg = bgToFg(lastWidget.bgColor);
@@ -494,6 +524,12 @@ function renderPowerlineStatusLine(
             result += fgCode + endCap + ANSI_ESC + '[39m';
         } else {
             result += endCap;
+        }
+
+        // Reset bold after end cap if needed
+        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
+        if (lastWidgetBold) {
+            result += ANSI_ESC + '[22m';
         }
     }
 
