@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import type { StatusItem } from './config';
+import { getColorLevelString } from './config';
 import { applyColors, getItemDefaultColor, bgToFg, getColorAnsiCode } from './colors';
 
 // Ensure fs.promises compatibility for older Node versions
@@ -306,14 +307,8 @@ function renderPowerlineStatusLine(
     const startCap = powerlineConfig.startCap || '';
     const endCap = powerlineConfig.endCap || '';
     
-    // Get color level from settings and map to our color level type
-    const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
-        0: 'ansi16',  // No colors
-        1: 'ansi16',  // Basic 16 colors
-        2: 'ansi256', // 256 colors
-        3: 'truecolor' // Truecolor
-    };
-    const colorLevel = colorLevelMap[settings.colorLevel ?? 2] || 'ansi256';
+    // Get color level from settings
+    const colorLevel = getColorLevelString(settings.colorLevel);
 
     // Filter out separator and flex-separator items in powerline mode
     const filteredItems = items.filter(item =>
@@ -327,7 +322,7 @@ function renderPowerlineStatusLine(
     // Calculate terminal width based on flex mode settings
     let terminalWidth: number | null = null;
     if (detectedWidth) {
-        const flexMode = settings.flexMode || 'full-minus-40';
+        const flexMode = settings.flexMode;
 
         if (context.isPreview) {
             // In preview mode, account for box borders and padding (6 chars total)
@@ -345,7 +340,7 @@ function renderPowerlineStatusLine(
             } else if (flexMode === 'full-minus-40') {
                 terminalWidth = detectedWidth - 41;
             } else if (flexMode === 'full-until-compact') {
-                const threshold = settings.compactThreshold || 60;
+                const threshold = settings.compactThreshold;
                 const contextPercentage = context.tokenMetrics ?
                     Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
 
@@ -726,14 +721,8 @@ export function renderStatusLine(
     // Chalk level is now set globally in ccstatusline.ts and tui.tsx
     // No need to override here
     
-    // Get color level from settings and map to our color level type
-    const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
-        0: 'ansi16',  // No colors
-        1: 'ansi16',  // Basic 16 colors
-        2: 'ansi256', // 256 colors
-        3: 'truecolor' // Truecolor
-    };
-    const colorLevel = colorLevelMap[settings.colorLevel ?? 2] || 'ansi256';
+    // Get color level from settings
+    const colorLevel = getColorLevelString(settings.colorLevel);
     
     // Check if powerline mode is enabled
     const isPowerlineMode = settings.powerline?.enabled || false;
@@ -765,7 +754,7 @@ export function renderStatusLine(
     // Calculate terminal width based on flex mode settings
     let terminalWidth: number | null = null;
     if (detectedWidth) {
-        const flexMode = settings.flexMode || 'full-minus-40';
+        const flexMode = settings.flexMode;
 
         if (context.isPreview) {
             // In preview mode, account for box borders and padding (6 chars total)
@@ -787,7 +776,7 @@ export function renderStatusLine(
                 terminalWidth = detectedWidth - 41;
             } else if (flexMode === 'full-until-compact') {
                 // Check context percentage to decide
-                const threshold = settings.compactThreshold || 60;
+                const threshold = settings.compactThreshold;
                 const contextPercentage = context.tokenMetrics ?
                     Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
 

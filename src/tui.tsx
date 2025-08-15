@@ -4,7 +4,7 @@ import Gradient from 'ink-gradient';
 import SelectInput from 'ink-select-input';
 import chalk from 'chalk';
 import { execSync } from 'child_process';
-import { loadSettings, saveSettings, type Settings, type StatusItem, type StatusItemType, type FlexMode, type PowerlineConfig } from './utils/config';
+import { loadSettings, saveSettings, normalizeSettings, getColorLevelString, type Settings, type StatusItem, type StatusItemType, type FlexMode, type PowerlineConfig } from './utils/config';
 import { isInstalled, installStatusLine, uninstallStatusLine, getExistingStatusLine } from './utils/claude-settings';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -31,9 +31,6 @@ function getPackageVersion(): string {
     }
 }
 
-// Get default color for each item type (matching ccstatusline.ts defaults)
-// Re-export from shared renderer module
-const getDefaultColor = getItemDefaultColor;
 
 // Check if terminal width detection is available
 function canDetectTerminalWidth(): boolean {
@@ -668,7 +665,7 @@ const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBack, line
 
     const getItemDisplay = (item: StatusItem) => {
         // Get the color for this item (use custom color if set, otherwise default)
-        const colorName = item.color || getDefaultColor(item.type);
+        const colorName = item.color || getItemDefaultColor(item.type);
         const colorFunc = (chalk as any)[colorName] || chalk.white;
 
         switch (item.type) {
@@ -1067,16 +1064,8 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
     const menuItems = colorableItems.map((item, index) => {
         const label = `${index + 1}: ${getItemLabel(item)}`;
         // Apply both foreground and background colors
-        // Use the current color level from settings
-        const colorLevel = settings.colorLevel ?? 2;
-        const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
-            0: 'ansi16',
-            1: 'ansi16',
-            2: 'ansi256',
-            3: 'truecolor'
-        };
-        const level = colorLevelMap[colorLevel] || 'ansi256';
-        const styledLabel = applyColors(label, item.color || getDefaultColor(item.type), item.backgroundColor, item.bold, level);
+        const level = getColorLevelString(settings.colorLevel);
+        const styledLabel = applyColors(label, item.color || getItemDefaultColor(item.type), item.backgroundColor, item.bold, level);
         return {
             label: styledLabel,
             value: item.id,
@@ -1099,10 +1088,10 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
                         const nextBgColor = bgColors[(currentBgColorIndex + 1) % bgColors.length];
                         return { ...item, backgroundColor: nextBgColor === '' ? undefined : nextBgColor };
                     } else {
-                        let currentColor = item.color || getDefaultColor(item.type);
+                        let currentColor = item.color || getItemDefaultColor(item.type);
                         // If color is 'dim', treat as if no color was set
                         if (currentColor === 'dim') {
-                            currentColor = getDefaultColor(item.type);
+                            currentColor = getItemDefaultColor(item.type);
                         }
                         let currentColorIndex = colors.indexOf(currentColor);
                         // If color not found, start from beginning
@@ -1136,7 +1125,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
         : null;
     const currentColor = editingBackground
         ? (selectedItem?.backgroundColor || '')  // Empty string for 'none'
-        : (selectedItem ? (selectedItem.color || getDefaultColor(selectedItem.type)) : 'white');
+        : (selectedItem ? (selectedItem.color || getItemDefaultColor(selectedItem.type)) : 'white');
 
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
@@ -1160,14 +1149,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
             }
 
             // Apply the color using our applyColors function with the current colorLevel
-            const colorLevel = settings.colorLevel ?? 2;
-            const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
-                0: 'ansi16',
-                1: 'ansi16',
-                2: 'ansi256',
-                3: 'truecolor'
-            };
-            const level = colorLevelMap[colorLevel] || 'ansi256';
+            const level = getColorLevelString(settings.colorLevel);
             colorDisplay = applyColors(` ${displayName} `, undefined, currentColor, false, level);
         }
     } else {
@@ -1186,14 +1168,7 @@ const ColorMenu: React.FC<ColorMenuProps> = ({ items, settings, onUpdate, onBack
             }
 
             // Apply the color using our applyColors function with the current colorLevel
-            const colorLevel = settings.colorLevel ?? 2;
-            const colorLevelMap: { [key: number]: 'ansi16' | 'ansi256' | 'truecolor' } = {
-                0: 'ansi16',
-                1: 'ansi16',
-                2: 'ansi256',
-                3: 'truecolor'
-            };
-            const level = colorLevelMap[colorLevel] || 'ansi256';
+            const level = getColorLevelString(settings.colorLevel);
             colorDisplay = applyColors(displayName, currentColor, undefined, false, level);
         }
     }
@@ -1313,7 +1288,7 @@ const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpd
                 )
             ) || false;
 
-            const currentLevel = settings.colorLevel ?? 2;
+            const currentLevel = settings.colorLevel;
             const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
 
             // Warn if switching away from mode that supports custom colors
@@ -1482,12 +1457,12 @@ interface TerminalWidthOptionsProps {
 }
 
 const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ settings, onUpdate, onBack }) => {
-    const [selectedOption, setSelectedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
-    const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold || 60);
+    const [selectedOption, setSelectedOption] = useState<FlexMode>(settings.flexMode);
+    const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold);
     const [editingThreshold, setEditingThreshold] = useState(false);
-    const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold || 60));
+    const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold));
     const [validationError, setValidationError] = useState<string | null>(null);
-    const [highlightedOption, setHighlightedOption] = useState<FlexMode>(settings.flexMode || 'full-minus-40');
+    const [highlightedOption, setHighlightedOption] = useState<FlexMode>(settings.flexMode);
 
     useInput((input, key) => {
         if (editingThreshold) {
@@ -1648,8 +1623,8 @@ const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settings, onU
     const [editingSeparator, setEditingSeparator] = useState(false);
     const [paddingInput, setPaddingInput] = useState(settings.defaultPadding || '');
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator || '');
-    const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors || false);
-    const [globalBold, setGlobalBold] = useState(settings.globalBold || false);
+    const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
+    const [globalBold, setGlobalBold] = useState(settings.globalBold);
     const isPowerlineEnabled = settings.powerline?.enabled || false;
 
     // Background color override
@@ -2155,7 +2130,7 @@ const App: React.FC = () => {
     useEffect(() => {
         loadSettings().then(loadedSettings => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
-            chalk.level = loadedSettings.colorLevel ?? 2;
+            chalk.level = loadedSettings.colorLevel;
             // Ensure lines array exists and has 3 slots
             if (!loadedSettings.lines) {
                 loadedSettings.lines = [[]];
