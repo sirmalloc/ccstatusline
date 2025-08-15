@@ -79,8 +79,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 const updatedSettings = {
                     ...settings,
                     defaultSeparator: separatorInput,
-                    lines: settings.lines.map(line => 
-                        line ? line.filter(item => item.type !== 'separator') : []
+                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator')
                     )
                 };
                 onUpdate(updatedSettings);

@@ -77,8 +77,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 const updatedSettings = {
                     ...settings,
                     powerline: { ...powerlineConfig, enabled: true },
-                    lines: settings.lines.map(line => 
-                        line ? line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator') : []
+                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
                     )
                 };
                 onUpdate(updatedSettings);

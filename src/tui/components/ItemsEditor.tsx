@@ -45,19 +45,19 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         const allTypes: StatusItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
             'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
             'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
-        
+
         let allowedTypes = [...allTypes];
-        
+
         // Remove separator if default separator is set
         if (settings.defaultSeparator) {
             allowedTypes = allowedTypes.filter(t => t !== 'separator');
         }
-        
+
         // Remove both separator and flex-separator if powerline mode is enabled
         if (settings.powerline.enabled) {
             allowedTypes = allowedTypes.filter(t => t !== 'separator' && t !== 'flex-separator');
         }
-        
+
         return allowedTypes;
     };
 
@@ -76,26 +76,26 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
         // All available background colors (excluding black for better visibility)
         const bgColors = [
             'bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta', 'bgCyan', 'bgWhite',
-            'bgBrightRed', 'bgBrightGreen', 'bgBrightYellow', 'bgBrightBlue', 
+            'bgBrightRed', 'bgBrightGreen', 'bgBrightYellow', 'bgBrightBlue',
             'bgBrightMagenta', 'bgBrightCyan', 'bgBrightWhite'
         ];
-        
+
         // Get colors of adjacent items
         const prevItem = insertIndex > 0 ? items[insertIndex - 1] : null;
         const nextItem = insertIndex < items.length ? items[insertIndex] : null;
-        
+
         const prevBg = prevItem?.backgroundColor;
         const nextBg = nextItem?.backgroundColor;
-        
+
         // Filter out colors that match neighbors
         const availableColors = bgColors.filter(color => color !== prevBg && color !== nextBg);
-        
+
         // If we have available colors, pick one randomly
         if (availableColors.length > 0) {
             const randomIndex = Math.floor(Math.random() * availableColors.length);
             return availableColors[randomIndex];
         }
-        
+
         // Fallback: if somehow both neighbors use all 14 colors (impossible with 2 neighbors),
         // just pick any color that's different from the previous
         return bgColors.find(c => c !== prevBg) ?? bgColors[0];
@@ -586,11 +586,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ items, onUpdate, onBac
                     <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
                 </Box>
             )}
-            {(settings.powerline.enabled || settings.defaultSeparator) && (
+            {(settings.powerline.enabled ?? settings.defaultSeparator) && (
                 <Box marginTop={1} flexDirection='column'>
                     <Text color='yellow'>
-                        ⚠ {settings.powerline.enabled 
-                            ? 'Powerline mode active: separators controlled by powerline settings' 
+                        ⚠
+                        {' '}
+                        {settings.powerline.enabled
+                            ? 'Powerline mode active: separators controlled by powerline settings'
                             : 'Default separator active: manual separators disabled'}
                     </Text>
                 </Box>

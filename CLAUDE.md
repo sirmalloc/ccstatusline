@@ -86,3 +86,4 @@ Default to using Bun instead of Node.js:
 - **Build target**: When building for distribution, target Node.js 14+ for maximum compatibility
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
 - Only run type checking and linting via the 'bun run lint' command, never using 'npx eslint' or 'eslint' directly.  Never run 'tsx', 'bun tsc' or any other variation.
+- Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
