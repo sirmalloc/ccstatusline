@@ -113,11 +113,13 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     };
 
     useInput((input, key) => {
-        if (fontInstallMessage) {
-            // Ignore escape key during font installation
-            if (!key.escape) {
+        // Block all input handling when font installation message is shown or installing
+        if (fontInstallMessage || installingFonts) {
+            // Only clear message on non-escape keys when message is shown
+            if (fontInstallMessage && !key.escape) {
                 onClearMessage();
             }
+            // Always return early to prevent any other input handling
             return;
         }
 
@@ -204,9 +206,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 }
             } else if (input === 'i' || input === 'I') {
                 // Install fonts
-                if (!installingFonts) {
-                    onInstallFonts();
-                }
+                onInstallFonts();
             } else if (/^[1-5]$/.test(input)) {
                 // Number key navigation for menu items
                 const index = parseInt(input, 10) - 1;
@@ -309,7 +309,10 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                         <Text>
                             {'   Font Status: '}
                             {powerlineFontStatus.installed ? (
-                                <Text color='green'>✓ Installed</Text>
+                                <>
+                                    <Text color='green'>✓ Installed</Text>
+                                    <Text dimColor> - Ensure fonts are active in your terminal</Text>
+                                </>
                             ) : (
                                 <>
                                     <Text color='yellow'>✗ Not Installed</Text>
@@ -322,7 +325,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     <Box>
                         <Text>Powerline Mode: </Text>
                         <Text color={powerlineConfig.enabled ? 'green' : 'red'}>
-                            {powerlineConfig.enabled ? '✓ Enabled' : '✗ Disabled'}
+                            {powerlineConfig.enabled ? '✓ Enabled  ' : '✗ Disabled '}
                         </Text>
                         <Text dimColor> - Press (t) to toggle</Text>
                     </Box>
