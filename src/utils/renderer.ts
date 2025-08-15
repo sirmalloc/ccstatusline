@@ -7,63 +7,28 @@ import { promisify } from 'util';
 const ANSI_REGEX = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g');
 const ANSI_ESC = String.fromCharCode(27);
 
+import type {
+    RenderContext,
+    StatusItem,
+    TokenMetrics,
+    TranscriptLine
+} from '../types';
+
 import {
     applyColors,
     bgToFg,
     getColorAnsiCode,
     getItemDefaultColor
 } from './colors';
-import type { StatusItem } from './config';
 import { getColorLevelString } from './config';
+
+// Re-export types for backward compatibility
+export type { StatusJSON } from '../types/StatusJSON';
+export type { TokenMetrics, TokenUsage, TranscriptLine } from '../types/TokenMetrics';
+export type { RenderContext } from '../types/RenderContext';
 
 // Ensure fs.promises compatibility for older Node versions
 const readFile = promisify(fs.readFile);
-
-export interface StatusJSON {
-    session_id: string;
-    transcript_path: string;
-    cwd: string;
-    model: {
-        id: string;
-        display_name: string;
-    };
-    workspace: {
-        current_dir: string;
-        project_dir: string;
-    };
-    version?: string;
-}
-
-export interface TokenUsage {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
-}
-
-export interface TranscriptLine {
-    message?: { usage?: TokenUsage };
-    isSidechain?: boolean;
-    timestamp?: string;
-}
-
-export interface TokenMetrics {
-    inputTokens: number;
-    outputTokens: number;
-    cachedTokens: number;
-    totalTokens: number;
-    contextLength: number;
-}
-
-export interface RenderContext {
-    data?: StatusJSON;
-    tokenMetrics?: TokenMetrics | null;
-    sessionDuration?: string | null;
-    gitBranch?: string | null;
-    gitChanges?: { insertions: number; deletions: number } | null;
-    terminalWidth?: number | null;
-    isPreview?: boolean;
-}
 
 // Color functions moved to colors.ts
 // Re-exported for backward compatibility

@@ -2,25 +2,17 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { ClaudeSettings } from '../types/ClaudeSettings';
+
+// Re-export for backward compatibility
+export type { ClaudeSettings };
+
 // Use fs.promises directly
 const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
 
 const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
-
-interface ClaudeSettings {
-    permissions?: {
-        allow?: string[];
-        deny?: string[];
-    };
-    statusLine?: {
-        type: string;
-        command: string;
-        padding?: number;
-    };
-    [key: string]: unknown;
-}
 
 export async function loadClaudeSettings(): Promise<ClaudeSettings> {
     try {

@@ -2,70 +2,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type {
+    ColorLevelString,
+    LegacySettings,
+    PartialSettings,
+    Settings,
+    StatusItem
+} from '../types';
+
+// Re-export types for backward compatibility
+export type { StatusItem, StatusItemType } from '../types';
+export type { ColorLevelString, FlexMode, LegacySettings, PartialSettings, PowerlineConfig, Settings } from '../types';
+
 // Use fs.promises directly (always available in modern Node.js)
 const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
-
-export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator'
-    | 'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
-
-export interface StatusItem {
-    id: string;
-    type: StatusItemType;
-    color?: string;
-    backgroundColor?: string; // Background color for the item
-    bold?: boolean; // Bold text styling
-    character?: string; // For separator and flex-separator types
-    rawValue?: boolean; // Show value without label prefix
-    customText?: string; // For custom-text type
-    commandPath?: string; // For custom-command type - the command to execute
-    maxWidth?: number; // For custom-command type - max width of output
-    preserveColors?: boolean; // For custom-command type - preserve ANSI colors from command output
-    timeout?: number; // For custom-command type - timeout in milliseconds (default: 1000)
-    merge?: boolean | 'no-padding'; // Merge with next item: true = merge with padding, 'no-padding' = merge without padding
-}
-
-export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
-
-export interface PowerlineConfig {
-    enabled?: boolean; // Whether powerline mode is enabled
-    separator?: string; // Powerline separator character (default: \uE0B0)
-    startCap?: string; // Optional start cap character
-    endCap?: string; // Optional end cap character
-}
-
-// Settings with all required fields - no optionals
-// This is what we use internally after normalization
-export interface Settings {
-    lines: StatusItem[][]; // Multiple lines (up to 3)
-    flexMode: FlexMode; // How to handle terminal width for flex separators
-    compactThreshold: number; // Context percentage (1-99) for 'full-until-compact' mode
-    defaultSeparator?: string; // Default separator character to insert between items
-    defaultPadding?: string; // Default padding to add around all items
-    inheritSeparatorColors: boolean; // Whether default separators inherit colors from preceding widget
-    overrideBackgroundColor?: string; // Override background color for all items (e.g., 'none', 'bgRed', etc.)
-    overrideForegroundColor?: string; // Override foreground color for all items (e.g., 'red', 'cyan', etc.)
-    globalBold: boolean; // Apply bold formatting to all items
-    powerline: PowerlineConfig; // Powerline mode configuration
-    colorLevel: 0 | 1 | 2 | 3; // Chalk color level: 0=none, 1=basic, 2=256, 3=truecolor (default)
-}
-
-// Partial settings as loaded from disk (may have missing fields)
-export interface PartialSettings {
-    items?: StatusItem[]; // Legacy single line support
-    lines?: StatusItem[][]; // Multiple lines (up to 3)
-    flexMode?: FlexMode;
-    compactThreshold?: number;
-    defaultSeparator?: string;
-    defaultPadding?: string;
-    inheritSeparatorColors?: boolean;
-    overrideBackgroundColor?: string;
-    overrideForegroundColor?: string;
-    globalBold?: boolean;
-    powerline?: PowerlineConfig;
-    colorLevel?: 0 | 1 | 2 | 3;
-}
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
 const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
@@ -149,7 +101,6 @@ export function normalizeSettings(settings: PartialSettings): Settings {
 }
 
 // Helper to get color level as string for chalk
-export type ColorLevelString = 'ansi16' | 'ansi256' | 'truecolor';
 
 export function getColorLevelString(level: 0 | 1 | 2 | 3 | undefined): ColorLevelString {
     switch (level) {
@@ -162,16 +113,6 @@ export function getColorLevelString(level: 0 | 1 | 2 | 3 | undefined): ColorLeve
     default:
         return 'ansi256';
     }
-}
-
-// Type for legacy settings format
-interface LegacySettings {
-    elements?: { model?: boolean; gitBranch?: boolean };
-    layout?: { expandingSeparators?: boolean };
-    colors?: { model?: string; gitBranch?: string };
-    items?: StatusItem[];
-    lines?: StatusItem[][];
-    [key: string]: unknown;
 }
 
 export async function loadSettings(): Promise<Settings> {

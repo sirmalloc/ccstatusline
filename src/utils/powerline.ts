@@ -3,10 +3,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-export interface PowerlineFontStatus {
-    installed: boolean;
-    checkedSymbol?: string;
-}
+import type { PowerlineFontStatus } from '../types/PowerlineFontStatus';
+
+// Re-export for backward compatibility
+export type { PowerlineFontStatus };
 
 // Track if fonts were installed during this session (for DEBUG_FONT_INSTALL)
 let fontsInstalledThisSession = false;

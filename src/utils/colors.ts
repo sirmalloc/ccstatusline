@@ -1,13 +1,9 @@
 import chalk, { type ChalkInstance } from 'chalk';
 
-interface ColorEntry {
-    name: string;
-    displayName: string;
-    isBackground: boolean;
-    ansi16: ChalkInstance;
-    ansi256: ChalkInstance;
-    truecolor: ChalkInstance;
-}
+import type { ColorEntry } from '../types/ColorEntry';
+
+// Re-export for backward compatibility
+export type { ColorEntry };
 
 const COLOR_MAP: ColorEntry[] = [
     // Regular colors - for ansi256 mode, use fixed palette colors (16-231) instead of theme colors (0-15)
