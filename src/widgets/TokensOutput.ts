@@ -1,0 +1,23 @@
+import type { RenderContext } from '../types/RenderContext';
+import type { Settings } from '../types/Settings';
+import type {
+    Widget,
+    WidgetItem
+} from '../types/Widget';
+import { formatTokens } from '../utils/renderer';
+
+export class TokensOutputWidget implements Widget {
+    getDefaultColor(): string { return 'white'; }
+    getDisplayName(): string { return 'Tokens Output'; }
+
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        if (context.isPreview) {
+            return item.rawValue ? '3.4k' : 'Out: 3.4k';
+        } else if (context.tokenMetrics) {
+            return item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
+        }
+        return null;
+    }
+
+    supportsRawValue(): boolean { return true; }
+}

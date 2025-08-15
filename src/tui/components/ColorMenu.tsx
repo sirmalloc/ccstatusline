@@ -18,6 +18,7 @@ import {
     type Settings,
     type WidgetItem
 } from '../../utils/config';
+import { getWidget } from '../../utils/widgets';
 
 export interface ColorMenuProps {
     widgets: WidgetItem[];
@@ -235,33 +236,16 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
     }
 
     const getItemLabel = (widget: WidgetItem) => {
-        switch (widget.type) {
-        case 'model': return 'Model';
-        case 'git-branch': return 'Git Branch';
-        case 'git-changes': return 'Git Changes';
-        case 'tokens-input': return 'Tokens Input';
-        case 'tokens-output': return 'Tokens Output';
-        case 'tokens-cached': return 'Tokens Cached';
-        case 'tokens-total': return 'Tokens Total';
-        case 'context-length': return 'Context Length';
-        case 'context-percentage': return 'Context Percentage';
-        case 'context-percentage-usable': return 'Context % (usable)';
-        case 'session-clock': return 'Session Clock';
-        case 'terminal-width': return 'Terminal Width';
-        case 'version': return 'Version';
-        case 'separator': {
+        if (widget.type === 'separator') {
             const char = widget.character ?? '|';
-            const charDisplay = char === ' ' ? '(space)' : char;
-            return `Separator ${charDisplay}`;
+            return `Sep: ${char === ' ' ? 'space' : char}`;
         }
-        case 'custom-text': return `Custom Text (${widget.customText ?? 'Empty'})`;
-        case 'custom-command': {
-            const cmd = widget.commandPath ? widget.commandPath.substring(0, 20) + (widget.commandPath.length > 20 ? '...' : '') : 'No command';
-            const timeout = widget.timeout ? ` ${widget.timeout}ms` : '';
-            return `Custom Command (${cmd}${timeout})`;
+        if (widget.type === 'flex-separator') {
+            return 'Flex Sep';
         }
-        default: return widget.type;
-        }
+
+        const widgetImpl = getWidget(widget.type);
+        return widgetImpl.getDisplayName();
     };
 
     // Color list for cycling

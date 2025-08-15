@@ -1,5 +1,11 @@
 // Central export file for all types
-export type { WidgetItem, WidgetItemType } from './WidgetItem';
+export type {
+    CustomKeybind,
+    Widget,
+    WidgetEditorProps,
+    WidgetItem,
+    WidgetItemType
+} from './Widget';
 export type {
     ColorLevelString,
     FlexMode,

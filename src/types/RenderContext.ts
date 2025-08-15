@@ -5,8 +5,6 @@ export interface RenderContext {
     data?: StatusJSON;
     tokenMetrics?: TokenMetrics | null;
     sessionDuration?: string | null;
-    gitBranch?: string | null;
-    gitChanges?: { insertions: number; deletions: number } | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
 }

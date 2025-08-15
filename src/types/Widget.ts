@@ -1,3 +1,6 @@
+import type { RenderContext } from './RenderContext';
+import type { Settings } from './Settings';
+
 export type WidgetItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator'
     | 'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
 
@@ -15,4 +18,25 @@ export interface WidgetItem {
     preserveColors?: boolean; // For custom-command type - preserve ANSI colors from command output
     timeout?: number; // For custom-command type - timeout in milliseconds (default: 1000)
     merge?: boolean | 'no-padding'; // Merge with next widget: true = merge with padding, 'no-padding' = merge without padding
+}
+
+export interface Widget {
+    getDefaultColor(): string;
+    getDisplayName(): string;
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
+    getCustomKeybinds?(): CustomKeybind[];
+    renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
+    supportsRawValue(): boolean;
+}
+
+export interface WidgetEditorProps {
+    widget: WidgetItem;
+    onComplete: (updatedWidget: WidgetItem) => void;
+    onCancel: () => void;
+}
+
+export interface CustomKeybind {
+    key: string;
+    label: string;
+    action: string;
 }

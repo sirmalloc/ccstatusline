@@ -21,14 +21,14 @@ export interface StatusLinePreviewProps {
     settings?: Settings;
 }
 
-const renderSingleLine = (widgets: WidgetItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
+const renderSingleLine = (widgets: WidgetItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings: Settings): string => {
     // Create render context for preview
     const context: RenderContext = {
         terminalWidth,
         isPreview: true
     };
 
-    return renderLine(widgets, (settings ?? {}) as unknown as Record<string, unknown>, context);
+    return renderLine(widgets, settings, context);
 };
 
 export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {
@@ -36,8 +36,8 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
 
     // Render each configured line
     // Pass the full terminal width - the renderer will handle preview adjustments
-    const renderedLines = React.useMemo(() => lines.map(lineItems => lineItems.length > 0 ? renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings) : ''
-    ).filter(line => line !== ''), // Remove empty lines
+    const renderedLines = React.useMemo(() => settings ? lines.map(lineItems => lineItems.length > 0 ? renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings) : ''
+    ).filter(line => line !== '') : [], // Remove empty lines
     [lines, terminalWidth, widthDetectionAvailable, settings]);
 
     return (

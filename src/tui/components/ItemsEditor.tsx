@@ -6,15 +6,16 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import {
-    applyColors,
-    getWidgetDefaultColor
-} from '../../utils/colors';
+import { applyColors } from '../../utils/colors';
 import {
     type Settings,
     type WidgetItem,
     type WidgetItemType
 } from '../../utils/config';
+import {
+    getAllWidgetTypes,
+    getWidget
+} from '../../utils/widgets';
 import { canDetectTerminalWidth } from '../utils/terminal';
 
 export interface ItemsEditorProps {
@@ -42,11 +43,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Determine which item types are allowed based on settings
     const getAllowedTypes = (): WidgetItemType[] => {
-        const allTypes: WidgetItemType[] = ['model', 'git-branch', 'git-changes', 'separator',
-            'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable',
-            'session-clock', 'terminal-width', 'version', 'flex-separator', 'custom-text', 'custom-command'];
-
-        let allowedTypes = [...allTypes];
+        let allowedTypes = getAllWidgetTypes(settings);
 
         // Remove separator if default separator is set
         if (settings.defaultSeparator) {
@@ -442,60 +439,38 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     });
 
     const getWidgetDisplay = (widget: WidgetItem) => {
-        // Get the color for this item (use custom color if set, otherwise default)
-        const colorName = widget.color ?? getWidgetDefaultColor(widget.type);
-        const colorFunc = (chalk as unknown as Record<string, typeof chalk.white>)[colorName] ?? chalk.white;
-
-        switch (widget.type) {
-        case 'model':
-            return colorFunc('Model');
-        case 'git-branch':
-            return colorFunc('Git Branch');
-        case 'git-changes':
-            return colorFunc('Git Changes');
-        case 'separator': {
+        // Special handling for separators (not widgets)
+        if (widget.type === 'separator') {
             const char = widget.character ?? '|';
             const charDisplay = char === ' ' ? '(space)' : char;
-            // Apply the separator's color to its display
             return applyColors(`Separator ${charDisplay}`, widget.color ?? 'gray', widget.backgroundColor, widget.bold);
         }
-        case 'flex-separator':
+        if (widget.type === 'flex-separator') {
             return chalk.yellow('Flex Separator');
-        case 'tokens-input':
-            return colorFunc('Tokens Input');
-        case 'tokens-output':
-            return colorFunc('Tokens Output');
-        case 'tokens-cached':
-            return colorFunc('Tokens Cached');
-        case 'tokens-total':
-            return colorFunc('Tokens Total');
-        case 'context-length':
-            return colorFunc('Context Length');
-        case 'context-percentage':
-            return colorFunc('Context %');
-        case 'context-percentage-usable':
-            return colorFunc('Context % (usable)');
-        case 'session-clock':
-            return colorFunc('Session Clock');
-        case 'terminal-width':
-            return colorFunc('Terminal Width');
-        case 'version':
-            return colorFunc('Version');
-        case 'custom-text': {
-            const text = widget.customText ?? 'Empty';
-            return colorFunc(`Custom Text (${text})`);
         }
-        case 'custom-command': {
+
+        // Handle regular widgets
+        const widgetImpl = getWidget(widget.type);
+        const colorName = widget.color ?? widgetImpl.getDefaultColor();
+        const colorFunc = (chalk as unknown as Record<string, typeof chalk.white>)[colorName] ?? chalk.white;
+
+        let display = widgetImpl.getDisplayName();
+
+        // Add special suffixes for custom widgets
+        if (widget.type === 'custom-text') {
+            const text = widget.customText ?? 'Empty';
+            display = `${display} (${text})`;
+        } else if (widget.type === 'custom-command') {
             const cmd = widget.commandPath ?? 'No command';
             const truncatedCmd = cmd.length > 30 ? `${cmd.substring(0, 27)}...` : cmd;
-            // Only apply color if not preserving colors
             if (!widget.preserveColors) {
-                return colorFunc(`Custom Command (${truncatedCmd})`);
+                return colorFunc(`${display} (${truncatedCmd})`);
             } else {
-                return chalk.white(`Custom Command (${truncatedCmd}) [preserving colors]`);
+                return chalk.white(`${display} (${truncatedCmd}) [preserving colors]`);
             }
         }
-        }
+
+        return colorFunc(display);
     };
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
@@ -507,7 +482,18 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const isFlexSeparator = currentWidget?.type === 'flex-separator';
     const isCustomText = currentWidget?.type === 'custom-text';
     const isCustomCommand = currentWidget?.type === 'custom-command';
-    const canToggleRaw = currentWidget && !isSeparator && !isFlexSeparator && !isCustomText && !isCustomCommand;
+
+    // Check if widget supports raw value using registry
+    let canToggleRaw = false;
+    if (currentWidget && !isSeparator && !isFlexSeparator) {
+        try {
+            const widgetImpl = getWidget(currentWidget.type);
+            canToggleRaw = widgetImpl.supportsRawValue();
+        } catch {
+            canToggleRaw = false;
+        }
+    }
+
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
 
     let helpText = '↑↓ select, ←→ change type';

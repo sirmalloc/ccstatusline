@@ -74,9 +74,11 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
         if (confirmingEnable) {
             if (input === 'y' || input === 'Y') {
                 // Remove all separators and flex-separators from lines
+                // Also set default padding to a space when enabling powerline
                 const updatedSettings = {
                     ...settings,
                     powerline: { ...powerlineConfig, enabled: true },
+                    defaultPadding: ' ',  // Set padding to space when enabling powerline
                     lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
                     )
                 };

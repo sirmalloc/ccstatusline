@@ -1,4 +1,4 @@
-import type { WidgetItem } from './WidgetItem';
+import type { WidgetItem } from './Widget';
 
 export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
 

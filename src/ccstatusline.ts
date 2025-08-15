@@ -79,7 +79,7 @@ async function renderMultipleLines(data: StatusJSON) {
     // Render each line
     for (const lineItems of lines) {
         if (lineItems.length > 0) {
-            const line = renderStatusLine(lineItems, settings as unknown as Record<string, unknown>, context);
+            const line = renderStatusLine(lineItems, settings, context);
             // Replace all spaces with non-breaking spaces to prevent VSCode trimming
             let outputLine = line.replace(/ /g, '\u00A0');
             // Add reset code at the beginning to override Claude Code's dim setting

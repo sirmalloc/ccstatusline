@@ -232,8 +232,9 @@ export function getAvailableBackgroundColorsForUI(): { name: string; value: stri
 }
 
 export function getWidgetDefaultColor(type: string): string {
+    // Hardcode defaults to avoid circular dependency
     const defaults: Record<string, string> = {
-        'model': 'blue',
+        'model': 'cyan',
         'git-branch': 'magenta',
         'git-changes': 'yellow',
         'tokens-input': 'blue',
@@ -243,12 +244,13 @@ export function getWidgetDefaultColor(type: string): string {
         'context-length': 'brightBlack',
         'context-percentage': 'blue',
         'context-percentage-usable': 'green',
-        'terminal-width': 'cyan',
+        'terminal-width': 'gray',
         'session-clock': 'yellow',
-        'version': 'green',
+        'version': 'gray',
         'custom-text': 'white',
-        'custom-command': 'yellow',
-        'separator': 'brightBlack'
+        'custom-command': 'white',
+        'separator': 'gray',
+        'flex-separator': 'gray'
     };
 
     return defaults[type] ?? 'white';
