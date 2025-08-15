@@ -460,12 +460,9 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                                 })}
                             </>
                         ) : (
-                            // When powerline is disabled, only show the Back option
-                            <Box>
-                                <Text color={selectedMenuItem === menuItems.length - 1 ? 'green' : undefined}>
-                                    {selectedMenuItem === menuItems.length - 1 ? '▶  ' : '   '}
-                                    ← Back
-                                </Text>
+                            // When powerline is disabled, show ESC to go back message
+                            <Box marginTop={1}>
+                                <Text dimColor>Press ESC to go back</Text>
                             </Box>
                         )}
                     </Box>
