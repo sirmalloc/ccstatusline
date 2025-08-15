@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import chalk from 'chalk';
-import { runTUI } from './tui.tsx';
+
+import { runTUI } from './tui';
 import { loadSettings } from './utils/config';
 import {
-    type StatusJSON,
-    renderStatusLine,
-    getTokenMetrics,
     getSessionDuration,
-    type RenderContext
+    getTokenMetrics,
+    renderStatusLine,
+    type RenderContext,
+    type StatusJSON
 } from './utils/renderer';
 
 async function readStdin(): Promise<string | null> {
@@ -20,7 +21,7 @@ async function readStdin(): Promise<string | null> {
 
     try {
         // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined' && Bun.stdin) {
+        if (typeof Bun !== 'undefined') {
             // Bun environment
             const decoder = new TextDecoder();
             for await (const chunk of Bun.stdin.stream()) {
@@ -30,7 +31,7 @@ async function readStdin(): Promise<string | null> {
             // Node.js environment
             process.stdin.setEncoding('utf8');
             for await (const chunk of process.stdin) {
-                chunks.push(chunk);
+                chunks.push(chunk as string);
             }
         }
         return chunks.join('');
@@ -41,23 +42,20 @@ async function readStdin(): Promise<string | null> {
 
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
-    
+
     // Set global chalk level based on settings
     chalk.level = settings.colorLevel;
 
     // Get all lines to render
-    let lines = settings.lines;
+    const lines = settings.lines;
 
     // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line =>
-        line.some(item =>
-            ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)
-        )
+    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)
+    )
     );
 
     // Check if session clock is needed
-    const hasSessionClock = lines.some(line =>
-        line.some(item => item.type === 'session-clock')
+    const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock')
     );
 
     let tokenMetrics = null;
@@ -80,8 +78,8 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Render each line
     for (const lineItems of lines) {
-        if (lineItems && lineItems.length > 0) {
-            const line = renderStatusLine(lineItems, settings, context);
+        if (lineItems.length > 0) {
+            const line = renderStatusLine(lineItems, settings as unknown as Record<string, unknown>, context);
             // Replace all spaces with non-breaking spaces to prevent VSCode trimming
             let outputLine = line.replace(/ /g, '\u00A0');
             // Add reset code at the beginning to override Claude Code's dim setting
@@ -98,7 +96,7 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                const data: StatusJSON = JSON.parse(input);
+                const data = JSON.parse(input) as StatusJSON;
                 await renderMultipleLines(data);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
@@ -114,4 +112,4 @@ async function main() {
     }
 }
 
-main();
+void main();

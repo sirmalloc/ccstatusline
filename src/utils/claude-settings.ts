@@ -1,12 +1,11 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
-import { promisify } from 'util';
+import * as path from 'path';
 
-// Ensure fs.promises compatibility
-const readFile = fs.promises?.readFile || promisify(fs.readFile);
-const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
-const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
+// Use fs.promises directly
+const readFile = fs.promises.readFile;
+const writeFile = fs.promises.writeFile;
+const mkdir = fs.promises.mkdir;
 
 const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
 
@@ -20,7 +19,7 @@ interface ClaudeSettings {
         command: string;
         padding?: number;
     };
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export async function loadClaudeSettings(): Promise<ClaudeSettings> {
@@ -29,7 +28,7 @@ export async function loadClaudeSettings(): Promise<ClaudeSettings> {
             return {};
         }
         const content = await readFile(CLAUDE_SETTINGS_PATH, 'utf-8');
-        return JSON.parse(content);
+        return JSON.parse(content) as ClaudeSettings;
     } catch {
         return {};
     }
@@ -44,8 +43,8 @@ export async function saveClaudeSettings(settings: ClaudeSettings): Promise<void
 export async function isInstalled(): Promise<boolean> {
     const settings = await loadClaudeSettings();
     // Check if command is correct AND padding is 0 (or undefined for new installs)
-    return settings.statusLine?.command === 'npx -y ccstatusline@latest' && 
-           (settings.statusLine.padding === 0 || settings.statusLine.padding === undefined);
+    return settings.statusLine?.command === 'npx -y ccstatusline@latest'
+        && (settings.statusLine.padding === 0 || settings.statusLine.padding === undefined);
 }
 
 export async function installStatusLine(): Promise<void> {
@@ -72,5 +71,5 @@ export async function uninstallStatusLine(): Promise<void> {
 
 export async function getExistingStatusLine(): Promise<string | null> {
     const settings = await loadClaudeSettings();
-    return settings.statusLine?.command || null;
+    return settings.statusLine?.command ?? null;
 }

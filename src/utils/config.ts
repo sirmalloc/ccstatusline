@@ -1,15 +1,14 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
-import { promisify } from 'util';
+import * as path from 'path';
 
-// Ensure fs.promises compatibility
-const readFile = fs.promises?.readFile || promisify(fs.readFile);
-const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
-const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
+// Use fs.promises directly (always available in modern Node.js)
+const readFile = fs.promises.readFile;
+const writeFile = fs.promises.writeFile;
+const mkdir = fs.promises.mkdir;
 
-export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' |
-    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
+export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator'
+    | 'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
 
 export interface StatusItem {
     id: string;
@@ -41,7 +40,7 @@ export interface PowerlineConfig {
 export interface Settings {
     lines: StatusItem[][]; // Multiple lines (up to 3)
     flexMode: FlexMode; // How to handle terminal width for flex separators
-    compactThreshold: number; // Context percentage (50-99) for 'full-until-compact' mode
+    compactThreshold: number; // Context percentage (1-99) for 'full-until-compact' mode
     defaultSeparator?: string; // Default separator character to insert between items
     defaultPadding?: string; // Default padding to add around all items
     inheritSeparatorColors: boolean; // Whether default separators inherit colors from preceding widget
@@ -76,36 +75,36 @@ export const DEFAULT_SETTINGS: Settings = {
     lines: [
         [
             {
-                "id": "1",
-                "type": "model",
-                "color": "cyan"
+                id: '1',
+                type: 'model',
+                color: 'cyan'
             },
             {
-                "id": "2",
-                "type": "separator"
+                id: '2',
+                type: 'separator'
             },
             {
-                "id": "3",
-                "type": "context-length",
-                "color": "brightBlack"
+                id: '3',
+                type: 'context-length',
+                color: 'brightBlack'
             },
             {
-                "id": "4",
-                "type": "separator"
+                id: '4',
+                type: 'separator'
             },
             {
-                "id": "5",
-                "type": "git-branch",
-                "color": "magenta"
+                id: '5',
+                type: 'git-branch',
+                color: 'magenta'
             },
             {
-                "id": "6",
-                "type": "separator"
+                id: '6',
+                type: 'separator'
             },
             {
-                "id": "7",
-                "type": "git-changes",
-                "color": "yellow"
+                id: '7',
+                type: 'git-changes',
+                color: 'yellow'
             }
         ]
     ],
@@ -130,22 +129,22 @@ export const DEFAULT_SETTINGS: Settings = {
 export function normalizeSettings(settings: PartialSettings): Settings {
     // Deep merge with defaults to ensure all values are present
     const normalized: Settings = {
-        lines: settings.lines || DEFAULT_SETTINGS.lines,
-        flexMode: settings.flexMode || DEFAULT_SETTINGS.flexMode,
-        compactThreshold: settings.compactThreshold || DEFAULT_SETTINGS.compactThreshold,
-        colorLevel: settings.colorLevel !== undefined ? settings.colorLevel : DEFAULT_SETTINGS.colorLevel,
+        lines: settings.lines ?? DEFAULT_SETTINGS.lines,
+        flexMode: settings.flexMode ?? DEFAULT_SETTINGS.flexMode,
+        compactThreshold: settings.compactThreshold ?? DEFAULT_SETTINGS.compactThreshold,
+        colorLevel: settings.colorLevel ?? DEFAULT_SETTINGS.colorLevel,
         defaultSeparator: settings.defaultSeparator,
         defaultPadding: settings.defaultPadding,
-        inheritSeparatorColors: settings.inheritSeparatorColors !== undefined ? settings.inheritSeparatorColors : DEFAULT_SETTINGS.inheritSeparatorColors,
+        inheritSeparatorColors: settings.inheritSeparatorColors ?? DEFAULT_SETTINGS.inheritSeparatorColors,
         overrideBackgroundColor: settings.overrideBackgroundColor,
         overrideForegroundColor: settings.overrideForegroundColor,
-        globalBold: settings.globalBold !== undefined ? settings.globalBold : DEFAULT_SETTINGS.globalBold,
+        globalBold: settings.globalBold ?? DEFAULT_SETTINGS.globalBold,
         powerline: {
             ...DEFAULT_SETTINGS.powerline,
-            ...(settings.powerline || {})
+            ...(settings.powerline ?? {})
         }
     };
-    
+
     return normalized;
 }
 
@@ -154,15 +153,25 @@ export type ColorLevelString = 'ansi16' | 'ansi256' | 'truecolor';
 
 export function getColorLevelString(level: 0 | 1 | 2 | 3 | undefined): ColorLevelString {
     switch (level) {
-        case 0:
-        case 1:
-            return 'ansi16';
-        case 3:
-            return 'truecolor';
-        case 2:
-        default:
-            return 'ansi256';
+    case 0:
+    case 1:
+        return 'ansi16';
+    case 3:
+        return 'truecolor';
+    case 2:
+    default:
+        return 'ansi256';
     }
+}
+
+// Type for legacy settings format
+interface LegacySettings {
+    elements?: { model?: boolean; gitBranch?: boolean };
+    layout?: { expandingSeparators?: boolean };
+    colors?: { model?: string; gitBranch?: string };
+    items?: StatusItem[];
+    lines?: StatusItem[][];
+    [key: string]: unknown;
 }
 
 export async function loadSettings(): Promise<Settings> {
@@ -173,11 +182,11 @@ export async function loadSettings(): Promise<Settings> {
         }
 
         const content = await readFile(SETTINGS_PATH, 'utf-8');
-        let loaded: any;
+        let loaded: LegacySettings;
 
         try {
-            loaded = JSON.parse(content);
-        } catch (parseError) {
+            loaded = JSON.parse(content) as LegacySettings;
+        } catch {
             // If we can't parse the settings, return defaults
             console.error('Failed to parse settings.json, using defaults');
             return normalizeSettings({});
@@ -203,7 +212,7 @@ export async function loadSettings(): Promise<Settings> {
         }
 
         // Use normalizeSettings to ensure all values are present
-        return normalizeSettings(loaded);
+        return normalizeSettings(loaded as PartialSettings);
     } catch (error) {
         // Any other error, return defaults
         console.error('Error loading settings:', error);
@@ -211,7 +220,7 @@ export async function loadSettings(): Promise<Settings> {
     }
 }
 
-function migrateOldSettings(old: any): PartialSettings {
+function migrateOldSettings(old: LegacySettings): PartialSettings {
     const items: StatusItem[] = [];
     let id = 1;
 
@@ -229,7 +238,7 @@ function migrateOldSettings(old: any): PartialSettings {
 
     if (old.layout?.expandingSeparators) {
         // Replace regular separators with flex separators
-        items.forEach(item => {
+        items.forEach((item) => {
             if (item.type === 'separator') {
                 item.type = 'flex-separator';
             }
@@ -239,7 +248,7 @@ function migrateOldSettings(old: any): PartialSettings {
     return {
         lines: [items], // Put migrated items in first line
         flexMode: DEFAULT_SETTINGS.flexMode,
-        compactThreshold: DEFAULT_SETTINGS.compactThreshold,
+        compactThreshold: DEFAULT_SETTINGS.compactThreshold
     };
 }
 

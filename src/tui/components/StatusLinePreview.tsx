@@ -1,0 +1,57 @@
+import chalk from 'chalk';
+import {
+    Box,
+    Text
+} from 'ink';
+import React from 'react';
+
+import {
+    type Settings,
+    type StatusItem
+} from '../../utils/config';
+import {
+    renderStatusLine as renderLine,
+    type RenderContext
+} from '../../utils/renderer';
+import { canDetectTerminalWidth } from '../utils/terminal';
+
+export interface StatusLinePreviewProps {
+    lines: StatusItem[][];
+    terminalWidth: number;
+    settings?: Settings;
+}
+
+const renderSingleLine = (items: StatusItem[], terminalWidth: number, widthDetectionAvailable: boolean, settings?: Settings): string => {
+    // Create render context for preview
+    const context: RenderContext = {
+        terminalWidth,
+        isPreview: true
+    };
+
+    return renderLine(items, (settings ?? {}) as unknown as Record<string, unknown>, context);
+};
+
+export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {
+    const widthDetectionAvailable = React.useMemo(() => canDetectTerminalWidth(), []);
+
+    // Render each configured line
+    // Pass the full terminal width - the renderer will handle preview adjustments
+    const renderedLines = React.useMemo(() => lines.map(lineItems => lineItems.length > 0 ? renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings) : ''
+    ).filter(line => line !== ''), // Remove empty lines
+    [lines, terminalWidth, widthDetectionAvailable, settings]);
+
+    return (
+        <Box flexDirection='column'>
+            <Box borderStyle='round' borderColor='gray' borderDimColor width='100%' paddingLeft={1}>
+                <Text>&gt;</Text>
+            </Box>
+            {renderedLines.map((line, index) => (
+                <Text key={index}>
+                    {' '}
+                    {line}
+                    {chalk.reset('')}
+                </Text>
+            ))}
+        </Box>
+    );
+};
