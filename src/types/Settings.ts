@@ -4,9 +4,11 @@ export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
 
 export interface PowerlineConfig {
     enabled?: boolean; // Whether powerline mode is enabled
-    separator?: string; // Powerline separator character (default: \uE0B0)
-    startCap?: string; // Optional start cap character
-    endCap?: string; // Optional end cap character
+    separators?: string[]; // Array of powerline separator characters (cycles through)
+    separatorInvertBackground?: boolean[]; // Whether to invert fg/bg for each separator
+    startCaps?: string[]; // Array of start cap characters (cycles through lines, max 3)
+    endCaps?: string[]; // Array of end cap characters (cycles through lines, max 3)
+    theme?: string; // Theme name ('nord', 'monokai', etc.) or 'custom' for manual colors
 }
 
 // Settings with all required fields - no optionals

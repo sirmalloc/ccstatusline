@@ -71,9 +71,11 @@ export const DEFAULT_SETTINGS: Settings = {
     globalBold: false,
     powerline: {
         enabled: false,
-        separator: '\uE0B0',
-        startCap: '',
-        endCap: ''
+        separators: ['\uE0B0'],  // Default single separator
+        separatorInvertBackground: [false],
+        startCaps: [],
+        endCaps: [],
+        theme: undefined  // Will be set to 'nord' when first enabled
     }
 };
 

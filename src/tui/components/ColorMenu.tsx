@@ -33,6 +33,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
     const [ansi256Input, setAnsi256Input] = useState('');
 
+    // Check if powerline mode is enabled with a theme
+    const powerlineEnabled = settings.powerline.enabled;
+    const powerlineTheme = settings.powerline.theme;
+    const isThemeManaged = powerlineEnabled && powerlineTheme && powerlineTheme !== 'custom';
+
     const colorableWidgets = widgets.filter((widget) => {
         // Include separators only if showSeparators is true
         if (widget.type === 'separator') {
@@ -47,8 +52,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
     // Handle keyboard input
     const hasNoItems = colorableWidgets.length === 0;
     useInput((input, key) => {
-        // If no items, any key goes back
-        if (hasNoItems) {
+        // If theme-managed or no items, any key goes back
+        if (isThemeManaged || hasNoItems) {
             onBack();
             return;
         }
@@ -275,6 +280,33 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
             }
         }
     });
+
+    // Check if powerline theme is managing colors
+    if (isThemeManaged) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold>Configure Colors</Text>
+                <Box marginTop={1}>
+                    <Text color='yellow'>
+                        ⚠ Colors are currently managed by the Powerline theme:
+                        {powerlineTheme.charAt(0).toUpperCase() + powerlineTheme.slice(1)}
+                    </Text>
+                </Box>
+                <Box marginTop={1}>
+                    <Text dimColor>To customize colors, either:</Text>
+                </Box>
+                <Box marginLeft={2}>
+                    <Text dimColor>• Change to 'Custom' theme in Powerline Configuration → Themes</Text>
+                </Box>
+                <Box marginLeft={2}>
+                    <Text dimColor>• Disable Powerline mode in Powerline Configuration</Text>
+                </Box>
+                <Box marginTop={2}>
+                    <Text>Press any key to go back...</Text>
+                </Box>
+            </Box>
+        );
+    }
 
     if (hasNoItems) {
         return (

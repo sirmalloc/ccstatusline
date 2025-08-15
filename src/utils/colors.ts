@@ -237,3 +237,118 @@ export function getBackgroundColorsForPowerline(): string[] {
         .filter(c => c.isBackground && c.name !== 'bgBlack')
         .map(c => c.name);
 }
+
+// Powerline theme definitions
+export interface PowerlineThemeColors {
+    fg: string[];
+    bg: string[];
+}
+
+export interface PowerlineTheme {
+    name: string;
+    description: string;
+    // Color levels: 1 = basic 16, 2 = 256, 3 = truecolor
+    1?: PowerlineThemeColors;
+    2?: PowerlineThemeColors;
+    3?: PowerlineThemeColors;
+}
+
+export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
+    custom: {
+        name: 'Custom',
+        description: 'Uses individual widget background colors'
+        // No color definitions - handled specially
+    },
+    nord: {
+        name: 'Nord',
+        description: 'Arctic, north-bluish color palette',
+        1: {
+            fg: ['black', 'white', 'black', 'white', 'black'],
+            bg: ['bgBrightCyan', 'bgBlue', 'bgBrightMagenta', 'bgBrightBlack', 'bgBrightGreen']
+        },
+        2: {
+            fg: ['ansi256:16', 'ansi256:231', 'ansi256:231', 'ansi256:254', 'ansi256:252'],
+            bg: ['ansi256:73', 'ansi256:25', 'ansi256:96', 'ansi256:239', 'ansi256:236']
+        },
+        3: {
+            fg: ['hex:2E3440', 'hex:ECEFF4', 'hex:ECEFF4', 'hex:D8DEE9', 'hex:E5E9F0'],
+            bg: ['hex:88C0D0', 'hex:5E81AC', 'hex:B48EAD', 'hex:4C566A', 'hex:3B4252']
+        }
+    },
+    monokai: {
+        name: 'Monokai',
+        description: 'Dark background with vibrant colors',
+        1: {
+            fg: ['black', 'white', 'white', 'white', 'white'],
+            bg: ['bgBrightGreen', 'bgMagenta', 'bgBlue', 'bgRed', 'bgBrightMagenta']
+        },
+        2: {
+            fg: ['ansi256:16', 'ansi256:231', 'ansi256:231', 'ansi256:231', 'ansi256:231'],
+            bg: ['ansi256:148', 'ansi256:133', 'ansi256:33', 'ansi256:197', 'ansi256:141']
+        },
+        3: {
+            fg: ['hex:1A1A1A', 'hex:F8F8F2', 'hex:F8F8F2', 'hex:F8F8F2', 'hex:F8F8F2'],
+            bg: ['hex:A6E22E', 'hex:AE81FF', 'hex:4A90E2', 'hex:F92672', 'hex:BD93F9']
+        }
+    },
+    solarized: {
+        name: 'Solarized',
+        description: 'Precision colors for readability',
+        1: {
+            fg: ['white', 'black', 'white', 'black', 'white'],
+            bg: ['bgBlue', 'bgYellow', 'bgMagenta', 'bgGreen', 'bgRed']
+        },
+        2: {
+            fg: ['ansi256:231', 'ansi256:234', 'ansi256:231', 'ansi256:16', 'ansi256:234'],
+            bg: ['ansi256:33', 'ansi256:136', 'ansi256:125', 'ansi256:37', 'ansi256:254']
+        },
+        3: {
+            fg: ['hex:FDF6E3', 'hex:073642', 'hex:FDF6E3', 'hex:073642', 'hex:073642'],
+            bg: ['hex:268BD2', 'hex:B58900', 'hex:D33682', 'hex:2AA198', 'hex:EEE8D5']
+        }
+    },
+    minimal: {
+        name: 'Minimal',
+        description: 'Clean monochrome theme',
+        1: {
+            fg: ['black', 'white', 'black', 'white', 'black'],
+            bg: ['bgWhite', 'bgBrightBlack', 'bgBrightWhite', 'bgBrightBlack', 'bgWhite']
+        },
+        2: {
+            fg: ['ansi256:232', 'ansi256:255', 'ansi256:232', 'ansi256:252', 'ansi256:232'],
+            bg: ['ansi256:251', 'ansi256:240', 'ansi256:248', 'ansi256:236', 'ansi256:254']
+        },
+        3: {
+            fg: ['hex:1C1C1C', 'hex:FFFFFF', 'hex:1C1C1C', 'hex:E4E4E4', 'hex:1C1C1C'],
+            bg: ['hex:D0D0D0', 'hex:585858', 'hex:A8A8A8', 'hex:303030', 'hex:F8F8F8']
+        }
+    },
+    dracula: {
+        name: 'Dracula',
+        description: 'Dark theme with purple accents',
+        1: {
+            fg: ['white', 'black', 'white', 'black', 'white'],
+            bg: ['bgMagenta', 'bgBrightCyan', 'bgRed', 'bgYellow', 'bgBlue']
+        },
+        2: {
+            fg: ['ansi256:231', 'ansi256:16', 'ansi256:231', 'ansi256:16', 'ansi256:231'],
+            bg: ['ansi256:141', 'ansi256:117', 'ansi256:204', 'ansi256:229', 'ansi256:62']
+        },
+        3: {
+            fg: ['hex:F8F8F2', 'hex:282A36', 'hex:F8F8F2', 'hex:282A36', 'hex:F8F8F2'],
+            bg: ['hex:BD93F9', 'hex:8BE9FD', 'hex:FF5555', 'hex:F1FA8C', 'hex:6272A4']
+        }
+    }
+};
+
+export function getPowerlineThemes(): string[] {
+    return Object.keys(POWERLINE_THEMES);
+}
+
+export function getPowerlineTheme(name: string): PowerlineTheme | undefined {
+    return POWERLINE_THEMES[name];
+}
+
+export function getDefaultPowerlineTheme(): string {
+    return 'nord';
+}

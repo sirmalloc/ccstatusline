@@ -5,8 +5,12 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
+import { getDefaultPowerlineTheme } from '../../utils/colors';
 import type { Settings } from '../../utils/config';
 import { type PowerlineFontStatus } from '../../utils/powerline';
+
+import { PowerlineSeparatorEditor } from './PowerlineSeparatorEditor';
+import { PowerlineThemeSelector } from './PowerlineThemeSelector';
 
 export interface PowerlineConfigurationProps {
     settings: Settings;
@@ -19,6 +23,8 @@ export interface PowerlineConfigurationProps {
     onClearMessage: () => void;
 }
 
+type Screen = 'menu' | 'separator' | 'startCap' | 'endCap' | 'themes';
+
 export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     settings,
     powerlineFontStatus,
@@ -30,43 +36,81 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     onClearMessage
 }) => {
     const powerlineConfig = settings.powerline;
-    const [editingMode, setEditingMode] = useState<'separator' | 'startCap' | 'endCap' | null>(null);
-    const [customInput, setCustomInput] = useState('');
-    const [cursorPos, setCursorPos] = useState(0);
+    const [screen, setScreen] = useState<Screen>('menu');
+    const [selectedMenuItem, setSelectedMenuItem] = useState(0);
     const [confirmingEnable, setConfirmingEnable] = useState(false);
 
     // Check if there are any separators or flex-separators in the current configuration
     const hasSeparatorItems = settings.lines.some(line => line.some(item => item.type === 'separator' || item.type === 'flex-separator'));
 
-    // Common powerline separators (thin ones don't work well, so excluded)
-    const separators = [
-        { char: '\uE0B0', name: 'Triangle Right', hex: 'E0B0' },
-        { char: '\uE0B2', name: 'Triangle Left', hex: 'E0B2' },
-        { char: '\uE0B4', name: 'Round Right', hex: 'E0B4' },
-        { char: '\uE0B6', name: 'Round Left', hex: 'E0B6' }
+    // Menu items for navigation
+    const menuItems = [
+        { label: 'Separator', value: 'separator' },
+        { label: 'Start Cap', value: 'startCap' },
+        { label: 'End Cap', value: 'endCap' },
+        { label: 'Themes', value: 'themes' },
+        { label: '← Back', value: 'back' }
     ];
 
-    // Start caps (left-facing)
-    const startCaps = [
-        { char: '', name: 'None', hex: '' },
-        { char: '\uE0B2', name: 'Triangle', hex: 'E0B2' },
-        { char: '\uE0B6', name: 'Round', hex: 'E0B6' },
-        { char: '\uE0BA', name: 'Lower Triangle', hex: 'E0BA' },
-        { char: '\uE0BE', name: 'Diagonal', hex: 'E0BE' }
-    ];
+    // Helper functions for display
+    const getSeparatorDisplay = (): string => {
+        const seps = powerlineConfig.separators ?? ['\uE0B0'];
+        if (seps.length > 1) {
+            return 'multiple';
+        }
+        const sep = seps[0] ?? '\uE0B0';
+        const presets = [
+            { char: '\uE0B0', name: 'Triangle Right' },
+            { char: '\uE0B2', name: 'Triangle Left' },
+            { char: '\uE0B4', name: 'Round Right' },
+            { char: '\uE0B6', name: 'Round Left' }
+        ];
+        const preset = presets.find(p => p.char === sep);
+        if (preset) {
+            return `${preset.char} - ${preset.name}`;
+        }
+        return `${sep} - Custom`;
+    };
 
-    // End caps (right-facing)
-    const endCaps = [
-        { char: '', name: 'None', hex: '' },
-        { char: '\uE0B0', name: 'Triangle', hex: 'E0B0' },
-        { char: '\uE0B4', name: 'Round', hex: 'E0B4' },
-        { char: '\uE0B8', name: 'Lower Triangle', hex: 'E0B8' },
-        { char: '\uE0BC', name: 'Diagonal', hex: 'E0BC' }
-    ];
+    const getCapDisplay = (type: 'start' | 'end'): string => {
+        const caps = type === 'start'
+            ? (powerlineConfig.startCaps ?? [])
+            : (powerlineConfig.endCaps ?? []);
 
-    const currentSeparatorIndex = separators.findIndex(s => s.char === (powerlineConfig.separator ?? '\uE0B0'));
-    const currentStartCapIndex = startCaps.findIndex(c => c.char === (powerlineConfig.startCap ?? ''));
-    const currentEndCapIndex = endCaps.findIndex(c => c.char === (powerlineConfig.endCap ?? ''));
+        if (caps.length === 0)
+            return 'none';
+        if (caps.length > 1)
+            return 'multiple';
+
+        const cap = caps[0];
+        if (!cap)
+            return 'none';
+
+        const presets = type === 'start' ? [
+            { char: '\uE0B2', name: 'Triangle' },
+            { char: '\uE0B6', name: 'Round' },
+            { char: '\uE0BA', name: 'Lower Triangle' },
+            { char: '\uE0BE', name: 'Diagonal' }
+        ] : [
+            { char: '\uE0B0', name: 'Triangle' },
+            { char: '\uE0B4', name: 'Round' },
+            { char: '\uE0B8', name: 'Lower Triangle' },
+            { char: '\uE0BC', name: 'Diagonal' }
+        ];
+
+        const preset = presets.find(c => c.char === cap);
+        if (preset) {
+            return `${preset.char} - ${preset.name}`;
+        }
+        return `${cap} - Custom`;
+    };
+
+    const getThemeDisplay = (): string => {
+        const theme = powerlineConfig.theme;
+        if (!theme || theme === 'custom')
+            return 'Custom';
+        return theme.charAt(0).toUpperCase() + theme.slice(1);
+    };
 
     useInput((input, key) => {
         if (fontInstallMessage) {
@@ -76,11 +120,21 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
 
         if (confirmingEnable) {
             if (input === 'y' || input === 'Y') {
+                // Set default theme if none is set
+                const theme = powerlineConfig.theme ?? getDefaultPowerlineTheme();
+
                 // Remove all separators and flex-separators from lines
                 // Also set default padding to a space when enabling powerline
                 const updatedSettings = {
                     ...settings,
-                    powerline: { ...powerlineConfig, enabled: true },
+                    powerline: {
+                        ...powerlineConfig,
+                        enabled: true,
+                        theme,
+                        // Initialize separators array if not present
+                        separators: powerlineConfig.separators ?? ['\uE0B0'],
+                        separatorInvertBackground: powerlineConfig.separatorInvertBackground ?? [false]
+                    },
                     defaultPadding: ' ',  // Set padding to space when enabling powerline
                     lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
                     )
@@ -94,41 +148,23 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
             return;
         }
 
-        if (editingMode) {
-            // Custom hex input mode
-            if (key.escape) {
-                setEditingMode(null);
-                setCustomInput('');
-                setCursorPos(0);
-            } else if (key.return) {
-                if (customInput.length === 4) {
-                    const char = String.fromCharCode(parseInt(customInput, 16));
-                    const newConfig = { ...powerlineConfig };
-
-                    if (editingMode === 'separator') {
-                        newConfig.separator = char;
-                    } else if (editingMode === 'startCap') {
-                        newConfig.startCap = char;
-                    } else {
-                        newConfig.endCap = char;
-                    }
-
-                    onUpdate({ ...settings, powerline: newConfig });
-                    setEditingMode(null);
-                    setCustomInput('');
-                    setCursorPos(0);
-                }
-            } else if (key.backspace && cursorPos > 0) {
-                setCustomInput(customInput.slice(0, cursorPos - 1) + customInput.slice(cursorPos));
-                setCursorPos(cursorPos - 1);
-            } else if (input && /[0-9a-fA-F]/.test(input) && customInput.length < 4) {
-                setCustomInput(customInput.slice(0, cursorPos) + input.toUpperCase() + customInput.slice(cursorPos));
-                setCursorPos(cursorPos + 1);
-            }
-        } else {
-            // Normal navigation mode
+        if (screen === 'menu') {
+            // Menu navigation mode
             if (key.escape) {
                 onBack();
+            } else if (key.upArrow) {
+                setSelectedMenuItem(Math.max(0, selectedMenuItem - 1));
+            } else if (key.downArrow) {
+                setSelectedMenuItem(Math.min(menuItems.length - 1, selectedMenuItem + 1));
+            } else if (key.return) {
+                const selected = menuItems[selectedMenuItem];
+                if (selected) {
+                    if (selected.value === 'back') {
+                        onBack();
+                    } else if (powerlineConfig.enabled) {
+                        setScreen(selected.value as Screen);
+                    }
+                }
             } else if (input === 't' || input === 'T') {
                 // Toggle powerline mode
                 if (!powerlineConfig.enabled) {
@@ -136,10 +172,20 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     if (hasSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
+                        // Set default theme if none is set
+                        const theme = powerlineConfig.theme ?? getDefaultPowerlineTheme();
+
                         // Enable directly without confirmation since there are no separators
                         const updatedSettings = {
                             ...settings,
-                            powerline: { ...powerlineConfig, enabled: true },
+                            powerline: {
+                                ...powerlineConfig,
+                                enabled: true,
+                                theme,
+                                // Initialize separators array if not present
+                                separators: powerlineConfig.separators ?? ['\uE0B0'],
+                                separatorInvertBackground: powerlineConfig.separatorInvertBackground ?? [false]
+                            },
                             defaultPadding: ' '  // Set padding to space when enabling powerline
                         };
                         onUpdate(updatedSettings);
@@ -154,62 +200,66 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                 if (!installingFonts) {
                     onInstallFonts();
                 }
-            } else if (powerlineConfig.enabled) {
-                // These options only work when powerline is enabled
-                if (input === 'q' || input === 'Q') {
-                    // Cycle separator left
-                    const newIndex = currentSeparatorIndex <= 0 ? separators.length - 1 : currentSeparatorIndex - 1;
-                    const newConfig = { ...powerlineConfig, separator: separators[newIndex]?.char ?? '\uE0B0' };
-                    onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'w' || input === 'W') {
-                    // Cycle separator right
-                    const newIndex = (currentSeparatorIndex + 1) % separators.length;
-                    const newConfig = { ...powerlineConfig, separator: separators[newIndex]?.char ?? '\uE0B0' };
-                    onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'e' || input === 'E') {
-                    // Edit separator with custom hex
-                    setEditingMode('separator');
-                    setCustomInput('');
-                    setCursorPos(0);
-                } else if (input === 'a' || input === 'A') {
-                    // Cycle start cap left
-                    const newIndex = currentStartCapIndex <= 0 ? startCaps.length - 1 : currentStartCapIndex - 1;
-                    const newConfig = { ...powerlineConfig, startCap: startCaps[newIndex]?.char ?? '' };
-                    onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 's' || input === 'S') {
-                    // Cycle start cap right
-                    const newIndex = (currentStartCapIndex + 1) % startCaps.length;
-                    const newConfig = { ...powerlineConfig, startCap: startCaps[newIndex]?.char ?? '' };
-                    onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'd' || input === 'D') {
-                    // Edit start cap with custom hex
-                    setEditingMode('startCap');
-                    setCustomInput('');
-                    setCursorPos(0);
-                } else if (input === 'z' || input === 'Z') {
-                    // Cycle end cap left
-                    const newIndex = currentEndCapIndex <= 0 ? endCaps.length - 1 : currentEndCapIndex - 1;
-                    const newConfig = { ...powerlineConfig, endCap: endCaps[newIndex]?.char ?? '' };
-                    onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'x' || input === 'X') {
-                    // Cycle end cap right
-                    const newIndex = (currentEndCapIndex + 1) % endCaps.length;
-                    const newConfig = { ...powerlineConfig, endCap: endCaps[newIndex]?.char ?? '' };
-                    onUpdate({ ...settings, powerline: newConfig });
-                } else if (input === 'c' || input === 'C') {
-                    // Edit end cap with custom hex
-                    setEditingMode('endCap');
-                    setCustomInput('');
-                    setCursorPos(0);
+            } else if (/^[1-5]$/.test(input)) {
+                // Number key navigation for menu items
+                const index = parseInt(input, 10) - 1;
+                if (index < menuItems.length) {
+                    const selected = menuItems[index];
+                    if (selected?.value === 'back') {
+                        onBack();
+                    } else if (powerlineConfig.enabled && selected) {
+                        setScreen(selected.value as Screen);
+                    }
                 }
             }
         }
     });
 
-    const currentSeparator = separators[currentSeparatorIndex] ?? { char: powerlineConfig.separator ?? '\uE0B0', name: 'Custom', hex: 'Custom' };
-    const currentStartCap = startCaps[currentStartCapIndex] ?? { char: powerlineConfig.startCap ?? '', name: 'Custom', hex: 'Custom' };
-    const currentEndCap = endCaps[currentEndCapIndex] ?? { char: powerlineConfig.endCap ?? '', name: 'Custom', hex: 'Custom' };
+    // Render sub-screens
+    if (screen === 'separator') {
+        return (
+            <PowerlineSeparatorEditor
+                settings={settings}
+                mode='separator'
+                onUpdate={onUpdate}
+                onBack={() => { setScreen('menu'); }}
+            />
+        );
+    }
 
+    if (screen === 'startCap') {
+        return (
+            <PowerlineSeparatorEditor
+                settings={settings}
+                mode='startCap'
+                onUpdate={onUpdate}
+                onBack={() => { setScreen('menu'); }}
+            />
+        );
+    }
+
+    if (screen === 'endCap') {
+        return (
+            <PowerlineSeparatorEditor
+                settings={settings}
+                mode='endCap'
+                onUpdate={onUpdate}
+                onBack={() => { setScreen('menu'); }}
+            />
+        );
+    }
+
+    if (screen === 'themes') {
+        return (
+            <PowerlineThemeSelector
+                settings={settings}
+                onUpdate={onUpdate}
+                onBack={() => { setScreen('menu'); }}
+            />
+        );
+    }
+
+    // Main menu screen
     return (
         <Box flexDirection='column'>
             <Text bold>Powerline Configuration</Text>
@@ -246,22 +296,6 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                         <Text dimColor>Press any key to continue...</Text>
                     </Box>
                 </Box>
-            ) : editingMode ? (
-                <Box marginTop={2} flexDirection='column'>
-                    <Text>
-                        Enter 4-digit hex code for
-                        {editingMode === 'separator' ? 'separator' : editingMode === 'startCap' ? 'start cap' : 'end cap'}
-                        :
-                    </Text>
-                    <Text>
-                        \u
-                        {customInput.slice(0, cursorPos)}
-                        <Text backgroundColor='gray' color='black'>{customInput[cursorPos] ?? '_'}</Text>
-                        {customInput.slice(cursorPos + 1)}
-                        {customInput.length < 4 && customInput.length === cursorPos && <Text dimColor>{'_'.repeat(4 - customInput.length - 1)}</Text>}
-                    </Text>
-                    <Text dimColor>Enter 4 hex digits (0-9, A-F), then press Enter. ESC to cancel.</Text>
-                </Box>
             ) : (
                 <>
                     <Box flexDirection='column'>
@@ -287,43 +321,71 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     </Box>
 
                     {powerlineConfig.enabled && (
-                        <>
-                            <Box flexDirection='column'>
-                                <Text dimColor>When enabled, global overrides are disabled and powerline separators are used</Text>
-                            </Box>
-
-                            <Box marginTop={2}>
-                                <Text>
-                                    Separator:
-                                    {' '}
-                                    {currentSeparator.char ? `${currentSeparator.char} (${currentSeparator.name})` : '(none)'}
-                                </Text>
-                                <Text dimColor> - (q/w) cycle, (e) custom hex</Text>
-                            </Box>
-
-                            <Box>
-                                <Text>
-                                    Start Cap:
-                                    {' '}
-                                    {currentStartCap.char ? `${currentStartCap.char} (${currentStartCap.name})` : '(none)'}
-                                </Text>
-                                <Text dimColor> - (a/s) cycle, (d) custom hex</Text>
-                            </Box>
-
-                            <Box>
-                                <Text>
-                                    {'  '}
-                                    End Cap:
-                                    {' '}
-                                    {currentEndCap.char ? `${currentEndCap.char} (${currentEndCap.name})` : '(none)'}
-                                </Text>
-                                <Text dimColor> - (z/x) cycle, (c) custom hex</Text>
-                            </Box>
-                        </>
+                        <Box flexDirection='column' marginTop={1}>
+                            <Text dimColor>
+                                When enabled, global overrides are disabled and powerline separators are used
+                            </Text>
+                        </Box>
                     )}
 
-                    <Box marginTop={2}>
-                        <Text dimColor>Press ESC to go back</Text>
+                    <Box marginTop={1} flexDirection='column'>
+                        {powerlineConfig.enabled ? (
+                            <>
+                                {menuItems.map((item, index) => {
+                                    const isSelected = index === selectedMenuItem;
+                                    let displayValue = '';
+
+                                    switch (item.value) {
+                                    case 'separator':
+                                        displayValue = getSeparatorDisplay();
+                                        break;
+                                    case 'startCap':
+                                        displayValue = getCapDisplay('start');
+                                        break;
+                                    case 'endCap':
+                                        displayValue = getCapDisplay('end');
+                                        break;
+                                    case 'themes':
+                                        displayValue = getThemeDisplay();
+                                        break;
+                                    case 'back':
+                                        displayValue = '';
+                                        break;
+                                    }
+
+                                    if (item.value === 'back') {
+                                        return (
+                                            <Box key={item.value} marginTop={1}>
+                                                <Text color={isSelected ? 'green' : undefined}>
+                                                    {isSelected ? '▶  ' : '   '}
+                                                    {item.label}
+                                                </Text>
+                                            </Box>
+                                        );
+                                    }
+
+                                    return (
+                                        <Box key={item.value}>
+                                            <Text color={isSelected ? 'green' : undefined}>
+                                                {isSelected ? '▶  ' : '   '}
+                                                {`${index + 1}: ${item.label.padEnd(11, ' ')}`}
+                                                <Text dimColor>
+                                                    {displayValue && `(${displayValue})`}
+                                                </Text>
+                                            </Text>
+                                        </Box>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            // When powerline is disabled, only show the Back option
+                            <Box>
+                                <Text color={selectedMenuItem === menuItems.length - 1 ? 'green' : undefined}>
+                                    {selectedMenuItem === menuItems.length - 1 ? '▶  ' : '   '}
+                                    ← Back
+                                </Text>
+                            </Box>
+                        )}
                     </Box>
                 </>
             )}

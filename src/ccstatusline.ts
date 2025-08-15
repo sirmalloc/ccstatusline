@@ -77,9 +77,17 @@ async function renderMultipleLines(data: StatusJSON) {
     };
 
     // Render each line
-    for (const lineItems of lines) {
-        if (lineItems.length > 0) {
-            const line = renderStatusLine(lineItems, settings, context);
+    let globalSeparatorIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const lineItems = lines[i];
+        if (lineItems && lineItems.length > 0) {
+            const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
+            const line = renderStatusLine(lineItems, settings, lineContext);
+            // Count separators used in this line (widgets - 1, excluding merged widgets)
+            const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
+            if (nonMergedWidgets.length > 1) {
+                globalSeparatorIndex += nonMergedWidgets.length - 1;
+            }
             // Replace all spaces with non-breaking spaces to prevent VSCode trimming
             let outputLine = line.replace(/ /g, '\u00A0');
             // Add reset code at the beginning to override Claude Code's dim setting
