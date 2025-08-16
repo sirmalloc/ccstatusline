@@ -23,4 +23,5 @@ export class OutputStyleWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
+    supportsColors(): boolean { return true; }
 }
