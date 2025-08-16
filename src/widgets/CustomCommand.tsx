@@ -63,6 +63,12 @@ export class CustomCommandWidget implements Widget {
                     stdio: ['pipe', 'pipe', 'ignore']
                 }).trim();
 
+                // Strip ANSI codes if preserveColors is false
+                if (!item.preserveColors) {
+                    // Strip all ANSI escape sequences
+                    output = output.replace(/\x1b\[[0-9;]*m/g, '');
+                }
+
                 if (item.maxWidth && output.length > item.maxWidth) {
                     output = output.substring(0, item.maxWidth - 3) + '...';
                 }

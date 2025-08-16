@@ -72,7 +72,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             <Box borderStyle='round' borderColor='gray' borderDimColor width='100%' paddingLeft={1}>
                 <Text>
                     &gt;
-                    <Text dimColor> Preview</Text>
+                    <Text dimColor> Preview  (ctrl+s to save configuration at any time)</Text>
                 </Text>
             </Box>
             {renderedLines.map((line, index) => (

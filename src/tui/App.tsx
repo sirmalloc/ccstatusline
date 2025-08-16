@@ -62,6 +62,7 @@ export const App: React.FC = () => {
     const [installingFonts, setInstallingFonts] = useState(false);
     const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
     const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
+    const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
     useEffect(() => {
         // Load existing status line
@@ -106,9 +107,28 @@ export const App: React.FC = () => {
         }
     }, [settings, originalSettings]);
 
+    // Clear save message after 2 seconds
+    useEffect(() => {
+        if (saveMessage) {
+            const timer = setTimeout(() => {
+                setSaveMessage(null);
+            }, 2000);
+            return () => { clearTimeout(timer); };
+        }
+    }, [saveMessage]);
+
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
             exit();
+        }
+        // Global save shortcut
+        if (key.ctrl && input === 's' && settings) {
+            void (async () => {
+                await saveSettings(settings);
+                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings);
+                setHasChanges(false);
+                setSaveMessage('✓ Configuration saved');
+            })();
         }
     });
 
@@ -189,6 +209,11 @@ export const App: React.FC = () => {
                 <Text bold>
                     {` | ${getPackageVersion() && `v${getPackageVersion()}`}`}
                 </Text>
+                {saveMessage && (
+                    <Text color='green' bold>
+                        {`  ${saveMessage}`}
+                    </Text>
+                )}
             </Box>
 
             <StatusLinePreview lines={settings.lines} terminalWidth={terminalWidth} settings={settings} />
