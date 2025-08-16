@@ -6,18 +6,18 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
-export class ModelWidget implements Widget {
+export class OutputStyleWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
-    getDisplayName(): string { return 'Model'; }
+    getDisplayName(): string { return 'Output Style'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'Claude' : 'Model: Claude';
-        } else if (context.data?.model?.display_name) {
-            return item.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
+            return item.rawValue ? 'default' : 'Style: default';
+        } else if (context.data?.output_style?.name) {
+            return item.rawValue ? context.data.output_style.name : `Style: ${context.data.output_style.name}`;
         }
         return null;
     }

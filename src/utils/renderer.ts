@@ -312,10 +312,20 @@ function renderPowerlineStatusLine(
             let bgColor = widget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
+            // For custom commands with preserveColors, only skip foreground theme colors
+            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
+
             if (themeColors) {
-                fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length] ?? fgColor;
+                if (!skipFgTheme) {
+                    fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length] ?? fgColor;
+                }
                 bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length] ?? bgColor;
-                widgetColorIndex++;
+
+                // Only increment color index if this widget is not merged with the next one
+                // This ensures merged widgets share the same color
+                if (!widget.merge) {
+                    widgetColorIndex++;
+                }
             }
 
             // Apply override FG color if set (overrides theme)
@@ -367,23 +377,34 @@ function renderPowerlineStatusLine(
         const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
 
         let widgetContent = '';
-        if (shouldBold) {
+
+        // For custom commands with preserveColors, only skip foreground color/bold
+        const isPreserveColors = widget.widget.type === 'custom-command' && widget.widget.preserveColors;
+
+        if (shouldBold && !isPreserveColors) {
             widgetContent += '\x1b[1m';
         }
-        if (widget.fgColor) {
+        if (widget.fgColor && !isPreserveColors) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
         }
+        // Always apply background for consistency in powerline mode
         if (widget.bgColor) {
             widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
         }
         widgetContent += widget.content;
         // Reset colors after content
-        widgetContent += '\x1b[49m\x1b[39m';
-        // Only reset bold if there's no separator following AND no end cap
-        const isLastWidget = i === widgetElements.length - 1;
-        const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-        if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
-            widgetContent += '\x1b[22m';
+        // For custom commands with preserveColors, also reset text attributes like dim
+        if (isPreserveColors) {
+            // Full reset to clear any attributes from command (including dim from Claude Code)
+            widgetContent += '\x1b[0m';
+        } else {
+            widgetContent += '\x1b[49m\x1b[39m';
+            // Only reset bold if there's no separator following AND no end cap
+            const isLastWidget = i === widgetElements.length - 1;
+            const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
+            if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+                widgetContent += '\x1b[22m';
+            }
         }
 
         result += widgetContent;

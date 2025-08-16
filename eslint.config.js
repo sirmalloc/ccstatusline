@@ -55,6 +55,7 @@ export default ts.config([
             'import/external-module-folders': ['node_modules', 'node_modules/@types']
         },
         rules: {
+            'no-control-regex': 'off', // We intentionally match ANSI escape sequences
             'eqeqeq': 'error',
             'import/order': ['error', {
                 alphabetize: {

@@ -58,6 +58,7 @@
     "unrs-resolver"
   ],
   "dependencies": {
+    "strip-ansi": "^7.1.0",
     "zod": "^4.0.17"
   }
 }

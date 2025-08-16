@@ -1,4 +1,5 @@
 export { ModelWidget } from './Model';
+export { OutputStyleWidget } from './OutputStyle';
 export { GitBranchWidget } from './GitBranch';
 export { GitChangesWidget } from './GitChanges';
 export { TokensInputWidget } from './TokensInput';

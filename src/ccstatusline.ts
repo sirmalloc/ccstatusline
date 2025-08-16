@@ -2,6 +2,7 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
+import { StatusJSONSchema } from './types/StatusJSON';
 import { updateColorMap } from './utils/colors';
 import { loadSettings } from './utils/config';
 import {
@@ -53,23 +54,18 @@ async function renderMultipleLines(data: StatusJSON) {
     const lines = settings.lines;
 
     // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)
-    )
-    );
+    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)));
 
     // Check if session clock is needed
-    const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock')
-    );
+    const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
     let tokenMetrics = null;
-    if (hasTokenItems && data.transcript_path) {
+    if (hasTokenItems && data.transcript_path)
         tokenMetrics = await getTokenMetrics(data.transcript_path);
-    }
 
     let sessionDuration = null;
-    if (hasSessionClock && data.transcript_path) {
+    if (hasSessionClock && data.transcript_path)
         sessionDuration = await getSessionDuration(data.transcript_path);
-    }
 
     // Create render context
     const context: RenderContext = {
@@ -86,16 +82,23 @@ async function renderMultipleLines(data: StatusJSON) {
         if (lineItems && lineItems.length > 0) {
             const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
             const line = renderStatusLine(lineItems, settings, lineContext);
-            // Count separators used in this line (widgets - 1, excluding merged widgets)
-            const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
-            if (nonMergedWidgets.length > 1) {
-                globalSeparatorIndex += nonMergedWidgets.length - 1;
+
+            // Only output the line if it has content (not just ANSI codes)
+            // Strip ANSI codes to check if there's actual text
+            const strippedLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+            if (strippedLine.length > 0) {
+                // Count separators used in this line (widgets - 1, excluding merged widgets)
+                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
+                if (nonMergedWidgets.length > 1)
+                    globalSeparatorIndex += nonMergedWidgets.length - 1;
+
+                // Replace all spaces with non-breaking spaces to prevent VSCode trimming
+                let outputLine = line.replace(/ /g, '\u00A0');
+
+                // Add reset code at the beginning to override Claude Code's dim setting
+                outputLine = '\x1b[0m' + outputLine;
+                console.log(outputLine);
             }
-            // Replace all spaces with non-breaking spaces to prevent VSCode trimming
-            let outputLine = line.replace(/ /g, '\u00A0');
-            // Add reset code at the beginning to override Claude Code's dim setting
-            outputLine = '\x1b[0m' + outputLine;
-            console.log(outputLine);
         }
     }
 }
@@ -107,8 +110,14 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                const data = JSON.parse(input) as StatusJSON;
-                await renderMultipleLines(data);
+                // Parse and validate JSON in one step
+                const result = StatusJSONSchema.safeParse(JSON.parse(input));
+                if (!result.success) {
+                    console.error('Invalid status JSON format:', result.error.message);
+                    process.exit(1);
+                }
+
+                await renderMultipleLines(result.data);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);

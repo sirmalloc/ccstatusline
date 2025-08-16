@@ -24,7 +24,7 @@ export class CustomCommandWidget implements Widget {
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const cmd = item.commandPath ?? 'No command';
-        const truncatedCmd = cmd.length > 30 ? `${cmd.substring(0, 27)}...` : cmd;
+        const truncatedCmd = cmd.length > 20 ? `${cmd.substring(0, 17)}...` : cmd;
         const displayText = `${this.getDisplayName()} (${truncatedCmd})`;
 
         // Build modifiers string
@@ -36,7 +36,7 @@ export class CustomCommandWidget implements Widget {
             modifiers.push(`timeout:${item.timeout}ms`);
         }
         if (item.preserveColors) {
-            modifiers.push('preserve colors');
+            modifiers.push('preserve');
         }
 
         return {

@@ -3,21 +3,10 @@ import { z } from 'zod';
 import type { RenderContext } from './RenderContext';
 import type { Settings } from './Settings';
 
-// Known widget types
-export const KNOWN_WIDGET_TYPES = [
-    'model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
-    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total',
-    'context-length', 'context-percentage', 'context-percentage-usable',
-    'terminal-width', 'session-clock', 'version', 'custom-text', 'custom-command'
-] as const;
-
 // Widget item schema - accepts any string type for forward compatibility
 export const WidgetItemSchema = z.object({
     id: z.string(),
-    type: z.union([
-        z.enum(KNOWN_WIDGET_TYPES),
-        z.string() // Accept any string for forward compatibility
-    ]),
+    type: z.string(),
     color: z.string().optional(),
     backgroundColor: z.string().optional(),
     bold: z.boolean().optional(),

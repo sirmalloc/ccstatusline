@@ -4,6 +4,7 @@
     "": {
       "name": "ccstatusline",
       "dependencies": {
+        "strip-ansi": "^7.1.0",
         "zod": "^4.0.17",
       },
       "devDependencies": {

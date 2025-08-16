@@ -8,6 +8,7 @@ import * as widgets from '../widgets';
 // Create widget registry
 const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['model', new widgets.ModelWidget()],
+    ['output-style', new widgets.OutputStyleWidget()],
     ['git-branch', new widgets.GitBranchWidget()],
     ['git-changes', new widgets.GitChangesWidget()],
     ['tokens-input', new widgets.TokensInputWidget()],
