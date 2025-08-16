@@ -144,6 +144,7 @@ export const App: React.FC = () => {
                 action: async () => {
                     await uninstallStatusLine();
                     setIsClaudeInstalled(false);
+                    setExistingStatusLine(null);
                     setScreen('main');
                     setConfirmDialog(null);
                 }
@@ -374,6 +375,7 @@ export const App: React.FC = () => {
                                     action: async () => {
                                         await installStatusLine(false);
                                         setIsClaudeInstalled(true);
+                                        setExistingStatusLine('npx -y ccstatusline@latest');
                                         setScreen('main');
                                         setConfirmDialog(null);
                                     }
@@ -399,6 +401,7 @@ export const App: React.FC = () => {
                                     action: async () => {
                                         await installStatusLine(true);
                                         setIsClaudeInstalled(true);
+                                        setExistingStatusLine('bunx -y ccstatusline@latest');
                                         setScreen('main');
                                         setConfirmDialog(null);
                                     }

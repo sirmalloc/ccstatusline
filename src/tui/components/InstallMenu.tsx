@@ -56,7 +56,7 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
             <Text bold>Install ccstatusline to Claude Code</Text>
 
             {existingStatusLine && (
-                <Box marginTop={1} marginBottom={1}>
+                <Box marginBottom={1}>
                     <Text color='yellow'>
                         ⚠ Current status line: "
                         {existingStatusLine}
