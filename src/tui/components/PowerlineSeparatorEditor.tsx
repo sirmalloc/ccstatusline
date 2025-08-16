@@ -309,7 +309,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                                 </Box>
                             ))
                         ) : (
-                            <Text dimColor>(none configured)</Text>
+                            <Text dimColor>(none configured - press 'a' to add)</Text>
                         )}
                     </Box>
                 </>

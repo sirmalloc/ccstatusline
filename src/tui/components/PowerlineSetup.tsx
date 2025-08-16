@@ -14,7 +14,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { PowerlineSeparatorEditor } from './PowerlineSeparatorEditor';
 import { PowerlineThemeSelector } from './PowerlineThemeSelector';
 
-export interface PowerlineConfigurationProps {
+export interface PowerlineSetupProps {
     settings: Settings;
     powerlineFontStatus: PowerlineFontStatus;
     onUpdate: (settings: Settings) => void;
@@ -27,7 +27,7 @@ export interface PowerlineConfigurationProps {
 
 type Screen = 'menu' | 'separator' | 'startCap' | 'endCap' | 'themes';
 
-export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
+export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     settings,
     powerlineFontStatus,
     onUpdate,
@@ -183,17 +183,6 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
             } else if (input === 'i' || input === 'I') {
                 // Show font installation consent prompt
                 setConfirmingFontInstall(true);
-            } else if (/^[1-5]$/.test(input)) {
-                // Number key navigation for menu items
-                const index = parseInt(input, 10) - 1;
-                if (index < menuItems.length) {
-                    const selected = menuItems[index];
-                    if (selected?.value === 'back') {
-                        onBack();
-                    } else if (powerlineConfig.enabled && selected) {
-                        setScreen(selected.value as Screen);
-                    }
-                }
             }
         }
     });
@@ -246,7 +235,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
     return (
         <Box flexDirection='column'>
             {!confirmingFontInstall && !installingFonts && !fontInstallMessage && (
-                <Text bold>Powerline Configuration</Text>
+                <Text bold>Powerline Setup</Text>
             )}
 
             {confirmingFontInstall ? (
@@ -449,7 +438,7 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                                         <Box key={item.value}>
                                             <Text color={isSelected ? 'green' : undefined}>
                                                 {isSelected ? '▶  ' : '   '}
-                                                {`${index + 1}: ${item.label.padEnd(11, ' ')}`}
+                                                {item.label.padEnd(11, ' ')}
                                                 <Text dimColor>
                                                     {displayValue && `(${displayValue})`}
                                                 </Text>

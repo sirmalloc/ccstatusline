@@ -4,7 +4,6 @@ import {
     Text,
     useInput
 } from 'ink';
-import SelectInput from 'ink-select-input';
 import React, { useState } from 'react';
 
 import {
@@ -13,30 +12,28 @@ import {
 } from '../../utils/config';
 import { getWidget } from '../../utils/widgets';
 
-export interface TerminalConfigMenuProps {
+import { ConfirmDialog } from './ConfirmDialog';
+
+export interface TerminalOptionsMenuProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
     onBack: (target?: string) => void;
 }
 
-export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings, onUpdate, onBack }) => {
+export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settings, onUpdate, onBack }) => {
     const [showColorWarning, setShowColorWarning] = useState(false);
     const [pendingColorLevel, setPendingColorLevel] = useState<0 | 1 | 2 | 3 | null>(null);
-    const [highlightedValue, setHighlightedValue] = useState<string>('width');
+    const [selectedIndex, setSelectedIndex] = useState(0);
 
-    const menuItems = [
-        { label: '📏 Terminal Width Options', value: 'width' },
-        { label: `🎨 Color Level: ${getColorLevelLabel(settings.colorLevel)}`, value: 'color' },
-        { label: '← Back', value: 'back' }
-    ];
-
-    const handleSelect = (selected: { value: string }) => {
-        if (selected.value === 'back') {
+    const handleSelect = () => {
+        if (selectedIndex === 2) {
+            // Back button
             onBack();
-        } else if (selected.value === 'width') {
-            // Navigate to width options screen
+        } else if (selectedIndex === 0) {
+            // Terminal Width Options
             onBack('width');
-        } else if (selected.value === 'color') {
+        } else if (selectedIndex === 1) {
+            // Color Level
             // Check if there are any custom colors that would be lost
             const hasCustomColors = settings.lines.some((line: WidgetItem[]) => line.some((widget: WidgetItem) => Boolean(widget.color && (widget.color.startsWith('ansi256:') || widget.color.startsWith('hex:')))
                 || Boolean(widget.backgroundColor && (widget.backgroundColor.startsWith('ansi256:') || widget.backgroundColor.startsWith('hex:')))
@@ -107,89 +104,108 @@ export const TerminalConfigMenu: React.FC<TerminalConfigMenuProps> = ({ settings
         }
     };
 
+    const handleColorConfirm = () => {
+        // Proceed with color level change and clean up custom colors
+        if (pendingColorLevel !== null) {
+            chalk.level = pendingColorLevel;
+
+            // Clean up custom colors if switching away from modes that support them
+            const cleanedLines = settings.lines.map(line => line.map((widget) => {
+                const newWidget = { ...widget };
+                // Remove custom colors if switching to a mode that doesn't support them
+                if ((pendingColorLevel !== 2 && pendingColorLevel !== 3)
+                    || (pendingColorLevel === 2 && (widget.color?.startsWith('hex:') || widget.backgroundColor?.startsWith('hex:')))
+                    || (pendingColorLevel === 3 && (widget.color?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('ansi256:')))) {
+                    // Reset custom colors to defaults
+                    if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
+                        if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
+                            const widgetImpl = getWidget(widget.type);
+                            newWidget.color = widgetImpl.getDefaultColor();
+                        }
+                    }
+                    if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
+                        newWidget.backgroundColor = undefined;
+                    }
+                }
+                return newWidget;
+            })
+            );
+
+            onUpdate({
+                ...settings,
+                lines: cleanedLines,
+                colorLevel: pendingColorLevel
+            });
+        }
+        setShowColorWarning(false);
+        setPendingColorLevel(null);
+    };
+
+    const handleColorCancel = () => {
+        setShowColorWarning(false);
+        setPendingColorLevel(null);
+    };
+
     useInput((input, key) => {
         if (key.escape) {
-            if (showColorWarning) {
-                setShowColorWarning(false);
-                setPendingColorLevel(null);
-            } else {
+            if (!showColorWarning) {
                 onBack();
             }
-        } else if (showColorWarning) {
-            if (input === 'y' || input === 'Y') {
-                // Proceed with color level change and clean up custom colors
-                if (pendingColorLevel !== null) {
-                    chalk.level = pendingColorLevel;
-
-                    // Clean up custom colors if switching away from modes that support them
-                    const cleanedLines = settings.lines.map(line => line.map((widget) => {
-                        const newWidget = { ...widget };
-                        // Remove custom colors if switching to a mode that doesn't support them
-                        if ((pendingColorLevel !== 2 && pendingColorLevel !== 3)
-                            || (pendingColorLevel === 2 && (widget.color?.startsWith('hex:') || widget.backgroundColor?.startsWith('hex:')))
-                            || (pendingColorLevel === 3 && (widget.color?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('ansi256:')))) {
-                            // Reset custom colors to defaults
-                            if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
-                                if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-                                    const widgetImpl = getWidget(widget.type);
-                                    newWidget.color = widgetImpl.getDefaultColor();
-                                }
-                            }
-                            if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
-                                newWidget.backgroundColor = undefined;
-                            }
-                        }
-                        return newWidget;
-                    })
-                    );
-
-                    onUpdate({
-                        ...settings,
-                        lines: cleanedLines,
-                        colorLevel: pendingColorLevel
-                    });
-                }
-                setShowColorWarning(false);
-                setPendingColorLevel(null);
-            } else if (input === 'n' || input === 'N') {
-                // Cancel
-                setShowColorWarning(false);
-                setPendingColorLevel(null);
+        } else if (!showColorWarning) {
+            if (key.upArrow) {
+                setSelectedIndex(Math.max(0, selectedIndex - 1));
+            } else if (key.downArrow) {
+                setSelectedIndex(Math.min(2, selectedIndex + 1));
+            } else if (key.return) {
+                handleSelect();
             }
         }
     });
 
     return (
         <Box flexDirection='column'>
-            <Text bold>Terminal Configuration</Text>
+            <Text bold>Terminal Options</Text>
             {showColorWarning ? (
                 <Box flexDirection='column' marginTop={1}>
-                    <Text color='yellow'>⚠️  Warning: Custom colors detected!</Text>
+                    <Text color='yellow'>⚠ Warning: Custom colors detected!</Text>
                     <Text>Switching color modes will reset custom ansi256 or hex colors to defaults.</Text>
-                    <Text>Continue? (y/n)</Text>
+                    <Box marginTop={1}>
+                        <ConfirmDialog
+                            message='Continue?'
+                            onConfirm={handleColorConfirm}
+                            onCancel={handleColorCancel}
+                            inline
+                        />
+                    </Box>
                 </Box>
             ) : (
                 <>
                     <Text color='white'>Configure terminal-specific settings for optimal display</Text>
-                    <Box marginTop={1}>
-                        <SelectInput
-                            items={menuItems}
-                            onSelect={handleSelect}
-                            onHighlight={(item) => { setHighlightedValue(item.value); }}
-                            initialIndex={0}
-                            indicatorComponent={({ isSelected }) => (
-                                <Text>{isSelected ? '▶' : '  '}</Text>
-                            )}
-                            itemComponent={({ isSelected, label }) => (
-                                <Text color={isSelected ? 'green' : undefined}>
-                                    {' '}
-                                    {label}
-                                </Text>
-                            )}
-                        />
+                    <Box marginTop={1} flexDirection='column'>
+                        <Box>
+                            <Text color={selectedIndex === 0 ? 'green' : undefined}>
+                                {selectedIndex === 0 ? '▶  ' : '   '}
+                                ◱ Terminal Width Options
+                            </Text>
+                        </Box>
+                        <Box>
+                            <Text color={selectedIndex === 1 ? 'green' : undefined}>
+                                {selectedIndex === 1 ? '▶  ' : '   '}
+                                ▓ Color Level:
+                                {' '}
+                                {getColorLevelLabel(settings.colorLevel)}
+                            </Text>
+                        </Box>
+
+                        <Box marginTop={1}>
+                            <Text color={selectedIndex === 2 ? 'green' : undefined}>
+                                {selectedIndex === 2 ? '▶  ' : '   '}
+                                ← Back
+                            </Text>
+                        </Box>
                     </Box>
 
-                    {highlightedValue === 'color' && (
+                    {selectedIndex === 1 && (
                         <Box marginTop={1} flexDirection='column'>
                             <Text dimColor>Color level affects how colors are rendered:</Text>
                             <Text dimColor>• Truecolor: Full 24-bit RGB colors (16.7M colors)</Text>

@@ -23,11 +23,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     // Build menu structure with visual gaps
     const menuItems = [
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
-        { label: '🎨 Configure Colors', value: 'colors', selectable: true },
-        { label: '🔤 Powerline Configuration', value: 'powerline', selectable: true },
+        { label: '🎨 Edit Colors', value: 'colors', selectable: true },
+        { label: '⚡ Powerline Setup', value: 'powerline', selectable: true },
         { label: '', value: '_gap1', selectable: false },  // Visual gap
-        { label: '🔧 Global Overrides', value: 'globalOverrides', selectable: true },
-        { label: '📏 Terminal Configuration', value: 'terminalConfig', selectable: true },
+        { label: '💻 Terminal Options', value: 'terminalConfig', selectable: true },
+        { label: '🌐 Global Overrides', value: 'globalOverrides', selectable: true },
         { label: '', value: '_gap2', selectable: false },  // Visual gap
         { label: isClaudeInstalled ? '🗑️  Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install', selectable: true }
     ];

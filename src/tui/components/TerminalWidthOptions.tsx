@@ -3,7 +3,6 @@ import {
     Text,
     useInput
 } from 'ink';
-import SelectInput from 'ink-select-input';
 import React, { useState } from 'react';
 
 import {
@@ -23,7 +22,14 @@ export const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ sett
     const [editingThreshold, setEditingThreshold] = useState(false);
     const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold));
     const [validationError, setValidationError] = useState<string | null>(null);
-    const [highlightedOption, setHighlightedOption] = useState<FlexMode>(settings.flexMode);
+
+    // For manual navigation: 0-2 for options, 3 for back
+    const [selectedIndex, setSelectedIndex] = useState(() => {
+        const options: FlexMode[] = ['full', 'full-minus-40', 'full-until-compact'];
+        return options.indexOf(settings.flexMode);
+    });
+
+    const options: FlexMode[] = ['full', 'full-minus-40', 'full-until-compact'];
 
     useInput((input, key) => {
         if (editingThreshold) {
@@ -64,11 +70,37 @@ export const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ sett
         } else {
             if (key.escape) {
                 onBack();
+            } else if (key.upArrow) {
+                setSelectedIndex(Math.max(0, selectedIndex - 1));
+            } else if (key.downArrow) {
+                setSelectedIndex(Math.min(3, selectedIndex + 1)); // 0-2 for options, 3 for back
+            } else if (key.return) {
+                if (selectedIndex === 3) {
+                    onBack();
+                } else if (selectedIndex >= 0 && selectedIndex < options.length) {
+                    const mode = options[selectedIndex];
+                    if (mode) {
+                        setSelectedOption(mode);
+
+                        // Update settings
+                        const updatedSettings = {
+                            ...settings,
+                            flexMode: mode,
+                            compactThreshold: compactThreshold
+                        };
+                        onUpdate(updatedSettings);
+
+                        if (mode === 'full-until-compact') {
+                            // Prompt for threshold editing
+                            setEditingThreshold(true);
+                        }
+                    }
+                }
             }
         }
     });
 
-    const options = [
+    const optionDetails = [
         {
             value: 'full' as FlexMode,
             label: 'Full width always',
@@ -86,37 +118,13 @@ export const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ sett
         }
     ];
 
-    const handleSelect = (item: { value: string }) => {
-        const mode = item.value as FlexMode;
-        setSelectedOption(mode);
-
-        // Always update both flexMode and compactThreshold together
-        const updatedSettings = {
-            ...settings,
-            flexMode: mode,
-            compactThreshold: compactThreshold
-        };
-        onUpdate(updatedSettings);
-
-        if (mode === 'full-until-compact') {
-            // Prompt for threshold editing
-            setEditingThreshold(true);
-        }
-    };
-
-    const menuItems = options.map(opt => ({
-        label: opt.label + (opt.value === selectedOption ? ' ✓' : ''),
-        value: opt.value as string
-    }));
-    menuItems.push({ label: '← Back', value: 'back' });
-
-    const currentOption = options.find(o => o.value === highlightedOption);
+    const currentOption = selectedIndex < 3 ? optionDetails[selectedIndex] : null;
 
     return (
         <Box flexDirection='column'>
             <Text bold>Terminal Width Options</Text>
             <Text color='white'>These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators</Text>
-            <Text dimColor wrap='wrap'>These settings are necessary because claude code does not currently provide an available width variable for the statusline and features like IDE integration, auto-compaction notices, and rate limit messages can all cause the statusline to wrap if we do not truncate it</Text>
+            <Text dimColor wrap='wrap'>Claude code does not currently provide an available width variable for the statusline and features like IDE integration, auto-compaction notices, etc all cause the statusline to wrap if we do not truncate it</Text>
 
             {editingThreshold ? (
                 <Box marginTop={1} flexDirection='column'>
@@ -133,32 +141,23 @@ export const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ sett
                 </Box>
             ) : (
                 <>
-                    <Box marginTop={1}>
-                        <SelectInput
-                            items={menuItems}
-                            initialIndex={options.findIndex(o => o.value === selectedOption)}
-                            onHighlight={(item) => {
-                                if (item.value !== 'back') {
-                                    setHighlightedOption(item.value as FlexMode);
-                                }
-                            }}
-                            onSelect={(item) => {
-                                if (item.value === 'back') {
-                                    onBack();
-                                } else {
-                                    handleSelect(item);
-                                }
-                            }}
-                            indicatorComponent={({ isSelected }) => (
-                                <Text>{isSelected ? '▶' : '  '}</Text>
-                            )}
-                            itemComponent={({ isSelected, label }) => (
-                                <Text color={isSelected ? 'green' : undefined}>
-                                    {' '}
-                                    {label}
+                    <Box marginTop={1} flexDirection='column'>
+                        {optionDetails.map((opt, index) => (
+                            <Box key={opt.value}>
+                                <Text color={selectedIndex === index ? 'green' : undefined}>
+                                    {selectedIndex === index ? '▶  ' : '   '}
+                                    {opt.label}
+                                    {opt.value === selectedOption ? ' ✓' : ''}
                                 </Text>
-                            )}
-                        />
+                            </Box>
+                        ))}
+
+                        <Box marginTop={1}>
+                            <Text color={selectedIndex === 3 ? 'green' : undefined}>
+                                {selectedIndex === 3 ? '▶  ' : '   '}
+                                ← Back
+                            </Text>
+                        </Box>
                     </Box>
 
                     {currentOption && (
@@ -166,7 +165,7 @@ export const TerminalWidthOptions: React.FC<TerminalWidthOptionsProps> = ({ sett
                             <Box flexDirection='column'>
                                 <Text>
                                     <Text color='yellow'>{currentOption.label}</Text>
-                                    {highlightedOption === 'full-until-compact' && ` | Current threshold: ${compactThreshold}%`}
+                                    {currentOption.value === 'full-until-compact' && ` | Current threshold: ${compactThreshold}%`}
                                 </Text>
                                 <Text dimColor wrap='wrap'>{currentOption.description}</Text>
                             </Box>

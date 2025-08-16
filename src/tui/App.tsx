@@ -41,9 +41,9 @@ import {
     ItemsEditor,
     LineSelector,
     MainMenu,
-    PowerlineConfiguration,
+    PowerlineSetup,
     StatusLinePreview,
-    TerminalConfigMenu,
+    TerminalOptionsMenu,
     TerminalWidthOptions
 } from './components';
 
@@ -191,9 +191,6 @@ export const App: React.FC = () => {
                 </Text>
             </Box>
 
-            <Box marginBottom={1}>
-                <Text dimColor>Preview:</Text>
-            </Box>
             <StatusLinePreview lines={settings.lines} terminalWidth={terminalWidth} settings={settings} />
 
             <Box marginTop={2}>
@@ -206,7 +203,7 @@ export const App: React.FC = () => {
                                     lines: 0,
                                     colors: 1,
                                     powerline: 2,
-                                    terminalWidth: 3,
+                                    terminalConfig: 3,
                                     globalOverrides: 4,
                                     install: 5
                                 };
@@ -280,7 +277,7 @@ export const App: React.FC = () => {
                     />
                 )}
                 {screen === 'terminalConfig' && (
-                    <TerminalConfigMenu
+                    <TerminalOptionsMenu
                         settings={settings}
                         onUpdate={(updatedSettings) => {
                             setSettings(updatedSettings);
@@ -289,8 +286,8 @@ export const App: React.FC = () => {
                             if (target === 'width') {
                                 setScreen('terminalWidth');
                             } else {
-                                // Save that we came from 'terminalConfig' menu (index 4 - accounting for gaps)
-                                setMenuSelections({ ...menuSelections, main: 4 });
+                                // Save that we came from 'terminalConfig' menu (index 3)
+                                setMenuSelections({ ...menuSelections, main: 3 });
                                 setScreen('main');
                             }
                         }}
@@ -314,8 +311,8 @@ export const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'globalOverrides' menu (index 3 - accounting for gaps)
-                            setMenuSelections({ ...menuSelections, main: 3 });
+                            // Save that we came from 'globalOverrides' menu (index 4)
+                            setMenuSelections({ ...menuSelections, main: 4 });
                             setScreen('main');
                         }}
                     />
@@ -390,7 +387,7 @@ export const App: React.FC = () => {
                     />
                 )}
                 {screen === 'powerline' && (
-                    <PowerlineConfiguration
+                    <PowerlineSetup
                         settings={settings}
                         powerlineFontStatus={powerlineFontStatus}
                         onUpdate={(updatedSettings) => {

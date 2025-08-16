@@ -72,11 +72,14 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
     return (
         <Box flexDirection='column'>
             <Box borderStyle='round' borderColor='gray' borderDimColor width='100%' paddingLeft={1}>
-                <Text>&gt;</Text>
+                <Text>
+                    &gt;
+                    <Text dimColor> Preview</Text>
+                </Text>
             </Box>
             {renderedLines.map((line, index) => (
                 <Text key={index}>
-                    {' '}
+                    {'  '}
                     {line}
                     {chalk.reset('')}
                 </Text>

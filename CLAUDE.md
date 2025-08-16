@@ -44,7 +44,7 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
 - **App.tsx**: Root component managing navigation and state
 - **components/**: Modular UI components for different configuration screens
   - MainMenu, LineSelector, ItemsEditor, ColorMenu, GlobalOverridesMenu
-  - PowerlineConfiguration, TerminalConfigMenu, StatusLinePreview
+  - PowerlineSetup, TerminalOptionsMenu, StatusLinePreview
 
 ### Utilities (src/utils/)
 - **config.ts**: Settings management
@@ -85,5 +85,6 @@ Default to using Bun instead of Node.js:
 - **ESLint configuration**: Uses flat config format (eslint.config.js) with TypeScript and React plugins
 - **Build target**: When building for distribution, target Node.js 14+ for maximum compatibility
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
-- Only run type checking and linting via the 'bun run lint' command, never using 'npx eslint' or 'eslint' directly.  Never run 'tsx', 'bun tsc' or any other variation.
-- Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
+- **Type checking and linting**: Only run via `bun run lint` command, never using `npx eslint` or `eslint` directly. Never run `tsx`, `bun tsc` or any other variation
+- **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
+- **Testing**: No test framework is currently configured. Manual testing is done via piped input and TUI interaction
