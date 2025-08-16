@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -34,18 +35,28 @@ export async function saveClaudeSettings(settings: ClaudeSettings): Promise<void
 
 export async function isInstalled(): Promise<boolean> {
     const settings = await loadClaudeSettings();
-    // Check if command is correct AND padding is 0 (or undefined for new installs)
-    return settings.statusLine?.command === 'npx -y ccstatusline@latest'
-        && (settings.statusLine.padding === 0 || settings.statusLine.padding === undefined);
+    // Check if command is either npx or bunx version AND padding is 0 (or undefined for new installs)
+    const validCommands = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'];
+    return validCommands.includes(settings.statusLine?.command ?? '')
+        && (settings.statusLine?.padding === 0 || settings.statusLine?.padding === undefined);
 }
 
-export async function installStatusLine(): Promise<void> {
+export function isBunxAvailable(): boolean {
+    try {
+        execSync('which bunx', { stdio: 'ignore' });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export async function installStatusLine(useBunx = false): Promise<void> {
     const settings = await loadClaudeSettings();
 
     // Update settings with our status line (confirmation already handled in TUI)
     settings.statusLine = {
         type: 'command',
-        command: 'npx -y ccstatusline@latest',
+        command: useBunx ? 'bunx -y ccstatusline@latest' : 'npx -y ccstatusline@latest',
         padding: 0
     };
 

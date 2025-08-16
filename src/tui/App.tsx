@@ -15,6 +15,7 @@ import React, {
 import {
     getExistingStatusLine,
     installStatusLine,
+    isBunxAvailable,
     isInstalled,
     uninstallStatusLine
 } from '../utils/claude-settings';
@@ -36,6 +37,7 @@ import {
     ColorMenu,
     ConfirmDialog,
     GlobalOverridesMenu,
+    InstallMenu,
     ItemsEditor,
     LineSelector,
     MainMenu,
@@ -50,7 +52,7 @@ export const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline' | 'install'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
@@ -59,8 +61,12 @@ export const App: React.FC = () => {
     const [powerlineFontStatus, setPowerlineFontStatus] = useState<PowerlineFontStatus>({ installed: false });
     const [installingFonts, setInstallingFonts] = useState(false);
     const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
+    const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
 
     useEffect(() => {
+        // Load existing status line
+        void getExistingStatusLine().then(setExistingStatusLine);
+
         void loadSettings().then((loadedSettings) => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
@@ -110,7 +116,7 @@ export const App: React.FC = () => {
         return <Text>Loading settings...</Text>;
     }
 
-    const handleInstallUninstall = async () => {
+    const handleInstallUninstall = () => {
         if (isClaudeInstalled) {
             // Uninstall
             setConfirmDialog({
@@ -124,28 +130,8 @@ export const App: React.FC = () => {
             });
             setScreen('confirm');
         } else {
-            // Always ask for consent before modifying Claude settings
-            const existing = await getExistingStatusLine();
-            let message: string;
-
-            if (existing && existing !== 'npx -y ccstatusline@latest') {
-                message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
-            } else if (existing === 'npx -y ccstatusline@latest') {
-                message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with the latest options?';
-            } else {
-                message = 'This will modify ~/.claude/settings.json to add ccstatusline.\nContinue?';
-            }
-
-            setConfirmDialog({
-                message,
-                action: async () => {
-                    await installStatusLine();
-                    setIsClaudeInstalled(true);
-                    setScreen('main');
-                    setConfirmDialog(null);
-                }
-            });
-            setScreen('confirm');
+            // Show install menu to select npx or bunx
+            setScreen('install');
         }
     };
 
@@ -167,7 +153,7 @@ export const App: React.FC = () => {
             setScreen('powerline');
             break;
         case 'install':
-            await handleInstallUninstall();
+            handleInstallUninstall();
             break;
         case 'save':
             await saveSettings(settings);
@@ -341,6 +327,65 @@ export const App: React.FC = () => {
                         onCancel={() => {
                             setScreen('main');
                             setConfirmDialog(null);
+                        }}
+                    />
+                )}
+                {screen === 'install' && (
+                    <InstallMenu
+                        bunxAvailable={isBunxAvailable()}
+                        existingStatusLine={existingStatusLine}
+                        onSelectNpx={() => {
+                            void getExistingStatusLine().then((existing) => {
+                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
+                                let message: string;
+
+                                if (existing && !isAlreadyInstalled) {
+                                    message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
+                                } else if (isAlreadyInstalled) {
+                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with npx -y ccstatusline@latest?';
+                                } else {
+                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with npx.\nContinue?';
+                                }
+
+                                setConfirmDialog({
+                                    message,
+                                    action: async () => {
+                                        await installStatusLine(false);
+                                        setIsClaudeInstalled(true);
+                                        setScreen('main');
+                                        setConfirmDialog(null);
+                                    }
+                                });
+                                setScreen('confirm');
+                            });
+                        }}
+                        onSelectBunx={() => {
+                            void getExistingStatusLine().then((existing) => {
+                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
+                                let message: string;
+
+                                if (existing && !isAlreadyInstalled) {
+                                    message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with bunx -y ccstatusline@latest?`;
+                                } else if (isAlreadyInstalled) {
+                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with bunx -y ccstatusline@latest?';
+                                } else {
+                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with bunx.\nContinue?';
+                                }
+
+                                setConfirmDialog({
+                                    message,
+                                    action: async () => {
+                                        await installStatusLine(true);
+                                        setIsClaudeInstalled(true);
+                                        setScreen('main');
+                                        setConfirmDialog(null);
+                                    }
+                                });
+                                setScreen('confirm');
+                            });
+                        }}
+                        onCancel={() => {
+                            setScreen('main');
                         }}
                     />
                 )}
