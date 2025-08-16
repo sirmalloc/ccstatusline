@@ -5,7 +5,7 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import { type Settings } from '../../utils/config';
+import type { Settings } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 export interface MainMenuProps {

@@ -5,7 +5,7 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import type { WidgetItem } from '../../utils/config';
+import type { WidgetItem } from '../../types/Widget';
 
 interface LineSelectorProps {
     lines: WidgetItem[][];

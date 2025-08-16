@@ -5,13 +5,13 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import type { Widget } from '../../types/Widget';
+import type { Settings } from '../../types/Settings';
+import type {
+    Widget,
+    WidgetItem,
+    WidgetItemType
+} from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
-import {
-    type Settings,
-    type WidgetItem,
-    type WidgetItemType
-} from '../../utils/config';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {

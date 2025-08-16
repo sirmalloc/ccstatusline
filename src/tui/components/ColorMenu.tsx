@@ -7,16 +7,14 @@ import {
 import SelectInput from 'ink-select-input';
 import React, { useState } from 'react';
 
+import { getColorLevelString } from '../../types/ColorLevel';
+import type { Settings } from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
 import {
     applyColors,
     getAvailableBackgroundColorsForUI,
     getAvailableColorsForUI
 } from '../../utils/colors';
-import {
-    getColorLevelString,
-    type Settings,
-    type WidgetItem
-} from '../../utils/config';
 import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';

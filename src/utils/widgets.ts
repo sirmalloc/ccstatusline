@@ -47,7 +47,7 @@ export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
 }
 
 export function isWidgetType(type: string): boolean {
-    return widgetRegistry.has(type as WidgetItemType)
+    return widgetRegistry.has(type)
         || type === 'separator'
         || type === 'flex-separator';
 }

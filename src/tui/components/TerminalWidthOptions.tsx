@@ -5,10 +5,8 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import {
-    type FlexMode,
-    type Settings
-} from '../../utils/config';
+import type { FlexMode } from '../../types/FlexMode';
+import type { Settings } from '../../types/Settings';
 
 export interface TerminalWidthOptionsProps {
     settings: Settings;

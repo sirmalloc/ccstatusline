@@ -11,6 +11,7 @@ import type {
     TranscriptLine,
     WidgetItem
 } from '../types';
+import { getColorLevelString } from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
 import {
@@ -19,7 +20,6 @@ import {
     getColorAnsiCode,
     getPowerlineTheme
 } from './colors';
-import { getColorLevelString } from './config';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 

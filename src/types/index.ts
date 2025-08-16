@@ -6,14 +6,11 @@ export type {
     WidgetItem,
     WidgetItemType
 } from './Widget';
-export type {
-    ColorLevelString,
-    FlexMode,
-    LegacySettings,
-    PartialSettings,
-    PowerlineConfig,
-    Settings
-} from './Settings';
+export type { Settings } from './Settings';
+export type { FlexMode } from './FlexMode';
+export type { PowerlineConfig } from './PowerlineConfig';
+export type { ColorLevel, ColorLevelString } from './ColorLevel';
+export { getColorLevelString } from './ColorLevel';
 export type { StatusJSON } from './StatusJSON';
 export type { TokenMetrics, TokenUsage, TranscriptLine } from './TokenMetrics';
 export type { RenderContext } from './RenderContext';

@@ -5,12 +5,12 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
+import type { Settings } from '../../types/Settings';
 import {
     COLOR_MAP,
     getChalkColor,
     getColorDisplayName
 } from '../../utils/colors';
-import { type Settings } from '../../utils/config';
 
 import { ConfirmDialog } from './ConfirmDialog';
 

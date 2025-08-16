@@ -6,10 +6,8 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import {
-    type Settings,
-    type WidgetItem
-} from '../../utils/config';
+import type { Settings } from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
 import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';

@@ -6,8 +6,8 @@ import {
 import * as os from 'os';
 import React, { useState } from 'react';
 
+import type { Settings } from '../../types/Settings';
 import { getDefaultPowerlineTheme } from '../../utils/colors';
-import type { Settings } from '../../utils/config';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { ConfirmDialog } from './ConfirmDialog';

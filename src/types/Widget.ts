@@ -1,24 +1,39 @@
+import { z } from 'zod';
+
 import type { RenderContext } from './RenderContext';
 import type { Settings } from './Settings';
 
-export type WidgetItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator'
-    | 'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
+// Known widget types
+export const KNOWN_WIDGET_TYPES = [
+    'model', 'git-branch', 'git-changes', 'separator', 'flex-separator',
+    'tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total',
+    'context-length', 'context-percentage', 'context-percentage-usable',
+    'terminal-width', 'session-clock', 'version', 'custom-text', 'custom-command'
+] as const;
 
-export interface WidgetItem {
-    id: string;
-    type: WidgetItemType;
-    color?: string;
-    backgroundColor?: string; // Background color for the widget
-    bold?: boolean; // Bold text styling
-    character?: string; // For separator and flex-separator types
-    rawValue?: boolean; // Show value without label prefix
-    customText?: string; // For custom-text type
-    commandPath?: string; // For custom-command type - the command to execute
-    maxWidth?: number; // For custom-command type - max width of output
-    preserveColors?: boolean; // For custom-command type - preserve ANSI colors from command output
-    timeout?: number; // For custom-command type - timeout in milliseconds (default: 1000)
-    merge?: boolean | 'no-padding'; // Merge with next widget: true = merge with padding, 'no-padding' = merge without padding
-}
+// Widget item schema - accepts any string type for forward compatibility
+export const WidgetItemSchema = z.object({
+    id: z.string(),
+    type: z.union([
+        z.enum(KNOWN_WIDGET_TYPES),
+        z.string() // Accept any string for forward compatibility
+    ]),
+    color: z.string().optional(),
+    backgroundColor: z.string().optional(),
+    bold: z.boolean().optional(),
+    character: z.string().optional(),
+    rawValue: z.boolean().optional(),
+    customText: z.string().optional(),
+    commandPath: z.string().optional(),
+    maxWidth: z.number().optional(),
+    preserveColors: z.boolean().optional(),
+    timeout: z.number().optional(),
+    merge: z.union([z.boolean(), z.literal('no-padding')]).optional()
+});
+
+// Inferred types from Zod schemas
+export type WidgetItem = z.infer<typeof WidgetItemSchema>;
+export type WidgetItemType = string; // Allow any string for forward compatibility
 
 export interface WidgetEditorDisplay {
     displayText: string;

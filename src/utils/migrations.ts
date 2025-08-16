@@ -1,7 +1,6 @@
-import type {
-    Settings,
-    WidgetItem
-} from './config';
+import type { Settings } from '../types/Settings';
+import type { WidgetItem } from '../types/Widget';
+
 import { generateGuid } from './guid';
 
 // Type for migration functions

@@ -12,6 +12,8 @@ import React, {
     useState
 } from 'react';
 
+import type { Settings } from '../types/Settings';
+import type { WidgetItem } from '../types/Widget';
 import {
     getExistingStatusLine,
     installStatusLine,
@@ -21,9 +23,7 @@ import {
 } from '../utils/claude-settings';
 import {
     loadSettings,
-    saveSettings,
-    type Settings,
-    type WidgetItem
+    saveSettings
 } from '../utils/config';
 import {
     checkPowerlineFonts,

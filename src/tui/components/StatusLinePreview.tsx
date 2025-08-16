@@ -5,10 +5,8 @@ import {
 } from 'ink';
 import React from 'react';
 
-import {
-    type Settings,
-    type WidgetItem
-} from '../../utils/config';
+import type { Settings } from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
 import {
     renderStatusLine as renderLine,
     type RenderContext

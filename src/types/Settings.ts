@@ -1,56 +1,52 @@
-import type { WidgetItem } from './Widget';
+import { z } from 'zod';
 
-export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
+import { ColorLevelSchema } from './ColorLevel';
+import { FlexModeSchema } from './FlexMode';
+import { PowerlineConfigSchema } from './PowerlineConfig';
+import { WidgetItemSchema } from './Widget';
 
-export interface PowerlineConfig {
-    enabled?: boolean; // Whether powerline mode is enabled
-    separators?: string[]; // Array of powerline separator characters (cycles through)
-    separatorInvertBackground?: boolean[]; // Whether to invert fg/bg for each separator
-    startCaps?: string[]; // Array of start cap characters (cycles through lines, max 3)
-    endCaps?: string[]; // Array of end cap characters (cycles through lines, max 3)
-    theme?: string; // Theme name ('nord', 'monokai', etc.) or 'custom' for manual colors
-}
+// Current version - bump this when making breaking changes to the schema
+export const CURRENT_VERSION = 2;
 
-// Settings with all required fields - no optionals
-// This is what we use internally after normalization
-export interface Settings {
-    lines: WidgetItem[][]; // Multiple lines (up to 3)
-    flexMode: FlexMode; // How to handle terminal width for flex separators
-    compactThreshold: number; // Context percentage (1-99) for 'full-until-compact' mode
-    defaultSeparator?: string; // Default separator character to insert between widgets
-    defaultPadding?: string; // Default padding to add around all widgets
-    inheritSeparatorColors: boolean; // Whether default separators inherit colors from preceding widget
-    overrideBackgroundColor?: string; // Override background color for all widgets (e.g., 'none', 'bgRed', etc.)
-    overrideForegroundColor?: string; // Override foreground color for all widgets (e.g., 'red', 'cyan', etc.)
-    globalBold: boolean; // Apply bold formatting to all widgets
-    powerline: PowerlineConfig; // Powerline mode configuration
-    colorLevel: 0 | 1 | 2 | 3; // Chalk color level: 0=none, 1=basic, 2=256, 3=truecolor (default)
-}
+// Main settings schema with defaults
+export const SettingsSchema = z.object({
+    version: z.number().default(CURRENT_VERSION),
+    lines: z.array(z.array(WidgetItemSchema))
+        .min(1)
+        .max(3)
+        .default([
+            [
+                { id: '1', type: 'model', color: 'cyan' },
+                { id: '2', type: 'separator' },
+                { id: '3', type: 'context-length', color: 'brightBlack' },
+                { id: '4', type: 'separator' },
+                { id: '5', type: 'git-branch', color: 'magenta' },
+                { id: '6', type: 'separator' },
+                { id: '7', type: 'git-changes', color: 'yellow' }
+            ]
+        ])
+        .transform(lines => lines.slice(0, 3)), // Ensure max 3 lines
+    flexMode: FlexModeSchema.default('full-minus-40'),
+    compactThreshold: z.number().min(1).max(99).default(60),
+    colorLevel: ColorLevelSchema.default(2),
+    defaultSeparator: z.string().optional(),
+    defaultPadding: z.string().optional(),
+    inheritSeparatorColors: z.boolean().default(false),
+    overrideBackgroundColor: z.string().optional(),
+    overrideForegroundColor: z.string().optional(),
+    globalBold: z.boolean().default(false),
+    powerline: PowerlineConfigSchema.default({
+        enabled: false,
+        separators: ['\uE0B0'],
+        separatorInvertBackground: [false],
+        startCaps: [],
+        endCaps: [],
+        theme: undefined
+    })
+});
 
-// Partial settings as loaded from disk (may have missing fields)
-export interface PartialSettings {
-    items?: WidgetItem[]; // Legacy single line support
-    lines?: WidgetItem[][]; // Multiple lines (up to 3)
-    flexMode?: FlexMode;
-    compactThreshold?: number;
-    defaultSeparator?: string;
-    defaultPadding?: string;
-    inheritSeparatorColors?: boolean;
-    overrideBackgroundColor?: string;
-    overrideForegroundColor?: string;
-    globalBold?: boolean;
-    powerline?: PowerlineConfig;
-    colorLevel?: 0 | 1 | 2 | 3;
-}
+// Inferred type from schema
+export type Settings = z.infer<typeof SettingsSchema>;
 
-export type ColorLevelString = 'ansi16' | 'ansi256' | 'truecolor';
-
-// Type for legacy settings format
-export interface LegacySettings {
-    elements?: { model?: boolean; gitBranch?: boolean };
-    layout?: { expandingSeparators?: boolean };
-    colors?: { model?: string; gitBranch?: string };
-    items?: WidgetItem[];
-    lines?: WidgetItem[][];
-    [key: string]: unknown;
-}
+// Export a default settings constant for reference
+export const DEFAULT_SETTINGS: Settings = SettingsSchema.parse({});

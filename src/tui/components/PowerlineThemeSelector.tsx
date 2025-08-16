@@ -8,14 +8,12 @@ import React, {
     useState
 } from 'react';
 
+import { getColorLevelString } from '../../types/ColorLevel';
+import type { Settings } from '../../types/Settings';
 import {
     getPowerlineTheme,
     getPowerlineThemes
 } from '../../utils/colors';
-import {
-    getColorLevelString,
-    type Settings
-} from '../../utils/config';
 
 import { ConfirmDialog } from './ConfirmDialog';
 
