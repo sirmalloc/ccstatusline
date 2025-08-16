@@ -17,6 +17,8 @@ import {
     type Settings
 } from '../../utils/config';
 
+import { ConfirmDialog } from './ConfirmDialog';
+
 export interface PowerlineThemeSelectorProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
@@ -103,15 +105,11 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     };
 
     useInput((input, key) => {
+        // Skip input handling when confirmation is active - let ConfirmDialog handle it
         if (showCustomizeConfirm) {
-            // Handle confirmation dialog
-            if (input === 'y' || input === 'Y') {
-                customizeTheme();
-                setShowCustomizeConfirm(false);
-            } else if (input === 'n' || input === 'N' || key.escape) {
-                setShowCustomizeConfirm(false);
-            }
-        } else {
+            return;
+        }
+        {
             // Normal input handling
             if (key.escape) {
                 // Restore original settings completely when canceling
@@ -157,7 +155,19 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                     <Text color='red'>This will overwrite any existing custom colors!</Text>
                 </Box>
                 <Box marginTop={2}>
-                    <Text>Continue? (y/n)</Text>
+                    <Text>Continue?</Text>
+                </Box>
+                <Box marginTop={1}>
+                    <ConfirmDialog
+                        inline={true}
+                        onConfirm={() => {
+                            customizeTheme();
+                            setShowCustomizeConfirm(false);
+                        }}
+                        onCancel={() => {
+                            setShowCustomizeConfirm(false);
+                        }}
+                    />
                 </Box>
             </Box>
         );

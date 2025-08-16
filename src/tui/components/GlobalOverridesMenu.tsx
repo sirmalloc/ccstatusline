@@ -12,6 +12,8 @@ import {
 } from '../../utils/colors';
 import { type Settings } from '../../utils/config';
 
+import { ConfirmDialog } from './ConfirmDialog';
+
 export interface GlobalOverridesMenuProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
@@ -88,21 +90,8 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 setSeparatorInput(separatorInput + input);
             }
         } else if (confirmingSeparator) {
-            if (input === 'y' || input === 'Y') {
-                // Remove all manual separators from lines
-                const updatedSettings = {
-                    ...settings,
-                    defaultSeparator: separatorInput,
-                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator')
-                    )
-                };
-                onUpdate(updatedSettings);
-                setConfirmingSeparator(false);
-            } else if (input === 'n' || input === 'N' || key.escape) {
-                // Cancel without applying changes
-                setSeparatorInput(settings.defaultSeparator ?? '');
-                setConfirmingSeparator(false);
-            }
+            // Skip input handling when confirmation is active - let ConfirmDialog handle it
+            return;
         } else {
             if (key.escape) {
                 onBack();
@@ -201,9 +190,27 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     </Box>
                     <Box marginTop={1}>
                         <Text>Do you want to continue? </Text>
-                        <Text color='green'>(Y)es</Text>
-                        <Text> / </Text>
-                        <Text color='red'>(N)o</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <ConfirmDialog
+                            inline={true}
+                            onConfirm={() => {
+                                // Remove all manual separators from lines
+                                const updatedSettings = {
+                                    ...settings,
+                                    defaultSeparator: separatorInput,
+                                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator')
+                                    )
+                                };
+                                onUpdate(updatedSettings);
+                                setConfirmingSeparator(false);
+                            }}
+                            onCancel={() => {
+                                // Cancel without applying changes
+                                setSeparatorInput(settings.defaultSeparator ?? '');
+                                setConfirmingSeparator(false);
+                            }}
+                        />
                     </Box>
                 </Box>
             ) : (

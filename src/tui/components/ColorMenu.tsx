@@ -19,6 +19,8 @@ import {
 } from '../../utils/config';
 import { getWidget } from '../../utils/widgets';
 
+import { ConfirmDialog } from './ConfirmDialog';
+
 export interface ColorMenuProps {
     widgets: WidgetItem[];
     settings: Settings;
@@ -59,21 +61,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
             return;
         }
 
-        // Handle clear confirmation
+        // Skip input handling when confirmation is active - let ConfirmDialog handle it
         if (showClearConfirm) {
-            if (input === 'y' || input === 'Y') {
-                // Clear all colors from all widgets
-                const newItems = widgets.map((widget) => {
-                    // Remove color, backgroundColor, and bold properties
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                    const { color, backgroundColor, bold, ...restWidget } = widget;
-                    return restWidget;
-                });
-                onUpdate(newItems);
-                setShowClearConfirm(false);
-            } else if (input === 'n' || input === 'N' || key.escape) {
-                setShowClearConfirm(false);
-            }
             return;
         }
 
@@ -311,7 +300,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
                 <Box marginTop={1}>
                     <Text color='yellow'>
                         ⚠ Colors are currently managed by the Powerline theme:
-                        {powerlineTheme.charAt(0).toUpperCase() + powerlineTheme.slice(1)}
+                        {' ' + powerlineTheme.charAt(0).toUpperCase() + powerlineTheme.slice(1)}
                     </Text>
                 </Box>
                 <Box marginTop={1}>
@@ -461,7 +450,26 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
                     <Text color='red'>This action cannot be undone!</Text>
                 </Box>
                 <Box marginTop={2}>
-                    <Text>Continue? (y/n)</Text>
+                    <Text>Continue?</Text>
+                </Box>
+                <Box marginTop={1}>
+                    <ConfirmDialog
+                        inline={true}
+                        onConfirm={() => {
+                            // Clear all colors from all widgets
+                            const newItems = widgets.map((widget) => {
+                                // Remove color, backgroundColor, and bold properties
+                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                const { color, backgroundColor, bold, ...restWidget } = widget;
+                                return restWidget;
+                            });
+                            onUpdate(newItems);
+                            setShowClearConfirm(false);
+                        }}
+                        onCancel={() => {
+                            setShowClearConfirm(false);
+                        }}
+                    />
                 </Box>
             </Box>
         );

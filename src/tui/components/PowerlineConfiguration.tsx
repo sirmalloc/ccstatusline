@@ -10,6 +10,7 @@ import { getDefaultPowerlineTheme } from '../../utils/colors';
 import type { Settings } from '../../utils/config';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
+import { ConfirmDialog } from './ConfirmDialog';
 import { PowerlineSeparatorEditor } from './PowerlineSeparatorEditor';
 import { PowerlineThemeSelector } from './PowerlineThemeSelector';
 
@@ -125,47 +126,8 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
             return;
         }
 
-        if (confirmingFontInstall) {
-            if (input === 'y' || input === 'Y') {
-                // User confirmed, proceed with font installation
-                setConfirmingFontInstall(false);
-                onInstallFonts();
-            } else if (input === 'n' || input === 'N' || key.escape) {
-                // Cancel font installation
-                setConfirmingFontInstall(false);
-            }
-            return;
-        }
-
-        if (confirmingEnable) {
-            if (input === 'y' || input === 'Y') {
-                // Set to nord theme if currently custom or undefined (first time enabling)
-                const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
-                    ? getDefaultPowerlineTheme()
-                    : powerlineConfig.theme;
-
-                // Remove all separators and flex-separators from lines
-                // Also set default padding to a space when enabling powerline
-                const updatedSettings = {
-                    ...settings,
-                    powerline: {
-                        ...powerlineConfig,
-                        enabled: true,
-                        theme,
-                        // Separators are already initialized by Zod
-                        separators: powerlineConfig.separators,
-                        separatorInvertBackground: powerlineConfig.separatorInvertBackground
-                    },
-                    defaultPadding: ' ',  // Set padding to space when enabling powerline
-                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
-                    )
-                };
-                onUpdate(updatedSettings);
-                setConfirmingEnable(false);
-            } else if (input === 'n' || input === 'N' || key.escape) {
-                // Cancel without enabling
-                setConfirmingEnable(false);
-            }
+        // Skip input handling when confirmations are active - let ConfirmDialog handle it
+        if (confirmingFontInstall || confirmingEnable) {
             return;
         }
 
@@ -336,18 +298,25 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
 
                     <Box marginTop={1}>
                         <Text>Proceed? </Text>
-                        <Text color='green'>(Y)es</Text>
-                        <Text> / </Text>
-                        <Text color='red'>(N)o</Text>
-                        <Text> / </Text>
-                        <Text dimColor>(Esc) Cancel</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <ConfirmDialog
+                            inline={true}
+                            onConfirm={() => {
+                                setConfirmingFontInstall(false);
+                                onInstallFonts();
+                            }}
+                            onCancel={() => {
+                                setConfirmingFontInstall(false);
+                            }}
+                        />
                     </Box>
                 </Box>
             ) : confirmingEnable ? (
                 <Box flexDirection='column' marginTop={2}>
                     {hasSeparatorItems && (
                         <>
-                            <Box marginBottom={1}>
+                            <Box>
                                 <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
                             </Box>
                             <Box marginBottom={1}>
@@ -357,9 +326,39 @@ export const PowerlineConfiguration: React.FC<PowerlineConfigurationProps> = ({
                     )}
                     <Box marginTop={hasSeparatorItems ? 1 : 0}>
                         <Text>Do you want to continue? </Text>
-                        <Text color='green'>(Y)es</Text>
-                        <Text> / </Text>
-                        <Text color='red'>(N)o</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <ConfirmDialog
+                            inline={true}
+                            onConfirm={() => {
+                                // Set to nord theme if currently custom or undefined (first time enabling)
+                                const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
+                                    ? getDefaultPowerlineTheme()
+                                    : powerlineConfig.theme;
+
+                                // Remove all separators and flex-separators from lines
+                                // Also set default padding to a space when enabling powerline
+                                const updatedSettings = {
+                                    ...settings,
+                                    powerline: {
+                                        ...powerlineConfig,
+                                        enabled: true,
+                                        theme,
+                                        // Separators are already initialized by Zod
+                                        separators: powerlineConfig.separators,
+                                        separatorInvertBackground: powerlineConfig.separatorInvertBackground
+                                    },
+                                    defaultPadding: ' ',  // Set padding to space when enabling powerline
+                                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
+                                    )
+                                };
+                                onUpdate(updatedSettings);
+                                setConfirmingEnable(false);
+                            }}
+                            onCancel={() => {
+                                setConfirmingEnable(false);
+                            }}
+                        />
                     </Box>
                 </Box>
             ) : installingFonts ? (
