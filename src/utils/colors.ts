@@ -264,12 +264,12 @@ export interface PowerlineTheme {
 }
 
 export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
-    custom: {
+    'custom': {
         name: 'Custom',
         description: 'Uses individual widget background colors'
         // No color definitions - handled specially
     },
-    nord: {
+    'nord': {
         name: 'Nord',
         description: 'Arctic, north-bluish color palette',
         1: {
@@ -285,7 +285,23 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
             bg: ['hex:88C0D0', 'hex:5E81AC', 'hex:B48EAD', 'hex:4C566A', 'hex:3B4252']
         }
     },
-    monokai: {
+    'nord-aurora': {
+        name: 'Nord Aurora',
+        description: 'Nord theme with aurora colors',
+        1: {
+            fg: ['white', 'white', 'white', 'black', 'white'],
+            bg: ['bgRed', 'bgYellow', 'bgGreen', 'bgMagenta', 'bgBrightBlue']
+        },
+        2: {
+            fg: ['ansi256:231', 'ansi256:231', 'ansi256:231', 'ansi256:234', 'ansi256:231'],
+            bg: ['ansi256:131', 'ansi256:179', 'ansi256:108', 'ansi256:134', 'ansi256:68']
+        },
+        3: {
+            fg: ['hex:ECEFF4', 'hex:ECEFF4', 'hex:ECEFF4', 'hex:2E3440', 'hex:ECEFF4'],
+            bg: ['hex:BF616A', 'hex:D08770', 'hex:A3BE8C', 'hex:B48EAD', 'hex:5E81AC']
+        }
+    },
+    'monokai': {
         name: 'Monokai',
         description: 'Dark background with vibrant colors',
         1: {
@@ -301,7 +317,7 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
             bg: ['hex:A6E22E', 'hex:AE81FF', 'hex:E6DB74', 'hex:F92672', 'hex:66D9EF']
         }
     },
-    solarized: {
+    'solarized': {
         name: 'Solarized',
         description: 'Precision colors for readability',
         1: {
@@ -317,7 +333,7 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
             bg: ['hex:268BD2', 'hex:B58900', 'hex:D33682', 'hex:2AA198', 'hex:EEE8D5']
         }
     },
-    minimal: {
+    'minimal': {
         name: 'Minimal',
         description: 'Clean monochrome theme',
         1: {
@@ -333,7 +349,7 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
             bg: ['hex:585858', 'hex:D0D0D0', 'hex:303030', 'hex:A8A8A8', 'hex:1A1A1A']
         }
     },
-    dracula: {
+    'dracula': {
         name: 'Dracula',
         description: 'Dark theme with purple accents',
         1: {
@@ -348,6 +364,70 @@ export const POWERLINE_THEMES: Record<string, PowerlineTheme> = {
             fg: ['hex:F8F8F2', 'hex:282A36', 'hex:F8F8F2', 'hex:282A36', 'hex:F8F8F2'],
             bg: ['hex:BD93F9', 'hex:8BE9FD', 'hex:FF5555', 'hex:F1FA8C', 'hex:6272A4']
         }
+    },
+    'catppuccin': {
+        name: 'Catppuccin',
+        description: 'Soothing pastel theme',
+        1: {
+            fg: ['black', 'white', 'black', 'white', 'black'],
+            bg: ['bgBrightMagenta', 'bgBlue', 'bgBrightGreen', 'bgYellow', 'bgBrightRed']
+        },
+        2: {
+            fg: ['ansi256:232', 'ansi256:255', 'ansi256:232', 'ansi256:255', 'ansi256:232'],
+            bg: ['ansi256:176', 'ansi256:111', 'ansi256:150', 'ansi256:223', 'ansi256:210']
+        },
+        3: {
+            fg: ['hex:1E1E2E', 'hex:CDD6F4', 'hex:1E1E2E', 'hex:CDD6F4', 'hex:1E1E2E'],
+            bg: ['hex:CBA6F7', 'hex:89B4FA', 'hex:A6E3A1', 'hex:F9E2AF', 'hex:F38BA8']
+        }
+    },
+    'gruvbox': {
+        name: 'Gruvbox',
+        description: 'Retro groove color scheme',
+        1: {
+            fg: ['white', 'black', 'white', 'black', 'white'],
+            bg: ['bgRed', 'bgGreen', 'bgYellow', 'bgBlue', 'bgMagenta']
+        },
+        2: {
+            fg: ['ansi256:223', 'ansi256:235', 'ansi256:223', 'ansi256:235', 'ansi256:223'],
+            bg: ['ansi256:167', 'ansi256:142', 'ansi256:214', 'ansi256:109', 'ansi256:175']
+        },
+        3: {
+            fg: ['hex:EBDBB2', 'hex:282828', 'hex:EBDBB2', 'hex:282828', 'hex:EBDBB2'],
+            bg: ['hex:CC241D', 'hex:98971A', 'hex:D79921', 'hex:458588', 'hex:B16286']
+        }
+    },
+    'onedark': {
+        name: 'One Dark',
+        description: 'Atom-inspired dark theme',
+        1: {
+            fg: ['black', 'white', 'black', 'white', 'black'],
+            bg: ['bgBrightBlue', 'bgMagenta', 'bgGreen', 'bgRed', 'bgYellow']
+        },
+        2: {
+            fg: ['ansi256:235', 'ansi256:251', 'ansi256:235', 'ansi256:251', 'ansi256:235'],
+            bg: ['ansi256:75', 'ansi256:170', 'ansi256:114', 'ansi256:204', 'ansi256:180']
+        },
+        3: {
+            fg: ['hex:282C34', 'hex:ABB2BF', 'hex:282C34', 'hex:ABB2BF', 'hex:282C34'],
+            bg: ['hex:61AFEF', 'hex:C678DD', 'hex:98C379', 'hex:E06C75', 'hex:D19A66']
+        }
+    },
+    'tokyonight': {
+        name: 'Tokyo Night',
+        description: 'Clean, dark theme inspired by Tokyo nightlife',
+        1: {
+            fg: ['white', 'black', 'white', 'black', 'white'],
+            bg: ['bgBlue', 'bgMagenta', 'bgBrightCyan', 'bgBrightGreen', 'bgBrightYellow']
+        },
+        2: {
+            fg: ['ansi256:252', 'ansi256:234', 'ansi256:252', 'ansi256:234', 'ansi256:252'],
+            bg: ['ansi256:111', 'ansi256:176', 'ansi256:80', 'ansi256:115', 'ansi256:221']
+        },
+        3: {
+            fg: ['hex:A9B1D6', 'hex:1A1B26', 'hex:C0CAF5', 'hex:1A1B26', 'hex:C0CAF5'],
+            bg: ['hex:7AA2F7', 'hex:9ECE6A', 'hex:7DCFFF', 'hex:BB9AF7', 'hex:E0AF68']
+        }
     }
 };
 
@@ -360,5 +440,5 @@ export function getPowerlineTheme(name: string): PowerlineTheme | undefined {
 }
 
 export function getDefaultPowerlineTheme(): string {
-    return 'nord';
+    return 'nord-aurora';
 }

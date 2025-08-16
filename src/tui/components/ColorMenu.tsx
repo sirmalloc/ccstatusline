@@ -467,12 +467,31 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, settings, onUpdat
         );
     }
 
+    // Check for global overrides
+    const hasGlobalFgOverride = !!settings.overrideForegroundColor;
+    const hasGlobalBgOverride = !!settings.overrideBackgroundColor;
+    const globalOverrideMessage = hasGlobalFgOverride && hasGlobalBgOverride
+        ? '⚠ Global override for FG and BG active'
+        : hasGlobalFgOverride
+            ? '⚠ Global override for FG active'
+            : hasGlobalBgOverride
+                ? '⚠ Global override for BG active'
+                : null;
+
     return (
         <Box flexDirection='column'>
-            <Text bold>
-                Configure Colors
-                {editingBackground && chalk.yellow(' [Background Mode]')}
-            </Text>
+            <Box>
+                <Text bold>
+                    Configure Colors
+                    {editingBackground && chalk.yellow(' [Background Mode]')}
+                </Text>
+                {globalOverrideMessage && (
+                    <Text color='yellow' dimColor>
+                        {'.  '}
+                        {globalOverrideMessage}
+                    </Text>
+                )}
+            </Box>
             {hexInputMode ? (
                 <Box flexDirection='column'>
                     <Text>Enter 6-digit hex color code (without #):</Text>
