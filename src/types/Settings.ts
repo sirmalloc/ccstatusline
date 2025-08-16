@@ -8,6 +8,20 @@ import { WidgetItemSchema } from './Widget';
 // Current version - bump this when making breaking changes to the schema
 export const CURRENT_VERSION = 2;
 
+// Schema for v1 settings (before version field was added)
+export const SettingsSchema_v1 = z.object({
+    lines: z.array(z.array(WidgetItemSchema)).optional(),
+    flexMode: FlexModeSchema.optional(),
+    compactThreshold: z.number().optional(),
+    colorLevel: ColorLevelSchema.optional(),
+    defaultSeparator: z.string().optional(),
+    defaultPadding: z.string().optional(),
+    inheritSeparatorColors: z.boolean().optional(),
+    overrideBackgroundColor: z.string().optional(),
+    overrideForegroundColor: z.string().optional(),
+    globalBold: z.boolean().optional()
+});
+
 // Main settings schema with defaults
 export const SettingsSchema = z.object({
     version: z.number().default(CURRENT_VERSION),

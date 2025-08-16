@@ -302,7 +302,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     </Box>
                 </Box>
             ) : confirmingEnable ? (
-                <Box flexDirection='column' marginTop={2}>
+                <Box flexDirection='column' marginTop={1}>
                     {hasSeparatorItems && (
                         <>
                             <Box>
