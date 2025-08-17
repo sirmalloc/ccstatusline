@@ -33,6 +33,7 @@
     "ink-select-input": "^6.2.0",
     "patch-package": "^8.0.0",
     "react": "^19.1.1",
+    "react-devtools-core": "^6.1.5",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.1"
   },
