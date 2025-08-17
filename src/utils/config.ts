@@ -1,171 +1,124 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
-import { promisify } from 'util';
+import * as path from 'path';
 
-// Ensure fs.promises compatibility
-const readFile = fs.promises?.readFile || promisify(fs.readFile);
-const writeFile = fs.promises?.writeFile || promisify(fs.writeFile);
-const mkdir = fs.promises?.mkdir || promisify(fs.mkdir);
+import {
+    CURRENT_VERSION,
+    SettingsSchema,
+    SettingsSchema_v1,
+    type Settings
+} from '../types/Settings';
 
-export type StatusItemType = 'model' | 'git-branch' | 'git-changes' | 'separator' | 'flex-separator' |
-    'tokens-input' | 'tokens-output' | 'tokens-cached' | 'tokens-total' | 'context-length' | 'context-percentage' | 'context-percentage-usable' | 'terminal-width' | 'session-clock' | 'version' | 'custom-text' | 'custom-command';
+import {
+    migrateConfig,
+    needsMigration
+} from './migrations';
 
-export interface StatusItem {
-    id: string;
-    type: StatusItemType;
-    color?: string;
-    backgroundColor?: string; // Background color for the item
-    bold?: boolean; // Bold text styling
-    character?: string; // For separator and flex-separator types
-    rawValue?: boolean; // Show value without label prefix
-    customText?: string; // For custom-text type
-    commandPath?: string; // For custom-command type - the command to execute
-    maxWidth?: number; // For custom-command type - max width of output
-    preserveColors?: boolean; // For custom-command type - preserve ANSI colors from command output
-    timeout?: number; // For custom-command type - timeout in milliseconds (default: 1000)
-}
-
-export type FlexMode = 'full' | 'full-minus-40' | 'full-until-compact';
-
-export interface Settings {
-    items?: StatusItem[]; // Legacy single line support
-    lines?: StatusItem[][]; // Multiple lines (up to 3)
-    flexMode?: FlexMode; // How to handle terminal width for flex separators
-    compactThreshold?: number; // Context percentage (50-99) for 'full-until-compact' mode
-    defaultSeparator?: string; // Default separator character to insert between items
-    defaultPadding?: string; // Default padding to add around all items
-    inheritSeparatorColors?: boolean; // Whether default separators inherit colors from preceding widget
-    overrideBackgroundColor?: string; // Override background color for all items (e.g., 'none', 'bgRed', etc.)
-    overrideForegroundColor?: string; // Override foreground color for all items (e.g., 'red', 'cyan', etc.)
-    globalBold?: boolean; // Apply bold formatting to all items
-}
+// Use fs.promises directly (always available in modern Node.js)
+const readFile = fs.promises.readFile;
+const writeFile = fs.promises.writeFile;
+const mkdir = fs.promises.mkdir;
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
 const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
+const SETTINGS_BACKUP_PATH = path.join(CONFIG_DIR, 'settings.bak');
 
-export const DEFAULT_SETTINGS: Settings = {
-    lines: [
-        [
-            {
-                "id": "1",
-                "type": "model",
-                "color": "cyan"
-            },
-            {
-                "id": "2",
-                "type": "separator"
-            },
-            {
-                "id": "3",
-                "type": "context-length",
-                "color": "gray"
-            },
-            {
-                "id": "4",
-                "type": "separator"
-            },
-            {
-                "id": "5",
-                "type": "git-branch",
-                "color": "magenta"
-            },
-            {
-                "id": "6",
-                "type": "separator"
-            },
-            {
-                "id": "7",
-                "type": "git-changes",
-                "color": "yellow"
-            }
-        ]
-    ],
-    flexMode: 'full-minus-40',
-    compactThreshold: 60,
-};
-
-export async function loadSettings(): Promise<Settings> {
+async function backupBadSettings(): Promise<void> {
     try {
-        // Use Node.js-compatible file reading
-        if (!fs.existsSync(SETTINGS_PATH)) {
-            return DEFAULT_SETTINGS;
+        if (fs.existsSync(SETTINGS_PATH)) {
+            const content = await readFile(SETTINGS_PATH, 'utf-8');
+            await writeFile(SETTINGS_BACKUP_PATH, content, 'utf-8');
+            console.error(`Bad settings backed up to ${SETTINGS_BACKUP_PATH}`);
         }
-
-        const content = await readFile(SETTINGS_PATH, 'utf-8');
-        let loaded: any;
-
-        try {
-            loaded = JSON.parse(content);
-        } catch (parseError) {
-            // If we can't parse the settings, return defaults
-            console.error('Failed to parse settings.json, using defaults');
-            return DEFAULT_SETTINGS;
-        }
-
-        // Migrate from old format with elements/layout
-        if (loaded.elements || loaded.layout) {
-            return migrateOldSettings(loaded);
-        }
-
-        // Migrate from single items array to lines array
-        if (loaded.items && !loaded.lines) {
-            loaded.lines = [loaded.items];
-            delete loaded.items;
-        }
-
-        // Ensure lines is an array and limit to 3 lines
-        if (loaded.lines) {
-            if (!Array.isArray(loaded.lines)) {
-                loaded.lines = [[]];
-            }
-            loaded.lines = loaded.lines.slice(0, 3);
-        }
-
-        return { ...DEFAULT_SETTINGS, ...loaded };
     } catch (error) {
-        // Any other error, return defaults
-        console.error('Error loading settings:', error);
-        return DEFAULT_SETTINGS;
+        console.error('Failed to backup bad settings:', error);
     }
 }
 
-function migrateOldSettings(old: any): Settings {
-    const items: StatusItem[] = [];
-    let id = 1;
-
-    if (old.elements?.model) {
-        items.push({ id: String(id++), type: 'model', color: old.colors?.model });
-    }
-
-    if (items.length > 0 && old.elements?.gitBranch) {
-        items.push({ id: String(id++), type: 'separator' });
-    }
-
-    if (old.elements?.gitBranch) {
-        items.push({ id: String(id++), type: 'git-branch', color: old.colors?.gitBranch });
-    }
-
-    if (old.layout?.expandingSeparators) {
-        // Replace regular separators with flex separators
-        items.forEach(item => {
-            if (item.type === 'separator') {
-                item.type = 'flex-separator';
-            }
-        });
-    }
-
-    return {
-        lines: [items], // Put migrated items in first line
-        flexMode: DEFAULT_SETTINGS.flexMode,
-        compactThreshold: DEFAULT_SETTINGS.compactThreshold,
+async function writeDefaultSettings(): Promise<Settings> {
+    const defaults = SettingsSchema.parse({});
+    const settingsWithVersion = {
+        ...defaults,
+        version: CURRENT_VERSION
     };
+
+    try {
+        await mkdir(CONFIG_DIR, { recursive: true });
+        await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
+        console.error(`Default settings written to ${SETTINGS_PATH}`);
+    } catch (error) {
+        console.error('Failed to write default settings:', error);
+    }
+
+    return defaults;
+}
+
+export async function loadSettings(): Promise<Settings> {
+    try {
+        // Check if settings file exists
+        if (!fs.existsSync(SETTINGS_PATH))
+            return await writeDefaultSettings();
+
+        const content = await readFile(SETTINGS_PATH, 'utf-8');
+        let rawData: unknown;
+
+        try {
+            rawData = JSON.parse(content);
+        } catch {
+            // If we can't parse the JSON, backup and write defaults
+            console.error('Failed to parse settings.json, backing up and using defaults');
+            await backupBadSettings();
+            return await writeDefaultSettings();
+        }
+
+        // Check if this is a v1 config (no version field)
+        const hasVersion = typeof rawData === 'object' && rawData !== null && 'version' in rawData;
+        if (!hasVersion) {
+            // Parse as v1 to validate before migration
+            const v1Result = SettingsSchema_v1.safeParse(rawData);
+            if (!v1Result.success) {
+                console.error('Invalid v1 settings format:', v1Result.error);
+                await backupBadSettings();
+                return await writeDefaultSettings();
+            }
+
+            // Migrate v1 to current version and save the migrated settings back to disk
+            rawData = migrateConfig(rawData, CURRENT_VERSION);
+            await writeFile(SETTINGS_PATH, JSON.stringify(rawData, null, 2), 'utf-8');
+        } else if (needsMigration(rawData, CURRENT_VERSION)) {
+            // Handle migrations for versioned configs (v2+) and save the migrated settings back to disk
+            rawData = migrateConfig(rawData, CURRENT_VERSION);
+            await writeFile(SETTINGS_PATH, JSON.stringify(rawData, null, 2), 'utf-8');
+        }
+
+        // At this point, data should be in current format with version field
+        // Parse with main schema which will apply all defaults
+        const result = SettingsSchema.safeParse(rawData);
+        if (!result.success) {
+            console.error('Failed to parse settings:', result.error);
+            await backupBadSettings();
+            return await writeDefaultSettings();
+        }
+
+        return result.data;
+    } catch (error) {
+        // Any other error, backup and write defaults
+        console.error('Error loading settings:', error);
+        await backupBadSettings();
+        return await writeDefaultSettings();
+    }
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
     // Ensure config directory exists
     await mkdir(CONFIG_DIR, { recursive: true });
 
+    // Always include version when saving
+    const settingsWithVersion = {
+        ...settings,
+        version: CURRENT_VERSION
+    };
+
     // Write settings using Node.js-compatible API
-    await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+    await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
 }

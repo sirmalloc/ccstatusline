@@ -1,12 +1,19 @@
 #!/usr/bin/env node
-import { runTUI } from './tui.tsx';
-import { loadSettings } from './utils/config';
+import chalk from 'chalk';
+
+import { runTUI } from './tui';
+import { StatusJSONSchema } from './types/StatusJSON';
+import { updateColorMap } from './utils/colors';
 import {
-    type StatusJSON,
-    renderStatusLine,
-    getTokenMetrics,
+    loadSettings,
+    saveSettings
+} from './utils/config';
+import {
     getSessionDuration,
-    type RenderContext
+    getTokenMetrics,
+    renderStatusLine,
+    type RenderContext,
+    type StatusJSON
 } from './utils/renderer';
 
 async function readStdin(): Promise<string | null> {
@@ -19,7 +26,7 @@ async function readStdin(): Promise<string | null> {
 
     try {
         // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined' && Bun.stdin) {
+        if (typeof Bun !== 'undefined') {
             // Bun environment
             const decoder = new TextDecoder();
             for await (const chunk of Bun.stdin.stream()) {
@@ -29,7 +36,7 @@ async function readStdin(): Promise<string | null> {
             // Node.js environment
             process.stdin.setEncoding('utf8');
             for await (const chunk of process.stdin) {
-                chunks.push(chunk);
+                chunks.push(chunk as string);
             }
         }
         return chunks.join('');
@@ -41,30 +48,27 @@ async function readStdin(): Promise<string | null> {
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
 
-    // Get all lines to render (support both old items format and new lines format)
-    let lines = settings.lines || (settings.items ? [settings.items] : [[]]);
+    // Set global chalk level based on settings
+    chalk.level = settings.colorLevel;
+    // Update color map after setting chalk level
+    updateColorMap();
+
+    // Get all lines to render
+    const lines = settings.lines;
 
     // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line =>
-        line.some(item =>
-            ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)
-        )
-    );
+    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)));
 
     // Check if session clock is needed
-    const hasSessionClock = lines.some(line =>
-        line.some(item => item.type === 'session-clock')
-    );
+    const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
     let tokenMetrics = null;
-    if (hasTokenItems && data.transcript_path) {
+    if (hasTokenItems && data.transcript_path)
         tokenMetrics = await getTokenMetrics(data.transcript_path);
-    }
 
     let sessionDuration = null;
-    if (hasSessionClock && data.transcript_path) {
+    if (hasSessionClock && data.transcript_path)
         sessionDuration = await getSessionDuration(data.transcript_path);
-    }
 
     // Create render context
     const context: RenderContext = {
@@ -75,14 +79,58 @@ async function renderMultipleLines(data: StatusJSON) {
     };
 
     // Render each line
-    for (const lineItems of lines) {
+    let globalSeparatorIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const lineItems = lines[i];
         if (lineItems && lineItems.length > 0) {
-            const line = renderStatusLine(lineItems, settings, context);
-            // Replace all spaces with non-breaking spaces to prevent VSCode trimming
-            let outputLine = line.replace(/ /g, '\u00A0');
-            // Add reset code at the beginning to override Claude Code's dim setting
-            outputLine = '\x1b[0m' + outputLine;
-            console.log(outputLine);
+            const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
+            const line = renderStatusLine(lineItems, settings, lineContext);
+
+            // Only output the line if it has content (not just ANSI codes)
+            // Strip ANSI codes to check if there's actual text
+            const strippedLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+            if (strippedLine.length > 0) {
+                // Count separators used in this line (widgets - 1, excluding merged widgets)
+                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
+                if (nonMergedWidgets.length > 1)
+                    globalSeparatorIndex += nonMergedWidgets.length - 1;
+
+                // Replace all spaces with non-breaking spaces to prevent VSCode trimming
+                let outputLine = line.replace(/ /g, '\u00A0');
+
+                // Add reset code at the beginning to override Claude Code's dim setting
+                outputLine = '\x1b[0m' + outputLine;
+                console.log(outputLine);
+            }
+        }
+    }
+
+    // Check if there's an update message to display
+    if (settings.updatemessage?.message
+        && settings.updatemessage.message.trim() !== ''
+        && settings.updatemessage.remaining
+        && settings.updatemessage.remaining > 0) {
+        // Display the message
+        console.log(settings.updatemessage.message);
+
+        // Decrement the remaining count
+        const newRemaining = settings.updatemessage.remaining - 1;
+
+        // Update or remove the updatemessage
+        if (newRemaining <= 0) {
+            // Remove the entire updatemessage block
+            const { updatemessage, ...newSettings } = settings;
+            void updatemessage;
+            await saveSettings(newSettings);
+        } else {
+            // Update the remaining count
+            await saveSettings({
+                ...settings,
+                updatemessage: {
+                    ...settings.updatemessage,
+                    remaining: newRemaining
+                }
+            });
         }
     }
 }
@@ -94,8 +142,14 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                const data: StatusJSON = JSON.parse(input);
-                await renderMultipleLines(data);
+                // Parse and validate JSON in one step
+                const result = StatusJSONSchema.safeParse(JSON.parse(input));
+                if (!result.success) {
+                    console.error('Invalid status JSON format:', result.error.message);
+                    process.exit(1);
+                }
+
+                await renderMultipleLines(result.data);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);
@@ -106,8 +160,15 @@ async function main() {
         }
     } else {
         // Interactive mode - run TUI
+        // Remove updatemessage before running TUI
+        const settings = await loadSettings();
+        if (settings.updatemessage) {
+            const { updatemessage, ...newSettings } = settings;
+            void updatemessage;
+            await saveSettings(newSettings);
+        }
         runTUI();
     }
 }
 
-main();
+void main();

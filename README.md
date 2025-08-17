@@ -42,10 +42,14 @@
 
 ## 🆕 Recent Updates
 
-### v1.1.0 - Enhanced Customization
-- **🎨 Background Colors** - Set background colors for individual status items in Color Configuration menu
-- **🔤 Bold Text Styling** - Toggle bold formatting for individual items in Color Configuration menu
-- **⚙️ Global Options Menu** - New menu for global formatting preferences including padding, separators, color inheritance, and overrides
+### v2.0.0 - Powerline Support & Enhanced Themes
+- **⚡ Powerline Mode** - Beautiful Powerline-style status lines with arrow separators and customizable caps
+- **🎨 Built-in Themes** - Multiple pre-configured themes that you can copy and customize
+- **🌈 Advanced Color Support** - Basic (16), 256-color (with custom ANSI codes), and truecolor (with hex codes) modes
+- **🔗 Widget Merging** - Merge multiple widgets together with or without padding for seamless designs
+- **📦 Easy Installation** - Install directly with `npx` or `bunx` - no global package needed
+- **🔤 Custom Separators** - Add multiple Powerline separators with custom hex codes for font support
+- **🚀 Auto Font Install** - Automatic Powerline font installation with user consent
 
 ---
 
@@ -53,6 +57,7 @@
 
 - **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
+- **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure up to 3 independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
 - **⚙️ Global Options** - Apply consistent formatting across all items (padding, separators, bold, background)
@@ -64,11 +69,14 @@
 
 ## 🚀 Quick Start
 
-### No installation needed! Use directly with npx:
+### No installation needed! Use directly with npx or bunx:
 
 ```bash
-# Run the configuration TUI
+# Run the configuration TUI with npm
 npx ccstatusline@latest
+
+# Or with Bun (faster)
+bunx ccstatusline@latest
 ```
 
 ### Configure ccstatusline
@@ -97,6 +105,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Version** - Shows Claude Code version
+- **Output Style** - Shows the currently set output style in Claude Code
 - **Tokens Input** - Shows input tokens used
 - **Tokens Output** - Shows output tokens used
 - **Tokens Cached** - Shows cached tokens used
@@ -112,36 +121,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 
 ---
 
-### ⌨️ TUI Controls
-
-#### Main Menu
-- **↑↓** - Navigate menu items
-- **Enter** - Select item
-- **Ctrl+C** - Exit
-
-#### Line Editor
-- **↑↓** - Select item
-- **←→** - Change item type
-- **Enter** - Enter move mode (reorder items)
-- **a** - Add item at end
-- **i** - Insert item before selected
-- **d** - Delete selected item
-- **c** - Clear entire line
-- **r** - Toggle raw value mode (no labels)
-- **b** - Toggle bold text for this item
-- **e** - Edit value (for custom-text and custom-command items)
-- **w** - Set max width (for custom-command items)
-- **t** - Set timeout in milliseconds (for custom-command items)
-- **p** - Toggle preserve colors (for custom-command items)
-- **Space** - Change separator character (for separator items)
-- **ESC** - Go back
-
-#### Color Configuration
-- **↑↓** - Select item
-- **Enter** - Cycle through colors
-- **ESC** - Go back
-
-#### Terminal Width Options
+### Terminal Width Options
 These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators:
 - **Full width always** - Uses full terminal width (may wrap if auto-compact message appears or IDE integration adds text)
 - **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping (default)
@@ -271,11 +251,35 @@ bun run build
 ```
 ccstatusline/
 ├── src/
-│   ├── ccstatusline.ts     # Main entry point
-│   ├── tui.tsx             # React/Ink configuration UI
-│   ├── config.ts           # Settings management
-│   └── claude-settings.ts  # Claude Code settings integration
-├── dist/                   # Built files (generated)
+│   ├── ccstatusline.ts         # Main entry point
+│   ├── tui/                    # React/Ink configuration UI
+│   │   ├── App.tsx             # Root TUI component
+│   │   ├── index.tsx           # TUI entry point
+│   │   └── components/         # UI components
+│   │       ├── MainMenu.tsx
+│   │       ├── LineSelector.tsx
+│   │       ├── ItemsEditor.tsx
+│   │       ├── ColorMenu.tsx
+│   │       ├── PowerlineSetup.tsx
+│   │       └── ...
+│   ├── widgets/                # Status line widget implementations
+│   │   ├── Model.ts
+│   │   ├── GitBranch.ts
+│   │   ├── TokensTotal.ts
+│   │   ├── OutputStyle.ts
+│   │   └── ...
+│   ├── utils/                  # Utility functions
+│   │   ├── config.ts           # Settings management
+│   │   ├── renderer.ts         # Core rendering logic
+│   │   ├── powerline.ts        # Powerline font utilities
+│   │   ├── colors.ts           # Color definitions
+│   │   └── claude-settings.ts  # Claude Code integration
+│   └── types/                  # TypeScript type definitions
+│       ├── Settings.ts
+│       ├── Widget.ts
+│       ├── PowerlineConfig.ts
+│       └── ...
+├── dist/                       # Built files (generated)
 ├── package.json
 ├── tsconfig.json
 └── README.md

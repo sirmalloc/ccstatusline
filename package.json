@@ -1,12 +1,10 @@
 {
   "name": "ccstatusline",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "A customizable status line formatter for Claude Code CLI",
   "module": "src/ccstatusline.ts",
   "type": "module",
-  "bin": {
-    "ccstatusline": "dist/ccstatusline.js"
-  },
+  "bin": "dist/ccstatusline.js",
   "files": [
     "dist/"
   ],
@@ -15,18 +13,28 @@
     "statusline": "bun run src/ccstatusline.ts",
     "patch": "patch-package",
     "build": "bun run patch && rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix"
   },
   "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@stylistic/eslint-plugin": "^5.2.3",
     "@types/bun": "latest",
-    "@types/react": "^19.1.9",
-    "typescript": "^5",
+    "@types/react": "^19.1.10",
     "chalk": "^5.5.0",
-    "ink": "^6.1.0",
+    "eslint": "^9.33.0",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-import-newlines": "^1.4.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "ink": "^6.2.0",
     "ink-gradient": "^3.0.0",
     "ink-select-input": "^6.2.0",
     "patch-package": "^8.0.0",
-    "react": "^19.1.1"
+    "react": "^19.1.1",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.1"
   },
   "keywords": [
     "claude",
@@ -43,5 +51,12 @@
   },
   "engines": {
     "node": ">=14.0.0"
+  },
+  "trustedDependencies": [
+    "unrs-resolver"
+  ],
+  "dependencies": {
+    "strip-ansi": "^7.1.0",
+    "zod": "^4.0.17"
   }
 }

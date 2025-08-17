@@ -1,218 +1,50 @@
 import chalk from 'chalk';
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 import { promisify } from 'util';
-import type { StatusItem } from './config';
+
+// ANSI escape sequence for stripping color codes
+const ANSI_REGEX = new RegExp(`\\x1b\\[[0-9;]*m`, 'g');
+
+import type {
+    RenderContext,
+    TokenMetrics,
+    TranscriptLine,
+    WidgetItem
+} from '../types';
+import { getColorLevelString } from '../types/ColorLevel';
+import type { Settings } from '../types/Settings';
+
+import {
+    applyColors,
+    bgToFg,
+    getColorAnsiCode,
+    getPowerlineTheme
+} from './colors';
+import { getTerminalWidth } from './terminal';
+import { getWidget } from './widgets';
+
+// Re-export types for backward compatibility
+export type { StatusJSON } from '../types/StatusJSON';
+export type { TokenMetrics, TokenUsage, TranscriptLine } from '../types/TokenMetrics';
+export type { RenderContext } from '../types/RenderContext';
 
 // Ensure fs.promises compatibility for older Node versions
-const readFile = fs.promises?.readFile || promisify(fs.readFile);
+const readFile = promisify(fs.readFile);
 
-// Force chalk to use colors even when piped
-chalk.level = 3;
+// Color functions moved to colors.ts
+// Re-exported for backward compatibility
+export { applyColors } from './colors';
 
-export interface StatusJSON {
-    session_id: string;
-    transcript_path: string;
-    cwd: string;
-    model: {
-        id: string;
-        display_name: string;
-    };
-    workspace: {
-        current_dir: string;
-        project_dir: string;
-    };
-    version?: string;
-}
-
-export interface TokenUsage {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
-}
-
-export interface TranscriptLine {
-    message?: {
-        usage?: TokenUsage;
-    };
-    isSidechain?: boolean;
-    timestamp?: string;
-}
-
-export interface TokenMetrics {
-    inputTokens: number;
-    outputTokens: number;
-    cachedTokens: number;
-    totalTokens: number;
-    contextLength: number;
-}
-
-export interface RenderContext {
-    data?: StatusJSON;
-    tokenMetrics?: TokenMetrics | null;
-    sessionDuration?: string | null;
-    gitBranch?: string | null;
-    gitChanges?: { insertions: number; deletions: number } | null;
-    terminalWidth?: number | null;
-    isPreview?: boolean;
-}
-
-// Helper function to apply foreground, background colors and bold
-export function applyColors(text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string {
-    let result = text;
-
-    // Standard color application
-    // Ignore 'dim' color - it causes issues with terminal rendering
-    if (foregroundColor && foregroundColor !== 'dim') {
-        const fgFunc = (chalk as any)[foregroundColor];
-        if (fgFunc) {
-            result = fgFunc(result);
-        }
-    }
-
-    if (backgroundColor && backgroundColor !== 'none') {
-        const bgFunc = (chalk as any)[backgroundColor];
-        if (bgFunc) {
-            result = bgFunc(result);
-        }
-    }
-
-    if (bold) {
-        result = chalk.bold(result);
-    }
-
-    return result;
-}
-
-// Helper to get default color for an item type
-export function getItemDefaultColor(type: string): string {
-    switch (type) {
-        case 'model': return 'cyan';
-        case 'git-branch': return 'magenta';
-        case 'git-changes': return 'yellow';
-        case 'session-clock': return 'yellow';
-        case 'version': return 'green';
-        case 'tokens-input': return 'blue';
-        case 'tokens-output': return 'white';
-        case 'tokens-cached': return 'cyan';
-        case 'tokens-total': return 'cyan';
-        case 'context-length': return 'gray';
-        case 'context-percentage': return 'blue';
-        case 'context-percentage-usable': return 'green';
-        case 'terminal-width': return 'gray';
-        case 'custom-text': return 'white';
-        case 'custom-command': return 'white';
-        case 'separator': return 'gray';
-        default: return 'white';
-    }
-}
+// Re-export getTerminalWidth for backward compatibility
+export { getTerminalWidth };
 
 // Helper function to format token counts
 export function formatTokens(count: number): string {
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+    if (count >= 1000000)
+        return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000)
+        return `${(count / 1000).toFixed(1)}k`;
     return count.toString();
-}
-
-export function getTerminalWidth(): number | null {
-    try {
-        // First try to get the tty of the parent process
-        const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
-        }).trim();
-
-        // Check if we got a valid tty (not ?? which means no tty)
-        if (tty && tty !== '??' && tty !== '?') {
-            // Now get the terminal size
-            const width = execSync(
-                `stty size < /dev/${tty} | awk '{print $2}'`,
-                {
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    shell: '/bin/sh'
-                }
-            ).trim();
-
-            const parsed = parseInt(width, 10);
-            if (!isNaN(parsed) && parsed > 0) {
-                return parsed;
-            }
-        }
-    } catch {
-        // Command failed, width detection not available
-    }
-
-    // Fallback: try tput cols which might work in some environments
-    try {
-        const width = execSync('tput cols 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-        }).trim();
-
-        const parsed = parseInt(width, 10);
-        if (!isNaN(parsed) && parsed > 0) {
-            return parsed;
-        }
-    } catch {
-        // tput also failed
-    }
-
-    return null;
-}
-
-export function getGitBranch(): string | null {
-    try {
-        const branch = execSync('git branch --show-current 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-        }).trim();
-        return branch || null;
-    } catch {
-        return null;
-    }
-}
-
-export function getGitChanges(): { insertions: number; deletions: number } | null {
-    try {
-        let totalInsertions = 0;
-        let totalDeletions = 0;
-
-        // Get unstaged changes
-        const unstagedStat = execSync('git diff --shortstat 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-        }).trim();
-
-        // Get staged changes
-        const stagedStat = execSync('git diff --cached --shortstat 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-        }).trim();
-
-        // Parse unstaged changes
-        if (unstagedStat) {
-            const insertMatch = unstagedStat.match(/(\d+) insertion/);
-            const deleteMatch = unstagedStat.match(/(\d+) deletion/);
-            totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-            totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
-        }
-
-        // Parse staged changes
-        if (stagedStat) {
-            const insertMatch = stagedStat.match(/(\d+) insertion/);
-            const deleteMatch = stagedStat.match(/(\d+) deletion/);
-            totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-            totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
-        }
-
-        // Always return the changes, even if they're zero
-        return { insertions: totalInsertions, deletions: totalDeletions };
-    } catch {
-        return null;
-    }
 }
 
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
@@ -222,7 +54,7 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
         }
 
         const content = await readFile(transcriptPath, 'utf-8');
-        const lines = content.trim().split('\n').filter(line => line.trim());
+        const lines = content.trim().split('\n').filter((line: string) => line.trim());
 
         if (lines.length === 0) {
             return null;
@@ -234,7 +66,7 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
         // Find first valid timestamp
         for (const line of lines) {
             try {
-                const data = JSON.parse(line);
+                const data = JSON.parse(line) as { timestamp?: string };
                 if (data.timestamp) {
                     firstTimestamp = new Date(data.timestamp);
                     break;
@@ -247,7 +79,7 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
         // Find last valid timestamp (iterate backwards)
         for (let i = lines.length - 1; i >= 0; i--) {
             try {
-                const data = JSON.parse(lines[i]!);
+                const data = JSON.parse(lines[i] ?? '') as { timestamp?: string };
                 if (data.timestamp) {
                     lastTimestamp = new Date(data.timestamp);
                     break;
@@ -307,12 +139,12 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 
         for (const line of lines) {
             try {
-                const data: TranscriptLine = JSON.parse(line);
+                const data = JSON.parse(line) as TranscriptLine;
                 if (data.message?.usage) {
                     inputTokens += data.message.usage.input_tokens || 0;
                     outputTokens += data.message.usage.output_tokens || 0;
-                    cachedTokens += data.message.usage.cache_read_input_tokens || 0;
-                    cachedTokens += data.message.usage.cache_creation_input_tokens || 0;
+                    cachedTokens += data.message.usage.cache_read_input_tokens ?? 0;
+                    cachedTokens += data.message.usage.cache_creation_input_tokens ?? 0;
 
                     // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
                     if (data.isSidechain !== true && data.timestamp) {
@@ -331,9 +163,9 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         // Calculate context length from the most recent main chain message
         if (mostRecentMainChainEntry?.message?.usage) {
             const usage = mostRecentMainChainEntry.message.usage;
-            contextLength = (usage.input_tokens || 0) +
-                          (usage.cache_read_input_tokens || 0) +
-                          (usage.cache_creation_input_tokens || 0);
+            contextLength = (usage.input_tokens || 0)
+                + (usage.cache_read_input_tokens ?? 0)
+                + (usage.cache_creation_input_tokens ?? 0);
         }
 
         const totalTokens = inputTokens + outputTokens + cachedTokens;
@@ -344,11 +176,438 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
     }
 }
 
+function renderPowerlineStatusLine(
+    widgets: WidgetItem[],
+    settings: Settings,
+    context: RenderContext,
+    lineIndex = 0,  // Which line we're rendering (for theme color cycling)
+    globalSeparatorOffset = 0  // Starting separator index for this line
+): string {
+    const powerlineConfig = settings.powerline as Record<string, unknown> | undefined;
+    const config = powerlineConfig ?? {};
+
+    // Get separator configuration
+    const separators = (config.separators as string[] | undefined) ?? ['\uE0B0'];
+    const invertBgs = (config.separatorInvertBackground as boolean[] | undefined) ?? separators.map(() => false);
+
+    // Get caps arrays or fallback to empty arrays
+    const startCaps = (config.startCaps as string[] | undefined) ?? [];
+    const endCaps = (config.endCaps as string[] | undefined) ?? [];
+
+    // Get the cap for this line (cycle through if more lines than caps)
+    const capLineIndex = context.lineIndex ?? lineIndex;
+    const startCap = startCaps.length > 0 ? startCaps[capLineIndex % startCaps.length] : '';
+    const endCap = endCaps.length > 0 ? endCaps[capLineIndex % endCaps.length] : '';
+
+    // Get theme colors if a theme is set and not 'custom'
+    const themeName = config.theme as string | undefined;
+    let themeColors: { fg: string[]; bg: string[] } | undefined;
+
+    if (themeName && themeName !== 'custom') {
+        const theme = getPowerlineTheme(themeName);
+        if (theme) {
+            const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+            const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
+            themeColors = theme[colorLevelKey];
+        }
+    }
+
+    // Get color level from settings
+    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+
+    // Filter out separator and flex-separator widgets in powerline mode
+    const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
+    );
+
+    if (filteredWidgets.length === 0)
+        return '';
+
+    const detectedWidth = context.terminalWidth ?? getTerminalWidth();
+
+    // Calculate terminal width based on flex mode settings
+    let terminalWidth: number | null = null;
+    if (detectedWidth) {
+        const flexMode = settings.flexMode as string;
+
+        if (context.isPreview) {
+            // In preview mode, account for box borders and padding (6 chars total)
+            if (flexMode === 'full') {
+                terminalWidth = detectedWidth - 8;
+            } else if (flexMode === 'full-minus-40') {
+                terminalWidth = detectedWidth - 43;
+            } else if (flexMode === 'full-until-compact') {
+                terminalWidth = detectedWidth - 8;
+            }
+        } else {
+            // In actual rendering mode
+            if (flexMode === 'full') {
+                terminalWidth = detectedWidth - 4;
+            } else if (flexMode === 'full-minus-40') {
+                terminalWidth = detectedWidth - 41;
+            } else if (flexMode === 'full-until-compact') {
+                const threshold = settings.compactThreshold;
+                const contextPercentage = context.tokenMetrics
+                    ? Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
+
+                if (contextPercentage >= threshold) {
+                    terminalWidth = detectedWidth - 40;
+                } else {
+                    terminalWidth = detectedWidth - 4;
+                }
+            }
+        }
+    }
+
+    // Build widget elements (similar to regular mode but without separators)
+    const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
+    let widgetColorIndex = 0;  // Track widget index for theme colors
+
+    for (let i = 0; i < filteredWidgets.length; i++) {
+        const widget = filteredWidgets[i];
+        if (!widget)
+            continue;
+        let widgetText = '';
+        let defaultColor = 'white';
+
+        // Handle separators specially (they're not widgets)
+        if (widget.type === 'separator' || widget.type === 'flex-separator') {
+            // These are filtered out in powerline mode
+            continue;
+        }
+
+        // Use widget registry for regular widgets
+        try {
+            const widgetImpl = getWidget(widget.type);
+            widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            defaultColor = widgetImpl.getDefaultColor();
+        } catch {
+            // Unknown widget type - skip
+            continue;
+        }
+
+        if (widgetText) {
+            // Apply default padding from settings
+            const padding = settings.defaultPadding ?? '';
+
+            // If override FG color is set and this is a custom command with preserveColors,
+            // we need to strip the ANSI codes from the widget text
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                && widget.type === 'custom-command' && widget.preserveColors) {
+                // Strip ANSI color codes when override is active
+                widgetText = widgetText.replace(ANSI_REGEX, '');
+            }
+
+            // Check if padding should be omitted due to no-padding merge
+            const prevItem = i > 0 ? filteredWidgets[i - 1] : null;
+            const nextItem = i < filteredWidgets.length - 1 ? filteredWidgets[i + 1] : null;
+            const omitLeadingPadding = prevItem?.merge === 'no-padding';
+            const omitTrailingPadding = widget.merge === 'no-padding' && nextItem;
+
+            const leadingPadding = omitLeadingPadding ? '' : padding;
+            const trailingPadding = omitTrailingPadding ? '' : padding;
+            const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
+
+            // Determine colors
+            let fgColor = widget.color ?? defaultColor;
+            let bgColor = widget.backgroundColor;
+
+            // Apply theme colors if a theme is set (and not 'custom')
+            // For custom commands with preserveColors, only skip foreground theme colors
+            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
+
+            if (themeColors) {
+                if (!skipFgTheme) {
+                    fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length] ?? fgColor;
+                }
+                bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length] ?? bgColor;
+
+                // Only increment color index if this widget is not merged with the next one
+                // This ensures merged widgets share the same color
+                if (!widget.merge) {
+                    widgetColorIndex++;
+                }
+            }
+
+            // Apply override FG color if set (overrides theme)
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+                fgColor = settings.overrideForegroundColor;
+            }
+
+            widgetElements.push({
+                content: paddedText,
+                bgColor: bgColor ?? undefined,  // Make sure undefined, not empty string
+                fgColor: fgColor,
+                widget: widget
+            });
+        }
+    }
+
+    if (widgetElements.length === 0)
+        return '';
+
+    // Build the final powerline string
+    let result = '';
+
+    // Add start cap if specified
+    if (startCap && widgetElements.length > 0) {
+        const firstWidget = widgetElements[0];
+        if (firstWidget?.bgColor) {
+            // Start cap uses first widget's background as foreground (converted)
+            const capFg = bgToFg(firstWidget.bgColor);
+            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+            result += fgCode + startCap + '\x1b[39m';
+        } else {
+            result += startCap;
+        }
+    }
+
+    // Render widgets with powerline separators
+    for (let i = 0; i < widgetElements.length; i++) {
+        const widget = widgetElements[i];
+        const nextWidget = widgetElements[i + 1];
+
+        if (!widget)
+            continue;
+
+        // Apply colors to widget content using raw ANSI codes for powerline mode
+        // This avoids reset codes that interfere with separator rendering
+        const shouldBold = (settings.globalBold) || widget.widget.bold;
+
+        // Check if we need a separator after this widget
+        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+
+        let widgetContent = '';
+
+        // For custom commands with preserveColors, only skip foreground color/bold
+        const isPreserveColors = widget.widget.type === 'custom-command' && widget.widget.preserveColors;
+
+        if (shouldBold && !isPreserveColors) {
+            widgetContent += '\x1b[1m';
+        }
+        if (widget.fgColor && !isPreserveColors) {
+            widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
+        }
+        // Always apply background for consistency in powerline mode
+        if (widget.bgColor) {
+            widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
+        }
+        widgetContent += widget.content;
+        // Reset colors after content
+        // For custom commands with preserveColors, also reset text attributes like dim
+        if (isPreserveColors) {
+            // Full reset to clear any attributes from command (including dim from Claude Code)
+            widgetContent += '\x1b[0m';
+        } else {
+            widgetContent += '\x1b[49m\x1b[39m';
+            // Only reset bold if there's no separator following AND no end cap
+            const isLastWidget = i === widgetElements.length - 1;
+            const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
+            if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+                widgetContent += '\x1b[22m';
+            }
+        }
+
+        result += widgetContent;
+
+        // Add separator between widgets (not after last one, and not if current widget is merged with next)
+        if (needsSeparator) {
+            // Determine which separator to use based on global position
+            // Use separators in order, using the last one for all remaining positions
+            const globalIndex = globalSeparatorOffset + i;
+            const separatorIndex = Math.min(globalIndex, separators.length - 1);
+            const separator = separators[separatorIndex] ?? '\uE0B0';
+            const shouldInvert = invertBgs[separatorIndex] ?? false;
+
+            // Powerline separator coloring:
+            // Normal (not inverted):
+            //   - Foreground: previous widget's background color (converted to fg)
+            //   - Background: next widget's background color
+            // Inverted:
+            //   - Foreground: next widget's background color (converted to fg)
+            //   - Background: previous widget's background color
+
+            // Build separator with raw ANSI codes to avoid reset issues
+            let separatorOutput = '';
+
+            // Check if adjacent widgets have the same background color
+            const sameBackground = widget.bgColor && nextWidget.bgColor && widget.bgColor === nextWidget.bgColor;
+
+            if (shouldInvert) {
+                // Inverted: swap fg/bg logic
+                if (widget.bgColor && nextWidget.bgColor) {
+                    if (sameBackground) {
+                        // Same background: use next widget's foreground color
+                        const fgColor = nextWidget.fgColor;
+                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                        const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
+                    } else {
+                        // Different backgrounds: use standard inverted logic
+                        const fgColor = bgToFg(nextWidget.bgColor);
+                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                        const bgCode = getColorAnsiCode(widget.bgColor, colorLevel, true);
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
+                    }
+                } else if (widget.bgColor && !nextWidget.bgColor) {
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else if (!widget.bgColor && nextWidget.bgColor) {
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else {
+                    separatorOutput = separator;
+                }
+            } else {
+                // Normal (not inverted)
+                if (widget.bgColor && nextWidget.bgColor) {
+                    if (sameBackground) {
+                        // Same background: use previous widget's foreground color
+                        const fgColor = widget.fgColor;
+                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                        const bgCode = getColorAnsiCode(nextWidget.bgColor, colorLevel, true);
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
+                    } else {
+                        // Different backgrounds: use standard logic
+                        const fgColor = bgToFg(widget.bgColor);
+                        const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                        const bgCode = getColorAnsiCode(nextWidget.bgColor, colorLevel, true);
+                        separatorOutput = fgCode + bgCode + separator + '\x1b[39m\x1b[49m';
+                    }
+                } else if (widget.bgColor && !nextWidget.bgColor) {
+                    // Only previous widget has background
+                    const fgColor = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else if (!widget.bgColor && nextWidget.bgColor) {
+                    // Only next widget has background
+                    const fgColor = bgToFg(nextWidget.bgColor);
+                    const fgCode = getColorAnsiCode(fgColor, colorLevel, false);
+                    separatorOutput = fgCode + separator + '\x1b[39m';
+                } else {
+                    // Neither has background
+                    separatorOutput = separator;
+                }
+            }
+
+            result += separatorOutput;
+
+            // Reset bold after separator if it was set
+            if (shouldBold) {
+                result += '\x1b[22m';
+            }
+        }
+    }
+
+    // Add end cap if specified
+    if (endCap && widgetElements.length > 0) {
+        const lastWidget = widgetElements[widgetElements.length - 1];
+
+        if (lastWidget?.bgColor) {
+            // End cap uses last widget's background as foreground (converted)
+            const capFg = bgToFg(lastWidget.bgColor);
+            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+            result += fgCode + endCap + '\x1b[39m';
+        } else {
+            result += endCap;
+        }
+
+        // Reset bold after end cap if needed
+        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
+        if (lastWidgetBold) {
+            result += '\x1b[22m';
+        }
+    }
+
+    // Reset colors at the end
+    result += chalk.reset('');
+
+    // Handle truncation if terminal width is known
+    if (terminalWidth && terminalWidth > 0) {
+        const plainLength = result.replace(ANSI_REGEX, '').length;
+        if (plainLength > terminalWidth) {
+            // Truncate to terminal width
+            let truncated = '';
+            let currentLength = 0;
+            let inAnsiCode = false;
+
+            for (const char of result) {
+                if (char === '\x1b') {
+                    inAnsiCode = true;
+                    truncated += char;
+                } else if (inAnsiCode) {
+                    truncated += char;
+                    if (char === 'm') {
+                        inAnsiCode = false;
+                    }
+                } else {
+                    if (currentLength < terminalWidth - 3) {
+                        truncated += char;
+                        currentLength++;
+                    } else {
+                        truncated += '...';
+                        break;
+                    }
+                }
+            }
+            result = truncated;
+        }
+    }
+
+    return result;
+}
+
+// Format separator with appropriate spacing
+function formatSeparator(sep: string): string {
+    if (sep === '|') {
+        return ' | ';
+    } else if (sep === ' ') {
+        return ' ';
+    } else if (sep === ',') {
+        return ', ';
+    } else if (sep === '-') {
+        return ' - ';
+    }
+    return sep;
+}
+
+export interface RenderResult {
+    line: string;
+    wasTruncated: boolean;
+}
+
+export function renderStatusLineWithInfo(
+    widgets: WidgetItem[],
+    settings: Settings,
+    context: RenderContext
+): RenderResult {
+    const line = renderStatusLine(widgets, settings, context);
+    // Check if line contains the truncation ellipsis
+    const wasTruncated = line.includes('...');
+    return { line, wasTruncated };
+}
+
 export function renderStatusLine(
-    items: StatusItem[],
-    settings: any,
+    widgets: WidgetItem[],
+    settings: Settings,
     context: RenderContext
 ): string {
+    // Force 24-bit color for non-preview statusline rendering
+    // Chalk level is now set globally in ccstatusline.ts and tui.tsx
+    // No need to override here
+
+    // Get color level from settings
+    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+
+    // Check if powerline mode is enabled
+    const powerlineSettings = settings.powerline as Record<string, unknown> | undefined;
+    const isPowerlineMode = Boolean(powerlineSettings?.enabled);
+
+    // If powerline mode is enabled, use powerline renderer
+    if (isPowerlineMode) {
+        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0);
+    }
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground color
@@ -363,16 +622,16 @@ export function renderStatusLine(
             bgColor = settings.overrideBackgroundColor;
         }
 
-        const shouldBold = settings.globalBold || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold);
+        const shouldBold = (settings.globalBold) || bold;
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel);
     };
 
-    const detectedWidth = context.terminalWidth || getTerminalWidth();
-    
+    const detectedWidth = context.terminalWidth ?? getTerminalWidth();
+
     // Calculate terminal width based on flex mode settings
     let terminalWidth: number | null = null;
     if (detectedWidth) {
-        const flexMode = settings.flexMode || 'full-minus-40';
+        const flexMode = settings.flexMode as string;
 
         if (context.isPreview) {
             // In preview mode, account for box borders and padding (6 chars total)
@@ -394,9 +653,9 @@ export function renderStatusLine(
                 terminalWidth = detectedWidth - 41;
             } else if (flexMode === 'full-until-compact') {
                 // Check context percentage to decide
-                const threshold = settings.compactThreshold || 60;
-                const contextPercentage = context.tokenMetrics ?
-                    Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
+                const threshold = settings.compactThreshold;
+                const contextPercentage = context.tokenMetrics
+                    ? Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
 
                 if (contextPercentage >= threshold) {
                     // Context is high, leave space for auto-compact
@@ -409,260 +668,118 @@ export function renderStatusLine(
         }
     }
 
-    const elements: { content: string, type: string, item?: StatusItem }[] = [];
+    const elements: { content: string; type: string; widget?: WidgetItem }[] = [];
     let hasFlexSeparator = false;
 
-    // Build elements based on configured items
-    for (const item of items) {
-        switch (item.type) {
-            case 'model':
-                if (context.isPreview) {
-                    const modelText = item.rawValue ? 'Claude' : 'Model: Claude';
-                    elements.push({ content: applyColorsWithOverride(modelText, item.color || 'cyan', item.backgroundColor, item.bold), type: 'model', item });
-                } else if (context.data?.model) {
-                    const text = item.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'model', item });
-                }
-                break;
+    // Build elements based on configured widgets
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget)
+            continue;
 
-            case 'git-branch':
-                if (context.isPreview) {
-                    const branchText = item.rawValue ? 'main' : '⎇ main';
-                    elements.push({ content: applyColorsWithOverride(branchText, item.color || 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
-                } else {
-                    const branch = context.gitBranch || getGitBranch();
-                    if (branch) {
-                        const text = item.rawValue ? branch : `⎇ ${branch}`;
-                        elements.push({ content: applyColorsWithOverride(text, item.color || 'magenta', item.backgroundColor, item.bold), type: 'git-branch', item });
+        // Handle separators specially (they're not widgets)
+        if (widget.type === 'separator') {
+            const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
+            const formattedSep = formatSeparator(sepChar);
+
+            // Check if we should inherit colors from the previous widget
+            let separatorColor = widget.color ?? 'gray';
+            let separatorBg = widget.backgroundColor;
+            let separatorBold = widget.bold;
+
+            if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
+                // Only inherit if the separator doesn't have explicit colors set
+                const prevWidget = widgets[i - 1];
+                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
+                    // Get the previous widget's colors
+                    let widgetColor = prevWidget.color;
+                    if (!widgetColor) {
+                        try {
+                            const widgetImpl = getWidget(prevWidget.type);
+                            widgetColor = widgetImpl.getDefaultColor();
+                        } catch {
+                            widgetColor = 'white';
+                        }
                     }
+                    separatorColor = widgetColor;
+                    separatorBg = prevWidget.backgroundColor;
+                    separatorBold = prevWidget.bold;
                 }
-                break;
+            }
 
-            case 'git-changes':
-                if (context.isPreview) {
-                    const changesText = '(+42,-10)';
-                    elements.push({ content: applyColorsWithOverride(changesText, item.color || 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
-                } else {
-                    const changes = context.gitChanges || getGitChanges();
-                    if (changes !== null) {
-                        const changeStr = `(+${changes.insertions},-${changes.deletions})`;
-                        elements.push({ content: applyColorsWithOverride(changeStr, item.color || 'yellow', item.backgroundColor, item.bold), type: 'git-changes', item });
-                    }
-                }
-                break;
+            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold), type: 'separator', widget });
+            continue;
+        }
 
-            case 'tokens-input':
-                if (context.isPreview) {
-                    const inputText = item.rawValue ? '15.2k' : 'In: 15.2k';
-                    elements.push({ content: applyColorsWithOverride(inputText, item.color || 'blue', item.backgroundColor, item.bold), type: 'tokens-input', item });
-                } else if (context.tokenMetrics) {
-                    const text = item.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'tokens-input', item });
-                }
-                break;
+        if (widget.type === 'flex-separator') {
+            elements.push({ content: 'FLEX', type: 'flex-separator', widget });
+            hasFlexSeparator = true;
+            continue;
+        }
 
-            case 'tokens-output':
-                if (context.isPreview) {
-                    const outputText = item.rawValue ? '3.4k' : 'Out: 3.4k';
-                    elements.push({ content: applyColorsWithOverride(outputText, item.color || 'white', item.backgroundColor, item.bold), type: 'tokens-output', item });
-                } else if (context.tokenMetrics) {
-                    const text = item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'white', item.backgroundColor, item.bold), type: 'tokens-output', item });
-                }
-                break;
+        // Use widget registry for regular widgets
+        try {
+            const widgetImpl = getWidget(widget.type);
+            const widgetText = widgetImpl.render(widget, context, settings);
 
-            case 'tokens-cached':
-                if (context.isPreview) {
-                    const cachedText = item.rawValue ? '12k' : 'Cached: 12k';
-                    elements.push({ content: applyColorsWithOverride(cachedText, item.color || 'cyan', item.backgroundColor, item.bold), type: 'tokens-cached', item });
-                } else if (context.tokenMetrics) {
-                    const text = item.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'tokens-cached', item });
-                }
-                break;
+            if (widgetText) {
+                const defaultColor = widgetImpl.getDefaultColor();
 
-            case 'tokens-total':
-                if (context.isPreview) {
-                    const totalText = item.rawValue ? '30.6k' : 'Total: 30.6k';
-                    elements.push({ content: applyColorsWithOverride(totalText, item.color || 'cyan', item.backgroundColor, item.bold), type: 'tokens-total', item });
-                } else if (context.tokenMetrics) {
-                    const text = item.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'cyan', item.backgroundColor, item.bold), type: 'tokens-total', item });
-                }
-                break;
+                // Special handling for custom-command with preserveColors
+                if (widget.type === 'custom-command' && widget.preserveColors) {
+                    // Handle max width truncation for commands with ANSI codes
+                    let finalOutput = widgetText;
+                    if (widget.maxWidth && widget.maxWidth > 0) {
+                        const plainLength = widgetText.replace(ANSI_REGEX, '').length;
+                        if (plainLength > widget.maxWidth) {
+                            // Truncate while preserving ANSI codes
+                            let truncated = '';
+                            let currentLength = 0;
+                            let inAnsiCode = false;
+                            let ansiBuffer = '';
 
-            case 'context-length':
-                if (context.isPreview) {
-                    const ctxText = item.rawValue ? '18.6k' : 'Ctx: 18.6k';
-                    elements.push({ content: applyColorsWithOverride(ctxText, item.color || 'gray', item.backgroundColor, item.bold), type: 'context-length', item });
-                } else if (context.tokenMetrics) {
-                    const text = item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'gray', item.backgroundColor, item.bold), type: 'context-length', item });
-                }
-                break;
-
-            case 'context-percentage':
-                if (context.isPreview) {
-                    const ctxPctText = item.rawValue ? '9.3%' : 'Ctx: 9.3%';
-                    elements.push({ content: applyColorsWithOverride(ctxPctText, item.color || 'blue', item.backgroundColor, item.bold), type: 'context-percentage', item });
-                } else if (context.tokenMetrics) {
-                    const percentage = Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100);
-                    const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'blue', item.backgroundColor, item.bold), type: 'context-percentage', item });
-                }
-                break;
-
-            case 'context-percentage-usable':
-                if (context.isPreview) {
-                    const ctxUsableText = item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
-                    elements.push({ content: applyColorsWithOverride(ctxUsableText, item.color || 'green', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
-                } else if (context.tokenMetrics) {
-                    // Calculate percentage out of 160,000 (80% of full context for auto-compact)
-                    const percentage = Math.min(100, (context.tokenMetrics.contextLength / 160000) * 100);
-                    const text = item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx(u): ${percentage.toFixed(1)}%`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'green', item.backgroundColor, item.bold), type: 'context-percentage-usable', item });
-                }
-                break;
-
-            case 'terminal-width':
-                const width = terminalWidth || getTerminalWidth();
-                if (context.isPreview) {
-                    const detectedWidth = width || '??';
-                    const termText = item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
-                    elements.push({ content: applyColorsWithOverride(termText, item.color || 'gray', item.backgroundColor, item.bold), type: 'terminal-width', item });
-                } else if (width) {
-                    const text = item.rawValue ? `${width}` : `Term: ${width}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'gray', item.backgroundColor, item.bold), type: 'terminal-width', item });
-                }
-                break;
-
-            case 'session-clock':
-                if (context.isPreview) {
-                    const sessionText = item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
-                    elements.push({ content: applyColorsWithOverride(sessionText, item.color || 'yellow', item.backgroundColor, item.bold), type: 'session-clock', item });
-                } else if (context.sessionDuration) {
-                    const text = item.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
-                    elements.push({ content: applyColorsWithOverride(text, item.color || 'yellow', item.backgroundColor, item.bold), type: 'session-clock', item });
-                }
-                break;
-
-            case 'version':
-                if (context.isPreview) {
-                    const versionText = item.rawValue ? '1.0.72' : 'Version: 1.0.72';
-                    elements.push({ content: applyColorsWithOverride(versionText, item.color || 'green', item.backgroundColor, item.bold), type: 'version', item });
-                } else if (context.data?.version) {
-                    const versionString = context.data.version || 'Unknown';
-                    const versionText = item.rawValue ? versionString : `Version: ${versionString}`;
-                    elements.push({ content: applyColorsWithOverride(versionText, item.color || 'green', item.backgroundColor, item.bold), type: 'version', item });
-                }
-                break;
-
-            case 'separator':
-                // Always add separators - users should be able to add multiple if they want
-                const sepChar = item.character || '|';
-                // Handle special separator cases
-                let sepText;
-                if (sepChar === ',') {
-                    sepText = `${sepChar} `;
-                } else if (sepChar === ' ') {
-                    sepText = ' ';
-                } else {
-                    sepText = ` ${sepChar} `;
-                }
-                // Use item color if specified, otherwise default to gray
-                const sepContent = applyColorsWithOverride(sepText, item.color || 'gray', item.backgroundColor, item.bold);
-                elements.push({ content: sepContent, type: 'separator', item });
-                break;
-
-            case 'flex-separator':
-                elements.push({ content: 'FLEX', type: 'flex-separator', item });
-                hasFlexSeparator = true;
-                break;
-
-            case 'custom-text':
-                const customText = item.customText || '';
-                elements.push({ content: applyColorsWithOverride(customText, item.color || 'white', item.backgroundColor, item.bold), type: 'custom-text', item });
-                break;
-
-            case 'custom-command':
-                if (context.isPreview) {
-                    const cmdText = item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
-                    // Only apply color if not preserving colors
-                    if (!item.preserveColors) {
-                        elements.push({ content: applyColorsWithOverride(cmdText, item.color || 'white', item.backgroundColor, item.bold), type: 'custom-command', item });
-                    } else {
-                        // When preserving colors, just show the text without applying our colors
-                        elements.push({ content: cmdText, type: 'custom-command', item });
-                    }
-                } else if (item.commandPath && context.data) {
-                    try {
-                        // Execute the command with JSON input via stdin
-                        const timeout = item.timeout || 1000; // Default to 1000ms if not specified
-                        const output = execSync(item.commandPath, {
-                            encoding: 'utf8',
-                            input: JSON.stringify(context.data),
-                            stdio: ['pipe', 'pipe', 'ignore'],
-                            timeout: timeout
-                        }).trim();
-
-                        if (output) {
-                            let finalOutput = output;
-
-                            // Handle max width truncation
-                            if (item.maxWidth && item.maxWidth > 0) {
-                                // Remove ANSI codes to measure actual length
-                                const plainLength = output.replace(/\x1b\[[0-9;]*m/g, '').length;
-                                if (plainLength > item.maxWidth) {
-                                    // Truncate while preserving ANSI codes
-                                    let truncated = '';
-                                    let currentLength = 0;
-                                    let inAnsiCode = false;
-                                    let ansiBuffer = '';
-
-                                    for (let i = 0; i < output.length; i++) {
-                                        const char = output[i];
-                                        if (char === '\x1b') {
-                                            inAnsiCode = true;
-                                            ansiBuffer = char;
-                                        } else if (inAnsiCode) {
-                                            ansiBuffer += char;
-                                            if (char === 'm') {
-                                                truncated += ansiBuffer;
-                                                inAnsiCode = false;
-                                                ansiBuffer = '';
-                                            }
-                                        } else {
-                                            if (currentLength < item.maxWidth) {
-                                                truncated += char;
-                                                currentLength++;
-                                            } else {
-                                                break;
-                                            }
-                                        }
+                            for (const char of widgetText) {
+                                if (char === '\x1b') {
+                                    inAnsiCode = true;
+                                    ansiBuffer = char;
+                                } else if (inAnsiCode) {
+                                    ansiBuffer += char;
+                                    if (char === 'm') {
+                                        truncated += ansiBuffer;
+                                        inAnsiCode = false;
+                                        ansiBuffer = '';
                                     }
-                                    finalOutput = truncated;
+                                } else {
+                                    if (currentLength < widget.maxWidth) {
+                                        truncated += char;
+                                        currentLength++;
+                                    } else {
+                                        break;
+                                    }
                                 }
                             }
-
-                            // Apply color if not preserving original colors
-                            if (!item.preserveColors) {
-                                // Strip existing ANSI codes and apply new color
-                                const stripped = finalOutput.replace(/\x1b\[[0-9;]*m/g, '');
-                                elements.push({ content: applyColorsWithOverride(stripped, item.color || 'white', item.backgroundColor, item.bold), type: 'custom-command', item });
-                            } else {
-                                // Preserve original colors from command output - ignore any color property
-                                elements.push({ content: finalOutput, type: 'custom-command', item });
-                            }
+                            finalOutput = truncated;
                         }
-                    } catch {
-                        // Command failed or timed out - silently skip
                     }
+                    // Preserve original colors from command output
+                    elements.push({ content: finalOutput, type: widget.type, widget });
+                } else {
+                    // Normal widget rendering with colors
+                    elements.push({
+                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        type: widget.type,
+                        widget
+                    });
                 }
-                break;
+            }
+        } catch {
+            // Unknown widget type - skip
+            continue;
         }
     }
 
-    if (elements.length === 0) return '';
+    if (elements.length === 0)
+        return '';
 
     // Remove trailing separators
     while (elements.length > 0 && elements[elements.length - 1]?.type === 'separator') {
@@ -671,31 +788,36 @@ export function renderStatusLine(
 
     // Apply default padding and separators
     const finalElements: string[] = [];
-    const padding = settings.defaultPadding || '';
-    const defaultSep = settings.defaultSeparator || '';
+    const padding = settings.defaultPadding ?? '';
+    const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
 
     elements.forEach((elem, index) => {
         // Add default separator between any two items (but not before first item, and not around flex separators)
         const prevElem = index > 0 ? elements[index - 1] : null;
-        const shouldAddSeparator = defaultSep && index > 0 && 
-                                   elem.type !== 'flex-separator' && 
-                                   prevElem?.type !== 'flex-separator';
-        
+        const shouldAddSeparator = defaultSep && index > 0
+            && elem.type !== 'flex-separator'
+            && prevElem?.type !== 'flex-separator'
+            && !prevElem?.widget?.merge; // Don't add separator if previous widget is merged with this one
+
         if (shouldAddSeparator) {
             // Check if we should inherit colors from the previous element
             if (settings.inheritSeparatorColors && index > 0) {
                 const prevElem = elements[index - 1];
-                if (prevElem && prevElem.item) {
+                if (prevElem?.widget) {
                     // Apply the previous element's colors to the separator (already handles override)
-                    // Use the item's color if set, otherwise get the default color for that item type
-                    const itemColor = prevElem.item.color || getItemDefaultColor(prevElem.item.type);
-                    const coloredSep = applyColorsWithOverride(defaultSep, itemColor, prevElem.item.backgroundColor, prevElem.item.bold);
+                    // Use the widget's color if set, otherwise get the default color for that widget type
+                    let widgetColor = prevElem.widget.color;
+                    if (!widgetColor && prevElem.widget.type !== 'separator' && prevElem.widget.type !== 'flex-separator') {
+                        const widgetImpl = getWidget(prevElem.widget.type);
+                        widgetColor = widgetImpl.getDefaultColor();
+                    }
+                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);
                 }
-            } else if ((settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') ||
-                       (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none')) {
+            } else if ((settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none')
+                || (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none')) {
                 // Apply override colors even when not inheriting colors
                 const coloredSep = applyColorsWithOverride(defaultSep, undefined, undefined);
                 finalElements.push(coloredSep);
@@ -708,21 +830,28 @@ export function renderStatusLine(
         if (elem.type === 'separator' || elem.type === 'flex-separator') {
             finalElements.push(elem.content);
         } else {
-            // Apply padding with colors (using overrides if set)
-            const hasColorOverride = (settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none') ||
-                                    (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
+            // Check if padding should be omitted due to no-padding merge
+            const nextElem = index < elements.length - 1 ? elements[index + 1] : null;
+            const omitLeadingPadding = prevElem?.widget?.merge === 'no-padding';
+            const omitTrailingPadding = elem.widget?.merge === 'no-padding' && nextElem;
 
-            if (padding && (elem.item?.backgroundColor || hasColorOverride)) {
+            // Apply padding with colors (using overrides if set)
+            const hasColorOverride = Boolean(settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none')
+                || Boolean(settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
+
+            if (padding && (elem.widget?.backgroundColor || hasColorOverride)) {
                 // Apply colors to padding - applyColorsWithOverride will handle the overrides
-                const paddedContent = applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor) +
-                                     elem.content +
-                                     applyColorsWithOverride(padding, undefined, elem.item?.backgroundColor);
+                const leadingPadding = omitLeadingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
+                const trailingPadding = omitTrailingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
+                const paddedContent = leadingPadding + elem.content + trailingPadding;
                 finalElements.push(paddedContent);
             } else if (padding) {
                 // Wrap padding in ANSI reset codes to prevent trimming
                 // This ensures leading spaces aren't trimmed by terminals
                 const protectedPadding = chalk.reset(padding);
-                finalElements.push(protectedPadding + elem.content + protectedPadding);
+                const leadingPadding = omitLeadingPadding ? '' : protectedPadding;
+                const trailingPadding = omitTrailingPadding ? '' : protectedPadding;
+                finalElements.push(leadingPadding + elem.content + trailingPadding);
             } else {
                 // No padding
                 finalElements.push(elem.content);
@@ -738,20 +867,19 @@ export function renderStatusLine(
         const parts: string[][] = [[]];
         let currentPart = 0;
 
-        for (let i = 0; i < finalElements.length; i++) {
-            const elem = finalElements[i];
+        for (const elem of finalElements) {
             if (elem === 'FLEX') {
                 currentPart++;
                 parts[currentPart] = [];
             } else {
-                parts[currentPart]?.push(elem!);
+                parts[currentPart]?.push(elem);
             }
         }
 
         // Calculate total length of all non-flex content
-        const partLengths = parts.map(part => {
+        const partLengths = parts.map((part) => {
             const joined = part.join('');
-            return joined.replace(/\x1b\[[0-9;]*m/g, '').length;
+            return joined.replace(ANSI_REGEX, '').length;
         });
         const totalContentLength = partLengths.reduce((sum, len) => sum + len, 0);
 
@@ -787,10 +915,10 @@ export function renderStatusLine(
 
     // Truncate if the line exceeds the terminal width
     // Use terminalWidth if available (already accounts for flex mode adjustments), otherwise use detectedWidth
-    const maxWidth = terminalWidth || detectedWidth;
+    const maxWidth = terminalWidth ?? detectedWidth;
     if (maxWidth && maxWidth > 0) {
         // Remove ANSI escape codes to get actual length
-        const plainLength = statusLine.replace(/\x1b\[[0-9;]*m/g, '').length;
+        const plainLength = statusLine.replace(ANSI_REGEX, '').length;
 
         if (plainLength > maxWidth) {
             // Need to truncate - preserve ANSI codes while truncating
@@ -800,9 +928,7 @@ export function renderStatusLine(
             let ansiBuffer = '';
             const targetLength = context.isPreview ? maxWidth - 3 : maxWidth - 3; // Reserve 3 chars for ellipsis
 
-            for (let i = 0; i < statusLine.length; i++) {
-                const char = statusLine[i];
-
+            for (const char of statusLine) {
                 if (char === '\x1b') {
                     inAnsiCode = true;
                     ansiBuffer = char;

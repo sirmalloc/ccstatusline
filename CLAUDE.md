@@ -14,77 +14,77 @@ ccstatusline is a customizable status line formatter for Claude Code CLI that di
 # Install dependencies
 bun install
 
-# Run locally (TUI mode)
-bun run src/ccstatusline.ts
+# Run with patch (TUI mode)
+bun run start
+
+# Run directly (TUI mode)
+bun run statusline
 
 # Test with piped input
 echo '{"model":{"display_name":"Claude 3.5 Sonnet"},"transcript_path":"test.jsonl"}' | bun run src/ccstatusline.ts
 
 # Build for npm distribution
-bun run build   # Creates dist/ccstatusline.js
+bun run build   # Creates dist/ccstatusline.js with Node.js 14+ compatibility
 
-# Test npm package locally
-npm link
-echo '{"model":{"display_name":"Claude 3.5 Sonnet"},"transcript_path":"test.jsonl"}' | ccstatusline
+# Lint and type check
+bun run lint   # Runs TypeScript type checking and ESLint with auto-fix
 ```
 
 ## Architecture
 
-The project has dual runtime compatibility - it works with both Bun and Node.js:
+The project has dual runtime compatibility - works with both Bun and Node.js:
 
+### Core Structure
 - **src/ccstatusline.ts**: Main entry point that detects piped vs interactive mode
   - Piped mode: Parses JSON from stdin and renders formatted status line
   - Interactive mode: Launches React/Ink TUI for configuration
-  
-- **src/tui.tsx**: React-based terminal UI using Ink for configuration interface
-  - Item management (add/remove/reorder status items)
-  - Color customization for different elements
-  
-- **src/config.ts**: Settings management
+
+### TUI Components (src/tui/)
+- **index.tsx**: Main TUI entry point that handles React/Ink initialization
+- **App.tsx**: Root component managing navigation and state
+- **components/**: Modular UI components for different configuration screens
+  - MainMenu, LineSelector, ItemsEditor, ColorMenu, GlobalOverridesMenu
+  - PowerlineSetup, TerminalOptionsMenu, StatusLinePreview
+
+### Utilities (src/utils/)
+- **config.ts**: Settings management
   - Loads from `~/.config/ccstatusline/settings.json`
   - Handles migration from old settings format
   - Default configuration if no settings exist
-
-- **npm publishing**: Uses `--packages=external` to keep dependencies external for cross-platform compatibility
+- **renderer.ts**: Core rendering logic for status lines
+  - Handles terminal width detection and truncation
+  - Applies colors, padding, and separators
+  - Manages flex separator expansion
+- **powerline.ts**: Powerline font detection and installation
+- **claude-settings.ts**: Integration with Claude Code settings.json
+- **colors.ts**: Color definitions and ANSI code mapping
 
 ## Key Implementation Details
 
-- **Cross-platform stdin reading**: Code detects Bun vs Node.js environment and uses appropriate stdin API
+- **Cross-platform stdin reading**: Detects Bun vs Node.js environment and uses appropriate stdin API
 - **Token metrics**: Parses Claude Code transcript files (JSONL format) to calculate token usage
-- **Git integration**: Uses child_process.execSync to get current branch
-- **80-char limit**: Status line always formats to exactly 80 characters for Claude Code compatibility
+- **Git integration**: Uses child_process.execSync to get current branch and changes
+- **Terminal width management**: Three modes for handling width (full, full-minus-40, full-until-compact)
 - **Flex separators**: Special separator type that expands to fill available space
+- **Powerline mode**: Optional Powerline-style rendering with arrow separators
+- **Custom commands**: Execute shell commands and display output in status line
+- **Mergeable items**: Items can be merged together with or without padding
 
 ## Bun Usage Preferences
 
-Default to using Bun instead of Node.js.
-
+Default to using Bun instead of Node.js:
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Bun automatically loads .env, so don't use dotenv.
+- Use `bun install` instead of `npm install`
+- Use `bun run <script>` instead of `npm run <script>`
+- Use `bun build` with appropriate options for building
+- Bun automatically loads .env, so don't use dotenv
 
-## APIs
+## Important Notes
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
-
-## Testing
-
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
+- **patch-package**: The project uses patch-package to fix ink-gradient compatibility. Always run `bun run patch` before starting development
+- **ESLint configuration**: Uses flat config format (eslint.config.js) with TypeScript and React plugins
+- **Build target**: When building for distribution, target Node.js 14+ for maximum compatibility
+- **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
+- **Type checking and linting**: Only run via `bun run lint` command, never using `npx eslint` or `eslint` directly. Never run `tsx`, `bun tsc` or any other variation
+- **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
+- **Testing**: No test framework is currently configured. Manual testing is done via piped input and TUI interaction
