@@ -9,6 +9,7 @@ import { formatTokens } from '../utils/renderer';
 
 export class TokensCachedWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
+    getDescription(): string { return 'Shows cached token count for the current session'; }
     getDisplayName(): string { return 'Tokens Cached'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

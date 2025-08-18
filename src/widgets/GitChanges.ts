@@ -10,6 +10,7 @@ import type {
 
 export class GitChangesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
+    getDescription(): string { return 'Shows git changes count (+insertions, -deletions)'; }
     getDisplayName(): string { return 'Git Changes'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

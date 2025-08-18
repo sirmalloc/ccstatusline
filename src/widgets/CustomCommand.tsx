@@ -20,6 +20,7 @@ export class CustomCommandWidget implements Widget {
     private currentAction: string = 'edit-command';
 
     getDefaultColor(): string { return 'white'; }
+    getDescription(): string { return 'Executes a custom shell command and displays output'; }
     getDisplayName(): string { return 'Custom Command'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -47,6 +48,13 @@ export class CustomCommandWidget implements Widget {
 
     setEditorAction(action: string): void {
         this.currentAction = action;
+    }
+
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === 'toggle-preserve') {
+            return { ...item, preserveColors: !item.preserveColors };
+        }
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {

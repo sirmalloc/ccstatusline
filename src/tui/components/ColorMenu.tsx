@@ -219,8 +219,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const newItems = widgets.map((widget) => {
                         if (widget.id === selectedWidget.id) {
                             // Remove color, backgroundColor, and bold properties
-                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             const { color, backgroundColor, bold, ...restWidget } = widget;
+                            void color; // Intentionally unused
+                            void backgroundColor; // Intentionally unused
+                            void bold; // Intentionally unused
                             return restWidget;
                         }
                         return widget;
@@ -430,8 +432,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                             // Clear all colors from all widgets
                             const newItems = widgets.map((widget) => {
                                 // Remove color, backgroundColor, and bold properties
-                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                 const { color, backgroundColor, bold, ...restWidget } = widget;
+                                void color; // Intentionally unused
+                                void backgroundColor; // Intentionally unused
+                                void bold; // Intentionally unused
                                 return restWidget;
                             });
                             onUpdate(newItems);

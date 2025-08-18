@@ -8,6 +8,7 @@ import type {
 
 export class VersionWidget implements Widget {
     getDefaultColor(): string { return 'gray'; }
+    getDescription(): string { return 'Shows Claude Code CLI version number'; }
     getDisplayName(): string { return 'Version'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

@@ -9,6 +9,7 @@ import { formatTokens } from '../utils/renderer';
 
 export class TokensInputWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
+    getDescription(): string { return 'Shows input token count for the current session'; }
     getDisplayName(): string { return 'Tokens Input'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

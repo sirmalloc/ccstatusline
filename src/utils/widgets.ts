@@ -19,6 +19,7 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['context-percentage', new widgets.ContextPercentageWidget()],
     ['context-percentage-usable', new widgets.ContextPercentageUsableWidget()],
     ['session-clock', new widgets.SessionClockWidget()],
+    ['block-timer', new widgets.BlockTimerWidget()],
     ['terminal-width', new widgets.TerminalWidthWidget()],
     ['version', new widgets.VersionWidget()],
     ['custom-text', new widgets.CustomTextWidget()],

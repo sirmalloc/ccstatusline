@@ -42,6 +42,16 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.2 - Block Timer Widget
+
+![Block Timer](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/blockTimerSmall.png)
+
+- **⏱️ Block Timer** - Track your progress through 5-hour Claude Code blocks
+  - Displays time elapsed in current block as hours/minutes (e.g., "3hr 45m")
+  - Progress bar mode shows visual completion percentage
+  - Two progress bar styles: full width (32 chars) or compact (16 chars)
+  - Automatically detects block boundaries from transcript timestamps
+
 ### v2.0.0 - Powerline Support & Enhanced Themes
 - **⚡ Powerline Mode** - Beautiful Powerline-style status lines with arrow separators and customizable caps
 - **🎨 Built-in Themes** - Multiple pre-configured themes that you can copy and customize
@@ -55,7 +65,7 @@
 
 ## ✨ Features
 
-- **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, and more
+- **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, block timer, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure up to 3 independent status lines
@@ -104,6 +114,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
+- **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
 - **Version** - Shows Claude Code version
 - **Output Style** - Shows the currently set output style in Claude Code
 - **Tokens Input** - Shows input tokens used
@@ -161,11 +172,30 @@ Configure global formatting preferences that apply to all status items:
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
 
+### ⏱️ Block Timer Widget
+
+The Block Timer widget helps you track your progress through Claude Code's 5-hour conversation blocks:
+
+![Block Timer](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/blockTimer.png)
+
+**Display Modes:**
+- **Time Display** - Shows elapsed time as "3hr 45m" (default)
+- **Progress Bar** - Full width 32-character progress bar with percentage
+- **Progress Bar (Short)** - Compact 16-character progress bar with percentage
+
+**Features:**
+- Automatically detects block boundaries from transcript timestamps
+- Floors block start time to the hour for consistent tracking
+- Shows "Block: 3hr 45m" in normal mode or just "3hr 45m" in raw value mode
+- Progress bars show completion percentage (e.g., "[████████████████████████░░░░░░░░] 73.9%")
+- Toggle between modes with the **(p)** key in the items editor
+
 ### 🔤 Raw Value Mode
 
 Some items support "raw value" mode which displays just the value without a label:
 - Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
 - Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
+- Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
 ---

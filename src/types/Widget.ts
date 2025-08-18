@@ -17,7 +17,8 @@ export const WidgetItemSchema = z.object({
     maxWidth: z.number().optional(),
     preserveColors: z.boolean().optional(),
     timeout: z.number().optional(),
-    merge: z.union([z.boolean(), z.literal('no-padding')]).optional()
+    merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
+    metadata: z.record(z.string(), z.string()).optional()
 });
 
 // Inferred types from Zod schemas
@@ -31,6 +32,7 @@ export interface WidgetEditorDisplay {
 
 export interface Widget {
     getDefaultColor(): string;
+    getDescription(): string;
     getDisplayName(): string;
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay;
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
@@ -39,6 +41,7 @@ export interface Widget {
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
     setEditorAction?(action: string): void;
+    handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
 }
 
 export interface WidgetEditorProps {

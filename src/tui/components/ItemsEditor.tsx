@@ -249,8 +249,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     }
 
                     if (nextMergeState === undefined) {
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const { merge: _merge, ...rest } = currentWidget;
+                        const { merge, ...rest } = currentWidget;
+                        void merge; // Intentionally unused
                         newWidgets[selectedIndex] = rest;
                     } else {
                         newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
@@ -270,11 +270,15 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
 
                             if (matchedKeybind) {
-                                // Handle toggle actions directly
-                                if (matchedKeybind.action === 'toggle-preserve') {
-                                    const newWidgets = [...widgets];
-                                    newWidgets[selectedIndex] = { ...currentWidget, preserveColors: !currentWidget.preserveColors };
-                                    onUpdate(newWidgets);
+                                // Check if widget handles the action directly
+                                if (widgetImpl.handleEditorAction) {
+                                    // Let the widget handle the action directly
+                                    const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
+                                    if (updatedWidget) {
+                                        const newWidgets = [...widgets];
+                                        newWidgets[selectedIndex] = updatedWidget;
+                                        onUpdate(newWidgets);
+                                    }
                                 } else if (widgetImpl.renderEditor) {
                                     // Set the action on the widget if it supports it
                                     if (widgetImpl.setEditorAction) {
@@ -387,7 +391,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 )}
             </Box>
             {moveMode ? (
-                <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
+                <Box flexDirection='column' marginBottom={1}>
+                    <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
+                </Box>
             ) : (
                 <Box flexDirection='column'>
                     <Text dimColor>{helpText}</Text>
@@ -404,17 +410,21 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 {widgets.length === 0 ? (
                     <Text dimColor>No items. Press 'a' to add one.</Text>
                 ) : (
-                    widgets.map((widget, index) => {
-                        const isSelected = index === selectedIndex;
-                        const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
-                        const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
+                    <>
+                        {widgets.map((widget, index) => {
+                            const isSelected = index === selectedIndex;
+                            const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
+                            const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
 
-                        return (
-                            <Box key={widget.id}>
-                                <Text>
+                            return (
+                                <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
+                                    <Box width={3}>
+                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                            {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
+                                        </Text>
+                                    </Box>
                                     <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                        {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                        {` ${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                        {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
                                     </Text>
                                     {modifierText && (
                                         <Text dimColor>
@@ -425,10 +435,31 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                     {widget.rawValue && <Text dimColor> (raw value)</Text>}
                                     {widget.merge === true && <Text dimColor> (merged→)</Text>}
                                     {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                </Box>
+                            );
+                        })}
+                        {/* Display description for selected widget */}
+                        {currentWidget && (
+                            <Box marginTop={1} paddingLeft={2}>
+                                <Text dimColor>
+                                    {(() => {
+                                        if (currentWidget.type === 'separator') {
+                                            return 'A separator character between status line items';
+                                        } else if (currentWidget.type === 'flex-separator') {
+                                            return 'Expands to fill available terminal width';
+                                        } else {
+                                            try {
+                                                const widgetImpl = getWidget(currentWidget.type);
+                                                return widgetImpl.getDescription();
+                                            } catch {
+                                                return 'Widget description not available';
+                                            }
+                                        }
+                                    })()}
                                 </Text>
                             </Box>
-                        );
-                    })
+                        )}
+                    </>
                 )}
             </Box>
         </Box>

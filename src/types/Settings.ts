@@ -6,7 +6,7 @@ import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
 
 // Current version - bump this when making breaking changes to the schema
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 // Schema for v1 settings (before version field was added)
 export const SettingsSchema_v1 = z.object({

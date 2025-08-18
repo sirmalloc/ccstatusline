@@ -1,6 +1,6 @@
 {
   "name": "ccstatusline",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A customizable status line formatter for Claude Code CLI",
   "module": "src/ccstatusline.ts",
   "type": "module",
@@ -37,6 +37,7 @@
     "patch-package": "^8.0.0",
     "react": "^19.1.1",
     "react-devtools-core": "^6.1.5",
+    "tinyglobby": "^0.2.14",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.1"
   },

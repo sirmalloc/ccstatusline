@@ -9,6 +9,7 @@ import { formatTokens } from '../utils/renderer';
 
 export class ContextLengthWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }
+    getDescription(): string { return 'Shows the current context window size in tokens'; }
     getDisplayName(): string { return 'Context Length'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

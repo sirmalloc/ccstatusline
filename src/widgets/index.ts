@@ -14,3 +14,4 @@ export { TerminalWidthWidget } from './TerminalWidth';
 export { VersionWidget } from './Version';
 export { CustomTextWidget } from './CustomText';
 export { CustomCommandWidget } from './CustomCommand';
+export { BlockTimerWidget } from './BlockTimer';

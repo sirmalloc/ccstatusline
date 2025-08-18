@@ -91,6 +91,26 @@ export const migrations: Migration[] = [
 
             return migrated;
         }
+    },
+    {
+        fromVersion: 2,
+        toVersion: 3,
+        description: 'Migrate from v2 to v3',
+        migrate: (data) => {
+            // Copy all existing data to v3
+            const migrated: Record<string, unknown> = { ...data };
+
+            // Update version to 3
+            migrated.version = 3;
+
+            // Add update message for v3 migration
+            migrated.updatemessage = {
+                message: 'ccstatusline updated to v2.0.2, 5hr block timer widget added',
+                remaining: 12
+            };
+
+            return migrated;
+        }
     }
 ];
 

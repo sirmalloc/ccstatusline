@@ -9,8 +9,11 @@ import {
     saveSettings
 } from './utils/config';
 import {
+    getBlockMetrics,
     getSessionDuration,
-    getTokenMetrics,
+    getTokenMetrics
+} from './utils/jsonl';
+import {
     renderStatusLine,
     type RenderContext,
     type StatusJSON
@@ -62,6 +65,9 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if session clock is needed
     const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
+    // Check if block timer is needed
+    const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
+
     let tokenMetrics = null;
     if (hasTokenItems && data.transcript_path)
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -70,11 +76,16 @@ async function renderMultipleLines(data: StatusJSON) {
     if (hasSessionClock && data.transcript_path)
         sessionDuration = await getSessionDuration(data.transcript_path);
 
+    let blockMetrics = null;
+    if (hasBlockTimer && data.transcript_path)
+        blockMetrics = getBlockMetrics(data.transcript_path);
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
         sessionDuration,
+        blockMetrics,
         isPreview: false
     };
 

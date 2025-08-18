@@ -17,6 +17,7 @@ import type {
 
 export class CustomTextWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
+    getDescription(): string { return 'Displays user-defined custom text'; }
     getDisplayName(): string { return 'Custom Text'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {

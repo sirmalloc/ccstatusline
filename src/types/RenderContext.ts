@@ -1,3 +1,5 @@
+import type { BlockInfo } from '../utils/jsonl';
+
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
 
@@ -5,6 +7,7 @@ export interface RenderContext {
     data?: StatusJSON;
     tokenMetrics?: TokenMetrics | null;
     sessionDuration?: string | null;
+    blockMetrics?: BlockInfo | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)

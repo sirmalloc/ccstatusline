@@ -25,6 +25,7 @@
         "patch-package": "^8.0.0",
         "react": "^19.1.1",
         "react-devtools-core": "^6.1.5",
+        "tinyglobby": "^0.2.14",
         "typescript": "^5.9.2",
         "typescript-eslint": "^8.39.1",
       },

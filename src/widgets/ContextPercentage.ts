@@ -8,6 +8,7 @@ import type {
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
+    getDescription(): string { return 'Shows percentage of context window used (of 200k tokens)'; }
     getDisplayName(): string { return 'Context %'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

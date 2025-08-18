@@ -10,6 +10,7 @@ import type {
 
 export class GitBranchWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
+    getDescription(): string { return 'Shows the current git branch name'; }
     getDisplayName(): string { return 'Git Branch'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
