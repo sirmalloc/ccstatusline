@@ -190,7 +190,7 @@ Execute shell commands and display their output dynamically:
   - `git rev-parse --short HEAD` - Show current commit hash
   - `date +%H:%M` - Display current time
   - `curl -s wttr.in?format="%t"` - Show current temperature
-  - `npx -y ccusage statusline` - Display Claude usage metrics (set timeout: 5000ms)
+  - `npx -y ccusage@latest statusline` - Display Claude usage metrics (set timeout: 5000ms)
 
 > ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
 
@@ -203,7 +203,7 @@ Execute shell commands and display their output dynamically:
 [ccusage](https://github.com/ryoppippi/ccusage) is a tool that tracks and displays Claude Code usage metrics. You can integrate it directly into your status line:
 
 1. Add a Custom Command widget
-2. Set command: `npx -y ccusage statusline`
+2. Set command: `npx -y ccusage@latest statusline`
 3. Set timeout: `5000` (5 seconds for initial download)
 4. Enable "preserve colors" to keep ccusage's color formatting
 
