@@ -200,7 +200,7 @@ Execute shell commands and display their output dynamically:
 
 ### 🔗 Integration Example: ccusage
 
-[ccusage](https://github.com/samuelint/ccusage) is a tool that tracks and displays Claude Code usage metrics. You can integrate it directly into your status line:
+[ccusage](https://github.com/ryoppippi/ccusage) is a tool that tracks and displays Claude Code usage metrics. You can integrate it directly into your status line:
 
 1. Add a Custom Command widget
 2. Set command: `npx -y ccusage statusline`
@@ -324,6 +324,16 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Made with ❤️ for the Claude Code community
 
 ---
+
+## Star History
+
+<a href="https://www.star-history.com/#sirmalloc/ccstatusline&Timeline">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
+ </picture>
+</a>
 
 <div align="center">
 

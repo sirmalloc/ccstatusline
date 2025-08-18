@@ -372,8 +372,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {' '}
                     {lineNumber}
                     {' '}
-                    {moveMode && <Text color='yellow'>[MOVE MODE]</Text>}
                 </Text>
+                {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
                         <Text color='yellow'>
@@ -412,7 +412,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                         return (
                             <Box key={widget.id}>
                                 <Text>
-                                    <Text color={isSelected ? (moveMode ? 'yellow' : 'blue') : undefined}>
+                                    <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
                                         {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                         {` ${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
                                     </Text>

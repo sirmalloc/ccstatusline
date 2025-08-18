@@ -60,7 +60,8 @@ export class CustomCommandWidget implements Widget {
                     encoding: 'utf8',
                     input: jsonInput,
                     timeout: timeout,
-                    stdio: ['pipe', 'pipe', 'ignore']
+                    stdio: ['pipe', 'pipe', 'ignore'],
+                    env: process.env
                 }).trim();
 
                 // Strip ANSI codes if preserveColors is false
@@ -74,7 +75,26 @@ export class CustomCommandWidget implements Widget {
                 }
 
                 return output || null;
-            } catch {
+            } catch (error) {
+                // Provide more specific error messages
+                if (error instanceof Error) {
+                    const execError = error as Error & {
+                        code?: string;
+                        signal?: string;
+                        status?: number;
+                    };
+                    if (execError.code === 'ENOENT') {
+                        return '[Cmd not found]';
+                    } else if (execError.code === 'ETIMEDOUT') {
+                        return '[Timeout]';
+                    } else if (execError.code === 'EACCES') {
+                        return '[Permission denied]';
+                    } else if (execError.signal) {
+                        return `[Signal: ${execError.signal}]`;
+                    } else if (execError.status !== undefined) {
+                        return `[Exit: ${execError.status}]`;
+                    }
+                }
                 return '[Error]';
             }
         }
