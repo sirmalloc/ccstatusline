@@ -4,7 +4,9 @@
   "description": "A customizable status line formatter for Claude Code CLI",
   "module": "src/ccstatusline.ts",
   "type": "module",
-  "bin": "dist/ccstatusline.js",
+  "bin": {
+    "ccstatusline": "dist/ccstatusline.js"
+  },
   "files": [
     "dist/"
   ],
