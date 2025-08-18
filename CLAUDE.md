@@ -28,6 +28,9 @@ bun run build   # Creates dist/ccstatusline.js with Node.js 14+ compatibility
 
 # Lint and type check
 bun run lint   # Runs TypeScript type checking and ESLint with auto-fix
+
+# Run specific components during development
+bun run patch  # Apply patches (required before development)
 ```
 
 ## Architecture
@@ -55,20 +58,31 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
   - Handles terminal width detection and truncation
   - Applies colors, padding, and separators
   - Manages flex separator expansion
+  - Supports both normal and Powerline rendering modes
 - **powerline.ts**: Powerline font detection and installation
 - **claude-settings.ts**: Integration with Claude Code settings.json
 - **colors.ts**: Color definitions and ANSI code mapping
+- **widgets.ts**: Widget registry and factory functions
+- **terminal.ts**: Terminal width detection utilities
+- **jsonl.ts**: JSONL parsing for token metrics and session data
+
+### Widgets (src/widgets/)
+- Individual widget implementations for status line items
+- Each widget exports render() and getDefaultColor() functions
+- Includes built-in widgets: Model, GitBranch, TokensTotal, OutputStyle, BlockTimer, etc.
+- Custom widgets: CustomText and CustomCommand for user-defined content
 
 ## Key Implementation Details
 
-- **Cross-platform stdin reading**: Detects Bun vs Node.js environment and uses appropriate stdin API
+- **Dual runtime support**: Detects Bun vs Node.js environment and uses appropriate stdin API
 - **Token metrics**: Parses Claude Code transcript files (JSONL format) to calculate token usage
 - **Git integration**: Uses child_process.execSync to get current branch and changes
 - **Terminal width management**: Three modes for handling width (full, full-minus-40, full-until-compact)
 - **Flex separators**: Special separator type that expands to fill available space
-- **Powerline mode**: Optional Powerline-style rendering with arrow separators
+- **Powerline mode**: Optional Powerline-style rendering with arrow separators and theme support
 - **Custom commands**: Execute shell commands and display output in status line
 - **Mergeable items**: Items can be merged together with or without padding
+- **Widget registry**: Factory pattern for widget creation and type safety
 
 ## Bun Usage Preferences
 

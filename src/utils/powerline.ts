@@ -8,21 +8,10 @@ import type { PowerlineFontStatus } from '../types/PowerlineFontStatus';
 // Re-export for backward compatibility
 export type { PowerlineFontStatus };
 
-// Track if fonts were installed during this session (for DEBUG_FONT_INSTALL)
-let fontsInstalledThisSession = false;
-
 /**
  * Check if Powerline fonts are installed by testing if Powerline symbols render correctly
  */
 export function checkPowerlineFonts(): PowerlineFontStatus {
-    // Debug mode: pretend fonts aren't installed (unless we installed them this session)
-    if (process.env.DEBUG_FONT_INSTALL === '1' && !fontsInstalledThisSession) {
-        return {
-            installed: false,
-            checkedSymbol: '\uE0B0'
-        };
-    }
-
     try {
         // Test if we can display the common Powerline separator symbols
         // These are the key characters that require Powerline fonts
@@ -107,14 +96,6 @@ export function checkPowerlineFonts(): PowerlineFontStatus {
 export async function checkPowerlineFontsAsync(): Promise<PowerlineFontStatus> {
     // Ensure this is always async
     await Promise.resolve();
-
-    // Debug mode: pretend fonts aren't installed (unless we installed them this session)
-    if (process.env.DEBUG_FONT_INSTALL === '1' && !fontsInstalledThisSession) {
-        return {
-            installed: false,
-            checkedSymbol: '\uE0B0'
-        };
-    }
 
     try {
         // First do the quick synchronous check
@@ -230,11 +211,6 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                         } catch {
                             // fc-cache might not be available
                         }
-                    }
-
-                    // Mark as installed for DEBUG_FONT_INSTALL mode
-                    if (process.env.DEBUG_FONT_INSTALL === '1') {
-                        fontsInstalledThisSession = true;
                     }
 
                     return {

@@ -26,7 +26,6 @@ import {
     saveSettings
 } from '../utils/config';
 import {
-    checkPowerlineFonts,
     checkPowerlineFontsAsync,
     installPowerlineFonts,
     type PowerlineFontStatus
@@ -81,11 +80,7 @@ export const App: React.FC = () => {
         });
         void isInstalled().then(setIsClaudeInstalled);
 
-        // Check for Powerline fonts on startup (use sync version that doesn't call execSync)
-        const fontStatus = checkPowerlineFonts();
-        setPowerlineFontStatus(fontStatus);
-
-        // Optionally do the async check later (but not blocking React)
+        // Check for Powerline fonts on startup
         void checkPowerlineFontsAsync().then((asyncStatus) => {
             setPowerlineFontStatus(asyncStatus);
         });
