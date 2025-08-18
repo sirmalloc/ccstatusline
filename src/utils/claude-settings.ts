@@ -43,7 +43,9 @@ export async function isInstalled(): Promise<boolean> {
 
 export function isBunxAvailable(): boolean {
     try {
-        execSync('which bunx', { stdio: 'ignore' });
+        // The `where` command is the equivalent of `which` on Windows.
+        const command = os.platform() === 'win32' ? 'where' : 'which';
+        execSync(`${command} bunx`, { stdio: 'ignore' });
         return true;
     } catch {
         return false;

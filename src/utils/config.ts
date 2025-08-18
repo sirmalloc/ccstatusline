@@ -28,10 +28,9 @@ async function backupBadSettings(): Promise<void> {
         if (fs.existsSync(SETTINGS_PATH)) {
             const content = await readFile(SETTINGS_PATH, 'utf-8');
             await writeFile(SETTINGS_BACKUP_PATH, content, 'utf-8');
-            console.error(`Bad settings backed up to ${SETTINGS_BACKUP_PATH}`);
         }
-    } catch (error) {
-        console.error('Failed to backup bad settings:', error);
+    } catch {
+        // Ignore backup errors
     }
 }
 
@@ -45,9 +44,8 @@ async function writeDefaultSettings(): Promise<Settings> {
     try {
         await mkdir(CONFIG_DIR, { recursive: true });
         await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
-        console.error(`Default settings written to ${SETTINGS_PATH}`);
-    } catch (error) {
-        console.error('Failed to write default settings:', error);
+    } catch {
+        // Ignore write errors
     }
 
     return defaults;
@@ -66,7 +64,6 @@ export async function loadSettings(): Promise<Settings> {
             rawData = JSON.parse(content);
         } catch {
             // If we can't parse the JSON, backup and write defaults
-            console.error('Failed to parse settings.json, backing up and using defaults');
             await backupBadSettings();
             return await writeDefaultSettings();
         }
@@ -77,7 +74,6 @@ export async function loadSettings(): Promise<Settings> {
             // Parse as v1 to validate before migration
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
-                console.error('Invalid v1 settings format:', v1Result.error);
                 await backupBadSettings();
                 return await writeDefaultSettings();
             }
@@ -95,15 +91,13 @@ export async function loadSettings(): Promise<Settings> {
         // Parse with main schema which will apply all defaults
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
-            console.error('Failed to parse settings:', result.error);
             await backupBadSettings();
             return await writeDefaultSettings();
         }
 
         return result.data;
-    } catch (error) {
+    } catch {
         // Any other error, backup and write defaults
-        console.error('Error loading settings:', error);
         await backupBadSettings();
         return await writeDefaultSettings();
     }
