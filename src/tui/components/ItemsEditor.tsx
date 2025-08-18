@@ -30,7 +30,7 @@ export interface ItemsEditorProps {
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    const [customEditorWidget, setCustomEditorWidget] = useState<{ widget: WidgetItem; impl: Widget } | null>(null);
+    const [customEditorWidget, setCustomEditorWidget] = useState<{ widget: WidgetItem; impl: Widget; action?: string } | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 
     // Determine which item types are allowed based on settings
@@ -278,14 +278,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                         const newWidgets = [...widgets];
                                         newWidgets[selectedIndex] = updatedWidget;
                                         onUpdate(newWidgets);
+                                    } else if (widgetImpl.renderEditor) {
+                                        // If handleEditorAction returned null, open the editor
+                                        setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
                                     }
                                 } else if (widgetImpl.renderEditor) {
-                                    // Set the action on the widget if it supports it
-                                    if (widgetImpl.setEditorAction) {
-                                        widgetImpl.setEditorAction(matchedKeybind.action);
-                                    }
-                                    // Open the widget's custom editor
-                                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl });
+                                    // Open the widget's custom editor with the action
+                                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
                                 }
                             }
                         }
@@ -364,7 +363,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         return customEditorWidget.impl.renderEditor({
             widget: customEditorWidget.widget,
             onComplete: handleEditorComplete,
-            onCancel: handleEditorCancel
+            onCancel: handleEditorCancel,
+            action: customEditorWidget.action
         });
     }
 

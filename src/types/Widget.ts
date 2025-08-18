@@ -40,7 +40,6 @@ export interface Widget {
     renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
-    setEditorAction?(action: string): void;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
 }
 
@@ -48,6 +47,7 @@ export interface WidgetEditorProps {
     widget: WidgetItem;
     onComplete: (updatedWidget: WidgetItem) => void;
     onCancel: () => void;
+    action?: string;
 }
 
 export interface CustomKeybind {

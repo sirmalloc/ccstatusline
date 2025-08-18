@@ -17,8 +17,6 @@ import type {
 } from '../types/Widget';
 
 export class CustomCommandWidget implements Widget {
-    private currentAction: string = 'edit-command';
-
     getDefaultColor(): string { return 'white'; }
     getDescription(): string { return 'Executes a custom shell command and displays output'; }
     getDisplayName(): string { return 'Custom Command'; }
@@ -44,10 +42,6 @@ export class CustomCommandWidget implements Widget {
             displayText,
             modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
-    }
-
-    setEditorAction(action: string): void {
-        this.currentAction = action;
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -119,7 +113,7 @@ export class CustomCommandWidget implements Widget {
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement {
-        return <CustomCommandEditor {...props} action={this.currentAction} />;
+        return <CustomCommandEditor {...props} />;
     }
 
     supportsRawValue(): boolean { return false; }
@@ -131,7 +125,7 @@ export class CustomCommandWidget implements Widget {
 
 interface EditorMode { type: 'command' | 'width' | 'timeout' | null }
 
-const CustomCommandEditor: React.FC<WidgetEditorProps & { action: string }> = ({ widget, onComplete, onCancel, action }) => {
+const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const getMode = (): EditorMode['type'] => {
         switch (action) {
         case 'edit-command': return 'command';
