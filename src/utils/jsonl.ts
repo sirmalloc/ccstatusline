@@ -237,8 +237,8 @@ function findMostRecentBlockStartTime(
         return null;
     }
 
-    // Now work backwards to find the start of this block
-    let blockStartTimestamp: Date = mostRecentTimestamp;
+    // Now work backwards to find when continuous work started
+    let continuousWorkStart: Date = mostRecentTimestamp;
 
     for (let i = 1; i < timestamps.length; i++) {
         const currentTimestamp = timestamps[i];
@@ -248,28 +248,33 @@ function findMostRecentBlockStartTime(
             continue;
         }
 
-        // Check if there's a gap larger than session duration
+        // Check if there's a gap larger than 1 hour (consider it a break)
         const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
+        const oneHourMs = 60 * 60 * 1000;
 
-        if (gap > sessionDurationMs) {
-            // We found a gap - the current block starts with previousTimestamp
+        if (gap > oneHourMs) {
+            // We found a gap - continuous work starts with previousTimestamp
             break;
         }
 
-        // Check if we're still within the session duration from the most recent
-        const timeFromMostRecent = mostRecentTimestamp.getTime() - currentTimestamp.getTime();
-
-        if (timeFromMostRecent < sessionDurationMs) {
-            // This timestamp is still part of the current block
-            blockStartTimestamp = currentTimestamp;
-        } else {
-            // We've gone too far back
-            break;
-        }
+        // This timestamp is still part of continuous work
+        continuousWorkStart = currentTimestamp;
     }
 
-    // Floor the block start to the hour
-    const blockStart = floorToHour(blockStartTimestamp);
+    // Floor the continuous work start to the hour
+    const flooredWorkStart = floorToHour(continuousWorkStart);
+
+    // Calculate how long we've been working from the floored start time
+    const totalWorkTime = now.getTime() - flooredWorkStart.getTime();
+
+    // If we've been working for more than one session, find the current block
+    let blockStart = flooredWorkStart;
+    if (totalWorkTime > sessionDurationMs) {
+        // Calculate how many complete 5-hour blocks have passed
+        const completedBlocks = Math.floor(totalWorkTime / sessionDurationMs);
+        // The current block started after the completed blocks
+        blockStart = new Date(flooredWorkStart.getTime() + (completedBlocks * sessionDurationMs));
+    }
     const timeSinceActivity = now.getTime() - mostRecentTimestamp.getTime();
     const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
 
