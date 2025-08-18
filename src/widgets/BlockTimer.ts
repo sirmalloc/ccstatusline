@@ -58,10 +58,11 @@ export class BlockTimerWidget implements Widget {
         const displayMode = (item.metadata?.display ?? 'time') as DisplayMode;
 
         if (context.isPreview) {
+            const prefix = item.rawValue ? '' : 'Block ';
             if (displayMode === 'progress') {
-                return 'Block [██████████████████████░░░░░░░░] 73.9%';
+                return `${prefix}[██████████████████████░░░░░░░░] 73.9%`;
             } else if (displayMode === 'progress-short') {
-                return 'Block [███████░░░░░░░░] 73.9%';
+                return `${prefix}[███████░░░░░░░░] 73.9%`;
             }
             return item.rawValue ? '3hr 45m' : 'Block: 3hr 45m';
         }
