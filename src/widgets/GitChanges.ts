@@ -33,12 +33,12 @@ export class GitChangesWidget implements Widget {
             let totalInsertions = 0;
             let totalDeletions = 0;
 
-            const unstagedStat = execSync('git diff --shortstat 2>/dev/null', {
+            const unstagedStat = execSync('git diff --shortstat', {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore']
             }).trim();
 
-            const stagedStat = execSync('git diff --cached --shortstat 2>/dev/null', {
+            const stagedStat = execSync('git diff --cached --shortstat', {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore']
             }).trim();

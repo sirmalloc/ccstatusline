@@ -30,7 +30,7 @@ export class GitBranchWidget implements Widget {
 
     private getGitBranch(): string | null {
         try {
-            const branch = execSync('git branch --show-current 2>/dev/null', {
+            const branch = execSync('git branch --show-current', {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore']
             }).trim();
