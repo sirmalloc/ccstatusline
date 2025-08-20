@@ -2,6 +2,10 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
+import type {
+    BlockMetrics,
+    TokenMetrics
+} from './types';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { updateColorMap } from './utils/colors';
 import {
@@ -68,15 +72,15 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if block timer is needed
     const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
 
-    let tokenMetrics = null;
+    let tokenMetrics: TokenMetrics | null = null;
     if (hasTokenItems && data.transcript_path)
         tokenMetrics = await getTokenMetrics(data.transcript_path);
 
-    let sessionDuration = null;
+    let sessionDuration: string | null = null;
     if (hasSessionClock && data.transcript_path)
         sessionDuration = await getSessionDuration(data.transcript_path);
 
-    let blockMetrics = null;
+    let blockMetrics: BlockMetrics | null = null;
     if (hasBlockTimer && data.transcript_path)
         blockMetrics = getBlockMetrics(data.transcript_path);
 

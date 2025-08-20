@@ -4,6 +4,7 @@ import { globSync } from 'tinyglobby';
 import { promisify } from 'util';
 
 import type {
+    BlockMetrics,
     TokenMetrics,
     TranscriptLine
 } from '../types';
@@ -12,12 +13,6 @@ import type {
 const readFile = promisify(fs.readFile);
 const readFileSync = fs.readFileSync;
 const statSync = fs.statSync;
-
-export interface BlockInfo {
-    startTime: Date;
-    lastActivity: Date;
-    isActive: boolean;
-}
 
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
     try {
@@ -151,7 +146,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 /**
  * Gets block metrics for the current 5-hour block from JSONL files
  */
-export function getBlockMetrics(transcriptPath: string | undefined): BlockInfo | null {
+export function getBlockMetrics(transcriptPath: string | undefined): BlockMetrics | null {
     if (!transcriptPath || typeof transcriptPath !== 'string') {
         return null;
     }
@@ -169,9 +164,8 @@ export function getBlockMetrics(transcriptPath: string | undefined): BlockInfo |
         currentPath = path.dirname(currentPath);
     }
 
-    if (!claudePath) {
+    if (!claudePath)
         return null;
-    }
 
     try {
         return findMostRecentBlockStartTime(claudePath);
@@ -187,7 +181,7 @@ export function getBlockMetrics(transcriptPath: string | undefined): BlockInfo |
 function findMostRecentBlockStartTime(
     rootDir: string,
     sessionDurationHours = 5
-): BlockInfo | null {
+): BlockMetrics | null {
     const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
     const now = new Date();
 
@@ -195,9 +189,8 @@ function findMostRecentBlockStartTime(
     const pattern = path.join(rootDir, 'projects', '**', '*.jsonl').replace(/\\/g, '/');
     const files = globSync([pattern]);
 
-    if (files.length === 0) {
+    if (files.length === 0)
         return null;
-    }
 
     // Step 2: Get file stats and sort by modification time (most recent first)
     const filesWithStats = files.map((file) => {
@@ -207,58 +200,84 @@ function findMostRecentBlockStartTime(
 
     filesWithStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
-    // Step 3: Collect recent timestamps to properly identify blocks
-    // We need to look back far enough to find the start of the current/recent block
-    const timestamps: Date[] = [];
-    // Look back 20 hours to find the current session
-    const cutoffTime = new Date(now.getTime() - 20 * 60 * 60 * 1000);
+    // Step 3: Progressive lookback - start small and expand if needed
+    // Start with 2x session duration (10 hours), expand to 48 hours if needed
+    const lookbackChunks = [
+        10,  // 2x session duration - catches most cases
+        20,  // 4x session duration - catches longer sessions
+        48   // Maximum lookback for marathon sessions
+    ];
 
-    for (const { file, mtime } of filesWithStats) {
-        // Skip files that are too old (optimization)
-        if (mtime.getTime() < cutoffTime.getTime()) {
+    let timestamps: Date[] = [];
+    let mostRecentTimestamp: Date | null = null;
+    let continuousWorkStart: Date | null = null;
+    let foundSessionGap = false;
+
+    for (const lookbackHours of lookbackChunks) {
+        const cutoffTime = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000);
+        timestamps = [];
+
+        // Collect timestamps for this lookback period
+        for (const { file, mtime } of filesWithStats) {
+            if (mtime.getTime() < cutoffTime.getTime()) {
+                break;
+            }
+            const fileTimestamps = getAllTimestampsFromFile(file);
+            timestamps.push(...fileTimestamps);
+        }
+
+        if (timestamps.length === 0) {
+            continue; // Try next chunk
+        }
+
+        // Sort timestamps (most recent first)
+        timestamps.sort((a, b) => b.getTime() - a.getTime());
+
+        // Get most recent timestamp (only set once)
+        if (!mostRecentTimestamp && timestamps[0]) {
+            mostRecentTimestamp = timestamps[0];
+
+            // Check if the most recent activity is within the current session period
+            const timeSinceLastActivity = now.getTime() - mostRecentTimestamp.getTime();
+            if (timeSinceLastActivity > sessionDurationMs) {
+                // No activity within the current session period
+                return null;
+            }
+        }
+
+        // Look for a session gap in this chunk
+        continuousWorkStart = mostRecentTimestamp;
+        for (let i = 1; i < timestamps.length; i++) {
+            const currentTimestamp = timestamps[i];
+            const previousTimestamp = timestamps[i - 1];
+
+            if (!currentTimestamp || !previousTimestamp)
+                continue;
+
+            const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
+
+            if (gap >= sessionDurationMs) {
+                // Found a true session boundary
+                foundSessionGap = true;
+                break;
+            }
+
+            continuousWorkStart = currentTimestamp;
+        }
+
+        // If we found a gap, we're done
+        if (foundSessionGap) {
             break;
         }
 
-        // Get all timestamps from this file (not just the latest)
-        const fileTimestamps = getAllTimestampsFromFile(file);
-        timestamps.push(...fileTimestamps);
-    }
-
-    if (timestamps.length === 0) {
-        return null;
-    }
-
-    // Step 4: Sort timestamps and identify the most recent block
-    timestamps.sort((a, b) => b.getTime() - a.getTime()); // Most recent first
-
-    // Find the most recent timestamp
-    const mostRecentTimestamp = timestamps[0];
-    if (!mostRecentTimestamp) {
-        return null;
-    }
-
-    // Now work backwards to find when continuous work started
-    let continuousWorkStart: Date = mostRecentTimestamp;
-
-    for (let i = 1; i < timestamps.length; i++) {
-        const currentTimestamp = timestamps[i];
-        const previousTimestamp = timestamps[i - 1];
-
-        if (!currentTimestamp || !previousTimestamp) {
-            continue;
-        }
-
-        // Check if there's a gap larger than 1 hour (consider it a break)
-        const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
-        const oneHourMs = 60 * 60 * 1000;
-
-        if (gap > oneHourMs) {
-            // We found a gap - continuous work starts with previousTimestamp
+        // If this was our last chunk, use what we have
+        if (lookbackHours === lookbackChunks[lookbackChunks.length - 1]) {
             break;
         }
+    }
 
-        // This timestamp is still part of continuous work
-        continuousWorkStart = currentTimestamp;
+    if (!mostRecentTimestamp || !continuousWorkStart) {
+        return null;
     }
 
     // Floor the continuous work start to the hour

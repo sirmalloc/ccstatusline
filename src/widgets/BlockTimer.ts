@@ -68,15 +68,22 @@ export class BlockTimerWidget implements Widget {
         }
 
         // Check if we have block metrics in context
-        const blockInfo = context.blockMetrics;
-        if (!blockInfo) {
-            return null;
+        const blockMetrics = context.blockMetrics;
+        if (!blockMetrics) {
+            // No active session - show empty progress bar or 0hr 0m
+            if (displayMode === 'progress' || displayMode === 'progress-short') {
+                const barWidth = displayMode === 'progress' ? 32 : 16;
+                const emptyBar = '░'.repeat(barWidth);
+                return item.rawValue ? `[${emptyBar}] 0%` : `Block [${emptyBar}] 0%`;
+            } else {
+                return item.rawValue ? '0hr 0m' : 'Block: 0hr 0m';
+            }
         }
 
         try {
             // Calculate elapsed time and progress
             const now = new Date();
-            const elapsedMs = now.getTime() - blockInfo.startTime.getTime();
+            const elapsedMs = now.getTime() - blockMetrics.startTime.getTime();
             const sessionDurationMs = 5 * 60 * 60 * 1000; // 5 hours
             const progress = Math.min(elapsedMs / sessionDurationMs, 1.0);
             const percentage = (progress * 100).toFixed(1);
