@@ -294,16 +294,18 @@ function findMostRecentBlockStartTime(
         // The current block started after the completed blocks
         blockStart = new Date(flooredWorkStart.getTime() + (completedBlocks * sessionDurationMs));
     }
-    const timeSinceActivity = now.getTime() - mostRecentTimestamp.getTime();
-    const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
 
-    // Check if block is still active
-    const isActive = timeSinceActivity < sessionDurationMs && now < blockEnd;
+    const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
+    const inBlockWindow = now.getTime() >= blockStart.getTime() && now.getTime() <= blockEnd.getTime();
+    const activityInThisBlock = mostRecentTimestamp.getTime() >= blockStart.getTime() && mostRecentTimestamp.getTime() <= now.getTime();
+
+    const isActive = inBlockWindow && activityInThisBlock;
+    if (!isActive)
+        return null;
 
     return {
         startTime: blockStart,
-        lastActivity: mostRecentTimestamp,
-        isActive
+        lastActivity: mostRecentTimestamp
     };
 }
 
