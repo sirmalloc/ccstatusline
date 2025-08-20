@@ -343,7 +343,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## 🔗 Related Projects
 
 - [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
-- [ccusage](https://github.com/samuelint/ccusage) - Track and display Claude Code usage metrics.
+- [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
 
 ---
 
