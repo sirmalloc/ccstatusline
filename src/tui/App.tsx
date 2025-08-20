@@ -441,14 +441,18 @@ export const App: React.FC = () => {
                         }}
                         onInstallFonts={() => {
                             setInstallingFonts(true);
-                            void installPowerlineFonts().then((result) => {
-                                setInstallingFonts(false);
-                                setFontInstallMessage(result.message);
-                                // Refresh font status
-                                void checkPowerlineFontsAsync().then((asyncStatus) => {
-                                    setPowerlineFontStatus(asyncStatus);
+                            // Add a small delay to allow React to render the "Installing..." message
+                            // before the blocking execSync calls in installPowerlineFonts
+                            setTimeout(() => {
+                                void installPowerlineFonts().then((result) => {
+                                    setInstallingFonts(false);
+                                    setFontInstallMessage(result.message);
+                                    // Refresh font status
+                                    void checkPowerlineFontsAsync().then((asyncStatus) => {
+                                        setPowerlineFontStatus(asyncStatus);
+                                    });
                                 });
-                            });
+                            }, 50);
                         }}
                         installingFonts={installingFonts}
                         fontInstallMessage={fontInstallMessage}
