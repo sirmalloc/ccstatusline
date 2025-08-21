@@ -86,21 +86,21 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
                     <Text color={selectedIndex === 0 ? 'green' : undefined}>
                         {selectedIndex === 0 ? '▶  ' : '   '}
                         ☰ Line 1
-                        {lines[0] && lines[0].length > 0 ? ` (${lines[0].length} items)` : ' (empty)'}
+                        {lines[0] && lines[0].length > 0 ? ` (${lines[0].length} widgets)` : ' (empty)'}
                     </Text>
                 </Box>
                 <Box>
                     <Text color={selectedIndex === 1 ? 'green' : undefined}>
                         {selectedIndex === 1 ? '▶  ' : '   '}
                         ☰ Line 2
-                        {lines[1] && lines[1].length > 0 ? ` (${lines[1].length} items)` : ' (empty)'}
+                        {lines[1] && lines[1].length > 0 ? ` (${lines[1].length} widgets)` : ' (empty)'}
                     </Text>
                 </Box>
                 <Box>
                     <Text color={selectedIndex === 2 ? 'green' : undefined}>
                         {selectedIndex === 2 ? '▶  ' : '   '}
                         ☰ Line 3
-                        {lines[2] && lines[2].length > 0 ? ` (${lines[2].length} items)` : ' (empty)'}
+                        {lines[2] && lines[2].length > 0 ? ` (${lines[2].length} widgets)` : ' (empty)'}
                     </Text>
                 </Box>
 

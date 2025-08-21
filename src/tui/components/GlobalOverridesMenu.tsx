@@ -155,7 +155,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     return (
         <Box flexDirection='column'>
             <Text bold>Global Overrides</Text>
-            <Text dimColor>Configure automatic padding and separators between items</Text>
+            <Text dimColor>Configure automatic padding and separators between widgets</Text>
             {isPowerlineEnabled && (
                 <Box marginTop={1}>
                     <Text color='yellow'>⚠ Some options are disabled while Powerline mode is active</Text>
@@ -166,7 +166,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             {editingPadding ? (
                 <Box flexDirection='column'>
                     <Box>
-                        <Text>Enter default padding (applied to left and right of each item): </Text>
+                        <Text>Enter default padding (applied to left and right of each widget): </Text>
                         <Text color='cyan'>{paddingInput ? `"${paddingInput}"` : '(empty)'}</Text>
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
@@ -174,7 +174,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             ) : editingSeparator ? (
                 <Box flexDirection='column'>
                     <Box>
-                        <Text>Enter default separator (placed between items): </Text>
+                        <Text>Enter default separator (placed between widgets): </Text>
                         <Text color='cyan'>{separatorInput ? `"${separatorInput}"` : '(empty - no separator will be added)'}</Text>
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
@@ -295,7 +295,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
 
                     <Box marginTop={1} flexDirection='column'>
                         <Text dimColor wrap='wrap'>
-                            Note: These settings are applied during rendering and don't add items to your widget list.
+                            Note: These settings are applied during rendering and don't add widgets to your widget list.
                         </Text>
                         <Text dimColor wrap='wrap'>
                             • Inherit colors: Separators will use colors from the preceding widget
@@ -304,7 +304,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                             • Global Bold: Makes all text bold regardless of individual settings
                         </Text>
                         <Text dimColor wrap='wrap'>
-                            • Override colors: All items will use these colors instead of their configured colors
+                            • Override colors: All widgets will use these colors instead of their configured colors
                         </Text>
                     </Box>
                 </>

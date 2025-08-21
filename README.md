@@ -88,7 +88,7 @@
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure up to 3 independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
-- **⚙️ Global Options** - Apply consistent formatting across all items (padding, separators, bold, background)
+- **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, background)
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
 - **⚡ Zero Config** - Sensible defaults that work out of the box
@@ -111,10 +111,10 @@ bunx ccstatusline@latest
 
 The interactive configuration tool provides a terminal UI where you can:
 - Configure up to 3 separate status lines
-- Add/remove/reorder status line items
-- Customize colors for each element
+- Add/remove/reorder status line widgets
+- Customize colors for each widget
 - Configure flex separator behavior
-- Edit custom text items
+- Edit custom text widgets
 - Install/uninstall to Claude Code settings
 - Preview your status line in real-time
 
@@ -126,13 +126,15 @@ The interactive configuration tool provides a terminal UI where you can:
 
 Once configured, ccstatusline automatically formats your Claude Code status line. The status line appears at the bottom of your terminal during Claude Code sessions.
 
-### 📊 Available Status Items
+### 📊 Available Widgets
 
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
+- **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
+- **Current Working Directory** - Shows current working directory with configurable path segments
 - **Version** - Shows Claude Code version
 - **Output Style** - Shows the currently set output style in Claude Code
 - **Tokens Input** - Shows input tokens used
@@ -145,7 +147,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Custom Text** - Add your own custom text to the status line
 - **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
-- **Separator** - Visual divider between items (customizable: |, -, comma, space)
+- **Separator** - Visual divider between widgets (customizable: |, -, comma, space)
 - **Flex Separator** - Expands to fill available space
 
 ---
@@ -160,13 +162,13 @@ These settings affect where long lines are truncated, and where right-alignment 
 
 ### ⚙️ Global Options
 
-Configure global formatting preferences that apply to all status items:
+Configure global formatting preferences that apply to all widgets:
 
 ![Global Options](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/global.png)
 
 #### Default Padding & Separators
-- **Default Padding** - Add consistent padding to the left and right of each item
-- **Default Separator** - Automatically insert a separator between all items
+- **Default Padding** - Add consistent padding to the left and right of each widget
+- **Default Separator** - Automatically insert a separator between all widgets
   - Press **(p)** to edit padding
   - Press **(s)** to edit separator
 
@@ -175,18 +177,18 @@ Configure global formatting preferences that apply to all status items:
 
 - **Inherit Colors** - Default separators inherit foreground and background colors from the preceding widget
   - Press **(i)** to toggle
-- **Global Bold** - Apply bold formatting to all text regardless of individual item settings
+- **Global Bold** - Apply bold formatting to all text regardless of individual widget settings
   - Press **(o)** to toggle
-- **Override Foreground Color** - Force all items to use the same text color
+- **Override Foreground Color** - Force all widgets to use the same text color
   - Press **(f)** to cycle through colors
   - Press **(g)** to clear override
-- **Override Background Color** - Force all items to use the same background color
+- **Override Background Color** - Force all widgets to use the same background color
   - Press **(b)** to cycle through colors
   - Press **(c)** to clear override
 
 </details>
 
-> 💡 **Note:** These settings are applied during rendering and don't add items to your widget list. They provide a consistent look across your entire status line without modifying individual item configurations.
+> 💡 **Note:** These settings are applied during rendering and don't add widgets to your widget list. They provide a consistent look across your entire status line without modifying individual widget configurations.
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
 
@@ -206,11 +208,11 @@ The Block Timer widget helps you track your progress through Claude Code's 5-hou
 - Floors block start time to the hour for consistent tracking
 - Shows "Block: 3hr 45m" in normal mode or just "3hr 45m" in raw value mode
 - Progress bars show completion percentage (e.g., "[████████████████████████░░░░░░░░] 73.9%")
-- Toggle between modes with the **(p)** key in the items editor
+- Toggle between modes with the **(p)** key in the widgets editor
 
 ### 🔤 Raw Value Mode
 
-Some items support "raw value" mode which displays just the value without a label:
+Some widgets support "raw value" mode which displays just the value without a label:
 - Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
 - Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`

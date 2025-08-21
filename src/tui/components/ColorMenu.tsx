@@ -296,8 +296,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     Configure Colors
                     {lineIndex !== undefined ? ` - Line ${lineIndex + 1}` : ''}
                 </Text>
-                <Box marginTop={1}><Text dimColor>No colorable items in the status line.</Text></Box>
-                <Text dimColor>Add a Model or Git Branch item first.</Text>
+                <Box marginTop={1}><Text dimColor>No colorable widgets in the status line.</Text></Box>
+                <Text dimColor>Add a widget first to continue.</Text>
                 <Box marginTop={1}><Text>Press any key to go back...</Text></Box>
             </Box>
         );

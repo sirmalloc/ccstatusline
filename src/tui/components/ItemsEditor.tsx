@@ -392,7 +392,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             </Box>
             {moveMode ? (
                 <Box flexDirection='column' marginBottom={1}>
-                    <Text dimColor>↑↓ to move item, ESC or Enter to exit move mode</Text>
+                    <Text dimColor>↑↓ to move widget, ESC or Enter to exit move mode</Text>
                 </Box>
             ) : (
                 <Box flexDirection='column'>
@@ -408,7 +408,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             )}
             <Box marginTop={1} flexDirection='column'>
                 {widgets.length === 0 ? (
-                    <Text dimColor>No items. Press 'a' to add one.</Text>
+                    <Text dimColor>No widgets. Press 'a' to add one.</Text>
                 ) : (
                     <>
                         {widgets.map((widget, index) => {
@@ -444,7 +444,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 <Text dimColor>
                                     {(() => {
                                         if (currentWidget.type === 'separator') {
-                                            return 'A separator character between status line items';
+                                            return 'A separator character between status line widgets';
                                         } else if (currentWidget.type === 'flex-separator') {
                                             return 'Expands to fill available terminal width';
                                         } else {
