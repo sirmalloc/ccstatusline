@@ -36,14 +36,17 @@ export class CurrentWorkingDirWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+            let previewPath: string;
             if (segments && segments > 0) {
                 if (segments === 1) {
-                    return 'cwd: .../project';
+                    previewPath = '.../project';
                 } else {
-                    return 'cwd: .../example/project';
+                    previewPath = '.../example/project';
                 }
+            } else {
+                previewPath = '/Users/example/project';
             }
-            return 'cwd: /Users/example/project';
+            return item.rawValue ? previewPath : `cwd: ${previewPath}`;
         }
 
         const cwd = context.data?.cwd;
@@ -66,7 +69,7 @@ export class CurrentWorkingDirWidget implements Widget {
             }
         }
 
-        return `cwd: ${displayPath}`;
+        return item.rawValue ? displayPath : `cwd: ${displayPath}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -79,7 +82,7 @@ export class CurrentWorkingDirWidget implements Widget {
         return <CurrentWorkingDirEditor {...props} />;
     }
 
-    supportsRawValue(): boolean { return false; }
+    supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
 
