@@ -216,22 +216,22 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
     } else if (mode === 'width') {
         return (
             <Box flexDirection='column'>
-                <Text>
-                    Enter max width (blank for no limit):
-                    {' '}
-                    {widthInput}
-                </Text>
+                <Box>
+                    <Text>Enter max width (blank for no limit): </Text>
+                    <Text>{widthInput}</Text>
+                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>
         );
     } else if (mode === 'timeout') {
         return (
             <Box flexDirection='column'>
-                <Text>
-                    Enter timeout in milliseconds (default 1000):
-                    {' '}
-                    {timeoutInput}
-                </Text>
+                <Box>
+                    <Text>Enter timeout in milliseconds (default 1000): </Text>
+                    <Text>{timeoutInput}</Text>
+                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>
         );

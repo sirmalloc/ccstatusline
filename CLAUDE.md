@@ -59,6 +59,15 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
 - **claude-settings.ts**: Integration with Claude Code settings.json
 - **colors.ts**: Color definitions and ANSI code mapping
 
+### Widgets (src/widgets/)
+Custom widgets implementing the StatusItemWidget interface:
+- Model, Version, OutputStyle - Claude Code metadata display
+- GitBranch, GitChanges - Git repository status
+- TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
+- ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics
+- BlockTimer, SessionClock - Time tracking
+- CurrentWorkingDir, TerminalWidth - Environment info
+
 ## Key Implementation Details
 
 - **Cross-platform stdin reading**: Detects Bun vs Node.js environment and uses appropriate stdin API

@@ -96,18 +96,18 @@ function renderPowerlineStatusLine(
         if (context.isPreview) {
             // In preview mode, account for box borders and padding (6 chars total)
             if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 8;
+                terminalWidth = detectedWidth - 6;
             } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 43;
+                terminalWidth = detectedWidth - 40;
             } else if (flexMode === 'full-until-compact') {
-                terminalWidth = detectedWidth - 8;
+                terminalWidth = detectedWidth - 6;
             }
         } else {
             // In actual rendering mode
             if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 4;
+                terminalWidth = detectedWidth - 6;
             } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 41;
+                terminalWidth = detectedWidth - 40;
             } else if (flexMode === 'full-until-compact') {
                 const threshold = settings.compactThreshold;
                 const contextPercentage = context.tokenMetrics
@@ -116,7 +116,7 @@ function renderPowerlineStatusLine(
                 if (contextPercentage >= threshold) {
                     terminalWidth = detectedWidth - 40;
                 } else {
-                    terminalWidth = detectedWidth - 4;
+                    terminalWidth = detectedWidth - 6;
                 }
             }
         }
@@ -502,7 +502,7 @@ export function renderStatusLine(
             if (flexMode === 'full') {
                 terminalWidth = detectedWidth - 6; // Subtract 6 for box borders and padding in preview
             } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 43; // -40 for auto-compact + 3 for preview
+                terminalWidth = detectedWidth - 40; // -40 for auto-compact + 3 for preview
             } else if (flexMode === 'full-until-compact') {
                 // For preview, always show full width minus preview padding
                 terminalWidth = detectedWidth - 6;
@@ -511,10 +511,10 @@ export function renderStatusLine(
             // In actual rendering mode
             if (flexMode === 'full') {
                 // Use full width minus 4 for terminal padding
-                terminalWidth = detectedWidth - 4;
+                terminalWidth = detectedWidth - 6;
             } else if (flexMode === 'full-minus-40') {
                 // Always subtract 41 for auto-compact message
-                terminalWidth = detectedWidth - 41;
+                terminalWidth = detectedWidth - 40;
             } else if (flexMode === 'full-until-compact') {
                 // Check context percentage to decide
                 const threshold = settings.compactThreshold;
@@ -526,7 +526,7 @@ export function renderStatusLine(
                     terminalWidth = detectedWidth - 40;
                 } else {
                     // Context is low, use full width minus 4 for padding
-                    terminalWidth = detectedWidth - 4;
+                    terminalWidth = detectedWidth - 6;
                 }
             }
         }

@@ -269,7 +269,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                             const customKeybinds = widgetImpl.getCustomKeybinds();
                             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
 
-                            if (matchedKeybind) {
+                            if (matchedKeybind && !key.ctrl) {
                                 // Check if widget handles the action directly
                                 if (widgetImpl.handleEditorAction) {
                                     // Let the widget handle the action directly
