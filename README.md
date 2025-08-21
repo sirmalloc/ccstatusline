@@ -42,6 +42,24 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.7 - Current Working Directory & Session Cost
+
+![Current Working Directory and Session Cost](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/cwdAndSessionCost.png)
+
+- **📁 Current Working Directory** - Display the current working directory with configurable segment display
+  - Set the number of path segments to show (e.g., show only last 2 segments: `.../Personal/ccstatusline`)
+  - Supports raw value mode for compact display
+  - Automatically truncates long paths with ellipsis
+- **💰 Session Cost Widget** - Track your Claude Code session costs (requires Claude Code 1.0.85+)
+  - Displays total session cost in USD
+  - Supports raw value mode (shows just `$X.YZ` vs `Cost: $X.YZ`)
+  - Real-time cost tracking from Claude Code session data
+  - Note: Cost may not update properly when using `/resume` (Claude Code limitation)
+- **🐛 Bug Fixes**
+  - Fixed Block Timer calculations for accurate time tracking across block boundaries
+  - Improved widget editor stability with proper Ctrl+S handling
+  - Enhanced cursor display in numeric input fields
+
 ### v2.0.2 - Block Timer Widget
 
 ![Block Timer](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/blockTimerSmall.png)
