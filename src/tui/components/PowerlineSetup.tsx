@@ -183,6 +183,10 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
             } else if (input === 'i' || input === 'I') {
                 // Show font installation consent prompt
                 setConfirmingFontInstall(true);
+            } else if ((input === 'a' || input === 'A') && powerlineConfig.enabled) {
+                // Toggle autoAlign when powerline is enabled
+                const newConfig = { ...powerlineConfig, autoAlign: !powerlineConfig.autoAlign };
+                onUpdate({ ...settings, powerline: newConfig });
             }
         }
     });
@@ -367,7 +371,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                 <>
                     <Box flexDirection='column'>
                         <Text>
-                            {'   Font Status: '}
+                            {'    Font Status: '}
                             {powerlineFontStatus.installed ? (
                                 <>
                                     <Text color='green'>✓ Installed</Text>
@@ -383,7 +387,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     </Box>
 
                     <Box>
-                        <Text>Powerline Mode: </Text>
+                        <Text> Powerline Mode: </Text>
                         <Text color={powerlineConfig.enabled ? 'green' : 'red'}>
                             {powerlineConfig.enabled ? '✓ Enabled  ' : '✗ Disabled '}
                         </Text>
@@ -391,11 +395,21 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     </Box>
 
                     {powerlineConfig.enabled && (
-                        <Box flexDirection='column' marginTop={1}>
-                            <Text dimColor>
-                                When enabled, global overrides are disabled and powerline separators are used
-                            </Text>
-                        </Box>
+                        <>
+                            <Box>
+                                <Text>  Align Widgets: </Text>
+                                <Text color={powerlineConfig.autoAlign ? 'green' : 'red'}>
+                                    {powerlineConfig.autoAlign ? '✓ Enabled  ' : '✗ Disabled '}
+                                </Text>
+                                <Text dimColor> - Press (a) to toggle</Text>
+                            </Box>
+
+                            <Box flexDirection='column' marginTop={1}>
+                                <Text dimColor>
+                                    When enabled, global overrides are disabled and powerline separators are used
+                                </Text>
+                            </Box>
+                        </>
                     )}
 
                     <Box marginTop={1} flexDirection='column'>

@@ -45,7 +45,8 @@ function renderPowerlineStatusLine(
     settings: Settings,
     context: RenderContext,
     lineIndex = 0,  // Which line we're rendering (for theme color cycling)
-    globalSeparatorOffset = 0  // Starting separator index for this line
+    globalSeparatorOffset = 0,  // Starting separator index for this line
+    allLinesWidgets?: WidgetItem[][]  // All lines widgets for alignment calculation
 ): string {
     const powerlineConfig = settings.powerline as Record<string, unknown> | undefined;
     const config = powerlineConfig ?? {};
@@ -208,6 +209,72 @@ function renderPowerlineStatusLine(
 
     if (widgetElements.length === 0)
         return '';
+
+    // Apply auto-alignment if enabled
+    const autoAlign = config.autoAlign as boolean | undefined;
+    if (autoAlign && allLinesWidgets) {
+        // Calculate max width for each widget position across all lines
+        const maxWidths: number[] = [];
+
+        // First, collect all widget contents for each line
+        const allLinesElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[][] = [];
+
+        for (const lineWidgets of allLinesWidgets) {
+            const filteredLineWidgets = lineWidgets.filter(w => w.type !== 'separator' && w.type !== 'flex-separator');
+            const lineElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
+
+            for (const widget of filteredLineWidgets) {
+                let widgetText = '';
+
+                try {
+                    const widgetImpl = getWidget(widget.type);
+                    widgetText = widgetImpl.render(widget, context, settings) ?? '';
+                } catch {
+                    continue;
+                }
+
+                if (widgetText) {
+                    const padding = settings.defaultPadding ?? '';
+                    const paddedText = `${padding}${widgetText}${padding}`;
+                    lineElements.push({
+                        content: paddedText,
+                        bgColor: widget.backgroundColor,
+                        fgColor: widget.color,
+                        widget: widget
+                    });
+                }
+            }
+            allLinesElements.push(lineElements);
+        }
+
+        // Calculate max width for each position
+        for (let pos = 0; pos < Math.max(...allLinesElements.map(line => line.length)); pos++) {
+            let maxWidth = 0;
+            for (const lineElements of allLinesElements) {
+                const element = lineElements[pos];
+                if (element) {
+                    // Get the plain text length (without ANSI codes)
+                    const plainLength = element.content.replace(ANSI_REGEX, '').length;
+                    maxWidth = Math.max(maxWidth, plainLength);
+                }
+            }
+            maxWidths.push(maxWidth);
+        }
+
+        // Apply padding to current line's widgets
+        for (let i = 0; i < widgetElements.length; i++) {
+            const element = widgetElements[i];
+            const maxWidth = maxWidths[i];
+            if (element && maxWidth !== undefined) {
+                const currentLength = element.content.replace(ANSI_REGEX, '').length;
+                const paddingNeeded = maxWidth - currentLength;
+                if (paddingNeeded > 0) {
+                    // Add spaces to the right of the content
+                    element.content += ' '.repeat(paddingNeeded);
+                }
+            }
+        }
+    }
 
     // Build the final powerline string
     let result = '';
@@ -444,9 +511,10 @@ export interface RenderResult {
 export function renderStatusLineWithInfo(
     widgets: WidgetItem[],
     settings: Settings,
-    context: RenderContext
+    context: RenderContext,
+    allLinesWidgets?: WidgetItem[][]
 ): RenderResult {
-    const line = renderStatusLine(widgets, settings, context);
+    const line = renderStatusLine(widgets, settings, context, allLinesWidgets);
     // Check if line contains the truncation ellipsis
     const wasTruncated = line.includes('...');
     return { line, wasTruncated };
@@ -455,7 +523,8 @@ export function renderStatusLineWithInfo(
 export function renderStatusLine(
     widgets: WidgetItem[],
     settings: Settings,
-    context: RenderContext
+    context: RenderContext,
+    allLinesWidgets?: WidgetItem[][]
 ): string {
     // Force 24-bit color for non-preview statusline rendering
     // Chalk level is now set globally in ccstatusline.ts and tui.tsx
@@ -469,9 +538,9 @@ export function renderStatusLine(
     const isPowerlineMode = Boolean(powerlineSettings?.enabled);
 
     // If powerline mode is enabled, use powerline renderer
-    if (isPowerlineMode) {
-        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0);
-    }
+    if (isPowerlineMode)
+        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0, allLinesWidgets);
+
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground color

@@ -42,6 +42,12 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.8 - Powerline Auto-Alignment
+
+![Powerline Auto-Alignment](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/autoAlign.png)
+
+- **🎯 Widget Alignment** - Auto-align widgets across multiple status lines in Powerline mode for a clean, columnar layout (toggle with 'a' in Powerline Setup)
+
 ### v2.0.7 - Current Working Directory & Session Cost
 
 ![Current Working Directory and Session Cost](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/cwdAndSessionCost.png)

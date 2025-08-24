@@ -93,13 +93,18 @@ async function renderMultipleLines(data: StatusJSON) {
         isPreview: false
     };
 
+    // Check if powerline mode is enabled and autoAlign is on
+    const isPowerlineMode = settings.powerline.enabled;
+    const autoAlign = settings.powerline.autoAlign;
+    const allLinesWidgets = (isPowerlineMode && autoAlign) ? lines : undefined;
+
     // Render each line
     let globalSeparatorIndex = 0;
     for (let i = 0; i < lines.length; i++) {
         const lineItems = lines[i];
         if (lineItems && lineItems.length > 0) {
             const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
-            const line = renderStatusLine(lineItems, settings, lineContext);
+            const line = renderStatusLine(lineItems, settings, lineContext, allLinesWidgets);
 
             // Only output the line if it has content (not just ANSI codes)
             // Strip ANSI codes to check if there's actual text
