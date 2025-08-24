@@ -8,7 +8,10 @@ import React from 'react';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
+    calculateMaxWidthsFromPreRendered,
+    preRenderAllWidgets,
     renderStatusLineWithInfo,
+    type PreRenderedWidget,
     type RenderContext,
     type RenderResult
 } from '../../utils/renderer';
@@ -28,7 +31,8 @@ const renderSingleLine = (
     settings: Settings,
     lineIndex: number,
     globalSeparatorIndex: number,
-    allLinesWidgets?: WidgetItem[][]
+    preRenderedWidgets: PreRenderedWidget[],
+    preCalculatedMaxWidths: number[]
 ): RenderResult => {
     // Create render context for preview
     const context: RenderContext = {
@@ -38,7 +42,7 @@ const renderSingleLine = (
         globalSeparatorIndex
     };
 
-    return renderStatusLineWithInfo(widgets, settings, context, allLinesWidgets);
+    return renderStatusLineWithInfo(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
 };
 
 export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings, onTruncationChange }) => {
@@ -50,10 +54,9 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
         if (!settings)
             return { renderedLines: [], anyTruncated: false };
 
-        // Check if powerline mode is enabled and autoAlign is on
-        const isPowerlineMode = settings.powerline.enabled;
-        const autoAlign = settings.powerline.autoAlign;
-        const allLinesWidgets = (isPowerlineMode && autoAlign) ? lines : undefined;
+        // Always pre-render all widgets once (for efficiency)
+        const preRenderedLines = preRenderAllWidgets(lines, settings, { terminalWidth, isPreview: true });
+        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
         let globalSeparatorIndex = 0;
         const result: string[] = [];
@@ -62,7 +65,8 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
         for (let i = 0; i < lines.length; i++) {
             const lineItems = lines[i];
             if (lineItems && lineItems.length > 0) {
-                const renderResult = renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings, i, globalSeparatorIndex, allLinesWidgets);
+                const preRenderedWidgets = preRenderedLines[i] ?? [];
+                const renderResult = renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings, i, globalSeparatorIndex, preRenderedWidgets, preCalculatedMaxWidths);
                 result.push(renderResult.line);
                 if (renderResult.wasTruncated) {
                     truncated = true;

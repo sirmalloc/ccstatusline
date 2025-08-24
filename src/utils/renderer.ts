@@ -46,7 +46,8 @@ function renderPowerlineStatusLine(
     context: RenderContext,
     lineIndex = 0,  // Which line we're rendering (for theme color cycling)
     globalSeparatorOffset = 0,  // Starting separator index for this line
-    allLinesWidgets?: WidgetItem[][]  // All lines widgets for alignment calculation
+    preRenderedWidgets: PreRenderedWidget[],  // Pre-rendered widgets for this line
+    preCalculatedMaxWidths: number[]  // Pre-calculated max widths for alignment
 ): string {
     const powerlineConfig = settings.powerline as Record<string, unknown> | undefined;
     const config = powerlineConfig ?? {};
@@ -140,14 +141,17 @@ function renderPowerlineStatusLine(
             continue;
         }
 
-        // Use widget registry for regular widgets
-        try {
-            const widgetImpl = getWidget(widget.type);
-            widgetText = widgetImpl.render(widget, context, settings) ?? '';
-            defaultColor = widgetImpl.getDefaultColor();
-        } catch {
-            // Unknown widget type - skip
-            continue;
+        // Use pre-rendered content
+        const preRendered = preRenderedWidgets[i];
+        if (preRendered?.content) {
+            widgetText = preRendered.content;
+            // Get default color from widget impl for consistency
+            try {
+                const widgetImpl = getWidget(widget.type);
+                defaultColor = widgetImpl.getDefaultColor();
+            } catch {
+                // Keep default
+            }
         }
 
         if (widgetText) {
@@ -212,59 +216,11 @@ function renderPowerlineStatusLine(
 
     // Apply auto-alignment if enabled
     const autoAlign = config.autoAlign as boolean | undefined;
-    if (autoAlign && allLinesWidgets) {
-        // Calculate max width for each widget position across all lines
-        const maxWidths: number[] = [];
-
-        // First, collect all widget contents for each line
-        const allLinesElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[][] = [];
-
-        for (const lineWidgets of allLinesWidgets) {
-            const filteredLineWidgets = lineWidgets.filter(w => w.type !== 'separator' && w.type !== 'flex-separator');
-            const lineElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
-
-            for (const widget of filteredLineWidgets) {
-                let widgetText = '';
-
-                try {
-                    const widgetImpl = getWidget(widget.type);
-                    widgetText = widgetImpl.render(widget, context, settings) ?? '';
-                } catch {
-                    continue;
-                }
-
-                if (widgetText) {
-                    const padding = settings.defaultPadding ?? '';
-                    const paddedText = `${padding}${widgetText}${padding}`;
-                    lineElements.push({
-                        content: paddedText,
-                        bgColor: widget.backgroundColor,
-                        fgColor: widget.color,
-                        widget: widget
-                    });
-                }
-            }
-            allLinesElements.push(lineElements);
-        }
-
-        // Calculate max width for each position
-        for (let pos = 0; pos < Math.max(...allLinesElements.map(line => line.length)); pos++) {
-            let maxWidth = 0;
-            for (const lineElements of allLinesElements) {
-                const element = lineElements[pos];
-                if (element) {
-                    // Get the plain text length (without ANSI codes)
-                    const plainLength = element.content.replace(ANSI_REGEX, '').length;
-                    maxWidth = Math.max(maxWidth, plainLength);
-                }
-            }
-            maxWidths.push(maxWidth);
-        }
-
-        // Apply padding to current line's widgets
+    if (autoAlign) {
+        // Apply padding to current line's widgets based on pre-calculated max widths
         for (let i = 0; i < widgetElements.length; i++) {
             const element = widgetElements[i];
-            const maxWidth = maxWidths[i];
+            const maxWidth = preCalculatedMaxWidths[i];
             if (element && maxWidth !== undefined) {
                 const currentLength = element.content.replace(ANSI_REGEX, '').length;
                 const paddingNeeded = maxWidth - currentLength;
@@ -508,13 +464,105 @@ export interface RenderResult {
     wasTruncated: boolean;
 }
 
+export interface PreRenderedWidget {
+    content: string;      // The rendered widget text (without padding)
+    plainLength: number;  // Length without ANSI codes
+    widget: WidgetItem;   // Original widget config
+}
+
+// Pre-render all widgets once and cache the results
+export function preRenderAllWidgets(
+    allLinesWidgets: WidgetItem[][],
+    settings: Settings,
+    context: RenderContext
+): PreRenderedWidget[][] {
+    const preRenderedLines: PreRenderedWidget[][] = [];
+
+    // Process each line
+    for (const lineWidgets of allLinesWidgets) {
+        const preRenderedLine: PreRenderedWidget[] = [];
+
+        for (const widget of lineWidgets) {
+            // Skip separators as they're handled differently
+            if (widget.type === 'separator' || widget.type === 'flex-separator') {
+                preRenderedLine.push({
+                    content: '',  // Separators are handled specially
+                    plainLength: 0,
+                    widget
+                });
+                continue;
+            }
+
+            let widgetText = '';
+            try {
+                const widgetImpl = getWidget(widget.type);
+                widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            } catch {
+                // Unknown widget type - store empty content
+                preRenderedLine.push({
+                    content: '',
+                    plainLength: 0,
+                    widget
+                });
+                continue;
+            }
+
+            // Store the rendered content without padding (padding is applied later)
+            const plainLength = widgetText.replace(ANSI_REGEX, '').length;
+            preRenderedLine.push({
+                content: widgetText,
+                plainLength,
+                widget
+            });
+        }
+
+        preRenderedLines.push(preRenderedLine);
+    }
+
+    return preRenderedLines;
+}
+
+// Calculate max widths from pre-rendered widgets for alignment
+export function calculateMaxWidthsFromPreRendered(
+    preRenderedLines: PreRenderedWidget[][],
+    settings: Settings
+): number[] {
+    const maxWidths: number[] = [];
+    const defaultPadding = settings.defaultPadding ?? '';
+    const paddingLength = defaultPadding.length;
+
+    for (const preRenderedLine of preRenderedLines) {
+        const filteredWidgets = preRenderedLine.filter(
+            w => w.widget.type !== 'separator' && w.widget.type !== 'flex-separator' && w.content
+        );
+
+        for (let pos = 0; pos < filteredWidgets.length; pos++) {
+            const widget = filteredWidgets[pos];
+            if (!widget)
+                continue;
+            // Width includes padding on both sides
+            const totalWidth = widget.plainLength + (paddingLength * 2);
+
+            const currentMax = maxWidths[pos];
+            if (currentMax === undefined) {
+                maxWidths[pos] = totalWidth;
+            } else {
+                maxWidths[pos] = Math.max(currentMax, totalWidth);
+            }
+        }
+    }
+
+    return maxWidths;
+}
+
 export function renderStatusLineWithInfo(
     widgets: WidgetItem[],
     settings: Settings,
     context: RenderContext,
-    allLinesWidgets?: WidgetItem[][]
+    preRenderedWidgets: PreRenderedWidget[],
+    preCalculatedMaxWidths: number[]
 ): RenderResult {
-    const line = renderStatusLine(widgets, settings, context, allLinesWidgets);
+    const line = renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
     // Check if line contains the truncation ellipsis
     const wasTruncated = line.includes('...');
     return { line, wasTruncated };
@@ -524,7 +572,8 @@ export function renderStatusLine(
     widgets: WidgetItem[],
     settings: Settings,
     context: RenderContext,
-    allLinesWidgets?: WidgetItem[][]
+    preRenderedWidgets: PreRenderedWidget[],
+    preCalculatedMaxWidths: number[]
 ): string {
     // Force 24-bit color for non-preview statusline rendering
     // Chalk level is now set globally in ccstatusline.ts and tui.tsx
@@ -539,7 +588,7 @@ export function renderStatusLine(
 
     // If powerline mode is enabled, use powerline renderer
     if (isPowerlineMode)
-        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0, allLinesWidgets);
+        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0, preRenderedWidgets, preCalculatedMaxWidths);
 
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
@@ -652,12 +701,23 @@ export function renderStatusLine(
 
         // Use widget registry for regular widgets
         try {
-            const widgetImpl = getWidget(widget.type);
-            const widgetText = widgetImpl.render(widget, context, settings);
+            let widgetText: string | undefined;
+            let defaultColor = 'white';
+
+            // Use pre-rendered content
+            const preRendered = preRenderedWidgets[i];
+            if (preRendered?.content) {
+                widgetText = preRendered.content;
+                // Get default color from widget impl for consistency
+                try {
+                    const widgetImpl = getWidget(widget.type);
+                    defaultColor = widgetImpl.getDefaultColor();
+                } catch {
+                    // Keep default
+                }
+            }
 
             if (widgetText) {
-                const defaultColor = widgetImpl.getDefaultColor();
-
                 // Special handling for custom-command with preserveColors
                 if (widget.type === 'custom-command' && widget.preserveColors) {
                     // Handle max width truncation for commands with ANSI codes

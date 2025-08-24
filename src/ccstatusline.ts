@@ -18,6 +18,8 @@ import {
     getTokenMetrics
 } from './utils/jsonl';
 import {
+    calculateMaxWidthsFromPreRendered,
+    preRenderAllWidgets,
     renderStatusLine,
     type RenderContext,
     type StatusJSON
@@ -93,18 +95,18 @@ async function renderMultipleLines(data: StatusJSON) {
         isPreview: false
     };
 
-    // Check if powerline mode is enabled and autoAlign is on
-    const isPowerlineMode = settings.powerline.enabled;
-    const autoAlign = settings.powerline.autoAlign;
-    const allLinesWidgets = (isPowerlineMode && autoAlign) ? lines : undefined;
+    // Always pre-render all widgets once (for efficiency)
+    const preRenderedLines = preRenderAllWidgets(lines, settings, context);
+    const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
-    // Render each line
+    // Render each line using pre-rendered content
     let globalSeparatorIndex = 0;
     for (let i = 0; i < lines.length; i++) {
         const lineItems = lines[i];
         if (lineItems && lineItems.length > 0) {
             const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
-            const line = renderStatusLine(lineItems, settings, lineContext, allLinesWidgets);
+            const preRenderedWidgets = preRenderedLines[i] ?? [];
+            const line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
 
             // Only output the line if it has content (not just ANSI codes)
             // Strip ANSI codes to check if there's actual text
