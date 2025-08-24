@@ -33,25 +33,47 @@ async function readStdin(): Promise<string | null> {
 
     const chunks: string[] = [];
 
-    try {
-        // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined') {
-            // Bun environment
-            const decoder = new TextDecoder();
-            for await (const chunk of Bun.stdin.stream()) {
-                chunks.push(decoder.decode(chunk));
+    // Create a timeout promise (500ms to account for slow systems/spawn delays)
+    const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => { resolve(null); }, 500);
+    });
+
+    // Create the read promise
+    const readPromise = (async () => {
+        try {
+            // Use Node.js compatible approach
+            if (typeof Bun !== 'undefined') {
+                // Bun environment
+                const decoder = new TextDecoder();
+                for await (const chunk of Bun.stdin.stream()) {
+                    chunks.push(decoder.decode(chunk));
+                }
+            } else {
+                // Node.js environment
+                process.stdin.setEncoding('utf8');
+
+                // Add a data check before entering the loop
+                const hasData = await Promise.race([
+                    new Promise(resolve => process.stdin.once('readable', () => { resolve(true); })),
+                    new Promise(resolve => setTimeout(() => { resolve(false); }, 10))
+                ]);
+
+                if (!hasData)
+                    return null;
+
+                for await (const chunk of process.stdin) {
+                    chunks.push(chunk as string);
+                }
             }
-        } else {
-            // Node.js environment
-            process.stdin.setEncoding('utf8');
-            for await (const chunk of process.stdin) {
-                chunks.push(chunk as string);
-            }
+
+            return chunks.join('');
+        } catch {
+            return null;
         }
-        return chunks.join('');
-    } catch {
-        return null;
-    }
+    })();
+
+    // Race between reading and timeout
+    return Promise.race([readPromise, timeoutPromise]);
 }
 
 async function renderMultipleLines(data: StatusJSON) {
@@ -162,23 +184,27 @@ async function main() {
     if (!process.stdin.isTTY) {
         // We're receiving piped input
         const input = await readStdin();
-        if (input && input.trim() !== '') {
+        if (input === null) {
+            // Timeout or no data available in non-TTY environment
+            console.log('ccstatusline: No input received from stdin (timeout after 500ms)');
+            process.exit(0);
+        } else if (input && input.trim() !== '') {
             try {
                 // Parse and validate JSON in one step
                 const result = StatusJSONSchema.safeParse(JSON.parse(input));
                 if (!result.success) {
-                    console.error('Invalid status JSON format:', result.error.message);
-                    process.exit(1);
+                    console.log('ccstatusline: Invalid status JSON format:', result.error.message);
+                    process.exit(0);
                 }
 
                 await renderMultipleLines(result.data);
-            } catch (error) {
-                console.error('Error parsing JSON:', error);
-                process.exit(1);
+            } catch {
+                console.log('ccstatusline: Error parsing statusline JSON -', input);
+                process.exit(0);
             }
         } else {
-            console.error('No input received');
-            process.exit(1);
+            console.log('ccstatusline: No input received');
+            process.exit(0);
         }
     } else {
         // Interactive mode - run TUI
