@@ -285,7 +285,7 @@ When terminal width is detected, status lines automatically truncate with ellips
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ccstatusline.git
+git clone https://github.com/sirmalloc/ccstatusline.git
 cd ccstatusline
 
 # Install dependencies
