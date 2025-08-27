@@ -44,6 +44,11 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.10 - Git Updates
+
+- **🌳 Git Worktree widget** - Shows the active worktree name when working with git worktrees
+- **👻 Hide 'no git' message toggle** - Git widgets now support hiding the 'no git' message when not in a repository (toggle with 'h' key while editing the widget)
+
 ### v2.0.8 - Powerline Auto-Alignment
 
 ![Powerline Auto-Alignment](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/autoAlign.png)
@@ -139,6 +144,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
+- **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
