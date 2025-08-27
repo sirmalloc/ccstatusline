@@ -6,6 +6,8 @@ import type {
     BlockMetrics,
     TokenMetrics
 } from './types';
+import type { RenderContext } from './types/RenderContext';
+import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { updateColorMap } from './utils/colors';
 import {
@@ -20,9 +22,7 @@ import {
 import {
     calculateMaxWidthsFromPreRendered,
     preRenderAllWidgets,
-    renderStatusLine,
-    type RenderContext,
-    type StatusJSON
+    renderStatusLine
 } from './utils/renderer';
 
 async function readStdin(): Promise<string | null> {
