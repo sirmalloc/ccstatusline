@@ -5,6 +5,7 @@ import {
 } from 'ink';
 import React from 'react';
 
+import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
@@ -12,7 +13,6 @@ import {
     preRenderAllWidgets,
     renderStatusLineWithInfo,
     type PreRenderedWidget,
-    type RenderContext,
     type RenderResult
 } from '../../utils/renderer';
 import { canDetectTerminalWidth } from '../../utils/terminal';
