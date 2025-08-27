@@ -26,7 +26,7 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['version', new widgets.VersionWidget()],
     ['custom-text', new widgets.CustomTextWidget()],
     ['custom-command', new widgets.CustomCommandWidget()],
-    ['spotify', new widgets.SpotifyWidget()]
+    ['music', new widgets.MusicWidget()]
 ]);
 
 export function getWidget(type: WidgetItemType): Widget {

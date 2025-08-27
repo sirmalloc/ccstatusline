@@ -11,10 +11,10 @@
     "dist/"
   ],
   "scripts": {
-    "start": "bun run patch && bun run src/ccstatusline.ts",
-    "statusline": "bun run src/ccstatusline.ts",
+    "start": "bun run patch && mkdir -p dist/bin && cp bin/macos-nowplaying.jxa.js dist/bin/ && bun run src/ccstatusline.ts",
+    "statusline": "mkdir -p dist/bin && cp bin/macos-nowplaying.jxa.js dist/bin/ && bun run src/ccstatusline.ts",
     "patch": "patch-package",
-    "build": "bun run patch && rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
+    "build": "bun run patch && rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14 && mkdir -p dist/bin && cp bin/macos-nowplaying.jxa.js dist/bin/",
     "postbuild": "bun run scripts/replace-version.ts",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix"
