@@ -134,11 +134,9 @@ function renderPowerlineStatusLine(
         if (preRendered?.content) {
             widgetText = preRendered.content;
             // Get default color from widget impl for consistency
-            try {
-                const widgetImpl = getWidget(widget.type);
+            const widgetImpl = getWidget(widget.type);
+            if (widgetImpl) {
                 defaultColor = widgetImpl.getDefaultColor();
-            } catch {
-                // Keep default
             }
         }
 
@@ -481,19 +479,13 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            let widgetText = '';
-            try {
-                const widgetImpl = getWidget(widget.type);
-                widgetText = widgetImpl.render(widget, context, settings) ?? '';
-            } catch {
-                // Unknown widget type - store empty content
-                preRenderedLine.push({
-                    content: '',
-                    plainLength: 0,
-                    widget
-                });
+            const widgetImpl = getWidget(widget.type);
+            if (!widgetImpl) {
+                // Unknown widget type - skip it entirely
                 continue;
             }
+
+            const widgetText = widgetImpl.render(widget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
             const plainLength = widgetText.replace(ANSI_REGEX, '').length;
@@ -664,12 +656,8 @@ export function renderStatusLine(
                     // Get the previous widget's colors
                     let widgetColor = prevWidget.color;
                     if (!widgetColor) {
-                        try {
-                            const widgetImpl = getWidget(prevWidget.type);
-                            widgetColor = widgetImpl.getDefaultColor();
-                        } catch {
-                            widgetColor = 'white';
-                        }
+                        const widgetImpl = getWidget(prevWidget.type);
+                        widgetColor = widgetImpl ? widgetImpl.getDefaultColor() : 'white';
                     }
                     separatorColor = widgetColor;
                     separatorBg = prevWidget.backgroundColor;
@@ -697,11 +685,9 @@ export function renderStatusLine(
             if (preRendered?.content) {
                 widgetText = preRendered.content;
                 // Get default color from widget impl for consistency
-                try {
-                    const widgetImpl = getWidget(widget.type);
+                const widgetImpl = getWidget(widget.type);
+                if (widgetImpl) {
                     defaultColor = widgetImpl.getDefaultColor();
-                } catch {
-                    // Keep default
                 }
             }
 
@@ -790,7 +776,7 @@ export function renderStatusLine(
                     let widgetColor = prevElem.widget.color;
                     if (!widgetColor && prevElem.widget.type !== 'separator' && prevElem.widget.type !== 'flex-separator') {
                         const widgetImpl = getWidget(prevElem.widget.type);
-                        widgetColor = widgetImpl.getDefaultColor();
+                        widgetColor = widgetImpl ? widgetImpl.getDefaultColor() : 'white';
                     }
                     const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
                     finalElements.push(coloredSep);

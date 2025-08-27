@@ -60,7 +60,9 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
                         if (widget.color?.startsWith('hex:')) {
                             if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
                                 const widgetImpl = getWidget(widget.type);
-                                newWidget.color = widgetImpl.getDefaultColor();
+                                if (widgetImpl) {
+                                    newWidget.color = widgetImpl.getDefaultColor();
+                                }
                             }
                         }
                         if (widget.backgroundColor?.startsWith('hex:')) {
@@ -71,7 +73,9 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
                         if (widget.color?.startsWith('ansi256:')) {
                             if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
                                 const widgetImpl = getWidget(widget.type);
-                                newWidget.color = widgetImpl.getDefaultColor();
+                                if (widgetImpl) {
+                                    newWidget.color = widgetImpl.getDefaultColor();
+                                }
                             }
                         }
                         if (widget.backgroundColor?.startsWith('ansi256:')) {
@@ -82,7 +86,9 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
                         if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
                             if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
                                 const widgetImpl = getWidget(widget.type);
-                                newWidget.color = widgetImpl.getDefaultColor();
+                                if (widgetImpl) {
+                                    newWidget.color = widgetImpl.getDefaultColor();
+                                }
                             }
                         }
                         if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
@@ -118,7 +124,9 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
                     if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
                         if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
                             const widgetImpl = getWidget(widget.type);
-                            newWidget.color = widgetImpl.getDefaultColor();
+                            if (widgetImpl) {
+                                newWidget.color = widgetImpl.getDefaultColor();
+                            }
                         }
                     }
                     if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {

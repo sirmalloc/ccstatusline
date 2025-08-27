@@ -263,8 +263,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 // Check for custom widget keybinds
                 const currentWidget = widgets[selectedIndex];
                 if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-                    try {
-                        const widgetImpl = getWidget(currentWidget.type);
+                    const widgetImpl = getWidget(currentWidget.type);
+                    if (widgetImpl) {
                         if (widgetImpl.getCustomKeybinds) {
                             const customKeybinds = widgetImpl.getCustomKeybinds();
                             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
@@ -288,8 +288,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 }
                             }
                         }
-                    } catch {
-                        // Widget not found or doesn't support custom keybinds
                     }
                 }
             }
@@ -309,10 +307,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
         // Handle regular widgets - delegate to widget for display
         const widgetImpl = getWidget(widget.type);
-        const { displayText, modifierText } = widgetImpl.getEditorDisplay(widget);
-
-        // Return plain text without colors
-        return displayText + (modifierText ? ` ${modifierText}` : '');
+        if (widgetImpl) {
+            const { displayText, modifierText } = widgetImpl.getEditorDisplay(widget);
+            // Return plain text without colors
+            return displayText + (modifierText ? ` ${modifierText}` : '');
+        }
+        // Unknown widget type
+        return `Unknown: ${widget.type}`;
     };
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
@@ -327,14 +328,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     let canToggleRaw = false;
     let customKeybinds: { key: string; label: string; action: string }[] = [];
     if (currentWidget && !isSeparator && !isFlexSeparator) {
-        try {
-            const widgetImpl = getWidget(currentWidget.type);
+        const widgetImpl = getWidget(currentWidget.type);
+        if (widgetImpl) {
             canToggleRaw = widgetImpl.supportsRawValue();
             // Get custom keybinds from the widget
             if (widgetImpl.getCustomKeybinds) {
                 customKeybinds = widgetImpl.getCustomKeybinds();
             }
-        } catch {
+        } else {
             canToggleRaw = false;
         }
     }
@@ -448,12 +449,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                         } else if (currentWidget.type === 'flex-separator') {
                                             return 'Expands to fill available terminal width';
                                         } else {
-                                            try {
-                                                const widgetImpl = getWidget(currentWidget.type);
-                                                return widgetImpl.getDescription();
-                                            } catch {
-                                                return 'Widget description not available';
-                                            }
+                                            const widgetImpl = getWidget(currentWidget.type);
+                                            return widgetImpl ? widgetImpl.getDescription() : 'Unknown widget type';
                                         }
                                     })()}
                                 </Text>

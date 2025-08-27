@@ -43,13 +43,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return showSeparators;
         }
         // Use the widget's supportsColors method
-        try {
-            const widgetInstance = getWidget(widget.type);
-            return widgetInstance.supportsColors(widget);
-        } catch {
-            // If widget type is not found, exclude it
-            return false;
-        }
+        const widgetInstance = getWidget(widget.type);
+        // Include unknown widgets (they might support colors, we just don't know)
+        return widgetInstance ? widgetInstance.supportsColors(widget) : true;
     });
     const [highlightedItemId, setHighlightedItemId] = useState<string | null>(colorableWidgets[0]?.id ?? null);
     const [editingBackground, setEditingBackground] = useState(false);
@@ -259,7 +255,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 let defaultColor = 'white';
                                 if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
                                     const widgetImpl = getWidget(widget.type);
-                                    defaultColor = widgetImpl.getDefaultColor();
+                                    if (widgetImpl) {
+                                        defaultColor = widgetImpl.getDefaultColor();
+                                    }
                                 }
                                 let currentColor = widget.color ?? defaultColor;
                                 // If color is 'dim', treat as if no color was set
@@ -313,7 +311,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         }
 
         const widgetImpl = getWidget(widget.type);
-        return widgetImpl.getDisplayName();
+        return widgetImpl ? widgetImpl.getDisplayName() : `Unknown: ${widget.type}`;
     };
 
     // Color list for cycling
@@ -333,7 +331,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         let defaultColor = 'white';
         if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
             const widgetImpl = getWidget(widget.type);
-            defaultColor = widgetImpl.getDefaultColor();
+            if (widgetImpl) {
+                defaultColor = widgetImpl.getDefaultColor();
+            }
         }
         const styledLabel = applyColors(label, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level);
         return {
@@ -363,7 +363,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         : (selectedWidget ? (selectedWidget.color ?? (() => {
             if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
                 const widgetImpl = getWidget(selectedWidget.type);
-                return widgetImpl.getDefaultColor();
+                return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
             }
             return 'white';
         })()) : 'white');

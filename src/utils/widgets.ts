@@ -28,12 +28,8 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['custom-command', new widgets.CustomCommandWidget()]
 ]);
 
-export function getWidget(type: WidgetItemType): Widget {
-    const widget = widgetRegistry.get(type);
-    if (!widget) {
-        throw new Error(`Unknown widget type: ${type}`);
-    }
-    return widget;
+export function getWidget(type: WidgetItemType): Widget | null {
+    return widgetRegistry.get(type) ?? null;
 }
 
 export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
@@ -50,7 +46,7 @@ export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
     return allTypes;
 }
 
-export function isWidgetType(type: string): boolean {
+export function isKnownWidgetType(type: string): boolean {
     return widgetRegistry.has(type)
         || type === 'separator'
         || type === 'flex-separator';
