@@ -11,10 +11,9 @@
     "dist/"
   ],
   "scripts": {
-    "start": "bun run patch && bun run src/ccstatusline.ts",
+    "start": "bun run src/ccstatusline.ts",
     "statusline": "bun run src/ccstatusline.ts",
-    "patch": "patch-package",
-    "build": "bun run patch && rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
+    "build": "rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
     "postbuild": "bun run scripts/replace-version.ts",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix"
@@ -34,7 +33,6 @@
     "ink": "^6.2.0",
     "ink-gradient": "^3.0.0",
     "ink-select-input": "^6.2.0",
-    "patch-package": "^8.0.0",
     "react": "^19.1.1",
     "react-devtools-core": "^6.1.5",
     "strip-ansi": "^7.1.0",
@@ -61,5 +59,8 @@
   },
   "trustedDependencies": [
     "unrs-resolver"
-  ]
+  ],
+  "patchedDependencies": {
+    "ink@6.2.0": "patches/ink@6.2.0.patch"
+  }
 }
