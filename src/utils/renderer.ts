@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import stringWidth from 'string-width';
 
 // ANSI escape sequence for stripping color codes
 const ANSI_REGEX = new RegExp(`\\x1b\\[[0-9;]*m`, 'g');
@@ -116,6 +117,16 @@ function renderPowerlineStatusLine(
     const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
     let widgetColorIndex = 0;  // Track widget index for theme colors
 
+    // Create a mapping from filteredWidgets to preRenderedWidgets indices
+    // This is needed because filteredWidgets excludes separators but preRenderedWidgets includes all widgets
+    const preRenderedIndices: number[] = [];
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (widget && widget.type !== 'separator' && widget.type !== 'flex-separator') {
+            preRenderedIndices.push(i);
+        }
+    }
+
     for (let i = 0; i < filteredWidgets.length; i++) {
         const widget = filteredWidgets[i];
         if (!widget)
@@ -129,8 +140,9 @@ function renderPowerlineStatusLine(
             continue;
         }
 
-        // Use pre-rendered content
-        const preRendered = preRenderedWidgets[i];
+        // Use pre-rendered content - use the correct index from the mapping
+        const actualPreRenderedIndex = preRenderedIndices[i];
+        const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
         if (preRendered?.content) {
             widgetText = preRendered.content;
             // Get default color from widget impl for consistency
@@ -208,7 +220,8 @@ function renderPowerlineStatusLine(
             const element = widgetElements[i];
             const maxWidth = preCalculatedMaxWidths[i];
             if (element && maxWidth !== undefined) {
-                const currentLength = element.content.replace(ANSI_REGEX, '').length;
+                // Use stringWidth to properly calculate Unicode character display width
+                const currentLength = stringWidth(element.content.replace(ANSI_REGEX, ''));
                 const paddingNeeded = maxWidth - currentLength;
                 if (paddingNeeded > 0) {
                     // Add spaces to the right of the content
@@ -488,7 +501,8 @@ export function preRenderAllWidgets(
             const widgetText = widgetImpl.render(widget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
-            const plainLength = widgetText.replace(ANSI_REGEX, '').length;
+            // Use stringWidth to properly calculate Unicode character display width
+            const plainLength = stringWidth(widgetText.replace(ANSI_REGEX, ''));
             preRenderedLine.push({
                 content: widgetText,
                 plainLength,
