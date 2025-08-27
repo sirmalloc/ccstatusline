@@ -1,7 +1,7 @@
-diff --git a/node_modules/ink/build/parse-keypress.js b/node_modules/ink/build/parse-keypress.js
-index 1e13e81..e100611 100644
---- a/node_modules/ink/build/parse-keypress.js
-+++ b/node_modules/ink/build/parse-keypress.js
+diff --git a/build/parse-keypress.js b/build/parse-keypress.js
+index 1e13e819f59d259a3476510db822695576a9d93c..e100611d8661187c4ca191e89621cd5e480fcacc 100644
+--- a/build/parse-keypress.js
++++ b/build/parse-keypress.js
 @@ -161,9 +161,9 @@ const parseKeypress = (s = '') => {
          key.meta = s.charAt(0) === '\x1b';
      }
