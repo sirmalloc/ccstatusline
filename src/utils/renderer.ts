@@ -19,18 +19,6 @@ import {
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
-// Re-export types for backward compatibility
-export type { StatusJSON } from '../types/StatusJSON';
-export type { TokenMetrics, TokenUsage, TranscriptLine } from '../types/TokenMetrics';
-export type { RenderContext } from '../types/RenderContext';
-
-// Color functions moved to colors.ts
-// Re-exported for backward compatibility
-export { applyColors } from './colors';
-
-// Re-export getTerminalWidth for backward compatibility
-export { getTerminalWidth };
-
 // Helper function to format token counts
 export function formatTokens(count: number): string {
     if (count >= 1000000)

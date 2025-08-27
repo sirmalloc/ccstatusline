@@ -5,7 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getTerminalWidth } from '../utils/renderer';
+import { getTerminalWidth } from '../utils/terminal';
 
 export class TerminalWidthWidget implements Widget {
     getDefaultColor(): string { return 'gray'; }
