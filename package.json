@@ -17,7 +17,7 @@
     "postbuild": "bun run scripts/replace-version.ts",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix",
-    "test": "bun x vitest"
+    "test": "bun vitest"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

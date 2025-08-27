@@ -16,15 +16,12 @@ export class GitWorktreeWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext): string | null {
-        if (context.isPreview) {
+        if (context.isPreview)
             return item.rawValue ? 'main' : '𖠰 main';
-        }
 
         const worktree = this.getGitWorktree();
-
-        if (worktree) {
+        if (worktree)
             return item.rawValue ? worktree : `𖠰 ${worktree}`;
-        }
 
         return '𖠰 no git';
     }
@@ -37,9 +34,8 @@ export class GitWorktreeWidget implements Widget {
             }).trim();
 
             // /some/path/.git or .git
-            if (worktreeDir.endsWith('/.git') || worktreeDir === '.git') {
+            if (worktreeDir.endsWith('/.git') || worktreeDir === '.git')
                 return 'main';
-            }
 
             // /some/path/.git/worktrees/some-worktree or /some/path/.git/worktrees/some-dir/some-worktree
             const [, worktree] = worktreeDir.split('.git/worktrees/');
