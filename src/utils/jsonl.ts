@@ -347,3 +347,34 @@ function floorToHour(timestamp: Date): Date {
     floored.setUTCMinutes(0, 0, 0);
     return floored;
 }
+
+/**
+ * Gets the latest cwd from the transcript
+ */
+export async function getLatestCwd(transcriptPath: string): Promise<string | null> {
+    try {
+        // Use Node.js-compatible file reading
+        if (!fs.existsSync(transcriptPath)) {
+            return null;
+        }
+
+        const content = await readFile(transcriptPath, 'utf-8');
+        const lines = content.trim().split('\n');
+
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line) as TranscriptLine;
+
+                if (data.cwd) {
+                    return data.cwd;
+                }
+            } catch {
+                // Skip invalid JSON lines
+            }
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+}

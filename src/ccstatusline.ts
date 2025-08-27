@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import chalk from 'chalk';
+import * as fs from 'fs';
 
 import { runTUI } from './tui';
 import type {
@@ -16,8 +17,9 @@ import {
 } from './utils/config';
 import {
     getBlockMetrics,
+    getLatestCwd,
     getSessionDuration,
-    getTokenMetrics
+    getTokenMetrics,
 } from './utils/jsonl';
 import {
     calculateMaxWidthsFromPreRendered,
@@ -74,6 +76,9 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if block timer is needed
     const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
 
+    // Check if cwd is needed
+    const hasCwd = lines.some(line => line.some(item => item.type === 'current-active-working-dir'));
+
     let tokenMetrics: TokenMetrics | null = null;
     if (hasTokenItems && data.transcript_path)
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -86,13 +91,20 @@ async function renderMultipleLines(data: StatusJSON) {
     if (hasBlockTimer && data.transcript_path)
         blockMetrics = getBlockMetrics(data.transcript_path);
 
+    let cwd: string | null = null;
+    if (hasCwd && data.transcript_path) {
+        cwd = await getLatestCwd(data.transcript_path);
+        console.log('hasCwd', hasCwd, cwd);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
         sessionDuration,
         blockMetrics,
-        isPreview: false
+        isPreview: false,
+        cwd
     };
 
     // Always pre-render all widgets once (for efficiency)
@@ -169,6 +181,10 @@ async function main() {
                 if (!result.success) {
                     console.error('Invalid status JSON format:', result.error.message);
                     process.exit(1);
+                }
+
+                if (process.env.LOG_INPUT) {
+                    fs.writeFileSync('input.json', JSON.stringify(result.data, null, 2));
                 }
 
                 await renderMultipleLines(result.data);

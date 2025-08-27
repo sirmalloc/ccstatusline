@@ -12,4 +12,5 @@ export interface RenderContext {
     isPreview?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
+    cwd?: string | null; // Current working directory of the last command
 }

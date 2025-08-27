@@ -13,6 +13,7 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['git-changes', new widgets.GitChangesWidget()],
     ['git-worktree', new widgets.GitWorktreeWidget()],
     ['current-working-dir', new widgets.CurrentWorkingDirWidget()],
+    ['current-active-working-dir', new widgets.CurrentActiveWorkingDirWidget()],
     ['tokens-input', new widgets.TokensInputWidget()],
     ['tokens-output', new widgets.TokensOutputWidget()],
     ['tokens-cached', new widgets.TokensCachedWidget()],
