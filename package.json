@@ -17,7 +17,8 @@
     "build": "bun run patch && rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
     "postbuild": "bun run scripts/replace-version.ts",
     "prepublishOnly": "bun run build",
-    "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix"
+    "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix",
+    "test": "bun x vitest"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
@@ -41,6 +42,7 @@
     "tinyglobby": "^0.2.14",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.1",
+    "vitest": "^3.2.4",
     "zod": "^4.0.17"
   },
   "keywords": [

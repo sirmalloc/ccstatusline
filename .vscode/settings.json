@@ -16,5 +16,11 @@
   },
   "[javascript]": {
     "files.trimTrailingWhitespace": true
-  }
+  },
+  "cSpell.words": [
+    "ccstatusline",
+    "statusline",
+    "Worktree",
+    "worktrees"
+  ]
 }
