@@ -1,5 +1,6 @@
 # Source files
 src/
+scripts/
 *.ts
 *.tsx
 

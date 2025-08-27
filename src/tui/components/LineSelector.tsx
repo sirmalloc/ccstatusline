@@ -10,27 +10,54 @@ import type { WidgetItem } from '../../types/Widget';
 
 interface LineSelectorProps {
     lines: WidgetItem[][];
+    onAppend: () => void;
     onSelect: (line: number) => void;
     onBack: () => void;
+    onDelete: (line: number) => void;
     initialSelection?: number;
     title?: string;
     blockIfPowerlineActive?: boolean;
     settings?: Settings;
 }
 
-const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, initialSelection = 0, title, blockIfPowerlineActive = false, settings }) => {
+const LineSelector: React.FC<LineSelectorProps> = ({
+    lines,
+    onAppend,
+    onSelect,
+    onBack,
+    onDelete,
+    initialSelection = 0,
+    title,
+    blockIfPowerlineActive = false,
+    settings
+}) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
     // Check if powerline theme is managing colors
     const powerlineEnabled = settings ? settings.powerline.enabled : false;
     const powerlineTheme = settings ? settings.powerline.theme : undefined;
-    const isThemeManaged = blockIfPowerlineActive && powerlineEnabled && powerlineTheme && powerlineTheme !== 'custom';
+    const isThemeManaged
+    = blockIfPowerlineActive
+        && powerlineEnabled
+        && powerlineTheme
+        && powerlineTheme !== 'custom';
 
     // Handle keyboard input
     useInput((input, key) => {
-        // If theme-managed and blocking is enabled, any key goes back
+    // If theme-managed and blocking is enabled, any key goes back
         if (isThemeManaged) {
             onBack();
+            return;
+        }
+
+        switch (input) {
+        case 'i':
+            onAppend();
+            setSelectedIndex(lines.length);
+            return;
+        case 'd':
+            onDelete(selectedIndex);
+            setSelectedIndex(Math.max(0, selectedIndex - 1));
             return;
         }
 
@@ -39,9 +66,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
         } else if (key.upArrow) {
             setSelectedIndex(Math.max(0, selectedIndex - 1));
         } else if (key.downArrow) {
-            setSelectedIndex(Math.min(3, selectedIndex + 1)); // 0-2 for lines, 3 for back
+            setSelectedIndex(Math.min(lines.length, selectedIndex + 1));
         } else if (key.return) {
-            if (selectedIndex === 3) {
+            if (selectedIndex === lines.length) {
                 onBack();
             } else {
                 onSelect(selectedIndex);
@@ -57,17 +84,23 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
                 <Box marginTop={1}>
                     <Text color='yellow'>
                         ⚠ Colors are currently managed by the Powerline theme:
-                        {' ' + powerlineTheme.charAt(0).toUpperCase() + powerlineTheme.slice(1)}
+                        {' '
+                            + powerlineTheme.charAt(0).toUpperCase()
+                            + powerlineTheme.slice(1)}
                     </Text>
                 </Box>
                 <Box marginTop={1}>
                     <Text dimColor>To customize colors, either:</Text>
                 </Box>
                 <Box marginLeft={2}>
-                    <Text dimColor>• Change to 'Custom' theme in Powerline Configuration → Themes</Text>
+                    <Text dimColor>
+                        • Change to 'Custom' theme in Powerline Configuration → Themes
+                    </Text>
                 </Box>
                 <Box marginLeft={2}>
-                    <Text dimColor>• Disable Powerline mode in Powerline Configuration</Text>
+                    <Text dimColor>
+                        • Disable Powerline mode in Powerline Configuration
+                    </Text>
                 </Box>
                 <Box marginTop={2}>
                     <Text>Press any key to go back...</Text>
@@ -79,34 +112,27 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
     return (
         <Box flexDirection='column'>
             <Text bold>{title ?? 'Select Line to Edit'}</Text>
-            <Text dimColor>Choose which status line to configure (up to 3 lines supported)</Text>
-            <Text dimColor>Press ESC to go back</Text>
+            <Text dimColor>
+                Choose which status line to configure (up to 3 lines supported)
+            </Text>
+            <Text dimColor>
+                (i) to append new line, (d) to delete line, ESC to go back
+            </Text>
             <Box marginTop={1} flexDirection='column'>
-                <Box>
-                    <Text color={selectedIndex === 0 ? 'green' : undefined}>
-                        {selectedIndex === 0 ? '▶  ' : '   '}
-                        ☰ Line 1
-                        {lines[0] && lines[0].length > 0 ? ` (${lines[0].length} widgets)` : ' (empty)'}
-                    </Text>
-                </Box>
-                <Box>
-                    <Text color={selectedIndex === 1 ? 'green' : undefined}>
-                        {selectedIndex === 1 ? '▶  ' : '   '}
-                        ☰ Line 2
-                        {lines[1] && lines[1].length > 0 ? ` (${lines[1].length} widgets)` : ' (empty)'}
-                    </Text>
-                </Box>
-                <Box>
-                    <Text color={selectedIndex === 2 ? 'green' : undefined}>
-                        {selectedIndex === 2 ? '▶  ' : '   '}
-                        ☰ Line 3
-                        {lines[2] && lines[2].length > 0 ? ` (${lines[2].length} widgets)` : ' (empty)'}
-                    </Text>
-                </Box>
+                {lines.map((line, index) => (
+                    <Box key={index}>
+                        <Text color={selectedIndex === index ? 'green' : undefined}>
+                            {selectedIndex === index ? '▶  ' : '   '}
+                            ☰ Line
+                            {index + 1}
+                            {line.length > 0 ? ` (${line.length} widgets)` : ' (empty)'}
+                        </Text>
+                    </Box>
+                ))}
 
                 <Box marginTop={1}>
-                    <Text color={selectedIndex === 3 ? 'green' : undefined}>
-                        {selectedIndex === 3 ? '▶  ' : '   '}
+                    <Text color={selectedIndex === lines.length ? 'green' : undefined}>
+                        {selectedIndex === lines.length ? '▶  ' : '   '}
                         ← Back
                     </Text>
                 </Box>

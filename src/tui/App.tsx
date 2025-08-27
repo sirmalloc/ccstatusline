@@ -195,6 +195,22 @@ export const App: React.FC = () => {
         setSettings({ ...settings, lines: newLines });
     };
 
+    const appendLine = () => {
+        setSettings((current: Settings | null) => {
+            if (!current) {
+                return null;
+            }
+
+            return { ...current, lines: [...current.lines, []] };
+        });
+    };
+
+    const deleteLine = (lineIndex: number) => {
+        const newLines = [...settings.lines];
+        newLines.splice(lineIndex, 1);
+        setSettings({ ...settings, lines: newLines });
+    };
+
     const handleLineSelect = (lineIndex: number) => {
         setSelectedLine(lineIndex);
         setScreen('items');
@@ -258,6 +274,8 @@ export const App: React.FC = () => {
                             setMenuSelections({ ...menuSelections, lines: line });
                             handleLineSelect(line);
                         }}
+                        onAppend={appendLine}
+                        onDelete={deleteLine}
                         onBack={() => {
                             // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
@@ -284,6 +302,8 @@ export const App: React.FC = () => {
                 {screen === 'colorLines' && (
                     <LineSelector
                         lines={settings.lines}
+                        onAppend={appendLine}
+                        onDelete={deleteLine}
                         onSelect={(line) => {
                             setMenuSelections({ ...menuSelections, lines: line });
                             setSelectedLine(line);

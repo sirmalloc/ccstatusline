@@ -27,7 +27,6 @@ export const SettingsSchema = z.object({
     version: z.number().default(CURRENT_VERSION),
     lines: z.array(z.array(WidgetItemSchema))
         .min(1)
-        .max(3)
         .default([
             [
                 { id: '1', type: 'model', color: 'cyan' },
@@ -38,8 +37,7 @@ export const SettingsSchema = z.object({
                 { id: '6', type: 'separator' },
                 { id: '7', type: 'git-changes', color: 'yellow' }
             ]
-        ])
-        .transform(lines => lines.slice(0, 3)), // Ensure max 3 lines
+        ]), // Ensure max 3 lines
     flexMode: FlexModeSchema.default('full-minus-40'),
     compactThreshold: z.number().min(1).max(99).default(60),
     colorLevel: ColorLevelSchema.default(2),
