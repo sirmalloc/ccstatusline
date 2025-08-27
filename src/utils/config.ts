@@ -2,17 +2,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import {
-    CURRENT_VERSION,
-    SettingsSchema,
-    SettingsSchema_v1,
-    type Settings
-} from '../types/Settings';
+import { CURRENT_VERSION, type Settings, SettingsSchema, SettingsSchema_v1 } from '../types/Settings';
 
-import {
-    migrateConfig,
-    needsMigration
-} from './migrations';
+import { migrateConfig, needsMigration } from './migrations';
 
 // Use fs.promises directly (always available in modern Node.js)
 const readFile = fs.promises.readFile;
@@ -56,8 +48,7 @@ async function writeDefaultSettings(): Promise<Settings> {
 export async function loadSettings(): Promise<Settings> {
     try {
         // Check if settings file exists
-        if (!fs.existsSync(SETTINGS_PATH))
-            return await writeDefaultSettings();
+        if (!fs.existsSync(SETTINGS_PATH)) return await writeDefaultSettings();
 
         const content = await readFile(SETTINGS_PATH, 'utf-8');
         let rawData: unknown;

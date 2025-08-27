@@ -1,13 +1,9 @@
-import * as fs from 'fs';
 import path from 'node:path';
+import * as fs from 'fs';
 import { globSync } from 'tinyglobby';
 import { promisify } from 'util';
 
-import type {
-    BlockMetrics,
-    TokenMetrics,
-    TranscriptLine
-} from '../types';
+import type { BlockMetrics, TokenMetrics, TranscriptLine } from '../types';
 
 // Ensure fs.promises compatibility for older Node versions
 const readFile = promisify(fs.readFile);
@@ -21,7 +17,10 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
         }
 
         const content = await readFile(transcriptPath, 'utf-8');
-        const lines = content.trim().split('\n').filter((line: string) => line.trim());
+        const lines = content
+            .trim()
+            .split('\n')
+            .filter((line: string) => line.trim());
 
         if (lines.length === 0) {
             return null;
@@ -130,9 +129,10 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         // Calculate context length from the most recent main chain message
         if (mostRecentMainChainEntry?.message?.usage) {
             const usage = mostRecentMainChainEntry.message.usage;
-            contextLength = (usage.input_tokens || 0)
-                + (usage.cache_read_input_tokens ?? 0)
-                + (usage.cache_creation_input_tokens ?? 0);
+            contextLength =
+                (usage.input_tokens || 0) +
+                (usage.cache_read_input_tokens ?? 0) +
+                (usage.cache_creation_input_tokens ?? 0);
         }
 
         const totalTokens = inputTokens + outputTokens + cachedTokens;
@@ -164,8 +164,7 @@ export function getBlockMetrics(transcriptPath: string | undefined): BlockMetric
         currentPath = path.dirname(currentPath);
     }
 
-    if (!claudePath)
-        return null;
+    if (!claudePath) return null;
 
     try {
         return findMostRecentBlockStartTime(claudePath);
@@ -178,10 +177,7 @@ export function getBlockMetrics(transcriptPath: string | undefined): BlockMetric
  * Efficiently finds the most recent 5-hour block start time from JSONL files
  * Uses file modification times as hints to avoid unnecessary reads
  */
-function findMostRecentBlockStartTime(
-    rootDir: string,
-    sessionDurationHours = 5
-): BlockMetrics | null {
+function findMostRecentBlockStartTime(rootDir: string, sessionDurationHours = 5): BlockMetrics | null {
     const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
     const now = new Date();
 
@@ -189,8 +185,7 @@ function findMostRecentBlockStartTime(
     const pattern = path.join(rootDir, 'projects', '**', '*.jsonl').replace(/\\/g, '/');
     const files = globSync([pattern]);
 
-    if (files.length === 0)
-        return null;
+    if (files.length === 0) return null;
 
     // Step 2: Get file stats and sort by modification time (most recent first)
     const filesWithStats = files.map((file) => {
@@ -203,9 +198,9 @@ function findMostRecentBlockStartTime(
     // Step 3: Progressive lookback - start small and expand if needed
     // Start with 2x session duration (10 hours), expand to 48 hours if needed
     const lookbackChunks = [
-        10,  // 2x session duration - catches most cases
-        20,  // 4x session duration - catches longer sessions
-        48   // Maximum lookback for marathon sessions
+        10, // 2x session duration - catches most cases
+        20, // 4x session duration - catches longer sessions
+        48 // Maximum lookback for marathon sessions
     ];
 
     let timestamps: Date[] = [];
@@ -251,8 +246,7 @@ function findMostRecentBlockStartTime(
             const currentTimestamp = timestamps[i];
             const previousTimestamp = timestamps[i - 1];
 
-            if (!currentTimestamp || !previousTimestamp)
-                continue;
+            if (!currentTimestamp || !previousTimestamp) continue;
 
             const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
 
@@ -292,16 +286,16 @@ function findMostRecentBlockStartTime(
         // Calculate how many complete 5-hour blocks have passed
         const completedBlocks = Math.floor(totalWorkTime / sessionDurationMs);
         // The current block started after the completed blocks
-        blockStart = new Date(flooredWorkStart.getTime() + (completedBlocks * sessionDurationMs));
+        blockStart = new Date(flooredWorkStart.getTime() + completedBlocks * sessionDurationMs);
     }
 
     const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
     const inBlockWindow = now.getTime() >= blockStart.getTime() && now.getTime() <= blockEnd.getTime();
-    const activityInThisBlock = mostRecentTimestamp.getTime() >= blockStart.getTime() && mostRecentTimestamp.getTime() <= now.getTime();
+    const activityInThisBlock =
+        mostRecentTimestamp.getTime() >= blockStart.getTime() && mostRecentTimestamp.getTime() <= now.getTime();
 
     const isActive = inBlockWindow && activityInThisBlock;
-    if (!isActive)
-        return null;
+    if (!isActive) return null;
 
     return {
         startTime: blockStart,
@@ -316,7 +310,10 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
     const timestamps: Date[] = [];
     try {
         const content = readFileSync(filePath, 'utf-8');
-        const lines = content.trim().split('\n').filter(line => line.length > 0);
+        const lines = content
+            .trim()
+            .split('\n')
+            .filter((line) => line.length > 0);
 
         for (const line of lines) {
             try {
@@ -327,10 +324,7 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
                         timestamps.push(date);
                     }
                 }
-            } catch {
-                // Skip invalid JSON lines
-                continue;
-            }
+            } catch {}
         }
 
         return timestamps;

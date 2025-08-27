@@ -1,16 +1,8 @@
 import chalk from 'chalk';
-import {
-    Box,
-    Text,
-    render,
-    useApp,
-    useInput
-} from 'ink';
+import { Box, render, Text, useApp, useInput } from 'ink';
 import Gradient from 'ink-gradient';
-import React, {
-    useEffect,
-    useState
-} from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Settings } from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
@@ -21,10 +13,7 @@ import {
     isInstalled,
     uninstallStatusLine
 } from '../utils/claude-settings';
-import {
-    loadSettings,
-    saveSettings
-} from '../utils/config';
+import { loadSettings, saveSettings } from '../utils/config';
 import {
     checkPowerlineFonts,
     checkPowerlineFontsAsync,
@@ -52,7 +41,19 @@ export const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colorLines' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline' | 'install'>('main');
+    const [screen, setScreen] = useState<
+        | 'main'
+        | 'lines'
+        | 'items'
+        | 'colorLines'
+        | 'colors'
+        | 'terminalWidth'
+        | 'terminalConfig'
+        | 'globalOverrides'
+        | 'confirm'
+        | 'powerline'
+        | 'install'
+    >('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
@@ -114,7 +115,9 @@ export const App: React.FC = () => {
             const timer = setTimeout(() => {
                 setSaveMessage(null);
             }, 2000);
-            return () => { clearTimeout(timer); };
+            return () => {
+                clearTimeout(timer);
+            };
         }
     }, [saveMessage]);
 
@@ -159,33 +162,33 @@ export const App: React.FC = () => {
 
     const handleMainMenuSelect = async (value: string) => {
         switch (value) {
-        case 'lines':
-            setScreen('lines');
-            break;
-        case 'colors':
-            setScreen('colorLines');
-            break;
-        case 'terminalConfig':
-            setScreen('terminalConfig');
-            break;
-        case 'globalOverrides':
-            setScreen('globalOverrides');
-            break;
-        case 'powerline':
-            setScreen('powerline');
-            break;
-        case 'install':
-            handleInstallUninstall();
-            break;
-        case 'save':
-            await saveSettings(settings);
-            setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
-            setHasChanges(false);
-            exit();
-            break;
-        case 'exit':
-            exit();
-            break;
+            case 'lines':
+                setScreen('lines');
+                break;
+            case 'colors':
+                setScreen('colorLines');
+                break;
+            case 'terminalConfig':
+                setScreen('terminalConfig');
+                break;
+            case 'globalOverrides':
+                setScreen('globalOverrides');
+                break;
+            case 'powerline':
+                setScreen('powerline');
+                break;
+            case 'install':
+                handleInstallUninstall();
+                break;
+            case 'save':
+                await saveSettings(settings);
+                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
+                setHasChanges(false);
+                exit();
+                break;
+            case 'exit':
+                exit();
+                break;
         }
     };
 
@@ -201,18 +204,14 @@ export const App: React.FC = () => {
     };
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Box marginBottom={1}>
                 <Text bold>
-                    <Gradient name='retro'>
-                        CCStatusline Configuration
-                    </Gradient>
+                    <Gradient name="retro">CCStatusline Configuration</Gradient>
                 </Text>
-                <Text bold>
-                    {` | ${getPackageVersion() && `v${getPackageVersion()}`}`}
-                </Text>
+                <Text bold>{` | ${getPackageVersion() && `v${getPackageVersion()}`}`}</Text>
                 {saveMessage && (
-                    <Text color='green' bold>
+                    <Text color="green" bold>
                         {`  ${saveMessage}`}
                     </Text>
                 )}
@@ -265,13 +264,15 @@ export const App: React.FC = () => {
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
-                        title='Select Line to Edit Items'
+                        title="Select Line to Edit Items"
                     />
                 )}
                 {screen === 'items' && (
                     <ItemsEditor
                         widgets={settings.lines[selectedLine] ?? []}
-                        onUpdate={(widgets) => { updateLine(selectedLine, widgets); }}
+                        onUpdate={(widgets) => {
+                            updateLine(selectedLine, widgets);
+                        }}
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
                             setMenuSelections({ ...menuSelections, lines: selectedLine });
@@ -295,7 +296,7 @@ export const App: React.FC = () => {
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
-                        title='Select Line to Edit Colors'
+                        title="Select Line to Edit Colors"
                         blockIfPowerlineActive={true}
                         settings={settings}
                     />
@@ -374,15 +375,20 @@ export const App: React.FC = () => {
                         existingStatusLine={existingStatusLine}
                         onSelectNpx={() => {
                             void getExistingStatusLine().then((existing) => {
-                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
+                                const isAlreadyInstalled = [
+                                    'npx -y ccstatusline@latest',
+                                    'bunx -y ccstatusline@latest'
+                                ].includes(existing ?? '');
                                 let message: string;
 
                                 if (existing && !isAlreadyInstalled) {
                                     message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
                                 } else if (isAlreadyInstalled) {
-                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with npx -y ccstatusline@latest?';
+                                    message =
+                                        'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with npx -y ccstatusline@latest?';
                                 } else {
-                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with npx.\nContinue?';
+                                    message =
+                                        'This will modify ~/.claude/settings.json to add ccstatusline with npx.\nContinue?';
                                 }
 
                                 setConfirmDialog({
@@ -400,15 +406,20 @@ export const App: React.FC = () => {
                         }}
                         onSelectBunx={() => {
                             void getExistingStatusLine().then((existing) => {
-                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
+                                const isAlreadyInstalled = [
+                                    'npx -y ccstatusline@latest',
+                                    'bunx -y ccstatusline@latest'
+                                ].includes(existing ?? '');
                                 let message: string;
 
                                 if (existing && !isAlreadyInstalled) {
                                     message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with bunx -y ccstatusline@latest?`;
                                 } else if (isAlreadyInstalled) {
-                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with bunx -y ccstatusline@latest?';
+                                    message =
+                                        'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with bunx -y ccstatusline@latest?';
                                 } else {
-                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with bunx.\nContinue?';
+                                    message =
+                                        'This will modify ~/.claude/settings.json to add ccstatusline with bunx.\nContinue?';
                                 }
 
                                 setConfirmDialog({
@@ -456,7 +467,9 @@ export const App: React.FC = () => {
                         }}
                         installingFonts={installingFonts}
                         fontInstallMessage={fontInstallMessage}
-                        onClearMessage={() => { setFontInstallMessage(null); }}
+                        onClearMessage={() => {
+                            setFontInstallMessage(null);
+                        }}
                     />
                 )}
             </Box>

@@ -61,24 +61,18 @@ export const migrations: Migration[] = [
             }
 
             // Copy all v1 fields that exist
-            if (typeof data.flexMode === 'string')
-                migrated.flexMode = data.flexMode;
-            if (typeof data.compactThreshold === 'number')
-                migrated.compactThreshold = data.compactThreshold;
-            if (typeof data.colorLevel === 'number')
-                migrated.colorLevel = data.colorLevel;
-            if (typeof data.defaultSeparator === 'string')
-                migrated.defaultSeparator = data.defaultSeparator;
-            if (typeof data.defaultPadding === 'string')
-                migrated.defaultPadding = data.defaultPadding;
+            if (typeof data.flexMode === 'string') migrated.flexMode = data.flexMode;
+            if (typeof data.compactThreshold === 'number') migrated.compactThreshold = data.compactThreshold;
+            if (typeof data.colorLevel === 'number') migrated.colorLevel = data.colorLevel;
+            if (typeof data.defaultSeparator === 'string') migrated.defaultSeparator = data.defaultSeparator;
+            if (typeof data.defaultPadding === 'string') migrated.defaultPadding = data.defaultPadding;
             if (typeof data.inheritSeparatorColors === 'boolean')
                 migrated.inheritSeparatorColors = data.inheritSeparatorColors;
             if (typeof data.overrideBackgroundColor === 'string')
                 migrated.overrideBackgroundColor = data.overrideBackgroundColor;
             if (typeof data.overrideForegroundColor === 'string')
                 migrated.overrideForegroundColor = data.overrideForegroundColor;
-            if (typeof data.globalBold === 'boolean')
-                migrated.globalBold = data.globalBold;
+            if (typeof data.globalBold === 'boolean') migrated.globalBold = data.globalBold;
 
             // Add version field for v2
             migrated.version = 2;
@@ -118,12 +112,10 @@ export const migrations: Migration[] = [
  * Detect the version of the config data
  */
 export function detectVersion(data: unknown): number {
-    if (!isRecord(data))
-        return 1;
+    if (!isRecord(data)) return 1;
 
     // If it has a version field, use it
-    if (typeof data.version === 'number')
-        return data.version;
+    if (typeof data.version === 'number') return data.version;
 
     // No version field means it's the old v1 format
     return 1;
@@ -133,18 +125,16 @@ export function detectVersion(data: unknown): number {
  * Migrate config data from its current version to the target version
  */
 export function migrateConfig(data: unknown, targetVersion: number): unknown {
-    if (!isRecord(data))
-        return data;
+    if (!isRecord(data)) return data;
 
     let currentVersion = detectVersion(data);
     let migrated: Record<string, unknown> = { ...data };
 
     // Apply migrations sequentially
     while (currentVersion < targetVersion) {
-        const migration = migrations.find(m => m.fromVersion === currentVersion);
+        const migration = migrations.find((m) => m.fromVersion === currentVersion);
 
-        if (!migration)
-            break;
+        if (!migration) break;
 
         migrated = migration.migrate(migrated);
         currentVersion = migration.toVersion;

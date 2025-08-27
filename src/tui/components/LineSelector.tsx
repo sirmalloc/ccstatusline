@@ -1,9 +1,6 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
@@ -18,7 +15,15 @@ interface LineSelectorProps {
     settings?: Settings;
 }
 
-const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, initialSelection = 0, title, blockIfPowerlineActive = false, settings }) => {
+const LineSelector: React.FC<LineSelectorProps> = ({
+    lines,
+    onSelect,
+    onBack,
+    initialSelection = 0,
+    title,
+    blockIfPowerlineActive = false,
+    settings
+}) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
     // Check if powerline theme is managing colors
@@ -27,7 +32,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
     const isThemeManaged = blockIfPowerlineActive && powerlineEnabled && powerlineTheme && powerlineTheme !== 'custom';
 
     // Handle keyboard input
-    useInput((input, key) => {
+    useInput((_, key) => {
         // If theme-managed and blocking is enabled, any key goes back
         if (isThemeManaged) {
             onBack();
@@ -52,12 +57,12 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
     // Show powerline theme warning if applicable
     if (isThemeManaged) {
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Text bold>{title ?? 'Select Line'}</Text>
                 <Box marginTop={1}>
-                    <Text color='yellow'>
+                    <Text color="yellow">
                         ⚠ Colors are currently managed by the Powerline theme:
-                        {' ' + powerlineTheme.charAt(0).toUpperCase() + powerlineTheme.slice(1)}
+                        {` ${powerlineTheme.charAt(0).toUpperCase()}${powerlineTheme.slice(1)}`}
                     </Text>
                 </Box>
                 <Box marginTop={1}>
@@ -77,37 +82,33 @@ const LineSelector: React.FC<LineSelectorProps> = ({ lines, onSelect, onBack, in
     }
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text bold>{title ?? 'Select Line to Edit'}</Text>
             <Text dimColor>Choose which status line to configure (up to 3 lines supported)</Text>
             <Text dimColor>Press ESC to go back</Text>
-            <Box marginTop={1} flexDirection='column'>
+            <Box marginTop={1} flexDirection="column">
                 <Box>
                     <Text color={selectedIndex === 0 ? 'green' : undefined}>
-                        {selectedIndex === 0 ? '▶  ' : '   '}
-                        ☰ Line 1
+                        {selectedIndex === 0 ? '▶  ' : '   '}☰ Line 1
                         {lines[0] && lines[0].length > 0 ? ` (${lines[0].length} widgets)` : ' (empty)'}
                     </Text>
                 </Box>
                 <Box>
                     <Text color={selectedIndex === 1 ? 'green' : undefined}>
-                        {selectedIndex === 1 ? '▶  ' : '   '}
-                        ☰ Line 2
+                        {selectedIndex === 1 ? '▶  ' : '   '}☰ Line 2
                         {lines[1] && lines[1].length > 0 ? ` (${lines[1].length} widgets)` : ' (empty)'}
                     </Text>
                 </Box>
                 <Box>
                     <Text color={selectedIndex === 2 ? 'green' : undefined}>
-                        {selectedIndex === 2 ? '▶  ' : '   '}
-                        ☰ Line 3
+                        {selectedIndex === 2 ? '▶  ' : '   '}☰ Line 3
                         {lines[2] && lines[2].length > 0 ? ` (${lines[2].length} widgets)` : ' (empty)'}
                     </Text>
                 </Box>
 
                 <Box marginTop={1}>
                     <Text color={selectedIndex === 3 ? 'green' : undefined}>
-                        {selectedIndex === 3 ? '▶  ' : '   '}
-                        ← Back
+                        {selectedIndex === 3 ? '▶  ' : '   '}← Back
                     </Text>
                 </Box>
             </Box>

@@ -1,31 +1,30 @@
 import { execSync } from 'child_process';
 
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { Widget, WidgetEditorDisplay, WidgetItem } from '../types/Widget';
 
 export class GitChangesWidget implements Widget {
-    getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows git changes count (+insertions, -deletions)'; }
-    getDisplayName(): string { return 'Git Changes'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+    getDefaultColor(): string {
+        return 'yellow';
+    }
+    getDescription(): string {
+        return 'Shows git changes count (+insertions, -deletions)';
+    }
+    getDisplayName(): string {
+        return 'Git Changes';
+    }
+    getEditorDisplay(): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(_: WidgetItem, context: RenderContext): string | null {
         if (context.isPreview) {
             return '(+42,-10)';
         }
 
         const changes = this.getGitChanges();
-        if (changes)
-            return `(+${changes.insertions},-${changes.deletions})`;
-        else
-            return '(no git)';
+        if (changes) return `(+${changes.insertions},-${changes.deletions})`;
+        else return '(no git)';
     }
 
     private getGitChanges(): { insertions: number; deletions: number } | null {
@@ -63,6 +62,10 @@ export class GitChangesWidget implements Widget {
         }
     }
 
-    supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return false;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }

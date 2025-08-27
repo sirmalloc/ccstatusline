@@ -10,6 +10,6 @@ export interface RenderContext {
     blockMetrics?: BlockMetrics | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
-    lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
-    globalSeparatorIndex?: number;  // Global separator index that continues across lines
+    lineIndex?: number; // Index of the current line being rendered (for theme cycling)
+    globalSeparatorIndex?: number; // Global separator index that continues across lines
 }

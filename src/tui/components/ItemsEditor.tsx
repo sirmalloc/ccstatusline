@@ -1,23 +1,13 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import type {
-    Widget,
-    WidgetItem,
-    WidgetItemType
-} from '../../types/Widget';
+import type { Widget, WidgetItem, WidgetItemType } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
-import {
-    getAllWidgetTypes,
-    getWidget
-} from '../../utils/widgets';
+import { getAllWidgetTypes, getWidget } from '../../utils/widgets';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -30,7 +20,11 @@ export interface ItemsEditorProps {
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    const [customEditorWidget, setCustomEditorWidget] = useState<{ widget: WidgetItem; impl: Widget; action?: string } | null>(null);
+    const [customEditorWidget, setCustomEditorWidget] = useState<{
+        widget: WidgetItem;
+        impl: Widget;
+        action?: string;
+    } | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 
     // Determine which item types are allowed based on settings
@@ -39,12 +33,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
         // Remove separator if default separator is set
         if (settings.defaultSeparator) {
-            allowedTypes = allowedTypes.filter(t => t !== 'separator');
+            allowedTypes = allowedTypes.filter((t) => t !== 'separator');
         }
 
         // Remove both separator and flex-separator if powerline mode is enabled
         if (settings.powerline.enabled) {
-            allowedTypes = allowedTypes.filter(t => t !== 'separator' && t !== 'flex-separator');
+            allowedTypes = allowedTypes.filter((t) => t !== 'separator' && t !== 'flex-separator');
         }
 
         return allowedTypes;
@@ -74,7 +68,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         const nextBg = nextWidget?.backgroundColor;
 
         // Filter out colors that match neighbors
-        const availableColors = bgColors.filter(color => color !== prevBg && color !== nextBg);
+        const availableColors = bgColors.filter((color) => color !== prevBg && color !== nextBg);
 
         // If we have available colors, pick one randomly
         if (availableColors.length > 0) {
@@ -84,7 +78,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
         // Fallback: if somehow both neighbors use all 14 colors (impossible with 2 neighbors),
         // just pick any color that's different from the previous
-        return bgColors.find(c => c !== prevBg) ?? bgColors[0];
+        return bgColors.find((c) => c !== prevBg) ?? bgColors[0];
     };
 
     const handleEditorComplete = (updatedWidget: WidgetItem) => {
@@ -226,7 +220,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             } else if (input === 'r' && widgets.length > 0) {
                 // Toggle raw value for non-separator items
                 const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator' && currentWidget.type !== 'custom-text') {
+                if (
+                    currentWidget &&
+                    currentWidget.type !== 'separator' &&
+                    currentWidget.type !== 'flex-separator' &&
+                    currentWidget.type !== 'custom-text'
+                ) {
                     const newWidgets = [...widgets];
                     newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
                     onUpdate(newWidgets);
@@ -235,8 +234,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
                 const currentWidget = widgets[selectedIndex];
                 // Don't allow merge on the last item or on separators
-                if (currentWidget && selectedIndex < widgets.length - 1
-                    && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+                if (
+                    currentWidget &&
+                    selectedIndex < widgets.length - 1 &&
+                    currentWidget.type !== 'separator' &&
+                    currentWidget.type !== 'flex-separator'
+                ) {
                     const newWidgets = [...widgets];
                     let nextMergeState: boolean | 'no-padding' | undefined;
 
@@ -267,24 +270,35 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     if (widgetImpl) {
                         if (widgetImpl.getCustomKeybinds) {
                             const customKeybinds = widgetImpl.getCustomKeybinds();
-                            const matchedKeybind = customKeybinds.find(kb => kb.key === input);
+                            const matchedKeybind = customKeybinds.find((kb) => kb.key === input);
 
                             if (matchedKeybind && !key.ctrl) {
                                 // Check if widget handles the action directly
                                 if (widgetImpl.handleEditorAction) {
                                     // Let the widget handle the action directly
-                                    const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
+                                    const updatedWidget = widgetImpl.handleEditorAction(
+                                        matchedKeybind.action,
+                                        currentWidget
+                                    );
                                     if (updatedWidget) {
                                         const newWidgets = [...widgets];
                                         newWidgets[selectedIndex] = updatedWidget;
                                         onUpdate(newWidgets);
                                     } else if (widgetImpl.renderEditor) {
                                         // If handleEditorAction returned null, open the editor
-                                        setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
+                                        setCustomEditorWidget({
+                                            widget: currentWidget,
+                                            impl: widgetImpl,
+                                            action: matchedKeybind.action
+                                        });
                                     }
                                 } else if (widgetImpl.renderEditor) {
                                     // Open the widget's custom editor with the action
-                                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
+                                    setCustomEditorWidget({
+                                        widget: currentWidget,
+                                        impl: widgetImpl,
+                                        action: matchedKeybind.action
+                                    });
                                 }
                             }
                         }
@@ -316,7 +330,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         return `Unknown: ${widget.type}`;
     };
 
-    const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
+    const hasFlexSeparator = widgets.some((widget) => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
 
     // Build dynamic help text based on selected item
@@ -357,7 +371,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     helpText += ', ESC back';
 
     // Build custom keybinds text
-    const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
+    const customKeybindsText = customKeybinds.map((kb) => kb.label).join(', ');
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
@@ -370,20 +384,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Box>
-                <Text bold>
-                    Edit Line
-                    {' '}
-                    {lineNumber}
-                    {' '}
-                </Text>
-                {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                <Text bold>Edit Line {lineNumber} </Text>
+                {moveMode && <Text color="blue">[MOVE MODE]</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
-                        <Text color='yellow'>
-                            ⚠
-                            {' '}
+                        <Text color="yellow">
+                            ⚠{' '}
                             {settings.powerline.enabled
                                 ? 'Powerline mode active: separators controlled by powerline settings'
                                 : 'Default separator active: manual separators disabled'}
@@ -392,33 +400,43 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 )}
             </Box>
             {moveMode ? (
-                <Box flexDirection='column' marginBottom={1}>
+                <Box flexDirection="column" marginBottom={1}>
                     <Text dimColor>↑↓ to move widget, ESC or Enter to exit move mode</Text>
                 </Box>
             ) : (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Text dimColor>{helpText}</Text>
                     <Text dimColor>{customKeybindsText || ' '}</Text>
                 </Box>
             )}
             {hasFlexSeparator && !widthDetectionAvailable && (
                 <Box marginTop={1}>
-                    <Text color='yellow'>⚠ Note: Terminal width detection is currently unavailable in your environment.</Text>
-                    <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
+                    <Text color="yellow">
+                        ⚠ Note: Terminal width detection is currently unavailable in your environment.
+                    </Text>
+                    <Text dimColor>
+                        {' '}
+                        Flex separators will act as normal separators until width detection is available.
+                    </Text>
                 </Box>
             )}
-            <Box marginTop={1} flexDirection='column'>
+            <Box marginTop={1} flexDirection="column">
                 {widgets.length === 0 ? (
                     <Text dimColor>No widgets. Press 'a' to add one.</Text>
                 ) : (
                     <>
                         {widgets.map((widget, index) => {
                             const isSelected = index === selectedIndex;
-                            const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
-                            const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
+                            const widgetImpl =
+                                widget.type !== 'separator' && widget.type !== 'flex-separator'
+                                    ? getWidget(widget.type)
+                                    : null;
+                            const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? {
+                                displayText: getWidgetDisplay(widget)
+                            };
 
                             return (
-                                <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
+                                <Box key={widget.id} flexDirection="row" flexWrap="nowrap">
                                     <Box width={3}>
                                         <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
                                             {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
@@ -427,12 +445,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                     <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
                                         {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
                                     </Text>
-                                    {modifierText && (
-                                        <Text dimColor>
-                                            {' '}
-                                            {modifierText}
-                                        </Text>
-                                    )}
+                                    {modifierText && <Text dimColor> {modifierText}</Text>}
                                     {widget.rawValue && <Text dimColor> (raw value)</Text>}
                                     {widget.merge === true && <Text dimColor> (merged→)</Text>}
                                     {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}

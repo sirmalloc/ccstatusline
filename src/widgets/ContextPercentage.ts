@@ -1,20 +1,21 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { Widget, WidgetEditorDisplay, WidgetItem } from '../types/Widget';
 
 export class ContextPercentageWidget implements Widget {
-    getDefaultColor(): string { return 'blue'; }
-    getDescription(): string { return 'Shows percentage of context window used (of 200k tokens)'; }
-    getDisplayName(): string { return 'Context %'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+    getDefaultColor(): string {
+        return 'blue';
+    }
+    getDescription(): string {
+        return 'Shows percentage of context window used (of 200k tokens)';
+    }
+    getDisplayName(): string {
+        return 'Context %';
+    }
+    getEditorDisplay(): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext): string | null {
         if (context.isPreview) {
             return item.rawValue ? '9.3%' : 'Ctx: 9.3%';
         } else if (context.tokenMetrics) {
@@ -24,6 +25,10 @@ export class ContextPercentageWidget implements Widget {
         return null;
     }
 
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return true;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }

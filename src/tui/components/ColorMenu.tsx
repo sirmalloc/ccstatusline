@@ -1,20 +1,13 @@
 import chalk from 'chalk';
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
+import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import {
-    applyColors,
-    getAvailableBackgroundColorsForUI,
-    getAvailableColorsForUI
-} from '../../utils/colors';
+import { applyColors, getAvailableBackgroundColorsForUI, getAvailableColorsForUI } from '../../utils/colors';
 import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -77,7 +70,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Validate and apply the hex color
                 if (hexInput.length === 6) {
                     const hexColor = `hex:${hexInput}`;
-                    const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                    const selectedWidget = colorableWidgets.find((widget) => widget.id === highlightedItemId);
                     if (selectedWidget) {
                         // IMPORTANT: Update ALL items (not just colorableWidgets) to maintain proper indexing
                         const newItems = widgets.map((widget) => {
@@ -119,10 +112,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             } else if (key.return) {
                 // Validate and apply the ansi256 color
                 const code = parseInt(ansi256Input, 10);
-                if (!isNaN(code) && code >= 0 && code <= 255) {
+                if (!Number.isNaN(code) && code >= 0 && code <= 255) {
                     const ansiColor = `ansi256:${code}`;
 
-                    const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                    const selectedWidget = colorableWidgets.find((widget) => widget.id === highlightedItemId);
 
                     if (selectedWidget) {
                         // IMPORTANT: Update ALL items (not just colorableWidgets) to maintain proper indexing
@@ -196,7 +189,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         } else if (input === 'b' || input === 'B') {
             if (highlightedItemId && highlightedItemId !== 'back') {
                 // Toggle bold for the highlighted item
-                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                const selectedWidget = colorableWidgets.find((widget) => widget.id === highlightedItemId);
                 if (selectedWidget) {
                     const newItems = widgets.map((widget) => {
                         if (widget.id === selectedWidget.id) {
@@ -210,7 +203,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         } else if (input === 'r' || input === 'R') {
             if (highlightedItemId && highlightedItemId !== 'back') {
                 // Reset all styling (color, background, and bold) for the highlighted item
-                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                const selectedWidget = colorableWidgets.find((widget) => widget.id === highlightedItemId);
                 if (selectedWidget) {
                     const newItems = widgets.map((widget) => {
                         if (widget.id === selectedWidget.id) {
@@ -232,22 +225,22 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         } else if (key.leftArrow || key.rightArrow) {
             // Cycle through colors with arrow keys
             if (highlightedItemId && highlightedItemId !== 'back') {
-                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                const selectedWidget = colorableWidgets.find((widget) => widget.id === highlightedItemId);
                 if (selectedWidget) {
                     const newItems = widgets.map((widget) => {
                         if (widget.id === selectedWidget.id) {
                             if (editingBackground) {
-                                const currentBgColor = widget.backgroundColor ?? '';  // Empty string for 'none'
+                                const currentBgColor = widget.backgroundColor ?? ''; // Empty string for 'none'
                                 let currentBgColorIndex = bgColors.indexOf(currentBgColor);
                                 // If color not found, start from beginning
-                                if (currentBgColorIndex === -1)
-                                    currentBgColorIndex = 0;
+                                if (currentBgColorIndex === -1) currentBgColorIndex = 0;
 
-                                let nextBgColorIndex;
+                                let nextBgColorIndex: number;
                                 if (key.rightArrow) {
                                     nextBgColorIndex = (currentBgColorIndex + 1) % bgColors.length;
                                 } else {
-                                    nextBgColorIndex = currentBgColorIndex === 0 ? bgColors.length - 1 : currentBgColorIndex - 1;
+                                    nextBgColorIndex =
+                                        currentBgColorIndex === 0 ? bgColors.length - 1 : currentBgColorIndex - 1;
                                 }
                                 const nextBgColor = bgColors[nextBgColorIndex];
                                 return { ...widget, backgroundColor: nextBgColor === '' ? undefined : nextBgColor };
@@ -266,14 +259,14 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 }
                                 let currentColorIndex = colors.indexOf(currentColor);
                                 // If color not found, start from beginning
-                                if (currentColorIndex === -1)
-                                    currentColorIndex = 0;
+                                if (currentColorIndex === -1) currentColorIndex = 0;
 
-                                let nextColorIndex;
+                                let nextColorIndex: number;
                                 if (key.rightArrow) {
                                     nextColorIndex = (currentColorIndex + 1) % colors.length;
                                 } else {
-                                    nextColorIndex = currentColorIndex === 0 ? colors.length - 1 : currentColorIndex - 1;
+                                    nextColorIndex =
+                                        currentColorIndex === 0 ? colors.length - 1 : currentColorIndex - 1;
                                 }
                                 const nextColor = colors[nextColorIndex];
                                 return { ...widget, color: nextColor };
@@ -289,14 +282,18 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
     if (hasNoItems) {
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Text bold>
                     Configure Colors
                     {lineIndex !== undefined ? ` - Line ${lineIndex + 1}` : ''}
                 </Text>
-                <Box marginTop={1}><Text dimColor>No colorable widgets in the status line.</Text></Box>
+                <Box marginTop={1}>
+                    <Text dimColor>No colorable widgets in the status line.</Text>
+                </Box>
                 <Text dimColor>Add a widget first to continue.</Text>
-                <Box marginTop={1}><Text>Press any key to go back...</Text></Box>
+                <Box marginTop={1}>
+                    <Text>Press any key to go back...</Text>
+                </Box>
             </Box>
         );
     }
@@ -317,11 +314,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // Color list for cycling
     // Get available colors from colors.ts
     const colorOptions = getAvailableColorsForUI();
-    const colors = colorOptions.map(c => c.value || '');
+    const colors = colorOptions.map((c) => c.value || '');
 
     // For background, get background colors
     const bgColorOptions = getAvailableBackgroundColorsForUI();
-    const bgColors = bgColorOptions.map(c => c.value || '');
+    const bgColors = bgColorOptions.map((c) => c.value || '');
 
     // Create menu items with colored labels
     const menuItems = colorableWidgets.map((widget, index) => {
@@ -335,7 +332,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 defaultColor = widgetImpl.getDefaultColor();
             }
         }
-        const styledLabel = applyColors(label, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level);
+        const styledLabel = applyColors(
+            label,
+            widget.color ?? defaultColor,
+            widget.backgroundColor,
+            widget.bold,
+            level
+        );
         return {
             label: styledLabel,
             value: widget.id
@@ -355,36 +358,40 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     };
 
     // Get current color for highlighted item
-    const selectedWidget = highlightedItemId && highlightedItemId !== 'back'
-        ? colorableWidgets.find(widget => widget.id === highlightedItemId)
-        : null;
+    const selectedWidget =
+        highlightedItemId && highlightedItemId !== 'back'
+            ? colorableWidgets.find((widget) => widget.id === highlightedItemId)
+            : null;
     const currentColor = editingBackground
-        ? (selectedWidget?.backgroundColor ?? '')  // Empty string for 'none'
-        : (selectedWidget ? (selectedWidget.color ?? (() => {
-            if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
-                const widgetImpl = getWidget(selectedWidget.type);
-                return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
-            }
-            return 'white';
-        })()) : 'white');
+        ? (selectedWidget?.backgroundColor ?? '') // Empty string for 'none'
+        : selectedWidget
+          ? (selectedWidget.color ??
+            (() => {
+                if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
+                    const widgetImpl = getWidget(selectedWidget.type);
+                    return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
+                }
+                return 'white';
+            })())
+          : 'white';
 
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
     const colorNumber = colorIndex === -1 ? 'custom' : colorIndex + 1;
 
-    let colorDisplay;
+    let colorDisplay: string;
     if (editingBackground) {
         if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(no background)');
         } else {
             // Determine display name based on format
-            let displayName;
+            let displayName: string;
             if (currentColor.startsWith('ansi256:')) {
                 displayName = `ANSI ${currentColor.substring(8)}`;
             } else if (currentColor.startsWith('hex:')) {
                 displayName = `#${currentColor.substring(4)}`;
             } else {
-                const colorOption = bgColorOptions.find(c => c.value === currentColor);
+                const colorOption = bgColorOptions.find((c) => c.value === currentColor);
                 displayName = colorOption ? colorOption.name : currentColor;
             }
 
@@ -397,13 +404,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             colorDisplay = chalk.gray('(default)');
         } else {
             // Determine display name based on format
-            let displayName;
+            let displayName: string;
             if (currentColor.startsWith('ansi256:')) {
                 displayName = `ANSI ${currentColor.substring(8)}`;
             } else if (currentColor.startsWith('hex:')) {
                 displayName = `#${currentColor.substring(4)}`;
             } else {
-                const colorOption = colorOptions.find(c => c.value === currentColor);
+                const colorOption = colorOptions.find((c) => c.value === currentColor);
                 displayName = colorOption ? colorOption.name : currentColor;
             }
 
@@ -416,11 +423,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // Show confirmation dialog if clearing all colors
     if (showClearConfirm) {
         return (
-            <Box flexDirection='column'>
-                <Text bold color='yellow'>⚠ Confirm Clear All Colors</Text>
-                <Box marginTop={1} flexDirection='column'>
+            <Box flexDirection="column">
+                <Text bold color="yellow">
+                    ⚠ Confirm Clear All Colors
+                </Text>
+                <Box marginTop={1} flexDirection="column">
                     <Text>This will reset all colors for all widgets to their defaults.</Text>
-                    <Text color='red'>This action cannot be undone!</Text>
+                    <Text color="red">This action cannot be undone!</Text>
                 </Box>
                 <Box marginTop={2}>
                     <Text>Continue?</Text>
@@ -455,16 +464,17 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // since powerline uses item-specific backgrounds for segments
     const hasGlobalFgOverride = !!settings.overrideForegroundColor;
     const hasGlobalBgOverride = !!settings.overrideBackgroundColor && !powerlineEnabled;
-    const globalOverrideMessage = hasGlobalFgOverride && hasGlobalBgOverride
-        ? '⚠ Global override for FG and BG active'
-        : hasGlobalFgOverride
-            ? '⚠ Global override for FG active'
-            : hasGlobalBgOverride
+    const globalOverrideMessage =
+        hasGlobalFgOverride && hasGlobalBgOverride
+            ? '⚠ Global override for FG and BG active'
+            : hasGlobalFgOverride
+              ? '⚠ Global override for FG active'
+              : hasGlobalBgOverride
                 ? '⚠ Global override for BG active'
                 : null;
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Box>
                 <Text bold>
                     Configure Colors
@@ -472,29 +482,36 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     {editingBackground && chalk.yellow(' [Background Mode]')}
                 </Text>
                 {globalOverrideMessage && (
-                    <Text color='yellow' dimColor>
+                    <Text color="yellow" dimColor>
                         {'.  '}
                         {globalOverrideMessage}
                     </Text>
                 )}
             </Box>
             {hexInputMode ? (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Text>Enter 6-digit hex color code (without #):</Text>
                     <Text>
-                        #
-                        {hexInput}
+                        #{hexInput}
                         <Text dimColor>{hexInput.length < 6 ? '_'.repeat(6 - hexInput.length) : ''}</Text>
                     </Text>
                     <Text> </Text>
                     <Text dimColor>Press Enter when done, ESC to cancel</Text>
                 </Box>
             ) : ansi256InputMode ? (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Text>Enter ANSI 256 color code (0-255):</Text>
                     <Text>
                         {ansi256Input}
-                        <Text dimColor>{ansi256Input.length === 0 ? '___' : ansi256Input.length === 1 ? '__' : ansi256Input.length === 2 ? '_' : ''}</Text>
+                        <Text dimColor>
+                            {ansi256Input.length === 0
+                                ? '___'
+                                : ansi256Input.length === 1
+                                  ? '__'
+                                  : ansi256Input.length === 2
+                                    ? '_'
+                                    : ''}
+                        </Text>
                     </Text>
                     <Text> </Text>
                     <Text dimColor>Press Enter when done, ESC to cancel</Text>
@@ -502,12 +519,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             ) : (
                 <>
                     <Text dimColor>
-                        ↑↓ to select, ←→ to cycle
-                        {' '}
-                        {editingBackground ? 'background' : 'foreground'}
-                        , (f) to toggle bg/fg, (b)old,
-                        {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
-                        {' '}
+                        ↑↓ to select, ←→ to cycle {editingBackground ? 'background' : 'foreground'}, (f) to toggle
+                        bg/fg, (b)old,
+                        {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}{' '}
                         (r)eset, (c)lear all, ESC to go back
                     </Text>
                     {!settings.powerline.enabled && !settings.defaultSeparator && (
@@ -519,15 +533,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     {selectedWidget ? (
                         <Box marginTop={1}>
                             <Text>
-                                Current
-                                {' '}
-                                {editingBackground ? 'background' : 'foreground'}
-                                {' '}
-                                (
+                                Current {editingBackground ? 'background' : 'foreground'} (
                                 {colorNumber === 'custom' ? 'custom' : `${colorNumber}/${colorList.length}`}
-                                ):
-                                {' '}
-                                {colorDisplay}
+                                ): {colorDisplay}
                                 {selectedWidget.bold && chalk.bold(' [BOLD]')}
                             </Text>
                         </Box>
@@ -539,10 +547,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 </>
             )}
             <Box marginTop={1}>
-                {(hexInputMode || ansi256InputMode) ? (
+                {hexInputMode || ansi256InputMode ? (
                     // Static list when in input mode - no keyboard interaction
-                    <Box flexDirection='column'>
-                        {menuItems.map(item => (
+                    <Box flexDirection="column">
+                        {menuItems.map((item) => (
                             <Text
                                 key={item.value}
                                 color={item.value === highlightedItemId ? 'cyan' : 'white'}
@@ -560,11 +568,12 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         items={menuItems}
                         onSelect={handleSelect}
                         onHighlight={handleHighlight}
-                        initialIndex={Math.max(0, menuItems.findIndex(item => item.value === highlightedItemId))}
-                        indicatorComponent={({ isSelected }) => (
-                            <Text>{isSelected ? '▶' : '  '}</Text>
+                        initialIndex={Math.max(
+                            0,
+                            menuItems.findIndex((item) => item.value === highlightedItemId)
                         )}
-                        itemComponent={({ isSelected, label }) => (
+                        indicatorComponent={({ isSelected }) => <Text>{isSelected ? '▶' : '  '}</Text>}
+                        itemComponent={({ label }) => (
                             // The label already has ANSI codes applied via applyColors()
                             // We need to pass it directly as a single Text child to preserve the codes
                             <Text>{` ${label}`}</Text>
@@ -572,9 +581,14 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     />
                 )}
             </Box>
-            <Box marginTop={1} flexDirection='column'>
-                <Text color='yellow'>⚠ VSCode Users: </Text>
-                <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
+            <Box marginTop={1} flexDirection="column">
+                <Text color="yellow">⚠ VSCode Users: </Text>
+                <Text dimColor wrap="wrap">
+                    If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum
+                    Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast
+                    between foreground and background colors. You can adjust this setting to 1 to disable the contrast
+                    enforcement, or use a standalone terminal for accurate colors.
+                </Text>
             </Box>
         </Box>
     );

@@ -1,19 +1,10 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, {
-    useRef,
-    useState
-} from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useRef, useState } from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
-import {
-    getPowerlineTheme,
-    getPowerlineThemes
-} from '../../utils/colors';
+import { getPowerlineTheme, getPowerlineThemes } from '../../utils/colors';
 
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -23,11 +14,7 @@ export interface PowerlineThemeSelectorProps {
     onBack: () => void;
 }
 
-export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
-    settings,
-    onUpdate,
-    onBack
-}) => {
+export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({ settings, onUpdate, onBack }) => {
     const themes = getPowerlineThemes();
     const currentTheme = settings.powerline.theme ?? 'custom';
     const [selectedIndex, setSelectedIndex] = useState(Math.max(0, themes.indexOf(currentTheme)));
@@ -107,35 +94,33 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
         if (showCustomizeConfirm) {
             return;
         }
-        {
-            // Normal input handling
-            if (key.escape) {
-                // Restore original settings completely when canceling
-                onUpdate(originalSettingsRef.current);
-                onBack();
-            } else if (key.upArrow) {
-                const newIndex = Math.max(0, selectedIndex - 1);
-                setSelectedIndex(newIndex);
-                const newTheme = themes[newIndex];
-                if (newTheme) {
-                    applyTheme(newTheme);
-                }
-            } else if (key.downArrow) {
-                const newIndex = Math.min(themes.length - 1, selectedIndex + 1);
-                setSelectedIndex(newIndex);
-                const newTheme = themes[newIndex];
-                if (newTheme) {
-                    applyTheme(newTheme);
-                }
-            } else if (key.return) {
-                // User confirmed their selection, so we keep the current theme
-                onBack();
-            } else if (input === 'c' || input === 'C') {
-                // Customize theme - copy theme colors to widgets
-                const currentThemeName = themes[selectedIndex];
-                if (currentThemeName && currentThemeName !== 'custom') {
-                    setShowCustomizeConfirm(true);
-                }
+        // Normal input handling
+        if (key.escape) {
+            // Restore original settings completely when canceling
+            onUpdate(originalSettingsRef.current);
+            onBack();
+        } else if (key.upArrow) {
+            const newIndex = Math.max(0, selectedIndex - 1);
+            setSelectedIndex(newIndex);
+            const newTheme = themes[newIndex];
+            if (newTheme) {
+                applyTheme(newTheme);
+            }
+        } else if (key.downArrow) {
+            const newIndex = Math.min(themes.length - 1, selectedIndex + 1);
+            setSelectedIndex(newIndex);
+            const newTheme = themes[newIndex];
+            if (newTheme) {
+                applyTheme(newTheme);
+            }
+        } else if (key.return) {
+            // User confirmed their selection, so we keep the current theme
+            onBack();
+        } else if (input === 'c' || input === 'C') {
+            // Customize theme - copy theme colors to widgets
+            const currentThemeName = themes[selectedIndex];
+            if (currentThemeName && currentThemeName !== 'custom') {
+                setShowCustomizeConfirm(true);
             }
         }
     });
@@ -145,12 +130,14 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
 
     if (showCustomizeConfirm) {
         return (
-            <Box flexDirection='column'>
-                <Text bold color='yellow'>⚠ Confirm Customization</Text>
-                <Box marginTop={1} flexDirection='column'>
+            <Box flexDirection="column">
+                <Text bold color="yellow">
+                    ⚠ Confirm Customization
+                </Text>
+                <Box marginTop={1} flexDirection="column">
                     <Text>This will copy the current theme colors to your widgets</Text>
                     <Text>and switch to Custom theme mode.</Text>
-                    <Text color='red'>This will overwrite any existing custom colors!</Text>
+                    <Text color="red">This will overwrite any existing custom colors!</Text>
                 </Box>
                 <Box marginTop={2}>
                     <Text>Continue?</Text>
@@ -172,12 +159,10 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     }
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text bold>
                 {`Powerline Theme Selection  |  `}
-                <Text dimColor>
-                    {`Original: ${originalThemeRef.current}`}
-                </Text>
+                <Text dimColor>{`Original: ${originalThemeRef.current}`}</Text>
             </Text>
             <Box>
                 <Text dimColor>
@@ -185,7 +170,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 </Text>
             </Box>
 
-            <Box marginTop={1} flexDirection='column'>
+            <Box marginTop={1} flexDirection="column">
                 {themes.map((themeName, index) => {
                     const theme = getPowerlineTheme(themeName);
                     const isSelected = index === selectedIndex;
@@ -204,7 +189,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
             </Box>
 
             {selectedTheme && (
-                <Box marginTop={2} flexDirection='column'>
+                <Box marginTop={2} flexDirection="column">
                     <Text dimColor>Description:</Text>
                     <Box marginLeft={2}>
                         <Text>{selectedTheme.description}</Text>
@@ -216,7 +201,10 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                     )}
                     {settings.colorLevel === 1 && (
                         <Box>
-                            <Text color='yellow'>⚠ 16 color mode themes have a very limited palette, we recommend switching color level in Terminal Options</Text>
+                            <Text color="yellow">
+                                ⚠ 16 color mode themes have a very limited palette, we recommend switching color level
+                                in Terminal Options
+                            </Text>
                         </Box>
                     )}
                 </Box>

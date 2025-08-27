@@ -1,9 +1,6 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 export interface InstallMenuProps {
     bunxAvailable: boolean;
@@ -23,7 +20,7 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
     const [selectedIndex, setSelectedIndex] = useState(0);
     const maxIndex = 2; // npx, bunx (if available), and back
 
-    useInput((input, key) => {
+    useInput((_, key) => {
         if (key.escape) {
             onCancel();
         } else if (key.upArrow) {
@@ -52,16 +49,12 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
     });
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text bold>Install ccstatusline to Claude Code</Text>
 
             {existingStatusLine && (
                 <Box marginBottom={1}>
-                    <Text color='yellow'>
-                        ⚠ Current status line: "
-                        {existingStatusLine}
-                        "
-                    </Text>
+                    <Text color="yellow">⚠ Current status line: "{existingStatusLine}"</Text>
                 </Box>
             )}
 
@@ -69,7 +62,7 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                 <Text dimColor>Select package manager to use:</Text>
             </Box>
 
-            <Box marginTop={1} flexDirection='column'>
+            <Box marginTop={1} flexDirection="column">
                 <Box>
                     <Text color={selectedIndex === 0 ? 'blue' : undefined}>
                         {selectedIndex === 0 ? '▶  ' : '   '}
@@ -87,16 +80,13 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
 
                 <Box marginTop={1}>
                     <Text color={selectedIndex === 2 ? 'blue' : undefined}>
-                        {selectedIndex === 2 ? '▶  ' : '   '}
-                        ← Back
+                        {selectedIndex === 2 ? '▶  ' : '   '}← Back
                     </Text>
                 </Box>
             </Box>
 
             <Box marginTop={2}>
-                <Text dimColor>
-                    The selected command will be written to ~/.claude/settings.json
-                </Text>
+                <Text dimColor>The selected command will be written to ~/.claude/settings.json</Text>
             </Box>
 
             <Box marginTop={1}>

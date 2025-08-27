@@ -1,48 +1,49 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
-import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    CustomKeybind,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetEditorProps,
-    WidgetItem
-} from '../types/Widget';
+import type { CustomKeybind, Widget, WidgetEditorDisplay, WidgetEditorProps, WidgetItem } from '../types/Widget';
 
 export class CustomTextWidget implements Widget {
-    getDefaultColor(): string { return 'white'; }
-    getDescription(): string { return 'Displays user-defined custom text'; }
-    getDisplayName(): string { return 'Custom Text'; }
+    getDefaultColor(): string {
+        return 'white';
+    }
+    getDescription(): string {
+        return 'Displays user-defined custom text';
+    }
+    getDisplayName(): string {
+        return 'Custom Text';
+    }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const text = item.customText ?? 'Empty';
         return { displayText: `${this.getDisplayName()} (${text})` };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem): string | null {
         return item.customText ?? '';
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [{
-            key: 'e',
-            label: '(e)dit text',
-            action: 'edit-text'
-        }];
+        return [
+            {
+                key: 'e',
+                label: '(e)dit text',
+                action: 'edit-text'
+            }
+        ];
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement {
         return <CustomTextEditor {...props} />;
     }
 
-    supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return false;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }
 
 const CustomTextEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
@@ -78,12 +79,12 @@ const CustomTextEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onC
     });
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text>
-                Enter custom text:
-                {' '}
-                {text.slice(0, cursorPos)}
-                <Text backgroundColor='gray' color='black'>{text[cursorPos] ?? ' '}</Text>
+                Enter custom text: {text.slice(0, cursorPos)}
+                <Text backgroundColor="gray" color="black">
+                    {text[cursorPos] ?? ' '}
+                </Text>
                 {text.slice(cursorPos + 1)}
             </Text>
             <Text dimColor>←→ move cursor, Ctrl+←→ jump to start/end, Enter save, ESC cancel</Text>

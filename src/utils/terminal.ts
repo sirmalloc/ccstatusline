@@ -15,7 +15,7 @@ export function getPackageVersion(): string {
     // Fallback for development mode
     const possiblePaths = [
         path.join(__dirname, '..', '..', 'package.json'), // Development: dist/utils/ -> root
-        path.join(__dirname, '..', 'package.json')       // Production: dist/ -> root (bundled)
+        path.join(__dirname, '..', 'package.json') // Production: dist/ -> root (bundled)
     ];
 
     for (const packageJsonPath of possiblePaths) {
@@ -45,17 +45,14 @@ export function getTerminalWidth(): number | null {
         // Check if we got a valid tty (not ?? which means no tty)
         if (tty && tty !== '??' && tty !== '?') {
             // Now get the terminal size
-            const width = execSync(
-                `stty size < /dev/${tty} | awk '{print $2}'`,
-                {
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    shell: '/bin/sh'
-                }
-            ).trim();
+            const width = execSync(`stty size < /dev/${tty} | awk '{print $2}'`, {
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'ignore'],
+                shell: '/bin/sh'
+            }).trim();
 
             const parsed = parseInt(width, 10);
-            if (!isNaN(parsed) && parsed > 0) {
+            if (!Number.isNaN(parsed) && parsed > 0) {
                 return parsed;
             }
         }
@@ -71,7 +68,7 @@ export function getTerminalWidth(): number | null {
         }).trim();
 
         const parsed = parseInt(width, 10);
-        if (!isNaN(parsed) && parsed > 0) {
+        if (!Number.isNaN(parsed) && parsed > 0) {
             return parsed;
         }
     } catch {
@@ -93,17 +90,14 @@ export function canDetectTerminalWidth(): boolean {
 
         // Check if we got a valid tty
         if (tty && tty !== '??' && tty !== '?') {
-            const width = execSync(
-                `stty size < /dev/${tty} | awk '{print $2}'`,
-                {
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    shell: '/bin/sh'
-                }
-            ).trim();
+            const width = execSync(`stty size < /dev/${tty} | awk '{print $2}'`, {
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'ignore'],
+                shell: '/bin/sh'
+            }).trim();
 
             const parsed = parseInt(width, 10);
-            if (!isNaN(parsed) && parsed > 0) {
+            if (!Number.isNaN(parsed) && parsed > 0) {
                 return true;
             }
         }
@@ -119,7 +113,7 @@ export function canDetectTerminalWidth(): boolean {
         }).trim();
 
         const parsed = parseInt(width, 10);
-        return !isNaN(parsed) && parsed > 0;
+        return !Number.isNaN(parsed) && parsed > 0;
     } catch {
         return false;
     }

@@ -1,9 +1,6 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
 
@@ -27,19 +24,17 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     // Get the appropriate array based on mode
     const getItems = () => {
         switch (mode) {
-        case 'separator':
-            return powerlineConfig.separators;
-        case 'startCap':
-            return powerlineConfig.startCaps;
-        case 'endCap':
-            return powerlineConfig.endCaps;
+            case 'separator':
+                return powerlineConfig.separators;
+            case 'startCap':
+                return powerlineConfig.startCaps;
+            case 'endCap':
+                return powerlineConfig.endCaps;
         }
     };
 
     const separators = getItems();
-    const invertBgs = mode === 'separator'
-        ? powerlineConfig.separatorInvertBackground
-        : [];
+    const invertBgs = mode === 'separator' ? powerlineConfig.separatorInvertBackground : [];
 
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [hexInputMode, setHexInputMode] = useState(false);
@@ -75,7 +70,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     const presetSeparators = getPresets();
 
     const getSeparatorDisplay = (char: string, index: number): string => {
-        const preset = presetSeparators.find(p => p.char === char);
+        const preset = presetSeparators.find((p) => p.char === char);
         const invertBg = invertBgs[index] ?? false;
         if (preset) {
             // Show inversion status for all separators in separator mode
@@ -90,16 +85,17 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
         const updatedPowerline = { ...powerlineConfig };
 
         switch (mode) {
-        case 'separator':
-            updatedPowerline.separators = newSeparators;
-            updatedPowerline.separatorInvertBackground = newInvertBgs ?? newSeparators.map((_, i) => invertBgs[i] ?? false);
-            break;
-        case 'startCap':
-            updatedPowerline.startCaps = newSeparators;
-            break;
-        case 'endCap':
-            updatedPowerline.endCaps = newSeparators;
-            break;
+            case 'separator':
+                updatedPowerline.separators = newSeparators;
+                updatedPowerline.separatorInvertBackground =
+                    newInvertBgs ?? newSeparators.map((_, i) => invertBgs[i] ?? false);
+                break;
+            case 'startCap':
+                updatedPowerline.startCaps = newSeparators;
+                break;
+            case 'endCap':
+                updatedPowerline.endCaps = newSeparators;
+                break;
         }
 
         onUpdate({
@@ -148,11 +144,11 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
             } else if ((key.leftArrow || key.rightArrow) && separators.length > 0) {
                 // Cycle through preset separators
                 const currentChar = separators[selectedIndex] ?? '\uE0B0';
-                const currentPresetIndex = presetSeparators.findIndex(p => p.char === currentChar);
+                const currentPresetIndex = presetSeparators.findIndex((p) => p.char === currentChar);
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
 
-                let newIndex;
+                let newIndex: number;
                 if (currentPresetIndex !== -1) {
                     // It's a preset, cycle to next/prev preset
                     if (key.rightArrow) {
@@ -256,12 +252,12 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
 
     const getTitle = () => {
         switch (mode) {
-        case 'separator':
-            return 'Powerline Separator Configuration';
-        case 'startCap':
-            return 'Powerline Start Cap Configuration';
-        case 'endCap':
-            return 'Powerline End Cap Configuration';
+            case 'separator':
+                return 'Powerline Separator Configuration';
+            case 'startCap':
+                return 'Powerline Start Cap Configuration';
+            case 'endCap':
+                return 'Powerline End Cap Configuration';
         }
     };
 
@@ -269,24 +265,25 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     const canDelete = mode !== 'separator' || separators.length > 1;
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text bold>{getTitle()}</Text>
 
             {hexInputMode ? (
-                <Box marginTop={2} flexDirection='column'>
+                <Box marginTop={2} flexDirection="column">
                     <Text>
-                        Enter 4-digit hex code for
-                        {' '}
-                        {mode === 'separator' ? 'separator' : 'cap'}
-                        {separators.length > 0 ? ` ${selectedIndex + 1}` : ''}
-                        :
+                        Enter 4-digit hex code for {mode === 'separator' ? 'separator' : 'cap'}
+                        {separators.length > 0 ? ` ${selectedIndex + 1}` : ''}:
                     </Text>
                     <Text>
                         \u
                         {hexInput.slice(0, cursorPos)}
-                        <Text backgroundColor='gray' color='black'>{hexInput[cursorPos] ?? '_'}</Text>
+                        <Text backgroundColor="gray" color="black">
+                            {hexInput[cursorPos] ?? '_'}
+                        </Text>
                         {hexInput.slice(cursorPos + 1)}
-                        {hexInput.length < 4 && hexInput.length === cursorPos && <Text dimColor>{'_'.repeat(4 - hexInput.length - 1)}</Text>}
+                        {hexInput.length < 4 && hexInput.length === cursorPos && (
+                            <Text dimColor>{'_'.repeat(4 - hexInput.length - 1)}</Text>
+                        )}
                     </Text>
                     <Text dimColor>Enter 4 hex digits (0-9, A-F), then press Enter. ESC to cancel.</Text>
                 </Box>
@@ -298,7 +295,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                         </Text>
                     </Box>
 
-                    <Box marginTop={2} flexDirection='column'>
+                    <Box marginTop={2} flexDirection="column">
                         {separators.length > 0 ? (
                             separators.map((sep, index) => (
                                 <Box key={index}>

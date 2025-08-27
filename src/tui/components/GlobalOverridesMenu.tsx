@@ -1,16 +1,9 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import {
-    COLOR_MAP,
-    getChalkColor,
-    getColorDisplayName
-} from '../../utils/colors';
+import { COLOR_MAP, getChalkColor, getColorDisplayName } from '../../utils/colors';
 
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -31,12 +24,11 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const isPowerlineEnabled = settings.powerline.enabled;
 
     // Check if there are any manual separators in the current configuration
-    const hasManualSeparators = settings.lines.some(line => line.some(item => item.type === 'separator')
-    );
+    const hasManualSeparators = settings.lines.some((line) => line.some((item) => item.type === 'separator'));
 
     // Get colors from COLOR_MAP
-    const bgColors = ['none', ...COLOR_MAP.filter(c => c.isBackground).map(c => c.name)];
-    const fgColors = ['none', ...COLOR_MAP.filter(c => !c.isBackground).map(c => c.name)];
+    const bgColors = ['none', ...COLOR_MAP.filter((c) => c.isBackground).map((c) => c.name)];
+    const fgColors = ['none', ...COLOR_MAP.filter((c) => !c.isBackground).map((c) => c.name)];
 
     const currentBgIndex = bgColors.indexOf(settings.overrideBackgroundColor ?? 'none');
     const currentFgIndex = fgColors.indexOf(settings.overrideForegroundColor ?? 'none');
@@ -73,7 +65,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         defaultSeparator: separatorInput || undefined,
                         // Only remove manual separators if we're setting a non-empty default
                         lines: separatorInput
-                            ? settings.lines.map(line => line.filter(item => item.type !== 'separator'))
+                            ? settings.lines.map((line) => line.filter((item) => item.type !== 'separator'))
                             : settings.lines
                     };
                     onUpdate(updatedSettings);
@@ -153,40 +145,45 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     });
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text bold>Global Overrides</Text>
             <Text dimColor>Configure automatic padding and separators between widgets</Text>
             {isPowerlineEnabled && (
                 <Box marginTop={1}>
-                    <Text color='yellow'>⚠ Some options are disabled while Powerline mode is active</Text>
+                    <Text color="yellow">⚠ Some options are disabled while Powerline mode is active</Text>
                 </Box>
             )}
             <Box marginTop={1} />
 
             {editingPadding ? (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Box>
                         <Text>Enter default padding (applied to left and right of each widget): </Text>
-                        <Text color='cyan'>{paddingInput ? `"${paddingInput}"` : '(empty)'}</Text>
+                        <Text color="cyan">{paddingInput ? `"${paddingInput}"` : '(empty)'}</Text>
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
                 </Box>
             ) : editingSeparator ? (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Box>
                         <Text>Enter default separator (placed between widgets): </Text>
-                        <Text color='cyan'>{separatorInput ? `"${separatorInput}"` : '(empty - no separator will be added)'}</Text>
+                        <Text color="cyan">
+                            {separatorInput ? `"${separatorInput}"` : '(empty - no separator will be added)'}
+                        </Text>
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
                 </Box>
             ) : confirmingSeparator ? (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Box marginBottom={1}>
-                        <Text color='yellow'>⚠ Warning: Setting a default separator will remove all existing manual separators from your status lines.</Text>
+                        <Text color="yellow">
+                            ⚠ Warning: Setting a default separator will remove all existing manual separators from your
+                            status lines.
+                        </Text>
                     </Box>
                     <Box>
                         <Text>New default separator: </Text>
-                        <Text color='cyan'>{separatorInput ? `"${separatorInput}"` : '(empty)'}</Text>
+                        <Text color="cyan">{separatorInput ? `"${separatorInput}"` : '(empty)'}</Text>
                     </Box>
                     <Box marginTop={1}>
                         <Text>Do you want to continue? </Text>
@@ -199,7 +196,8 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                                 const updatedSettings = {
                                     ...settings,
                                     defaultSeparator: separatorInput,
-                                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator')
+                                    lines: settings.lines.map((line) =>
+                                        line.filter((item) => item.type !== 'separator')
                                     )
                                 };
                                 onUpdate(updatedSettings);
@@ -216,14 +214,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             ) : (
                 <>
                     <Box>
-                        <Text>      Global Bold: </Text>
+                        <Text> Global Bold: </Text>
                         <Text color={globalBold ? 'green' : 'red'}>{globalBold ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (o) to toggle</Text>
                     </Box>
 
                     <Box>
-                        <Text>  Default Padding: </Text>
-                        <Text color='cyan'>{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
+                        <Text> Default Padding: </Text>
+                        <Text color="cyan">{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
                         <Text dimColor> - Press (p) to edit</Text>
                     </Box>
 
@@ -232,7 +230,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         {(() => {
                             const fgColor = settings.overrideForegroundColor ?? 'none';
                             if (fgColor === 'none') {
-                                return <Text color='gray'>(none)</Text>;
+                                return <Text color="gray">(none)</Text>;
                             } else {
                                 const displayName = getColorDisplayName(fgColor);
                                 const fgChalk = getChalkColor(fgColor, 'ansi16', false);
@@ -252,7 +250,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                                 {(() => {
                                     const bgColor = settings.overrideBackgroundColor ?? 'none';
                                     if (bgColor === 'none') {
-                                        return <Text color='gray'>(none)</Text>;
+                                        return <Text color="gray">(none)</Text>;
                                     } else {
                                         const displayName = getColorDisplayName(bgColor);
                                         const bgChalk = getChalkColor(bgColor, 'ansi16', true);
@@ -266,12 +264,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     </Box>
 
                     <Box>
-                        <Text>   Inherit Colors: </Text>
+                        <Text> Inherit Colors: </Text>
                         {isPowerlineEnabled ? (
                             <Text dimColor>[disabled - Powerline active]</Text>
                         ) : (
                             <>
-                                <Text color={inheritColors ? 'green' : 'red'}>{inheritColors ? '✓ Enabled' : '✗ Disabled'}</Text>
+                                <Text color={inheritColors ? 'green' : 'red'}>
+                                    {inheritColors ? '✓ Enabled' : '✗ Disabled'}
+                                </Text>
                                 <Text dimColor> - Press (i) to toggle</Text>
                             </>
                         )}
@@ -283,7 +283,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                             <Text dimColor>[disabled - Powerline active]</Text>
                         ) : (
                             <>
-                                <Text color='cyan'>{settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}</Text>
+                                <Text color="cyan">
+                                    {settings.defaultSeparator ? `"${settings.defaultSeparator}"` : '(none)'}
+                                </Text>
                                 <Text dimColor> - Press (s) to edit</Text>
                             </>
                         )}
@@ -293,17 +295,17 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         <Text dimColor>Press ESC to go back</Text>
                     </Box>
 
-                    <Box marginTop={1} flexDirection='column'>
-                        <Text dimColor wrap='wrap'>
+                    <Box marginTop={1} flexDirection="column">
+                        <Text dimColor wrap="wrap">
                             Note: These settings are applied during rendering and don't add widgets to your widget list.
                         </Text>
-                        <Text dimColor wrap='wrap'>
+                        <Text dimColor wrap="wrap">
                             • Inherit colors: Separators will use colors from the preceding widget
                         </Text>
-                        <Text dimColor wrap='wrap'>
+                        <Text dimColor wrap="wrap">
                             • Global Bold: Makes all text bold regardless of individual settings
                         </Text>
-                        <Text dimColor wrap='wrap'>
+                        <Text dimColor wrap="wrap">
                             • Override colors: All widgets will use these colors instead of their configured colors
                         </Text>
                     </Box>

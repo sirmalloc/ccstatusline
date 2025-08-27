@@ -1,9 +1,6 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { FlexMode } from '../../types/FlexMode';
 import type { Settings } from '../../types/Settings';
@@ -33,7 +30,7 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
         if (editingThreshold) {
             if (key.return) {
                 const value = parseInt(thresholdInput, 10);
-                if (isNaN(value)) {
+                if (Number.isNaN(value)) {
                     setValidationError('Please enter a valid number');
                 } else if (value < 1 || value > 99) {
                     setValidationError(`Value must be between 1 and 99 (you entered ${value})`);
@@ -102,12 +99,14 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
         {
             value: 'full' as FlexMode,
             label: 'Full width always',
-            description: 'Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it\'s not recommended to use this mode.'
+            description:
+                "Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it's not recommended to use this mode."
         },
         {
             value: 'full-minus-40' as FlexMode,
             label: 'Full width minus 40 (default)',
-            description: 'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
+            description:
+                'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
         },
         {
             value: 'full-until-compact' as FlexMode,
@@ -119,28 +118,29 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
     const currentOption = selectedIndex < 3 ? optionDetails[selectedIndex] : null;
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text bold>Terminal Width</Text>
-            <Text color='white'>These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators</Text>
-            <Text dimColor wrap='wrap'>Claude code does not currently provide an available width variable for the statusline and features like IDE integration, auto-compaction notices, etc all cause the statusline to wrap if we do not truncate it</Text>
+            <Text color="white">
+                These settings affect where long lines are truncated, and where right-alignment occurs when using flex
+                separators
+            </Text>
+            <Text dimColor wrap="wrap">
+                Claude code does not currently provide an available width variable for the statusline and features like
+                IDE integration, auto-compaction notices, etc all cause the statusline to wrap if we do not truncate it
+            </Text>
 
             {editingThreshold ? (
-                <Box marginTop={1} flexDirection='column'>
-                    <Text>
-                        Enter compact threshold (1-99):
-                        {' '}
-                        {thresholdInput}
-                        %
-                    </Text>
+                <Box marginTop={1} flexDirection="column">
+                    <Text>Enter compact threshold (1-99): {thresholdInput}%</Text>
                     {validationError ? (
-                        <Text color='red'>{validationError}</Text>
+                        <Text color="red">{validationError}</Text>
                     ) : (
                         <Text dimColor>Press Enter to confirm, ESC to cancel</Text>
                     )}
                 </Box>
             ) : (
                 <>
-                    <Box marginTop={1} flexDirection='column'>
+                    <Box marginTop={1} flexDirection="column">
                         {optionDetails.map((opt, index) => (
                             <Box key={opt.value}>
                                 <Text color={selectedIndex === index ? 'green' : undefined}>
@@ -153,20 +153,22 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
 
                         <Box marginTop={1}>
                             <Text color={selectedIndex === 3 ? 'green' : undefined}>
-                                {selectedIndex === 3 ? '▶  ' : '   '}
-                                ← Back
+                                {selectedIndex === 3 ? '▶  ' : '   '}← Back
                             </Text>
                         </Box>
                     </Box>
 
                     {currentOption && (
-                        <Box marginTop={1} marginBottom={1} borderStyle='round' borderColor='dim' paddingX={1}>
-                            <Box flexDirection='column'>
+                        <Box marginTop={1} marginBottom={1} borderStyle="round" borderColor="dim" paddingX={1}>
+                            <Box flexDirection="column">
                                 <Text>
-                                    <Text color='yellow'>{currentOption.label}</Text>
-                                    {currentOption.value === 'full-until-compact' && ` | Current threshold: ${compactThreshold}%`}
+                                    <Text color="yellow">{currentOption.label}</Text>
+                                    {currentOption.value === 'full-until-compact' &&
+                                        ` | Current threshold: ${compactThreshold}%`}
                                 </Text>
-                                <Text dimColor wrap='wrap'>{currentOption.description}</Text>
+                                <Text dimColor wrap="wrap">
+                                    {currentOption.description}
+                                </Text>
                             </Box>
                         </Box>
                     )}

@@ -1,14 +1,11 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
+import { Box, Text, useInput } from 'ink';
 import * as os from 'os';
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
 import { getDefaultPowerlineTheme } from '../../utils/colors';
-import { type PowerlineFontStatus } from '../../utils/powerline';
+import type { PowerlineFontStatus } from '../../utils/powerline';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { PowerlineSeparatorEditor } from './PowerlineSeparatorEditor';
@@ -44,7 +41,9 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     const [confirmingFontInstall, setConfirmingFontInstall] = useState(false);
 
     // Check if there are any separators or flex-separators in the current configuration
-    const hasSeparatorItems = settings.lines.some(line => line.some(item => item.type === 'separator' || item.type === 'flex-separator'));
+    const hasSeparatorItems = settings.lines.some((line) =>
+        line.some((item) => item.type === 'separator' || item.type === 'flex-separator')
+    );
 
     // Menu items for navigation
     const menuItems = [
@@ -68,7 +67,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
             { char: '\uE0B4', name: 'Round Right' },
             { char: '\uE0B6', name: 'Round Left' }
         ];
-        const preset = presets.find(p => p.char === sep);
+        const preset = presets.find((p) => p.char === sep);
         if (preset) {
             return `${preset.char} - ${preset.name}`;
         }
@@ -76,32 +75,30 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     };
 
     const getCapDisplay = (type: 'start' | 'end'): string => {
-        const caps = type === 'start'
-            ? powerlineConfig.startCaps
-            : powerlineConfig.endCaps;
+        const caps = type === 'start' ? powerlineConfig.startCaps : powerlineConfig.endCaps;
 
-        if (caps.length === 0)
-            return 'none';
-        if (caps.length > 1)
-            return 'multiple';
+        if (caps.length === 0) return 'none';
+        if (caps.length > 1) return 'multiple';
 
         const cap = caps[0];
-        if (!cap)
-            return 'none';
+        if (!cap) return 'none';
 
-        const presets = type === 'start' ? [
-            { char: '\uE0B2', name: 'Triangle' },
-            { char: '\uE0B6', name: 'Round' },
-            { char: '\uE0BA', name: 'Lower Triangle' },
-            { char: '\uE0BE', name: 'Diagonal' }
-        ] : [
-            { char: '\uE0B0', name: 'Triangle' },
-            { char: '\uE0B4', name: 'Round' },
-            { char: '\uE0B8', name: 'Lower Triangle' },
-            { char: '\uE0BC', name: 'Diagonal' }
-        ];
+        const presets =
+            type === 'start'
+                ? [
+                      { char: '\uE0B2', name: 'Triangle' },
+                      { char: '\uE0B6', name: 'Round' },
+                      { char: '\uE0BA', name: 'Lower Triangle' },
+                      { char: '\uE0BE', name: 'Diagonal' }
+                  ]
+                : [
+                      { char: '\uE0B0', name: 'Triangle' },
+                      { char: '\uE0B4', name: 'Round' },
+                      { char: '\uE0B8', name: 'Lower Triangle' },
+                      { char: '\uE0BC', name: 'Diagonal' }
+                  ];
 
-        const preset = presets.find(c => c.char === cap);
+        const preset = presets.find((c) => c.char === cap);
         if (preset) {
             return `${preset.char} - ${preset.name}`;
         }
@@ -110,8 +107,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
 
     const getThemeDisplay = (): string => {
         const theme = powerlineConfig.theme;
-        if (!theme || theme === 'custom')
-            return 'Custom';
+        if (!theme || theme === 'custom') return 'Custom';
         return theme.charAt(0).toUpperCase() + theme.slice(1);
     };
 
@@ -156,9 +152,10 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         setConfirmingEnable(true);
                     } else {
                         // Set to nord theme if currently custom or undefined (first time enabling)
-                        const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
-                            ? getDefaultPowerlineTheme()
-                            : powerlineConfig.theme;
+                        const theme =
+                            !powerlineConfig.theme || powerlineConfig.theme === 'custom'
+                                ? getDefaultPowerlineTheme()
+                                : powerlineConfig.theme;
 
                         // Enable directly without confirmation since there are no separators
                         const updatedSettings = {
@@ -171,7 +168,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                 separators: powerlineConfig.separators,
                                 separatorInvertBackground: powerlineConfig.separatorInvertBackground
                             },
-                            defaultPadding: ' '  // Set padding to space when enabling powerline
+                            defaultPadding: ' ' // Set padding to space when enabling powerline
                         };
                         onUpdate(updatedSettings);
                     }
@@ -196,9 +193,11 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         return (
             <PowerlineSeparatorEditor
                 settings={settings}
-                mode='separator'
+                mode="separator"
                 onUpdate={onUpdate}
-                onBack={() => { setScreen('menu'); }}
+                onBack={() => {
+                    setScreen('menu');
+                }}
             />
         );
     }
@@ -207,9 +206,11 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         return (
             <PowerlineSeparatorEditor
                 settings={settings}
-                mode='startCap'
+                mode="startCap"
                 onUpdate={onUpdate}
-                onBack={() => { setScreen('menu'); }}
+                onBack={() => {
+                    setScreen('menu');
+                }}
             />
         );
     }
@@ -218,9 +219,11 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         return (
             <PowerlineSeparatorEditor
                 settings={settings}
-                mode='endCap'
+                mode="endCap"
                 onUpdate={onUpdate}
-                onBack={() => { setScreen('menu'); }}
+                onBack={() => {
+                    setScreen('menu');
+                }}
             />
         );
     }
@@ -230,63 +233,69 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
             <PowerlineThemeSelector
                 settings={settings}
                 onUpdate={onUpdate}
-                onBack={() => { setScreen('menu'); }}
+                onBack={() => {
+                    setScreen('menu');
+                }}
             />
         );
     }
 
     // Main menu screen
     return (
-        <Box flexDirection='column'>
-            {!confirmingFontInstall && !installingFonts && !fontInstallMessage && (
-                <Text bold>Powerline Setup</Text>
-            )}
+        <Box flexDirection="column">
+            {!confirmingFontInstall && !installingFonts && !fontInstallMessage && <Text bold>Powerline Setup</Text>}
 
             {confirmingFontInstall ? (
-                <Box flexDirection='column'>
+                <Box flexDirection="column">
                     <Box marginBottom={1}>
-                        <Text color='cyan' bold>Font Installation</Text>
+                        <Text color="cyan" bold>
+                            Font Installation
+                        </Text>
                     </Box>
 
-                    <Box marginBottom={1} flexDirection='column'>
+                    <Box marginBottom={1} flexDirection="column">
                         <Text bold>What will happen:</Text>
                         <Text>
                             <Text dimColor>• Clone fonts from </Text>
-                            <Text color='blue'>https://github.com/powerline/fonts</Text>
+                            <Text color="blue">https://github.com/powerline/fonts</Text>
                         </Text>
                         {os.platform() === 'darwin' && (
                             <>
                                 <Text dimColor>• Run install.sh script which will:</Text>
-                                <Text dimColor>  - Copy all .ttf/.otf files to ~/Library/Fonts</Text>
-                                <Text dimColor>  - Register fonts with macOS</Text>
+                                <Text dimColor> - Copy all .ttf/.otf files to ~/Library/Fonts</Text>
+                                <Text dimColor> - Register fonts with macOS</Text>
                             </>
                         )}
                         {os.platform() === 'linux' && (
                             <>
                                 <Text dimColor>• Run install.sh script which will:</Text>
-                                <Text dimColor>  - Copy all .ttf/.otf files to ~/.local/share/fonts</Text>
-                                <Text dimColor>  - Run fc-cache to update font cache</Text>
+                                <Text dimColor> - Copy all .ttf/.otf files to ~/.local/share/fonts</Text>
+                                <Text dimColor> - Run fc-cache to update font cache</Text>
                             </>
                         )}
                         {os.platform() === 'win32' && (
                             <>
                                 <Text dimColor>• Copy Powerline .ttf/.otf files to:</Text>
-                                <Text dimColor>  AppData\Local\Microsoft\Windows\Fonts</Text>
+                                <Text dimColor> AppData\Local\Microsoft\Windows\Fonts</Text>
                             </>
                         )}
                         <Text dimColor>• Clean up temporary files</Text>
                     </Box>
 
                     <Box marginBottom={1}>
-                        <Text color='yellow' bold>Requirements: </Text>
+                        <Text color="yellow" bold>
+                            Requirements:{' '}
+                        </Text>
                         <Text dimColor>Git installed, Internet connection, Write permissions</Text>
                     </Box>
 
-                    <Box marginBottom={1} flexDirection='column'>
-                        <Text color='green' bold>After install:</Text>
+                    <Box marginBottom={1} flexDirection="column">
+                        <Text color="green" bold>
+                            After install:
+                        </Text>
                         <Text dimColor>• Restart terminal</Text>
                         <Text dimColor>• Select a Powerline font</Text>
-                        <Text dimColor>  (e.g. "Meslo LG S for Powerline")</Text>
+                        <Text dimColor> (e.g. "Meslo LG S for Powerline")</Text>
                     </Box>
 
                     <Box marginTop={1}>
@@ -306,14 +315,20 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     </Box>
                 </Box>
             ) : confirmingEnable ? (
-                <Box flexDirection='column' marginTop={1}>
+                <Box flexDirection="column" marginTop={1}>
                     {hasSeparatorItems && (
                         <>
                             <Box>
-                                <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
+                                <Text color="yellow">
+                                    ⚠ Warning: Enabling Powerline mode will remove all existing separators and
+                                    flex-separators from your status lines.
+                                </Text>
                             </Box>
                             <Box marginBottom={1}>
-                                <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
+                                <Text dimColor>
+                                    Powerline mode uses its own separator system and is incompatible with manual
+                                    separators.
+                                </Text>
                             </Box>
                         </>
                     )}
@@ -325,9 +340,10 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                             inline={true}
                             onConfirm={() => {
                                 // Set to nord theme if currently custom or undefined (first time enabling)
-                                const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
-                                    ? getDefaultPowerlineTheme()
-                                    : powerlineConfig.theme;
+                                const theme =
+                                    !powerlineConfig.theme || powerlineConfig.theme === 'custom'
+                                        ? getDefaultPowerlineTheme()
+                                        : powerlineConfig.theme;
 
                                 // Remove all separators and flex-separators from lines
                                 // Also set default padding to a space when enabling powerline
@@ -341,8 +357,11 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                         separators: powerlineConfig.separators,
                                         separatorInvertBackground: powerlineConfig.separatorInvertBackground
                                     },
-                                    defaultPadding: ' ',  // Set padding to space when enabling powerline
-                                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
+                                    defaultPadding: ' ', // Set padding to space when enabling powerline
+                                    lines: settings.lines.map((line) =>
+                                        line.filter(
+                                            (item) => item.type !== 'separator' && item.type !== 'flex-separator'
+                                        )
                                     )
                                 };
                                 onUpdate(updatedSettings);
@@ -356,30 +375,28 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                 </Box>
             ) : installingFonts ? (
                 <Box>
-                    <Text color='yellow'>Installing Powerline fonts... This may take a moment.</Text>
+                    <Text color="yellow">Installing Powerline fonts... This may take a moment.</Text>
                 </Box>
             ) : fontInstallMessage ? (
-                <Box flexDirection='column'>
-                    <Text color={fontInstallMessage.includes('success') ? 'green' : 'red'}>
-                        {fontInstallMessage}
-                    </Text>
+                <Box flexDirection="column">
+                    <Text color={fontInstallMessage.includes('success') ? 'green' : 'red'}>{fontInstallMessage}</Text>
                     <Box marginTop={1}>
                         <Text dimColor>Press any key to continue...</Text>
                     </Box>
                 </Box>
             ) : (
                 <>
-                    <Box flexDirection='column'>
+                    <Box flexDirection="column">
                         <Text>
                             {'    Font Status: '}
                             {powerlineFontStatus.installed ? (
                                 <>
-                                    <Text color='green'>✓ Installed</Text>
+                                    <Text color="green">✓ Installed</Text>
                                     <Text dimColor> - Ensure fonts are active in your terminal</Text>
                                 </>
                             ) : (
                                 <>
-                                    <Text color='yellow'>✗ Not Installed</Text>
+                                    <Text color="yellow">✗ Not Installed</Text>
                                     <Text dimColor> - Press (i) to install Powerline fonts</Text>
                                 </>
                             )}
@@ -397,14 +414,14 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     {powerlineConfig.enabled && (
                         <>
                             <Box>
-                                <Text>  Align Widgets: </Text>
+                                <Text> Align Widgets: </Text>
                                 <Text color={powerlineConfig.autoAlign ? 'green' : 'red'}>
                                     {powerlineConfig.autoAlign ? '✓ Enabled  ' : '✗ Disabled '}
                                 </Text>
                                 <Text dimColor> - Press (a) to toggle</Text>
                             </Box>
 
-                            <Box flexDirection='column' marginTop={1}>
+                            <Box flexDirection="column" marginTop={1}>
                                 <Text dimColor>
                                     When enabled, global overrides are disabled and powerline separators are used
                                 </Text>
@@ -412,14 +429,13 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         </>
                     )}
 
-                    <Box marginTop={1} flexDirection='column'>
+                    <Box marginTop={1} flexDirection="column">
                         {powerlineConfig.enabled ? (
-                            <>
-                                {menuItems.map((item, index) => {
-                                    const isSelected = index === selectedMenuItem;
-                                    let displayValue = '';
+                            menuItems.map((item, index) => {
+                                const isSelected = index === selectedMenuItem;
+                                let displayValue = '';
 
-                                    switch (item.value) {
+                                switch (item.value) {
                                     case 'separator':
                                         displayValue = getSeparatorDisplay();
                                         break;
@@ -435,32 +451,29 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                     case 'back':
                                         displayValue = '';
                                         break;
-                                    }
+                                }
 
-                                    if (item.value === 'back') {
-                                        return (
-                                            <Box key={item.value} marginTop={1}>
-                                                <Text color={isSelected ? 'green' : undefined}>
-                                                    {isSelected ? '▶  ' : '   '}
-                                                    {item.label}
-                                                </Text>
-                                            </Box>
-                                        );
-                                    }
-
+                                if (item.value === 'back') {
                                     return (
-                                        <Box key={item.value}>
+                                        <Box key={item.value} marginTop={1}>
                                             <Text color={isSelected ? 'green' : undefined}>
                                                 {isSelected ? '▶  ' : '   '}
-                                                {item.label.padEnd(11, ' ')}
-                                                <Text dimColor>
-                                                    {displayValue && `(${displayValue})`}
-                                                </Text>
+                                                {item.label}
                                             </Text>
                                         </Box>
                                     );
-                                })}
-                            </>
+                                }
+
+                                return (
+                                    <Box key={item.value}>
+                                        <Text color={isSelected ? 'green' : undefined}>
+                                            {isSelected ? '▶  ' : '   '}
+                                            {item.label.padEnd(11, ' ')}
+                                            <Text dimColor>{displayValue && `(${displayValue})`}</Text>
+                                        </Text>
+                                    </Box>
+                                );
+                            })
                         ) : (
                             // When powerline is disabled, show ESC to go back message
                             <Box marginTop={1}>

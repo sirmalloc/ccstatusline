@@ -1,25 +1,21 @@
 import { execSync } from 'child_process';
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    CustomKeybind,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetEditorProps,
-    WidgetItem
-} from '../types/Widget';
+import type { CustomKeybind, Widget, WidgetEditorDisplay, WidgetEditorProps, WidgetItem } from '../types/Widget';
 
 export class CustomCommandWidget implements Widget {
-    getDefaultColor(): string { return 'white'; }
-    getDescription(): string { return 'Executes a custom shell command and displays output'; }
-    getDisplayName(): string { return 'Custom Command'; }
+    getDefaultColor(): string {
+        return 'white';
+    }
+    getDescription(): string {
+        return 'Executes a custom shell command and displays output';
+    }
+    getDisplayName(): string {
+        return 'Custom Command';
+    }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const cmd = item.commandPath ?? 'No command';
@@ -51,9 +47,11 @@ export class CustomCommandWidget implements Widget {
         return null;
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext): string | null {
         if (context.isPreview) {
-            return item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
+            return item.commandPath
+                ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]`
+                : '[No command]';
         } else if (item.commandPath && context.data) {
             try {
                 const timeout = item.timeout ?? 1000;
@@ -73,7 +71,7 @@ export class CustomCommandWidget implements Widget {
                 }
 
                 if (item.maxWidth && output.length > item.maxWidth) {
-                    output = output.substring(0, item.maxWidth - 3) + '...';
+                    output = `${output.substring(0, item.maxWidth - 3)}...`;
                 }
 
                 return output || null;
@@ -116,22 +114,30 @@ export class CustomCommandWidget implements Widget {
         return <CustomCommandEditor {...props} />;
     }
 
-    supportsRawValue(): boolean { return false; }
+    supportsRawValue(): boolean {
+        return false;
+    }
     supportsColors(item: WidgetItem): boolean {
         // Only supports colors if preserveColors is false
         return !item.preserveColors;
     }
 }
 
-interface EditorMode { type: 'command' | 'width' | 'timeout' | null }
+interface EditorMode {
+    type: 'command' | 'width' | 'timeout' | null;
+}
 
 const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const getMode = (): EditorMode['type'] => {
         switch (action) {
-        case 'edit-command': return 'command';
-        case 'edit-width': return 'width';
-        case 'edit-timeout': return 'timeout';
-        default: return 'command';
+            case 'edit-command':
+                return 'command';
+            case 'edit-width':
+                return 'width';
+            case 'edit-timeout':
+                return 'timeout';
+            default:
+                return 'command';
         }
     };
     const mode = getMode();
@@ -166,7 +172,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
         } else if (mode === 'width') {
             if (key.return) {
                 const width = parseInt(widthInput, 10);
-                if (!isNaN(width) && width > 0) {
+                if (!Number.isNaN(width) && width > 0) {
                     onComplete({ ...widget, maxWidth: width });
                 } else {
                     const { maxWidth, ...rest } = widget;
@@ -183,7 +189,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
         } else if (mode === 'timeout') {
             if (key.return) {
                 const timeout = parseInt(timeoutInput, 10);
-                if (!isNaN(timeout) && timeout > 0) {
+                if (!Number.isNaN(timeout) && timeout > 0) {
                     onComplete({ ...widget, timeout });
                 } else {
                     const { timeout, ...rest } = widget;
@@ -202,12 +208,12 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
 
     if (mode === 'command') {
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Text>
-                    Enter command path:
-                    {' '}
-                    {commandInput.slice(0, commandCursorPos)}
-                    <Text backgroundColor='gray' color='black'>{commandInput[commandCursorPos] ?? ' '}</Text>
+                    Enter command path: {commandInput.slice(0, commandCursorPos)}
+                    <Text backgroundColor="gray" color="black">
+                        {commandInput[commandCursorPos] ?? ' '}
+                    </Text>
                     {commandInput.slice(commandCursorPos + 1)}
                 </Text>
                 <Text dimColor>←→ move cursor, Enter save, ESC cancel</Text>
@@ -215,22 +221,26 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
         );
     } else if (mode === 'width') {
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Box>
                     <Text>Enter max width (blank for no limit): </Text>
                     <Text>{widthInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <Text backgroundColor="gray" color="black">
+                        {' '}
+                    </Text>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>
         );
     } else if (mode === 'timeout') {
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Box>
                     <Text>Enter timeout in milliseconds (default 1000): </Text>
                     <Text>{timeoutInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <Text backgroundColor="gray" color="black">
+                        {' '}
+                    </Text>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>

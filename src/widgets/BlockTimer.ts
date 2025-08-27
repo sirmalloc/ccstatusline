@@ -1,18 +1,18 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    CustomKeybind,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { CustomKeybind, Widget, WidgetEditorDisplay, WidgetItem } from '../types/Widget';
 
 type DisplayMode = 'time' | 'progress' | 'progress-short';
 
 export class BlockTimerWidget implements Widget {
-    getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows elapsed time since beginning of current 5hr block'; }
-    getDisplayName(): string { return 'Block Timer'; }
+    getDefaultColor(): string {
+        return 'yellow';
+    }
+    getDescription(): string {
+        return 'Shows elapsed time since beginning of current 5hr block';
+    }
+    getDisplayName(): string {
+        return 'Block Timer';
+    }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = item.metadata?.display ?? 'time';
@@ -54,7 +54,7 @@ export class BlockTimerWidget implements Widget {
         return null;
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext): string | null {
         const displayMode = (item.metadata?.display ?? 'time') as DisplayMode;
 
         if (context.isPreview) {
@@ -119,11 +119,13 @@ export class BlockTimerWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }
-        ];
+        return [{ key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }];
     }
 
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return true;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }

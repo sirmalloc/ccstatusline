@@ -1,20 +1,21 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { Widget, WidgetEditorDisplay, WidgetItem } from '../types/Widget';
 
 export class VersionWidget implements Widget {
-    getDefaultColor(): string { return 'gray'; }
-    getDescription(): string { return 'Shows Claude Code CLI version number'; }
-    getDisplayName(): string { return 'Version'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+    getDefaultColor(): string {
+        return 'gray';
+    }
+    getDescription(): string {
+        return 'Shows Claude Code CLI version number';
+    }
+    getDisplayName(): string {
+        return 'Version';
+    }
+    getEditorDisplay(): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext): string | null {
         if (context.isPreview) {
             return item.rawValue ? '1.0.0' : 'v1.0.0';
         } else if (context.data?.version) {
@@ -23,6 +24,10 @@ export class VersionWidget implements Widget {
         return null;
     }
 
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return true;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }

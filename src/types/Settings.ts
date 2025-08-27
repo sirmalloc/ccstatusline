@@ -25,7 +25,8 @@ export const SettingsSchema_v1 = z.object({
 // Main settings schema with defaults
 export const SettingsSchema = z.object({
     version: z.number().default(CURRENT_VERSION),
-    lines: z.array(z.array(WidgetItemSchema))
+    lines: z
+        .array(z.array(WidgetItemSchema))
         .min(1)
         .max(3)
         .default([
@@ -39,7 +40,7 @@ export const SettingsSchema = z.object({
                 { id: '7', type: 'git-changes', color: 'yellow' }
             ]
         ])
-        .transform(lines => lines.slice(0, 3)), // Ensure max 3 lines
+        .transform((lines) => lines.slice(0, 3)), // Ensure max 3 lines
     flexMode: FlexModeSchema.default('full-minus-40'),
     compactThreshold: z.number().min(1).max(99).default(60),
     colorLevel: ColorLevelSchema.default(2),
@@ -58,10 +59,12 @@ export const SettingsSchema = z.object({
         theme: undefined,
         autoAlign: false
     }),
-    updatemessage: z.object({
-        message: z.string().nullable().optional(),
-        remaining: z.number().nullable().optional()
-    }).optional()
+    updatemessage: z
+        .object({
+            message: z.string().nullable().optional(),
+            remaining: z.number().nullable().optional()
+        })
+        .optional()
 });
 
 // Inferred type from schema

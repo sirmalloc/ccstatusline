@@ -2,28 +2,14 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
-import type {
-    BlockMetrics,
-    TokenMetrics
-} from './types';
+import type { BlockMetrics, TokenMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { updateColorMap } from './utils/colors';
-import {
-    loadSettings,
-    saveSettings
-} from './utils/config';
-import {
-    getBlockMetrics,
-    getSessionDuration,
-    getTokenMetrics
-} from './utils/jsonl';
-import {
-    calculateMaxWidthsFromPreRendered,
-    preRenderAllWidgets,
-    renderStatusLine
-} from './utils/renderer';
+import { loadSettings, saveSettings } from './utils/config';
+import { getBlockMetrics, getSessionDuration, getTokenMetrics } from './utils/jsonl';
+import { calculateMaxWidthsFromPreRendered, preRenderAllWidgets, renderStatusLine } from './utils/renderer';
 
 async function readStdin(): Promise<string | null> {
     // Check if stdin is a TTY (terminal) - if it is, there's no piped data
@@ -66,25 +52,34 @@ async function renderMultipleLines(data: StatusJSON) {
     const lines = settings.lines;
 
     // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)));
+    const hasTokenItems = lines.some((line) =>
+        line.some((item) =>
+            [
+                'tokens-input',
+                'tokens-output',
+                'tokens-cached',
+                'tokens-total',
+                'context-length',
+                'context-percentage',
+                'context-percentage-usable'
+            ].includes(item.type)
+        )
+    );
 
     // Check if session clock is needed
-    const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
+    const hasSessionClock = lines.some((line) => line.some((item) => item.type === 'session-clock'));
 
     // Check if block timer is needed
-    const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
+    const hasBlockTimer = lines.some((line) => line.some((item) => item.type === 'block-timer'));
 
     let tokenMetrics: TokenMetrics | null = null;
-    if (hasTokenItems && data.transcript_path)
-        tokenMetrics = await getTokenMetrics(data.transcript_path);
+    if (hasTokenItems && data.transcript_path) tokenMetrics = await getTokenMetrics(data.transcript_path);
 
     let sessionDuration: string | null = null;
-    if (hasSessionClock && data.transcript_path)
-        sessionDuration = await getSessionDuration(data.transcript_path);
+    if (hasSessionClock && data.transcript_path) sessionDuration = await getSessionDuration(data.transcript_path);
 
     let blockMetrics: BlockMetrics | null = null;
-    if (hasBlockTimer && data.transcript_path)
-        blockMetrics = getBlockMetrics(data.transcript_path);
+    if (hasBlockTimer && data.transcript_path) blockMetrics = getBlockMetrics(data.transcript_path);
 
     // Create render context
     const context: RenderContext = {
@@ -113,25 +108,28 @@ async function renderMultipleLines(data: StatusJSON) {
             const strippedLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
             if (strippedLine.length > 0) {
                 // Count separators used in this line (widgets - 1, excluding merged widgets)
-                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
-                if (nonMergedWidgets.length > 1)
-                    globalSeparatorIndex += nonMergedWidgets.length - 1;
+                const nonMergedWidgets = lineItems.filter(
+                    (_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge
+                );
+                if (nonMergedWidgets.length > 1) globalSeparatorIndex += nonMergedWidgets.length - 1;
 
                 // Replace all spaces with non-breaking spaces to prevent VSCode trimming
                 let outputLine = line.replace(/ /g, '\u00A0');
 
                 // Add reset code at the beginning to override Claude Code's dim setting
-                outputLine = '\x1b[0m' + outputLine;
+                outputLine = `${'\x1b[0m'}${outputLine}`;
                 console.log(outputLine);
             }
         }
     }
 
     // Check if there's an update message to display
-    if (settings.updatemessage?.message
-        && settings.updatemessage.message.trim() !== ''
-        && settings.updatemessage.remaining
-        && settings.updatemessage.remaining > 0) {
+    if (
+        settings.updatemessage?.message &&
+        settings.updatemessage.message.trim() !== '' &&
+        settings.updatemessage.remaining &&
+        settings.updatemessage.remaining > 0
+    ) {
         // Display the message
         console.log(settings.updatemessage.message);
 

@@ -1,8 +1,5 @@
 import chalk from 'chalk';
-import {
-    Box,
-    Text
-} from 'ink';
+import { Box, Text } from 'ink';
 import React from 'react';
 
 import type { RenderContext } from '../../types/RenderContext';
@@ -10,12 +7,11 @@ import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
     calculateMaxWidthsFromPreRendered,
-    preRenderAllWidgets,
-    renderStatusLineWithInfo,
     type PreRenderedWidget,
-    type RenderResult
+    preRenderAllWidgets,
+    type RenderResult,
+    renderStatusLineWithInfo
 } from '../../utils/renderer';
-import { canDetectTerminalWidth } from '../../utils/terminal';
 
 export interface StatusLinePreviewProps {
     lines: WidgetItem[][];
@@ -27,7 +23,6 @@ export interface StatusLinePreviewProps {
 const renderSingleLine = (
     widgets: WidgetItem[],
     terminalWidth: number,
-    widthDetectionAvailable: boolean,
     settings: Settings,
     lineIndex: number,
     globalSeparatorIndex: number,
@@ -45,14 +40,16 @@ const renderSingleLine = (
     return renderStatusLineWithInfo(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
 };
 
-export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings, onTruncationChange }) => {
-    const widthDetectionAvailable = React.useMemo(() => canDetectTerminalWidth(), []);
-
+export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({
+    lines,
+    terminalWidth,
+    settings,
+    onTruncationChange
+}) => {
     // Render each configured line
     // Pass the full terminal width - the renderer will handle preview adjustments
     const { renderedLines, anyTruncated } = React.useMemo(() => {
-        if (!settings)
-            return { renderedLines: [], anyTruncated: false };
+        if (!settings) return { renderedLines: [], anyTruncated: false };
 
         // Always pre-render all widgets once (for efficiency)
         const preRenderedLines = preRenderAllWidgets(lines, settings, { terminalWidth, isPreview: true });
@@ -66,14 +63,24 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             const lineItems = lines[i];
             if (lineItems && lineItems.length > 0) {
                 const preRenderedWidgets = preRenderedLines[i] ?? [];
-                const renderResult = renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings, i, globalSeparatorIndex, preRenderedWidgets, preCalculatedMaxWidths);
+                const renderResult = renderSingleLine(
+                    lineItems,
+                    terminalWidth,
+                    settings,
+                    i,
+                    globalSeparatorIndex,
+                    preRenderedWidgets,
+                    preCalculatedMaxWidths
+                );
                 result.push(renderResult.line);
                 if (renderResult.wasTruncated) {
                     truncated = true;
                 }
 
                 // Count separators used in this line (widgets - 1, excluding merged widgets)
-                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
+                const nonMergedWidgets = lineItems.filter(
+                    (_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge
+                );
                 if (nonMergedWidgets.length > 1) {
                     globalSeparatorIndex += nonMergedWidgets.length - 1;
                 }
@@ -81,7 +88,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
         }
 
         return { renderedLines: result, anyTruncated: truncated };
-    }, [lines, terminalWidth, widthDetectionAvailable, settings]);
+    }, [lines, terminalWidth, settings]);
 
     // Notify parent when truncation status changes
     React.useEffect(() => {
@@ -89,11 +96,11 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
     }, [anyTruncated, onTruncationChange]);
 
     return (
-        <Box flexDirection='column'>
-            <Box borderStyle='round' borderColor='gray' borderDimColor width='100%' paddingLeft={1}>
+        <Box flexDirection="column">
+            <Box borderStyle="round" borderColor="gray" borderDimColor width="100%" paddingLeft={1}>
                 <Text>
                     &gt;
-                    <Text dimColor> Preview  (ctrl+s to save configuration at any time)</Text>
+                    <Text dimColor> Preview (ctrl+s to save configuration at any time)</Text>
                 </Text>
             </Box>
             {renderedLines.map((line, index) => (

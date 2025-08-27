@@ -1,20 +1,21 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { Widget, WidgetEditorDisplay, WidgetItem } from '../types/Widget';
 
 export class ContextPercentageUsableWidget implements Widget {
-    getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows percentage of usable context window used (of 160k tokens before auto-compact)'; }
-    getDisplayName(): string { return 'Context % (usable)'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+    getDefaultColor(): string {
+        return 'green';
+    }
+    getDescription(): string {
+        return 'Shows percentage of usable context window used (of 160k tokens before auto-compact)';
+    }
+    getDisplayName(): string {
+        return 'Context % (usable)';
+    }
+    getEditorDisplay(): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext): string | null {
         if (context.isPreview) {
             return item.rawValue ? '11.6%' : 'Ctx(u): 11.6%';
         } else if (context.tokenMetrics) {
@@ -24,6 +25,10 @@ export class ContextPercentageUsableWidget implements Widget {
         return null;
     }
 
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return true;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }

@@ -33,3 +33,6 @@ Thumbs.db
 
 # Node modules (in case someone uses npm instead of bun)
 node_modules/
+
+# Lefthook
+lefthook.yml

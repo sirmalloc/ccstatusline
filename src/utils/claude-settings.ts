@@ -37,8 +37,10 @@ export async function isInstalled(): Promise<boolean> {
     const settings = await loadClaudeSettings();
     // Check if command is either npx or bunx version AND padding is 0 (or undefined for new installs)
     const validCommands = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'];
-    return validCommands.includes(settings.statusLine?.command ?? '')
-        && (settings.statusLine?.padding === 0 || settings.statusLine?.padding === undefined);
+    return (
+        validCommands.includes(settings.statusLine?.command ?? '') &&
+        (settings.statusLine?.padding === 0 || settings.statusLine?.padding === undefined)
+    );
 }
 
 export function isBunxAvailable(): boolean {

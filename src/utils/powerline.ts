@@ -27,10 +27,10 @@ export function checkPowerlineFonts(): PowerlineFontStatus {
         // Test if we can display the common Powerline separator symbols
         // These are the key characters that require Powerline fonts
         const testSymbols = {
-            rightArrow: '\uE0B0',     //
-            rightThinArrow: '\uE0B1',  //
-            leftArrow: '\uE0B2',       //
-            leftThinArrow: '\uE0B3'   //
+            rightArrow: '\uE0B0', //
+            rightThinArrow: '\uE0B1', //
+            leftArrow: '\uE0B2', //
+            leftThinArrow: '\uE0B3' //
         };
 
         // Try to detect if fonts are available
@@ -39,11 +39,7 @@ export function checkPowerlineFonts(): PowerlineFontStatus {
         let fontPaths: string[] = [];
 
         if (platform === 'darwin') {
-            fontPaths = [
-                path.join(os.homedir(), 'Library', 'Fonts'),
-                '/Library/Fonts',
-                '/System/Library/Fonts'
-            ];
+            fontPaths = [path.join(os.homedir(), 'Library', 'Fonts'), '/Library/Fonts', '/System/Library/Fonts'];
         } else if (platform === 'linux') {
             fontPaths = [
                 path.join(os.homedir(), '.local', 'share', 'fonts'),
@@ -63,11 +59,11 @@ export function checkPowerlineFonts(): PowerlineFontStatus {
             /powerline/i,
             /nerd font/i,
             /for powerline/i,
-            /meslo.*lg/i,  // Meslo LG fonts often include Powerline
+            /meslo.*lg/i, // Meslo LG fonts often include Powerline
             /source.*code.*pro.*powerline/i,
             /dejavu.*powerline/i,
             /ubuntu.*mono.*powerline/i,
-            /cascadia.*code.*pl/i,  // Cascadia Code PL
+            /cascadia.*code.*pl/i, // Cascadia Code PL
             /fira.*code.*nerd/i
         ];
 
@@ -167,14 +163,7 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
         } else if (platform === 'linux') {
             fontDir = path.join(os.homedir(), '.local', 'share', 'fonts');
         } else if (platform === 'win32') {
-            fontDir = path.join(
-                os.homedir(),
-                'AppData',
-                'Local',
-                'Microsoft',
-                'Windows',
-                'Fonts'
-            );
+            fontDir = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Windows', 'Fonts');
         } else {
             return {
                 success: false,
@@ -197,13 +186,10 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
             }
 
             // Clone Powerline fonts repository
-            execSync(
-                `git clone --depth=1 https://github.com/powerline/fonts.git "${tempDir}"`,
-                {
-                    stdio: 'pipe',
-                    encoding: 'utf8'
-                }
-            );
+            execSync(`git clone --depth=1 https://github.com/powerline/fonts.git "${tempDir}"`, {
+                stdio: 'pipe',
+                encoding: 'utf8'
+            });
 
             // Run the install script based on platform
             if (platform === 'darwin' || platform === 'linux') {
@@ -239,7 +225,8 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
 
                     return {
                         success: true,
-                        message: 'Powerline fonts installed successfully! Please restart your terminal and select a Powerline font (e.g., "Source Code Pro for Powerline", "Meslo LG S for Powerline", etc.)'
+                        message:
+                            'Powerline fonts installed successfully! Please restart your terminal and select a Powerline font (e.g., "Source Code Pro for Powerline", "Meslo LG S for Powerline", etc.)'
                     };
                 } else {
                     throw new Error('Install script not found in Powerline fonts repository');
@@ -291,11 +278,6 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     throw new Error('No fonts were installed');
                 }
             }
-
-            return {
-                success: false,
-                message: 'Platform-specific installation not implemented'
-            };
         } finally {
             // Clean up temporary directory
             if (fs.existsSync(tempDir)) {

@@ -1,8 +1,5 @@
 import type { Settings } from '../types/Settings';
-import type {
-    Widget,
-    WidgetItemType
-} from '../types/Widget';
+import type { Widget, WidgetItemType } from '../types/Widget';
 import * as widgets from '../widgets';
 
 // Create widget registry
@@ -47,7 +44,5 @@ export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
 }
 
 export function isKnownWidgetType(type: string): boolean {
-    return widgetRegistry.has(type)
-        || type === 'separator'
-        || type === 'flex-separator';
+    return widgetRegistry.has(type) || type === 'separator' || type === 'flex-separator';
 }

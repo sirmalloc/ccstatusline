@@ -1,24 +1,26 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import { type PowerlineFontStatus } from '../../utils/powerline';
 
 export interface MainMenuProps {
     onSelect: (value: string) => void;
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
-    powerlineFontStatus: PowerlineFontStatus;
     settings: Settings | null;
     previewIsTruncated?: boolean;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0, powerlineFontStatus, settings, previewIsTruncated }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({
+    onSelect,
+    isClaudeInstalled,
+    hasChanges,
+    initialSelection = 0,
+    settings,
+    previewIsTruncated
+}) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
     // Build menu structure with visual gaps
@@ -26,11 +28,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
         { label: '🎨 Edit Colors', value: 'colors', selectable: true },
         { label: '⚡ Powerline Setup', value: 'powerline', selectable: true },
-        { label: '', value: '_gap1', selectable: false },  // Visual gap
+        { label: '', value: '_gap1', selectable: false }, // Visual gap
         { label: '💻 Terminal Options', value: 'terminalConfig', selectable: true },
         { label: '🌐 Global Overrides', value: 'globalOverrides', selectable: true },
-        { label: '', value: '_gap2', selectable: false },  // Visual gap
-        { label: isClaudeInstalled ? '🔌 Uninstall from Claude Code' : '📦 Install to Claude Code', value: 'install', selectable: true }
+        { label: '', value: '_gap2', selectable: false }, // Visual gap
+        {
+            label: isClaudeInstalled ? '🔌 Uninstall from Claude Code' : '📦 Install to Claude Code',
+            value: 'install',
+            selectable: true
+        }
     ];
 
     if (hasChanges) {
@@ -43,9 +49,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     }
 
     // Get only selectable items for navigation
-    const selectableItems = menuItems.filter(item => item.selectable);
+    const selectableItems = menuItems.filter((item) => item.selectable);
 
-    useInput((input, key) => {
+    useInput((_, key) => {
         if (key.upArrow) {
             setSelectedIndex(Math.max(0, selectedIndex - 1));
         } else if (key.downArrow) {
@@ -70,9 +76,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                 : 'Add ccstatusline to your Claude Code settings for automatic status line rendering',
             terminalConfig: 'Configure terminal-specific settings for optimal display',
             save: 'Save all changes and exit the configuration tool',
-            exit: hasChanges
-                ? 'Exit without saving your changes'
-                : 'Exit the configuration tool'
+            exit: hasChanges ? 'Exit without saving your changes' : 'Exit the configuration tool'
         };
         return descriptions[value] ?? '';
     };
@@ -84,15 +88,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     const showTruncationWarning = previewIsTruncated && settings?.flexMode === 'full-minus-40';
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             {showTruncationWarning && (
                 <Box marginBottom={1}>
-                    <Text color='yellow'>⚠ Some lines are truncated, see Terminal Options → Terminal Width for info</Text>
+                    <Text color="yellow">
+                        ⚠ Some lines are truncated, see Terminal Options → Terminal Width for info
+                    </Text>
                 </Box>
             )}
             <Text bold>Main Menu</Text>
-            <Box marginTop={1} flexDirection='column'>
-                {menuItems.map((item, idx) => {
+            <Box marginTop={1} flexDirection="column">
+                {menuItems.map((item) => {
                     if (!item.selectable && item.value.startsWith('_gap')) {
                         return <Text key={item.value}> </Text>;
                     }
@@ -100,10 +106,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                     const isSelected = selectableIdx === selectedIndex;
 
                     return (
-                        <Text
-                            key={item.value}
-                            color={isSelected ? 'green' : undefined}
-                        >
+                        <Text key={item.value} color={isSelected ? 'green' : undefined}>
                             {isSelected ? '▶  ' : '   '}
                             {item.label}
                         </Text>
@@ -112,7 +115,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
             </Box>
             {description && (
                 <Box marginTop={1} paddingLeft={2}>
-                    <Text dimColor wrap='wrap'>{description}</Text>
+                    <Text dimColor wrap="wrap">
+                        {description}
+                    </Text>
                 </Box>
             )}
         </Box>

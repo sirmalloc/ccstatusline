@@ -1,9 +1,6 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 export interface ConfirmDialogProps {
     message?: string;
@@ -15,7 +12,7 @@ export interface ConfirmDialogProps {
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCancel, inline = false }) => {
     const [selectedIndex, setSelectedIndex] = useState(0); // Default to "Yes"
 
-    useInput((input, key) => {
+    useInput((_, key) => {
         if (key.upArrow) {
             setSelectedIndex(Math.max(0, selectedIndex - 1));
         } else if (key.downArrow) {
@@ -36,7 +33,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm
         const noStyle = selectedIndex === 1 ? { color: 'cyan' } : {};
 
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Text {...yesStyle}>
                     {selectedIndex === 0 ? '▶ ' : '  '}
                     Yes
@@ -54,11 +51,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm
     }
 
     return (
-        <Box flexDirection='column'>
+        <Box flexDirection="column">
             <Text>{message}</Text>
-            <Box marginTop={1}>
-                {renderOptions()}
-            </Box>
+            <Box marginTop={1}>{renderOptions()}</Box>
         </Box>
     );
 };

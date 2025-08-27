@@ -1,24 +1,20 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import type React from 'react';
+import { useState } from 'react';
 
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    CustomKeybind,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetEditorProps,
-    WidgetItem
-} from '../types/Widget';
+import type { CustomKeybind, Widget, WidgetEditorDisplay, WidgetEditorProps, WidgetItem } from '../types/Widget';
 
 export class CurrentWorkingDirWidget implements Widget {
-    getDefaultColor(): string { return 'blue'; }
-    getDescription(): string { return 'Shows the current working directory'; }
-    getDisplayName(): string { return 'Current Working Dir'; }
+    getDefaultColor(): string {
+        return 'blue';
+    }
+    getDescription(): string {
+        return 'Shows the current working directory';
+    }
+    getDisplayName(): string {
+        return 'Current Working Dir';
+    }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
         const modifiers: string[] = [];
@@ -33,7 +29,7 @@ export class CurrentWorkingDirWidget implements Widget {
         };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext): string | null {
         if (context.isPreview) {
             const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
             let previewPath: string;
@@ -60,12 +56,12 @@ export class CurrentWorkingDirWidget implements Widget {
         if (segments && segments > 0) {
             const pathParts = cwd.split('/');
             // Remove empty strings from splitting (e.g., leading slash creates empty first element)
-            const filteredParts = pathParts.filter(part => part !== '');
+            const filteredParts = pathParts.filter((part) => part !== '');
 
             if (filteredParts.length > segments) {
                 // Take the last N segments
                 const selectedSegments = filteredParts.slice(-segments);
-                displayPath = '.../' + selectedSegments.join('/');
+                displayPath = `.../${selectedSegments.join('/')}`;
             }
         }
 
@@ -73,17 +69,19 @@ export class CurrentWorkingDirWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 's', label: '(s)egments', action: 'edit-segments' }
-        ];
+        return [{ key: 's', label: '(s)egments', action: 'edit-segments' }];
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement {
         return <CurrentWorkingDirEditor {...props} />;
     }
 
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsRawValue(): boolean {
+        return true;
+    }
+    supportsColors(): boolean {
+        return true;
+    }
 }
 
 const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
@@ -93,7 +91,7 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
         if (action === 'edit-segments') {
             if (key.return) {
                 const segments = parseInt(segmentsInput, 10);
-                if (!isNaN(segments) && segments > 0) {
+                if (!Number.isNaN(segments) && segments > 0) {
                     onComplete({
                         ...widget,
                         metadata: {
@@ -122,11 +120,13 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
 
     if (action === 'edit-segments') {
         return (
-            <Box flexDirection='column'>
+            <Box flexDirection="column">
                 <Box>
                     <Text>Enter number of segments to display (blank for full path): </Text>
                     <Text>{segmentsInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <Text backgroundColor="gray" color="black">
+                        {' '}
+                    </Text>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>
