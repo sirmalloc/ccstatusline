@@ -655,6 +655,9 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
+            if (i > 0 && !preRenderedWidgets[i - 1]?.content)
+                continue;
+
             const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
             const formattedSep = formatSeparator(sepChar);
 
