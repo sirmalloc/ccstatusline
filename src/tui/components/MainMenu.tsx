@@ -6,6 +6,7 @@ import {
 import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
+import { getSettingsConfiguration } from '../../utils/config';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 export interface MainMenuProps {
@@ -21,6 +22,8 @@ export interface MainMenuProps {
 export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled, hasChanges, initialSelection = 0, powerlineFontStatus, settings, previewIsTruncated }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
+    const settingsConfiguration = getSettingsConfiguration();
+
     // Build menu structure with visual gaps
     const menuItems = [
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
@@ -34,10 +37,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     ];
 
     if (hasChanges) {
-        menuItems.push(
-            { label: '💾 Save & Exit', value: 'save', selectable: true },
-            { label: '❌ Exit without saving', value: 'exit', selectable: true }
-        );
+        menuItems.push({ label: '💾 Save & Exit', value: 'save', selectable: true });
+
+        if (settingsConfiguration.type === 'global') {
+            menuItems.push({ label: '📁 Save Locally & Exit', value: 'saveLocally', selectable: true });
+        }
+
+        menuItems.push({ label: '❌ Exit without saving', value: 'exit', selectable: true });
     } else {
         menuItems.push({ label: '🚪 Exit', value: 'exit', selectable: true });
     }
@@ -70,6 +76,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                 : 'Add ccstatusline to your Claude Code settings for automatic status line rendering',
             terminalConfig: 'Configure terminal-specific settings for optimal display',
             save: 'Save all changes and exit the configuration tool',
+            saveLocally: 'Save all changes to .claude/ccstatusline.json, which will be used by default for this directory going forwards',
             exit: hasChanges
                 ? 'Exit without saving your changes'
                 : 'Exit the configuration tool'
@@ -90,7 +97,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                     <Text color='yellow'>⚠ Some lines are truncated, see Terminal Options → Terminal Width for info</Text>
                 </Box>
             )}
-            <Text bold>Main Menu</Text>
+            <Text>
+                <Text bold>Main Menu</Text>
+                <Text dimColor>
+                    {' '}
+                    {settingsConfiguration.relativePath}
+                </Text>
+            </Text>
             <Box marginTop={1} flexDirection='column'>
                 {menuItems.map((item, idx) => {
                     if (!item.selectable && item.value.startsWith('_gap')) {
