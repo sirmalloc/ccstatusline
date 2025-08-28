@@ -44,6 +44,10 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.11 - Unlimited Status Lines
+
+- **🚀 No Line Limit** - Configure as many status lines as you need - the 3-line limitation has been removed
+
 ### v2.0.10 - Git Updates
 
 - **🌳 Git Worktree widget** - Shows the active worktree name when working with git worktrees
@@ -99,7 +103,7 @@
 - **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, block timer, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
-- **📐 Multi-line Support** - Configure up to 3 independent status lines
+- **📐 Multi-line Support** - Configure multiple independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
 - **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, background)
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
@@ -123,7 +127,7 @@ bunx ccstatusline@latest
 ### Configure ccstatusline
 
 The interactive configuration tool provides a terminal UI where you can:
-- Configure up to 3 separate status lines
+- Configure multiple separate status lines
 - Add/remove/reorder status line widgets
 - Customize colors for each widget
 - Configure flex separator behavior
