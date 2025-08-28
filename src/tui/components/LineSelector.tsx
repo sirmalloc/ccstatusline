@@ -5,6 +5,7 @@ import {
 } from 'ink';
 import pluralize from 'pluralize';
 import React, {
+    useEffect,
     useMemo,
     useState
 } from 'react';
@@ -16,34 +17,57 @@ import { ConfirmDialog } from './ConfirmDialog';
 
 interface LineSelectorProps {
     lines: WidgetItem[][];
-    onAppend: () => void;
     onSelect: (line: number) => void;
     onBack: () => void;
-    onDelete: (line: number) => void;
+    onLinesUpdate: (lines: WidgetItem[][]) => void;
     initialSelection?: number;
     title?: string;
     blockIfPowerlineActive?: boolean;
     settings?: Settings;
+    allowEditing?: boolean;
 }
 
 const LineSelector: React.FC<LineSelectorProps> = ({
     lines,
-    onAppend,
     onSelect,
     onBack,
-    onDelete,
+    onLinesUpdate,
     initialSelection = 0,
     title,
     blockIfPowerlineActive = false,
-    settings
+    settings,
+    allowEditing = false
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [localLines, setLocalLines] = useState(lines);
+
+    useEffect(() => {
+        setLocalLines(lines);
+    }, [lines]);
 
     const selectedLine = useMemo(
-        () => lines[selectedIndex],
-        [lines, selectedIndex]
+        () => localLines[selectedIndex],
+        [localLines, selectedIndex]
     );
+
+    const appendLine = () => {
+        const newLines = [...localLines, []];
+        setLocalLines(newLines);
+        onLinesUpdate(newLines);
+        setSelectedIndex(newLines.length - 1);
+    };
+
+    const deleteLine = (lineIndex: number) => {
+        // Don't allow deleting the last remaining line
+        if (localLines.length <= 1) {
+            return;
+        }
+        const newLines = [...localLines];
+        newLines.splice(lineIndex, 1);
+        setLocalLines(newLines);
+        onLinesUpdate(newLines);
+    };
 
     // Check if powerline theme is managing colors
     const powerlineEnabled = settings ? settings.powerline.enabled : false;
@@ -67,12 +91,15 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         }
 
         switch (input) {
-        case 'i':
-            onAppend();
-            setSelectedIndex(lines.length);
+        case 'a':
+            if (allowEditing) {
+                appendLine();
+            }
             return;
         case 'd':
-            setShowDeleteDialog(true);
+            if (allowEditing && localLines.length > 1) {
+                setShowDeleteDialog(true);
+            }
             return;
         }
 
@@ -81,9 +108,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         } else if (key.upArrow) {
             setSelectedIndex(Math.max(0, selectedIndex - 1));
         } else if (key.downArrow) {
-            setSelectedIndex(Math.min(lines.length, selectedIndex + 1));
+            setSelectedIndex(Math.min(localLines.length, selectedIndex + 1));
         } else if (key.return) {
-            if (selectedIndex === lines.length) {
+            if (selectedIndex === localLines.length) {
                 onBack();
             } else {
                 onSelect(selectedIndex);
@@ -137,8 +164,10 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         <Text>
                             <Text>
                                 ☰ Line
+                                {' '}
                                 {selectedIndex + 1}
                             </Text>
+                            {' '}
                             <Text dimColor>
                                 (
                                 {suffix}
@@ -153,7 +182,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     <ConfirmDialog
                         inline={true}
                         onConfirm={() => {
-                            onDelete(selectedIndex);
+                            deleteLine(selectedIndex);
                             setSelectedIndex(Math.max(0, selectedIndex - 1));
                             setShowDeleteDialog(false);
                         }}
@@ -171,14 +200,18 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             <Box flexDirection='column'>
                 <Text bold>{title ?? 'Select Line to Edit'}</Text>
                 <Text dimColor>
-                    Choose which status line to configure (up to 3 lines supported)
+                    Choose which status line to configure
                 </Text>
                 <Text dimColor>
-                    (i) to append new line, (d) to delete line, ESC to go back
+                    {allowEditing ? (
+                        localLines.length > 1
+                            ? '(a) to append new line, (d) to delete line, ESC to go back'
+                            : '(a) to append new line, ESC to go back'
+                    ) : 'ESC to go back'}
                 </Text>
 
                 <Box marginTop={1} flexDirection='column'>
-                    {lines.map((line, index) => {
+                    {localLines.map((line, index) => {
                         const isSelected = selectedIndex === index;
                         const suffix = line.length
                             ? pluralize('widget', line.length, true)
@@ -191,8 +224,10 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                                     <Text>
                                         <Text>
                                             ☰ Line
+                                            {' '}
                                             {index + 1}
                                         </Text>
+                                        {' '}
                                         <Text dimColor={!isSelected}>
                                             (
                                             {suffix}
@@ -205,8 +240,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     })}
 
                     <Box marginTop={1}>
-                        <Text color={selectedIndex === lines.length ? 'green' : undefined}>
-                            {selectedIndex === lines.length ? '▶  ' : '   '}
+                        <Text color={selectedIndex === localLines.length ? 'green' : undefined}>
+                            {selectedIndex === localLines.length ? '▶  ' : '   '}
                             ← Back
                         </Text>
                     </Box>
