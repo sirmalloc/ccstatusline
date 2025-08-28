@@ -14,6 +14,7 @@ import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import { List } from './List';
 
 interface LineSelectorProps {
     lines: WidgetItem[][];
@@ -59,7 +60,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     };
 
     const deleteLine = (lineIndex: number) => {
-        // Don't allow deleting the last remaining line
+    // Don't allow deleting the last remaining line
         if (localLines.length <= 1) {
             return;
         }
@@ -105,16 +106,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
         if (key.escape) {
             onBack();
-        } else if (key.upArrow) {
-            setSelectedIndex(Math.max(0, selectedIndex - 1));
-        } else if (key.downArrow) {
-            setSelectedIndex(Math.min(localLines.length, selectedIndex + 1));
-        } else if (key.return) {
-            if (selectedIndex === localLines.length) {
-                onBack();
-            } else {
-                onSelect(selectedIndex);
-            }
         }
     });
 
@@ -164,7 +155,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         <Text>
                             <Text>
                                 ☰ Line
-                                {' '}
                                 {selectedIndex + 1}
                             </Text>
                             {' '}
@@ -195,57 +185,53 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         );
     }
 
+    const lineItems = localLines.map((line, index) => ({
+        label: ({ isSelected }: { isSelected: boolean }) => {
+            const suffix = line.length
+                ? pluralize('widget', line.length, true)
+                : 'empty';
+
+            const title = `☰ Line ${index + 1}`;
+            const description = ` (${suffix})`;
+
+            return (
+                <Text>
+                    <Text>
+                        {title}
+                    </Text>
+                    <Text dimColor={!isSelected}>{description}</Text>
+                </Text>
+            );
+        },
+        value: index
+    }));
+
     return (
         <>
             <Box flexDirection='column'>
                 <Text bold>{title ?? 'Select Line to Edit'}</Text>
+                <Text dimColor>Choose which status line to configure</Text>
                 <Text dimColor>
-                    Choose which status line to configure
-                </Text>
-                <Text dimColor>
-                    {allowEditing ? (
-                        localLines.length > 1
+                    {allowEditing
+                        ? localLines.length > 1
                             ? '(a) to append new line, (d) to delete line, ESC to go back'
                             : '(a) to append new line, ESC to go back'
-                    ) : 'ESC to go back'}
+                        : 'ESC to go back'}
                 </Text>
 
-                <Box marginTop={1} flexDirection='column'>
-                    {localLines.map((line, index) => {
-                        const isSelected = selectedIndex === index;
-                        const suffix = line.length
-                            ? pluralize('widget', line.length, true)
-                            : 'empty';
-
-                        return (
-                            <Box key={index}>
-                                <Text color={isSelected ? 'green' : undefined}>
-                                    <Text>{isSelected ? '▶  ' : '   '}</Text>
-                                    <Text>
-                                        <Text>
-                                            ☰ Line
-                                            {' '}
-                                            {index + 1}
-                                        </Text>
-                                        {' '}
-                                        <Text dimColor={!isSelected}>
-                                            (
-                                            {suffix}
-                                            )
-                                        </Text>
-                                    </Text>
-                                </Text>
-                            </Box>
-                        );
-                    })}
-
-                    <Box marginTop={1}>
-                        <Text color={selectedIndex === localLines.length ? 'green' : undefined}>
-                            {selectedIndex === localLines.length ? '▶  ' : '   '}
-                            ← Back
-                        </Text>
-                    </Box>
-                </Box>
+                <List
+                    marginTop={1}
+                    items={lineItems}
+                    onSelect={(line) => {
+                        if (line === 'back') {
+                            onBack();
+                            return;
+                        }
+                        onSelect(line);
+                    }}
+                    initialSelection={initialSelection}
+                    showBackButton={true}
+                />
             </Box>
         </>
     );
