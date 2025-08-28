@@ -3,10 +3,16 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import pluralize from 'pluralize';
+import React, {
+    useMemo,
+    useState
+} from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface LineSelectorProps {
     lines: WidgetItem[][];
@@ -32,6 +38,12 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     settings
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+    const selectedLine = useMemo(
+        () => lines[selectedIndex],
+        [lines, selectedIndex]
+    );
 
     // Check if powerline theme is managing colors
     const powerlineEnabled = settings ? settings.powerline.enabled : false;
@@ -44,7 +56,11 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
     // Handle keyboard input
     useInput((input, key) => {
-    // If theme-managed and blocking is enabled, any key goes back
+        if (showDeleteDialog) {
+            return;
+        }
+
+        // If theme-managed and blocking is enabled, any key goes back
         if (isThemeManaged) {
             onBack();
             return;
@@ -56,8 +72,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             setSelectedIndex(lines.length);
             return;
         case 'd':
-            onDelete(selectedIndex);
-            setSelectedIndex(Math.max(0, selectedIndex - 1));
+            setShowDeleteDialog(true);
             return;
         }
 
@@ -109,35 +124,95 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         );
     }
 
-    return (
-        <Box flexDirection='column'>
-            <Text bold>{title ?? 'Select Line to Edit'}</Text>
-            <Text dimColor>
-                Choose which status line to configure (up to 3 lines supported)
-            </Text>
-            <Text dimColor>
-                (i) to append new line, (d) to delete line, ESC to go back
-            </Text>
-            <Box marginTop={1} flexDirection='column'>
-                {lines.map((line, index) => (
-                    <Box key={index}>
-                        <Text color={selectedIndex === index ? 'green' : undefined}>
-                            {selectedIndex === index ? '▶  ' : '   '}
-                            ☰ Line
-                            {index + 1}
-                            {line.length > 0 ? ` (${line.length} widgets)` : ' (empty)'}
+    if (showDeleteDialog && selectedLine) {
+        const suffix
+      = selectedLine.length > 0
+          ? pluralize('widget', selectedLine.length, true)
+          : 'empty';
+
+        return (
+            <Box flexDirection='column'>
+                <Box flexDirection='column' gap={1}>
+                    <Text bold>
+                        <Text>
+                            <Text>
+                                ☰ Line
+                                {selectedIndex + 1}
+                            </Text>
+                            <Text dimColor>
+                                (
+                                {suffix}
+                                )
+                            </Text>
                         </Text>
-                    </Box>
-                ))}
+                    </Text>
+                    <Text bold>Are you sure you want to delete line?</Text>
+                </Box>
 
                 <Box marginTop={1}>
-                    <Text color={selectedIndex === lines.length ? 'green' : undefined}>
-                        {selectedIndex === lines.length ? '▶  ' : '   '}
-                        ← Back
-                    </Text>
+                    <ConfirmDialog
+                        inline={true}
+                        onConfirm={() => {
+                            onDelete(selectedIndex);
+                            setSelectedIndex(Math.max(0, selectedIndex - 1));
+                            setShowDeleteDialog(false);
+                        }}
+                        onCancel={() => {
+                            setShowDeleteDialog(false);
+                        }}
+                    />
                 </Box>
             </Box>
-        </Box>
+        );
+    }
+
+    return (
+        <>
+            <Box flexDirection='column'>
+                <Text bold>{title ?? 'Select Line to Edit'}</Text>
+                <Text dimColor>
+                    Choose which status line to configure (up to 3 lines supported)
+                </Text>
+                <Text dimColor>
+                    (i) to append new line, (d) to delete line, ESC to go back
+                </Text>
+
+                <Box marginTop={1} flexDirection='column'>
+                    {lines.map((line, index) => {
+                        const isSelected = selectedIndex === index;
+                        const suffix = line.length
+                            ? pluralize('widget', line.length, true)
+                            : 'empty';
+
+                        return (
+                            <Box key={index}>
+                                <Text color={isSelected ? 'green' : undefined}>
+                                    <Text>{isSelected ? '▶  ' : '   '}</Text>
+                                    <Text>
+                                        <Text>
+                                            ☰ Line
+                                            {index + 1}
+                                        </Text>
+                                        <Text dimColor={!isSelected}>
+                                            (
+                                            {suffix}
+                                            )
+                                        </Text>
+                                    </Text>
+                                </Text>
+                            </Box>
+                        );
+                    })}
+
+                    <Box marginTop={1}>
+                        <Text color={selectedIndex === lines.length ? 'green' : undefined}>
+                            {selectedIndex === lines.length ? '▶  ' : '   '}
+                            ← Back
+                        </Text>
+                    </Box>
+                </Box>
+            </Box>
+        </>
     );
 };
 

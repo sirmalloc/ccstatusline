@@ -42,7 +42,9 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.1",
     "vitest": "^3.2.4",
-    "zod": "^4.0.17"
+    "zod": "^4.0.17",
+    "pluralize": "^8.0.0",
+    "@types/pluralize": "^0.0.33"
   },
   "keywords": [
     "claude",
