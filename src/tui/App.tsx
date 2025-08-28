@@ -72,10 +72,6 @@ export const App: React.FC = () => {
         void loadSettings().then((loadedSettings) => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
-            // Ensure lines array has 3 slots
-            while (loadedSettings.lines.length < 3) {
-                loadedSettings.lines.push([]);
-            }
             setSettings(loadedSettings);
             setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings)) as Settings); // Deep copy
         });
@@ -195,6 +191,10 @@ export const App: React.FC = () => {
         setSettings({ ...settings, lines: newLines });
     };
 
+    const updateLines = (newLines: WidgetItem[][]) => {
+        setSettings({ ...settings, lines: newLines });
+    };
+
     const handleLineSelect = (lineIndex: number) => {
         setSelectedLine(lineIndex);
         setScreen('items');
@@ -258,6 +258,7 @@ export const App: React.FC = () => {
                             setMenuSelections({ ...menuSelections, lines: line });
                             handleLineSelect(line);
                         }}
+                        onLinesUpdate={updateLines}
                         onBack={() => {
                             // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
@@ -266,6 +267,7 @@ export const App: React.FC = () => {
                         }}
                         initialSelection={menuSelections.lines}
                         title='Select Line to Edit Items'
+                        allowEditing={true}
                     />
                 )}
                 {screen === 'items' && (
@@ -284,6 +286,7 @@ export const App: React.FC = () => {
                 {screen === 'colorLines' && (
                     <LineSelector
                         lines={settings.lines}
+                        onLinesUpdate={updateLines}
                         onSelect={(line) => {
                             setMenuSelections({ ...menuSelections, lines: line });
                             setSelectedLine(line);
@@ -298,6 +301,7 @@ export const App: React.FC = () => {
                         title='Select Line to Edit Colors'
                         blockIfPowerlineActive={true}
                         settings={settings}
+                        allowEditing={false}
                     />
                 )}
                 {screen === 'colors' && (

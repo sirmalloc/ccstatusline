@@ -12,9 +12,9 @@
   ],
   "scripts": {
     "start": "bun run src/ccstatusline.ts",
-    "statusline": "bun run src/ccstatusline.ts",
     "build": "rm -rf dist/* && bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
     "postbuild": "bun run scripts/replace-version.ts",
+    "example": "cat scripts/payload.example.json | bun start",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix",
     "test": "bun vitest"
@@ -41,7 +41,9 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.1",
     "vitest": "^3.2.4",
-    "zod": "^4.0.17"
+    "zod": "^4.0.17",
+    "pluralize": "^8.0.0",
+    "@types/pluralize": "^0.0.33"
   },
   "keywords": [
     "claude",
