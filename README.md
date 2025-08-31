@@ -44,6 +44,12 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.12 - Custom Text widget now supports emojis
+
+- **👾 Emoji Support** - You can now paste emoji into the custom text widget. You can also turn on the merge option to get emoji labels for your widgets like this:
+  
+![Emoji Support](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/emojiSupport.png)
+
 ### v2.0.11 - Unlimited Status Lines
 
 - **🚀 No Line Limit** - Configure as many status lines as you need - the 3-line limitation has been removed
