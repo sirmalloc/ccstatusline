@@ -216,17 +216,44 @@ function renderPowerlineStatusLine(
     const autoAlign = config.autoAlign as boolean | undefined;
     if (autoAlign) {
         // Apply padding to current line's widgets based on pre-calculated max widths
+        let alignmentPos = 0;
         for (let i = 0; i < widgetElements.length; i++) {
             const element = widgetElements[i];
-            const maxWidth = preCalculatedMaxWidths[i];
-            if (element && maxWidth !== undefined) {
-                // Use stringWidth to properly calculate Unicode character display width
-                const currentLength = stringWidth(element.content.replace(ANSI_REGEX, ''));
-                const paddingNeeded = maxWidth - currentLength;
-                if (paddingNeeded > 0) {
-                    // Add spaces to the right of the content
-                    element.content += ' '.repeat(paddingNeeded);
+            if (!element)
+                continue;
+
+            // Check if previous widget was merged with this one
+            const prevWidget = i > 0 ? widgetElements[i - 1] : null;
+            const isPreviousMerged = prevWidget?.widget.merge;
+
+            // Only apply alignment to non-merged widgets (widgets that follow a merge are excluded)
+            if (!isPreviousMerged) {
+                const maxWidth = preCalculatedMaxWidths[alignmentPos];
+                if (maxWidth !== undefined) {
+                    // Calculate combined width if this widget merges with following ones
+                    let combinedLength = stringWidth(element.content.replace(ANSI_REGEX, ''));
+                    let j = i;
+                    while (j < widgetElements.length - 1 && widgetElements[j]?.widget.merge) {
+                        j++;
+                        const nextElement = widgetElements[j];
+                        if (nextElement) {
+                            combinedLength += stringWidth(nextElement.content.replace(ANSI_REGEX, ''));
+                        }
+                    }
+
+                    const paddingNeeded = maxWidth - combinedLength;
+                    if (paddingNeeded > 0) {
+                        // Add padding to the last widget in the merge group
+                        const lastElement = widgetElements[j];
+                        if (lastElement) {
+                            lastElement.content += ' '.repeat(paddingNeeded);
+                        }
+                    }
+
+                    // Skip over merged widgets
+                    i = j;
                 }
+                alignmentPos++;
             }
         }
     }
@@ -530,19 +557,42 @@ export function calculateMaxWidthsFromPreRendered(
             w => w.widget.type !== 'separator' && w.widget.type !== 'flex-separator' && w.content
         );
 
-        for (let pos = 0; pos < filteredWidgets.length; pos++) {
-            const widget = filteredWidgets[pos];
+        let alignmentPos = 0;
+        for (let i = 0; i < filteredWidgets.length; i++) {
+            const widget = filteredWidgets[i];
             if (!widget)
                 continue;
-            // Width includes padding on both sides
-            const totalWidth = widget.plainLength + (paddingLength * 2);
 
-            const currentMax = maxWidths[pos];
-            if (currentMax === undefined) {
-                maxWidths[pos] = totalWidth;
-            } else {
-                maxWidths[pos] = Math.max(currentMax, totalWidth);
+            // Calculate the total width for this alignment position
+            // If this widget is merged with the next, accumulate their widths
+            let totalWidth = widget.plainLength + (paddingLength * 2);
+
+            // Check if this widget merges with the next one(s)
+            let j = i;
+            while (j < filteredWidgets.length - 1 && filteredWidgets[j]?.widget.merge) {
+                j++;
+                const nextWidget = filteredWidgets[j];
+                if (nextWidget) {
+                    // For merged widgets, add width but account for padding adjustments
+                    // When merging with 'no-padding', don't count padding between widgets
+                    if (filteredWidgets[j - 1]?.widget.merge === 'no-padding') {
+                        totalWidth += nextWidget.plainLength;
+                    } else {
+                        totalWidth += nextWidget.plainLength + (paddingLength * 2);
+                    }
+                }
             }
+
+            const currentMax = maxWidths[alignmentPos];
+            if (currentMax === undefined) {
+                maxWidths[alignmentPos] = totalWidth;
+            } else {
+                maxWidths[alignmentPos] = Math.max(currentMax, totalWidth);
+            }
+
+            // Skip over merged widgets since we've already processed them
+            i = j;
+            alignmentPos++;
         }
     }
 
