@@ -43,8 +43,10 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
             value: 'npx'
         },
         {
-            label: bunxAvailable ? 'bunx - Bun Package Execute' : 'bunx - Bun Package Execute (not installed)',
-            value: 'bunx'
+            label: 'bunx - Bun Package Execute',
+            sublabel: bunxAvailable ? undefined : '(not installed)',
+            value: 'bunx',
+            disabled: !bunxAvailable
         }
     ];
 

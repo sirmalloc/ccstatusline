@@ -186,23 +186,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     }
 
     const lineItems = localLines.map((line, index) => ({
-        label: ({ isSelected }: { isSelected: boolean }) => {
-            const suffix = line.length
-                ? pluralize('widget', line.length, true)
-                : 'empty';
-
-            const title = `☰ Line ${index + 1}`;
-            const description = ` (${suffix})`;
-
-            return (
-                <Text>
-                    <Text>
-                        {title}
-                    </Text>
-                    <Text dimColor={!isSelected}>{description}</Text>
-                </Text>
-            );
-        },
+        label: `☰ Line ${index + 1}`,
+        sublabel: `(${line.length > 0 ? pluralize('widget', line.length, true) : 'empty'})`,
         value: index
     }));
 

@@ -12,7 +12,9 @@ import {
 } from 'react';
 
 interface ListItemType<V = string | number> {
-    label: string | React.ComponentType<{ isSelected: boolean }>;
+    label: string;
+    sublabel?: string;
+    disabled?: boolean;
     description?: string;
     value: V;
     props?: BoxProps;
@@ -43,7 +45,7 @@ export function List<V = string | number>({
         return items;
     }, [items, showBackButton]);
 
-    const selectableItems = _items.filter(item => item !== '-');
+    const selectableItems = _items.filter(item => item !== '-' && !item.disabled) as ListItemType<V>[];
     const selectedItem = selectableItems[selectedIndex];
     const actualIndex = _items.findIndex(item => item === selectedItem);
 
@@ -79,20 +81,25 @@ export function List<V = string | number>({
 
                 const isSelected = index === actualIndex;
 
-                const Label = item.label;
-
                 return (
                     <ListItem
                         key={index}
                         isSelected={isSelected}
                         color={color}
+                        disabled={item.disabled}
                         {...item.props}
                     >
-                        {typeof item.label === 'string' ? (
-                            item.label
-                        ) : (
-                            <Label isSelected={isSelected} />
-                        )}
+                        <Text>
+                            <Text>
+                                {item.label}
+                            </Text>
+                            {item.sublabel && (
+                                <Text dimColor={!isSelected}>
+                                    {' '}
+                                    {item.sublabel}
+                                </Text>
+                            )}
+                        </Text>
                     </ListItem>
                 );
             })}
@@ -111,17 +118,19 @@ export function List<V = string | number>({
 interface ListItemProps extends PropsWithChildren, BoxProps {
     isSelected: boolean;
     color?: ForegroundColorName;
+    disabled?: boolean;
 }
 
 export function ListItem({
     children,
     isSelected,
     color = 'green',
+    disabled,
     ...boxProps
 }: ListItemProps) {
     return (
         <Box {...boxProps}>
-            <Text color={isSelected ? color : undefined}>
+            <Text color={isSelected ? color : undefined} dimColor={disabled}>
                 <Text>{isSelected ? '▶  ' : '   '}</Text>
                 <Text>{children}</Text>
             </Text>
