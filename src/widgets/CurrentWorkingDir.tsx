@@ -58,14 +58,18 @@ export class CurrentWorkingDirWidget implements Widget {
         let displayPath = cwd;
 
         if (segments && segments > 0) {
-            const pathParts = cwd.split('/');
-            // Remove empty strings from splitting (e.g., leading slash creates empty first element)
+            // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
+            const useBackslash = cwd.includes('\\') && !cwd.includes('/');
+            const outSep = useBackslash ? '\\' : '/';
+
+            const pathParts = cwd.split(/[\\/]+/);
+            // Remove empty strings from splitting (e.g., leading slash or UNC leading separators)
             const filteredParts = pathParts.filter(part => part !== '');
 
             if (filteredParts.length > segments) {
-                // Take the last N segments
+                // Take the last N segments and join with the detected separator
                 const selectedSegments = filteredParts.slice(-segments);
-                displayPath = '.../' + selectedSegments.join('/');
+                displayPath = '...' + outSep + selectedSegments.join(outSep);
             }
         }
 
