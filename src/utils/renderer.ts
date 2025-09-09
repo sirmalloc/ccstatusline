@@ -705,7 +705,20 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
-            if (i > 0 && !preRenderedWidgets[i - 1]?.content)
+            // Check if there's any widget before this separator that actually rendered content
+            // Look backwards to find ANY widget that produced content
+            let hasContentBefore = false;
+            for (let j = i - 1; j >= 0; j--) {
+                const prevWidget = widgets[j];
+                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
+                    if (preRenderedWidgets[j]?.content) {
+                        hasContentBefore = true;
+                        break;
+                    }
+                    // Continue looking backwards even if this widget didn't render content
+                }
+            }
+            if (!hasContentBefore)
                 continue;
 
             const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
