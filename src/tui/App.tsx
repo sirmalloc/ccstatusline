@@ -228,19 +228,12 @@ export const App: React.FC = () => {
             <Box marginTop={1}>
                 {screen === 'main' && (
                     <MainMenu
-                        onSelect={(value) => {
+                        onSelect={(value, index) => {
                             // Only persist menu selection if not exiting
                             if (value !== 'save' && value !== 'exit') {
-                                const menuMap: Record<string, number> = {
-                                    lines: 0,
-                                    colors: 1,
-                                    powerline: 2,
-                                    terminalConfig: 3,
-                                    globalOverrides: 4,
-                                    install: 5
-                                };
-                                setMenuSelections({ ...menuSelections, main: menuMap[value] ?? 0 });
+                                setMenuSelections({ ...menuSelections, main: index });
                             }
+
                             void handleMainMenuSelect(value);
                         }}
                         isClaudeInstalled={isClaudeInstalled}
