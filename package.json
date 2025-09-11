@@ -17,12 +17,15 @@
     "example": "cat scripts/payload.example.json | bun start",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix",
-    "test": "bun vitest"
+    "test": "bun vitest",
+    "docs": "typedoc",
+    "docs:clean": "rm -rf docs"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "@stylistic/eslint-plugin": "^5.2.3",
     "@types/bun": "latest",
+    "@types/pluralize": "^0.0.33",
     "@types/react": "^19.1.10",
     "chalk": "^5.5.0",
     "eslint": "^9.33.0",
@@ -34,16 +37,16 @@
     "ink": "^6.2.0",
     "ink-gradient": "^3.0.0",
     "ink-select-input": "^6.2.0",
+    "pluralize": "^8.0.0",
     "react": "^19.1.1",
     "react-devtools-core": "^6.1.5",
     "strip-ansi": "^7.1.0",
     "tinyglobby": "^0.2.14",
+    "typedoc": "^0.28.12",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.1",
     "vitest": "^3.2.4",
-    "zod": "^4.0.17",
-    "pluralize": "^8.0.0",
-    "@types/pluralize": "^0.0.33"
+    "zod": "^4.0.17"
   },
   "keywords": [
     "claude",
