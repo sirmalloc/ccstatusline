@@ -35,6 +35,7 @@
 - [Features](#-features)
 - [Quick Start](#-quick-start)
 - [Usage](#-usage)
+- [API Documentation](#-api-documentation)
 - [Development](#️-development)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -288,6 +289,38 @@ Execute shell commands and display their output dynamically:
 ### ✂️ Smart Truncation
 
 When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
+
+---
+
+## 📖 API Documentation
+
+Complete API documentation is generated using TypeDoc and includes detailed information about:
+
+- **Core Types**: Configuration interfaces, widget definitions, and render contexts
+- **Widget System**: All available widgets and their customization options  
+- **Utility Functions**: Helper functions for rendering, configuration, and terminal handling
+- **Status Line Rendering**: Core rendering engine and formatting options
+
+### Generating Documentation
+
+To generate the API documentation locally:
+
+```bash
+# Generate documentation
+bun run docs
+
+# Clean generated documentation
+bun run docs:clean
+```
+
+The documentation will be generated in the `docs/` directory and can be viewed by opening `docs/index.html` in your web browser.
+
+### Documentation Structure
+
+- **Types**: Core TypeScript interfaces and type definitions
+- **Widgets**: Individual widget implementations and their APIs
+- **Utils**: Utility functions for configuration, rendering, and terminal operations
+- **Main Module**: Primary entry point and orchestration functions
 
 ---
 
