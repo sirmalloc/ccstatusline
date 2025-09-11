@@ -17,10 +17,10 @@ export class SessionClockWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
-        } else if (context.sessionDuration) {
-            return item.rawValue ? context.sessionDuration : `Session: ${context.sessionDuration}`;
         }
-        return null;
+
+        const duration = context.sessionDuration ?? '0m';
+        return item.rawValue ? duration : `Session: ${duration}`;
     }
 
     supportsRawValue(): boolean { return true; }
