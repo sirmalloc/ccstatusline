@@ -3,6 +3,7 @@ import {
     Text,
     useInput
 } from 'ink';
+import * as os from 'node:os';
 import React, { useState } from 'react';
 
 import type { RenderContext } from '../types/RenderContext';
@@ -21,9 +22,12 @@ export class CurrentWorkingDirWidget implements Widget {
     getDisplayName(): string { return 'Current Working Dir'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+        const fishStyle = item.metadata?.fishStyle === 'true';
         const modifiers: string[] = [];
 
-        if (segments && segments > 0) {
+        if (fishStyle) {
+            modifiers.push('fish-style');
+        } else if (segments && segments > 0) {
             modifiers.push(`segments: ${segments}`);
         }
 
@@ -33,18 +37,59 @@ export class CurrentWorkingDirWidget implements Widget {
         };
     }
 
+    private abbreviatePath(path: string): string {
+        const homeDir = os.homedir();
+        const useBackslash = path.includes('\\') && !path.includes('/');
+        const sep = useBackslash ? '\\' : '/';
+
+        // Replace home directory with ~
+        let normalizedPath = path;
+        if (path.startsWith(homeDir)) {
+            normalizedPath = '~' + path.slice(homeDir.length);
+        }
+
+        // Split path into parts
+        const parts = normalizedPath.split(/[\\/]+/).filter(part => part !== '');
+
+        // Keep first and last parts full, abbreviate middle parts
+        const abbreviated = parts.map((part, index) => {
+            if (index === 0 || index === parts.length - 1) {
+                return part;  // Keep full
+            }
+
+            // Hidden directories keep the dot
+            if (part.startsWith('.') && part.length > 1) {
+                return '.' + part[1];
+            }
+
+            return part[0];  // Only first letter for others
+        });
+
+        // Rebuild path
+        if (normalizedPath.startsWith('~')) {
+            return abbreviated.join(sep);
+        } else if (normalizedPath.startsWith('/')) {
+            return sep + abbreviated.join(sep);
+        } else {
+            return abbreviated.join(sep);
+        }
+    }
+
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+            const fishStyle = item.metadata?.fishStyle === 'true';
             let previewPath: string;
-            if (segments && segments > 0) {
+            if (fishStyle) {
+                previewPath = '~/D/P/my-project';
+            } else if (segments && segments > 0) {
                 if (segments === 1) {
                     previewPath = '.../project';
                 } else {
                     previewPath = '.../example/project';
                 }
             } else {
-                previewPath = '/Users/example/project';
+                previewPath = '/Users/example/Documents/Projects/my-project';
             }
             return item.rawValue ? previewPath : `cwd: ${previewPath}`;
         }
@@ -55,9 +100,12 @@ export class CurrentWorkingDirWidget implements Widget {
         }
 
         const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+        const fishStyle = item.metadata?.fishStyle === 'true';
         let displayPath = cwd;
 
-        if (segments && segments > 0) {
+        if (fishStyle) {
+            displayPath = this.abbreviatePath(cwd);
+        } else if (segments && segments > 0) {
             // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
             const useBackslash = cwd.includes('\\') && !cwd.includes('/');
             const outSep = useBackslash ? '\\' : '/';
@@ -78,7 +126,8 @@ export class CurrentWorkingDirWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 's', label: '(s)egments', action: 'edit-segments' }
+            { key: 's', label: '(s)egments', action: 'edit-segments' },
+            { key: 'f', label: '(f)ish style', action: 'toggle-fish-style' }
         ];
     }
 
@@ -92,9 +141,39 @@ export class CurrentWorkingDirWidget implements Widget {
 
 const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const [segmentsInput, setSegmentsInput] = useState(widget.metadata?.segments ?? '');
+    const currentFishStyle = widget.metadata?.fishStyle === 'true';
 
     useInput((input, key) => {
-        if (action === 'edit-segments') {
+        if (action === 'toggle-fish-style') {
+            if (input === 'f') {
+                // Toggle fish style and clear segments
+                const newFishStyle = !currentFishStyle;
+                if (newFishStyle) {
+                    // When enabling fish-style, clear segments
+                    const { segments, ...restMetadata } = widget.metadata ?? {};
+                    void segments;
+                    onComplete({
+                        ...widget,
+                        metadata: {
+                            ...restMetadata,
+                            fishStyle: 'true'
+                        }
+                    });
+                } else {
+                    // When disabling fish-style
+                    const { fishStyle, ...restMetadata } = widget.metadata ?? {};
+                    void fishStyle;
+                    onComplete({
+                        ...widget,
+                        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
+                    });
+                }
+            } else if (key.return) {
+                onComplete(widget);
+            } else if (key.escape) {
+                onCancel();
+            }
+        } else if (action === 'edit-segments') {
             if (key.return) {
                 const segments = parseInt(segmentsInput, 10);
                 if (!isNaN(segments) && segments > 0) {
@@ -124,7 +203,14 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
         }
     });
 
-    if (action === 'edit-segments') {
+    if (action === 'toggle-fish-style') {
+        return (
+            <Box flexDirection='column'>
+                <Text>Fish-style path abbreviation: {currentFishStyle ? 'ON' : 'OFF'}</Text>
+                <Text dimColor>Press 'f' to toggle, Enter to save, ESC to cancel</Text>
+            </Box>
+        );
+    } else if (action === 'edit-segments') {
         return (
             <Box flexDirection='column'>
                 <Box>
