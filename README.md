@@ -149,14 +149,14 @@ The interactive configuration tool provides a terminal UI where you can:
 
 ## 🪟 Windows Support
 
-ccstatusline works seamlessly on Windows with full feature compatibility across PowerShell, Command Prompt, and Windows Subsystem for Linux (WSL).
+ccstatusline works seamlessly on Windows with full feature compatibility across PowerShell (5.1+ and 7+), Command Prompt, and Windows Subsystem for Linux (WSL).
 
 ### Installation on Windows
 
 #### Option 1: Using Bun (Recommended)
 ```powershell
 # Install Bun for Windows
-powershell -c "irm bun.sh/install.ps1 | iex"
+irm bun.sh/install.ps1 | iex
 
 # Run ccstatusline
 bunx ccstatusline@latest
@@ -186,11 +186,13 @@ For optimal Powerline rendering on Windows:
 
 **PowerShell/Command Prompt**:
 ```powershell
-# Install Nerd Fonts via winget
-winget install "Nerd Fonts"
+# Install JetBrains Mono Nerd Font via winget
+winget install DEVCOM.JetBrainsMonoNerdFont
 
-# Or install specific font (e.g., JetBrains Mono)
-winget install JetBrainsMono.NerdFont
+# Alternative: Install base JetBrains Mono font
+winget install "JetBrains.JetBrainsMono"
+
+# Or download manually from: https://www.nerdfonts.com/font-downloads
 ```
 
 #### Path Handling
@@ -235,6 +237,16 @@ npx ccstatusline@latest
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
+**Issue**: Windows Defender blocking execution
+```powershell
+# If Windows Defender flags the binary:
+# 1. Open Windows Security
+# 2. Go to "Virus & threat protection"
+# 3. Add exclusion for the ccstatusline binary location
+# Or use temporary bypass (not recommended for production):
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\.bun\bin"
+```
+
 #### Windows Subsystem for Linux (WSL)
 ccstatusline works perfectly in WSL environments:
 
@@ -272,7 +284,7 @@ For the best experience, configure Windows Terminal with these recommended setti
 #### Claude Code Integration
 Configure ccstatusline in your Claude Code settings:
 
-**For Bun users** (`~/.claude/settings.json`):
+**For Bun users** (Windows: `%USERPROFILE%\.claude\settings.json`):
 ```json
 {
   "statusLine": "bunx ccstatusline@latest"
