@@ -46,6 +46,10 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.14 - Add remaining mode toggle to Context Percentage widgets
+
+- **Remaining Mode** - You can now toggle the Context Percentage widgets between usage percentage and remaining percentage when configuring them in the TUI by pressing the 'l' key.
+
 ### v2.0.12 - Custom Text widget now supports emojis
 
 - **👾 Emoji Support** - You can now paste emoji into the custom text widget. You can also turn on the merge option to get emoji labels for your widgets like this:
