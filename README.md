@@ -46,6 +46,8 @@
 
 ## 🆕 Recent Updates
 
+### v2.0.16 - Add fish style path abbreviation toggle to Current Working Directory widget
+
 ### v2.0.15 - Block Timer calculation fixes
 
 - Fix miscalculation in the block timer
