@@ -37,49 +37,45 @@ export class CurrentWorkingDirWidget implements Widget {
         };
     }
 
-    private abbreviatePath(path: string): string {
-        const homeDir = os.homedir();
-        const useBackslash = path.includes('\\') && !path.includes('/');
-        const sep = useBackslash ? '\\' : '/';
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === 'toggle-fish-style') {
+            const currentFishStyle = item.metadata?.fishStyle === 'true';
+            const newFishStyle = !currentFishStyle;
 
-        // Replace home directory with ~
-        let normalizedPath = path;
-        if (path.startsWith(homeDir)) {
-            normalizedPath = '~' + path.slice(homeDir.length);
+            // Toggle fish style and clear segments
+            if (newFishStyle) {
+                // When enabling fish-style, clear segments
+                const { segments, ...restMetadata } = item.metadata ?? {};
+                void segments;
+                return {
+                    ...item,
+                    metadata: {
+                        ...restMetadata,
+                        fishStyle: 'true'
+                    }
+                };
+            } else {
+                // When disabling fish-style
+                const { fishStyle, ...restMetadata } = item.metadata ?? {};
+                void fishStyle;
+
+                return {
+                    ...item,
+                    metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
+                };
+            }
         }
 
-        // Split path into parts
-        const parts = normalizedPath.split(/[\\/]+/).filter(part => part !== '');
-
-        // Keep first and last parts full, abbreviate middle parts
-        const abbreviated = parts.map((part, index) => {
-            if (index === 0 || index === parts.length - 1) {
-                return part;  // Keep full
-            }
-
-            // Hidden directories keep the dot
-            if (part.startsWith('.') && part.length > 1) {
-                return '.' + part[1];
-            }
-
-            return part[0];  // Only first letter for others
-        });
-
-        // Rebuild path
-        if (normalizedPath.startsWith('~')) {
-            return abbreviated.join(sep);
-        } else if (normalizedPath.startsWith('/')) {
-            return sep + abbreviated.join(sep);
-        } else {
-            return abbreviated.join(sep);
-        }
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+        const fishStyle = item.metadata?.fishStyle === 'true';
+
         if (context.isPreview) {
-            const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
-            const fishStyle = item.metadata?.fishStyle === 'true';
             let previewPath: string;
+
             if (fishStyle) {
                 previewPath = '~/D/P/my-project';
             } else if (segments && segments > 0) {
@@ -91,16 +87,14 @@ export class CurrentWorkingDirWidget implements Widget {
             } else {
                 previewPath = '/Users/example/Documents/Projects/my-project';
             }
+
             return item.rawValue ? previewPath : `cwd: ${previewPath}`;
         }
 
         const cwd = context.data?.cwd;
-        if (!cwd) {
+        if (!cwd)
             return null;
-        }
 
-        const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
-        const fishStyle = item.metadata?.fishStyle === 'true';
         let displayPath = cwd;
 
         if (fishStyle) {
@@ -109,8 +103,8 @@ export class CurrentWorkingDirWidget implements Widget {
             // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
             const useBackslash = cwd.includes('\\') && !cwd.includes('/');
             const outSep = useBackslash ? '\\' : '/';
-
             const pathParts = cwd.split(/[\\/]+/);
+
             // Remove empty strings from splitting (e.g., leading slash or UNC leading separators)
             const filteredParts = pathParts.filter(part => part !== '');
 
@@ -137,43 +131,51 @@ export class CurrentWorkingDirWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+
+    private abbreviatePath(path: string): string {
+        const homeDir = os.homedir();
+        const useBackslash = path.includes('\\') && !path.includes('/');
+        const sep = useBackslash ? '\\' : '/';
+
+        // Replace home directory with ~
+        let normalizedPath = path;
+        if (path.startsWith(homeDir)) {
+            normalizedPath = '~' + path.slice(homeDir.length);
+        }
+
+        // Split path into parts
+        const parts = normalizedPath.split(/[\\/]+/).filter(part => part !== '');
+
+        // Keep first and last parts full, abbreviate middle parts
+        const abbreviated = parts.map((part, index) => {
+            if (index === 0 || index === parts.length - 1) {
+                return part;  // Keep full
+            }
+
+            // Hidden directories keep the dot
+            if (part.startsWith('.') && part.length > 1) {
+                return '.' + (part[1] ?? '');
+            }
+
+            return part[0];  // Only first letter for others
+        });
+
+        // Rebuild path
+        if (normalizedPath.startsWith('~')) {
+            return abbreviated.join(sep);
+        } else if (normalizedPath.startsWith('/')) {
+            return sep + abbreviated.join(sep);
+        } else {
+            return abbreviated.join(sep);
+        }
+    }
 }
 
 const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const [segmentsInput, setSegmentsInput] = useState(widget.metadata?.segments ?? '');
-    const currentFishStyle = widget.metadata?.fishStyle === 'true';
 
     useInput((input, key) => {
-        if (action === 'toggle-fish-style') {
-            if (input === 'f') {
-                // Toggle fish style and clear segments
-                const newFishStyle = !currentFishStyle;
-                if (newFishStyle) {
-                    // When enabling fish-style, clear segments
-                    const { segments, ...restMetadata } = widget.metadata ?? {};
-                    void segments;
-                    onComplete({
-                        ...widget,
-                        metadata: {
-                            ...restMetadata,
-                            fishStyle: 'true'
-                        }
-                    });
-                } else {
-                    // When disabling fish-style
-                    const { fishStyle, ...restMetadata } = widget.metadata ?? {};
-                    void fishStyle;
-                    onComplete({
-                        ...widget,
-                        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-                    });
-                }
-            } else if (key.return) {
-                onComplete(widget);
-            } else if (key.escape) {
-                onCancel();
-            }
-        } else if (action === 'edit-segments') {
+        if (action === 'edit-segments') {
             if (key.return) {
                 const segments = parseInt(segmentsInput, 10);
                 if (!isNaN(segments) && segments > 0) {
@@ -203,14 +205,7 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
         }
     });
 
-    if (action === 'toggle-fish-style') {
-        return (
-            <Box flexDirection='column'>
-                <Text>Fish-style path abbreviation: {currentFishStyle ? 'ON' : 'OFF'}</Text>
-                <Text dimColor>Press 'f' to toggle, Enter to save, ESC to cancel</Text>
-            </Box>
-        );
-    } else if (action === 'edit-segments') {
+    if (action === 'edit-segments') {
         return (
             <Box flexDirection='column'>
                 <Box>
