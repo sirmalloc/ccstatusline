@@ -1,6 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -8,20 +9,54 @@ import type {
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
-    getDescription(): string { return 'Shows percentage of context window used (of 200k tokens)'; }
+    getDescription(): string { return 'Shows percentage of context window used or remaining (of 200k tokens)'; }
     getDisplayName(): string { return 'Context %'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+        const isInverse = item.metadata?.inverse === 'true';
+        const modifiers: string[] = [];
+
+        if (isInverse) {
+            modifiers.push('remaining');
+        }
+
+        return {
+            displayText: this.getDisplayName(),
+            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+        };
+    }
+
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === 'toggle-inverse') {
+            const currentState = item.metadata?.inverse === 'true';
+            return {
+                ...item,
+                metadata: {
+                    ...item.metadata,
+                    inverse: (!currentState).toString()
+                }
+            };
+        }
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const isInverse = item.metadata?.inverse === 'true';
+
         if (context.isPreview) {
-            return item.rawValue ? '9.3%' : 'Ctx: 9.3%';
+            const previewValue = isInverse ? '90.7%' : '9.3%';
+            return item.rawValue ? previewValue : `Ctx: ${previewValue}`;
         } else if (context.tokenMetrics) {
-            const percentage = Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100);
-            return item.rawValue ? `${percentage.toFixed(1)}%` : `Ctx: ${percentage.toFixed(1)}%`;
+            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100);
+            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
         }
         return null;
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [
+            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' }
+        ];
     }
 
     supportsRawValue(): boolean { return true; }

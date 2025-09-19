@@ -61,7 +61,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     // Get description for selected item
     const getDescription = (value: string): string => {
         const descriptions: Record<string, string> = {
-            lines: 'Configure up to 3 status lines with various widgets like model info, git status, and token usage',
+            lines: 'Configure any number of status lines with various widgets like model info, git status, and token usage',
             colors: 'Customize colors for each widget including foreground, background, and bold styling',
             powerline: 'Install Powerline fonts for enhanced visual separators and symbols in your status line',
             globalOverrides: 'Set global padding, separators, and color overrides that apply to all widgets',

@@ -320,13 +320,32 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
 
         for (const line of lines) {
             try {
-                const json = JSON.parse(line) as { timestamp?: string };
-                if (json.timestamp && typeof json.timestamp === 'string') {
-                    const date = new Date(json.timestamp);
-                    if (!Number.isNaN(date.getTime())) {
-                        timestamps.push(date);
-                    }
-                }
+                const json = JSON.parse(line) as {
+                    timestamp?: string;
+                    isSidechain?: boolean;
+                    message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+                };
+
+                // Only treat entries with real token usage as block activity
+                const usage = json.message?.usage;
+                if (!usage)
+                    continue;
+
+                const hasInputTokens = typeof usage.input_tokens === 'number';
+                const hasOutputTokens = typeof usage.output_tokens === 'number';
+                if (!hasInputTokens || !hasOutputTokens)
+                    continue;
+
+                if (json.isSidechain === true)
+                    continue;
+
+                const timestamp = json.timestamp;
+                if (typeof timestamp !== 'string')
+                    continue;
+
+                const date = new Date(timestamp);
+                if (!Number.isNaN(date.getTime()))
+                    timestamps.push(date);
             } catch {
                 // Skip invalid JSON lines
                 continue;
