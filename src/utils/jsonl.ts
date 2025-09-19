@@ -183,6 +183,7 @@ function findMostRecentBlockStartTime(
     sessionDurationHours = 5
 ): BlockMetrics | null {
     const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
+    const sessionGapThresholdMs = Math.min(sessionDurationMs, 60 * 60 * 1000); // treat >=1h inactivity as boundary
     const now = new Date();
 
     // Step 1: Find all JSONL files with their modification times
@@ -256,7 +257,7 @@ function findMostRecentBlockStartTime(
 
             const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
 
-            if (gap >= sessionDurationMs) {
+            if (gap >= sessionGapThresholdMs) {
                 // Found a true session boundary
                 foundSessionGap = true;
                 break;
