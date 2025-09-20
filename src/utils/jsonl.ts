@@ -183,7 +183,7 @@ function findMostRecentBlockStartTime(
     sessionDurationHours = 5
 ): BlockMetrics | null {
     const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
-    const sessionGapThresholdMs = Math.min(sessionDurationMs, 60 * 60 * 1000); // treat >=1h inactivity as boundary
+    const hourMs = 60 * 60 * 1000;
     const now = new Date();
 
     // Step 1: Find all JSONL files with their modification times
@@ -209,105 +209,73 @@ function findMostRecentBlockStartTime(
         48   // Maximum lookback for marathon sessions
     ];
 
-    let timestamps: Date[] = [];
-    let mostRecentTimestamp: Date | null = null;
-    let continuousWorkStart: Date | null = null;
-    let foundSessionGap = false;
-
     for (const lookbackHours of lookbackChunks) {
         const cutoffTime = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000);
-        timestamps = [];
+        let timestamps: Date[] = [];
 
-        // Collect timestamps for this lookback period
         for (const { file, mtime } of filesWithStats) {
             if (mtime.getTime() < cutoffTime.getTime()) {
                 break;
             }
             const fileTimestamps = getAllTimestampsFromFile(file);
-            timestamps.push(...fileTimestamps);
+            for (const timestamp of fileTimestamps) {
+                if (timestamp.getTime() >= cutoffTime.getTime())
+                    timestamps.push(timestamp);
+            }
         }
 
         if (timestamps.length === 0) {
             continue; // Try next chunk
         }
 
-        // Sort timestamps (most recent first)
-        timestamps.sort((a, b) => b.getTime() - a.getTime());
+        // Sort timestamps chronologically
+        timestamps.sort((a, b) => a.getTime() - b.getTime());
 
-        // Get most recent timestamp (only set once)
-        if (!mostRecentTimestamp && timestamps[0]) {
-            mostRecentTimestamp = timestamps[0];
+        const mostRecentTimestamp = timestamps[timestamps.length - 1];
+        if (!mostRecentTimestamp)
+            continue;
 
-            // Check if the most recent activity is within the current session period
-            const timeSinceLastActivity = now.getTime() - mostRecentTimestamp.getTime();
-            if (timeSinceLastActivity > sessionDurationMs) {
-                // No activity within the current session period
-                return null;
-            }
+        const timeSinceLastActivity = now.getTime() - mostRecentTimestamp.getTime();
+        if (timeSinceLastActivity > sessionDurationMs) {
+            // Most recent activity is outside the active window
+            return null;
         }
 
-        // Look for a session gap in this chunk
-        continuousWorkStart = mostRecentTimestamp;
-        for (let i = 1; i < timestamps.length; i++) {
-            const currentTimestamp = timestamps[i];
-            const previousTimestamp = timestamps[i - 1];
+        const buckets = Array.from(new Set(timestamps.map(timestamp => floorToHour(timestamp).getTime())))
+            .sort((a, b) => a - b)
+            .map(ms => new Date(ms));
 
-            if (!currentTimestamp || !previousTimestamp)
-                continue;
+        const lastBucket = buckets[buckets.length - 1];
+        if (!lastBucket)
+            continue;
 
-            const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
-
-            if (gap >= sessionGapThresholdMs) {
-                // Found a true session boundary
-                foundSessionGap = true;
+        let blockStart = lastBucket;
+        for (let i = buckets.length - 2; i >= 0; i--) {
+            const bucket = buckets[i];
+            const delta = lastBucket.getTime() - bucket.getTime();
+            if (delta < sessionDurationMs) {
+                blockStart = bucket;
+            } else {
                 break;
             }
-
-            continuousWorkStart = currentTimestamp;
         }
 
-        // If we found a gap, we're done
-        if (foundSessionGap) {
-            break;
+        const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
+        if (now.getTime() > blockEnd.getTime()) {
+            return null;
         }
 
-        // If this was our last chunk, use what we have
-        if (lookbackHours === lookbackChunks[lookbackChunks.length - 1]) {
-            break;
-        }
+        const activityInThisBlock = mostRecentTimestamp.getTime() >= blockStart.getTime() && mostRecentTimestamp.getTime() <= now.getTime();
+        if (!activityInThisBlock)
+            return null;
+
+        return {
+            startTime: blockStart,
+            lastActivity: mostRecentTimestamp
+        };
     }
 
-    if (!mostRecentTimestamp || !continuousWorkStart) {
-        return null;
-    }
-
-    // Floor the continuous work start to the hour
-    const flooredWorkStart = floorToHour(continuousWorkStart);
-
-    // Calculate how long we've been working from the floored start time
-    const totalWorkTime = now.getTime() - flooredWorkStart.getTime();
-
-    // If we've been working for more than one session, find the current block
-    let blockStart = flooredWorkStart;
-    if (totalWorkTime > sessionDurationMs) {
-        // Calculate how many complete 5-hour blocks have passed
-        const completedBlocks = Math.floor(totalWorkTime / sessionDurationMs);
-        // The current block started after the completed blocks
-        blockStart = new Date(flooredWorkStart.getTime() + (completedBlocks * sessionDurationMs));
-    }
-
-    const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
-    const inBlockWindow = now.getTime() >= blockStart.getTime() && now.getTime() <= blockEnd.getTime();
-    const activityInThisBlock = mostRecentTimestamp.getTime() >= blockStart.getTime() && mostRecentTimestamp.getTime() <= now.getTime();
-
-    const isActive = inBlockWindow && activityInThisBlock;
-    if (!isActive)
-        return null;
-
-    return {
-        startTime: blockStart,
-        lastActivity: mostRecentTimestamp
-    };
+    return null;
 }
 
 /**
