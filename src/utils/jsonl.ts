@@ -183,7 +183,6 @@ function findMostRecentBlockStartTime(
     sessionDurationHours = 5
 ): BlockMetrics | null {
     const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
-    const sessionGapThresholdMs = Math.min(sessionDurationMs, 60 * 60 * 1000); // treat >=1h inactivity as boundary
     const now = new Date();
 
     // Step 1: Find all JSONL files with their modification times
@@ -257,7 +256,7 @@ function findMostRecentBlockStartTime(
 
             const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
 
-            if (gap >= sessionGapThresholdMs) {
+            if (gap >= sessionDurationMs) {
                 // Found a true session boundary
                 foundSessionGap = true;
                 break;
@@ -281,33 +280,43 @@ function findMostRecentBlockStartTime(
         return null;
     }
 
-    // Floor the continuous work start to the hour
-    const flooredWorkStart = floorToHour(continuousWorkStart);
+    // Build actual blocks from timestamps going forward
+    const blocks: { start: Date; end: Date }[] = [];
+    const sortedTimestamps = timestamps.slice().sort((a, b) => a.getTime() - b.getTime());
 
-    // Calculate how long we've been working from the floored start time
-    const totalWorkTime = now.getTime() - flooredWorkStart.getTime();
+    let currentBlockStart: Date | null = null;
+    let currentBlockEnd: Date | null = null;
 
-    // If we've been working for more than one session, find the current block
-    let blockStart = flooredWorkStart;
-    if (totalWorkTime > sessionDurationMs) {
-        // Calculate how many complete 5-hour blocks have passed
-        const completedBlocks = Math.floor(totalWorkTime / sessionDurationMs);
-        // The current block started after the completed blocks
-        blockStart = new Date(flooredWorkStart.getTime() + (completedBlocks * sessionDurationMs));
+    for (const timestamp of sortedTimestamps) {
+        if (timestamp.getTime() < continuousWorkStart.getTime())
+            continue;
+
+        if (!currentBlockStart || (currentBlockEnd && timestamp.getTime() > currentBlockEnd.getTime())) {
+            // Start new block
+            currentBlockStart = floorToHour(timestamp);
+            currentBlockEnd = new Date(currentBlockStart.getTime() + sessionDurationMs);
+            blocks.push({ start: currentBlockStart, end: currentBlockEnd });
+        }
     }
 
-    const blockEnd = new Date(blockStart.getTime() + sessionDurationMs);
-    const inBlockWindow = now.getTime() >= blockStart.getTime() && now.getTime() <= blockEnd.getTime();
-    const activityInThisBlock = mostRecentTimestamp.getTime() >= blockStart.getTime() && mostRecentTimestamp.getTime() <= now.getTime();
+    // Find current block
+    for (const block of blocks) {
+        if (now.getTime() >= block.start.getTime() && now.getTime() <= block.end.getTime()) {
+            // Verify we have activity in this block
+            const hasActivity = timestamps.some(t => t.getTime() >= block.start.getTime()
+                && t.getTime() <= block.end.getTime()
+            );
 
-    const isActive = inBlockWindow && activityInThisBlock;
-    if (!isActive)
-        return null;
+            if (hasActivity) {
+                return {
+                    startTime: block.start,
+                    lastActivity: mostRecentTimestamp
+                };
+            }
+        }
+    }
 
-    return {
-        startTime: blockStart,
-        lastActivity: mostRecentTimestamp
-    };
+    return null;
 }
 
 /**
