@@ -114,7 +114,8 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                     cachedTokens += data.message.usage.cache_creation_input_tokens ?? 0;
 
                     // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
-                    if (data.isSidechain !== true && data.timestamp) {
+                    // Also skip API error messages (synthetic messages with 0 tokens)
+                    if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
                         const entryTime = new Date(data.timestamp);
                         if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
                             mostRecentTimestamp = entryTime;

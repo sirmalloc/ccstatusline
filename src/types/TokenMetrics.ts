@@ -9,6 +9,7 @@ export interface TranscriptLine {
     message?: { usage?: TokenUsage };
     isSidechain?: boolean;
     timestamp?: string;
+    isApiErrorMessage?: boolean;
 }
 
 export interface TokenMetrics {
