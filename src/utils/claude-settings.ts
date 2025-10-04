@@ -43,7 +43,9 @@ export async function isInstalled(): Promise<boolean> {
 
 export function isBunxAvailable(): boolean {
     try {
-        execSync('which bunx', { stdio: 'ignore' });
+        // Use platform-appropriate command to check for bunx availability
+        const command = process.platform === 'win32' ? 'where bunx' : 'which bunx';
+        execSync(command, { stdio: 'ignore' });
         return true;
     } catch {
         return false;
