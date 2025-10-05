@@ -5,6 +5,8 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
+import { getClaudeSettingsPath } from '../../utils/claude-settings';
+
 export interface InstallMenuProps {
     bunxAvailable: boolean;
     existingStatusLine: string | null;
@@ -95,7 +97,9 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
 
             <Box marginTop={2}>
                 <Text dimColor>
-                    The selected command will be written to ~/.claude/settings.json
+                    The selected command will be written to
+                    {' '}
+                    {getClaudeSettingsPath()}
                 </Text>
             </Box>
 
