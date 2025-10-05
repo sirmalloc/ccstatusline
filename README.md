@@ -125,6 +125,7 @@
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
 - **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, background)
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
+- **🔧 Flexible Configuration** - Supports custom Claude Code config directory via `CLAUDE_CONFIG_DIR` environment variable
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
 - **⚡ Zero Config** - Sensible defaults that work out of the box
 
@@ -154,6 +155,15 @@ The interactive configuration tool provides a terminal UI where you can:
 - Preview your status line in real-time
 
 > 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
+
+> 🔧 **Custom Claude Config:** If your Claude Code configuration is in a non-standard location, set the `CLAUDE_CONFIG_DIR` environment variable:
+> ```bash
+> # Linux/macOS
+> export CLAUDE_CONFIG_DIR=/custom/path/to/.claude
+> 
+> # Windows PowerShell
+> $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
+> ```
 
 ---
 
@@ -294,7 +304,11 @@ For the best experience, configure Windows Terminal with these recommended setti
 #### Claude Code Integration
 Configure ccstatusline in your Claude Code settings:
 
-**For Bun users** (Windows: `%USERPROFILE%\.claude\settings.json`):
+**Settings Location:**
+- Default: `~/.claude/settings.json` (Windows: `%USERPROFILE%\.claude\settings.json`)
+- Custom: Set `CLAUDE_CONFIG_DIR` environment variable to use a different directory
+
+**For Bun users**:
 ```json
 {
   "statusLine": "bunx ccstatusline@latest"
@@ -307,6 +321,8 @@ Configure ccstatusline in your Claude Code settings:
   "statusLine": "npx ccstatusline@latest"
 }
 ```
+
+> 💡 **Custom Config Directory:** If you use a non-standard Claude Code configuration directory, set the `CLAUDE_CONFIG_DIR` environment variable before running ccstatusline. The tool will automatically detect and use your custom location.
 
 ### Performance on Windows
 
@@ -561,7 +577,7 @@ ccstatusline/
 │   │   ├── renderer.ts         # Core rendering logic
 │   │   ├── powerline.ts        # Powerline font utilities
 │   │   ├── colors.ts           # Color definitions
-│   │   └── claude-settings.ts  # Claude Code integration
+│   │   └── claude-settings.ts  # Claude Code integration (supports CLAUDE_CONFIG_DIR)
 │   └── types/                  # TypeScript type definitions
 │       ├── Settings.ts
 │       ├── Widget.ts
