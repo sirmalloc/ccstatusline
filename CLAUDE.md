@@ -57,6 +57,10 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
   - Manages flex separator expansion
 - **powerline.ts**: Powerline font detection and installation
 - **claude-settings.ts**: Integration with Claude Code settings.json
+  - Respects `CLAUDE_CONFIG_DIR` environment variable with fallback to `~/.claude`
+  - Provides installation command constants (NPM, BUNX, self-managed)
+  - Detects installation status and manages settings.json updates
+  - Validates config directory paths with proper error handling
 - **colors.ts**: Color definitions and ANSI code mapping
 
 ### Widgets (src/widgets/)
