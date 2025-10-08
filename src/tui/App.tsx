@@ -212,7 +212,8 @@ export const App: React.FC = () => {
             handleInstallUninstall();
             break;
         case 'save':
-            await saveSettings(settings);
+        case 'saveLocally':
+            await saveSettings(settings, value === 'saveLocally' ? 'project' : 'global');
             setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
             setHasChanges(false);
             exit();
@@ -268,7 +269,7 @@ export const App: React.FC = () => {
                     <MainMenu
                         onSelect={(value) => {
                             // Only persist menu selection if not exiting
-                            if (value !== 'save' && value !== 'exit') {
+                            if (value !== 'save' && value !== 'exit' && value !== 'saveLocally') {
                                 const menuMap: Record<string, number> = {
                                     lines: 0,
                                     colors: 1,
