@@ -73,10 +73,10 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     const powerlineEnabled = settings ? settings.powerline.enabled : false;
     const powerlineTheme = settings ? settings.powerline.theme : undefined;
     const isThemeManaged
-    = blockIfPowerlineActive
-        && powerlineEnabled
-        && powerlineTheme
-        && powerlineTheme !== 'custom';
+        = blockIfPowerlineActive
+            && powerlineEnabled
+            && powerlineTheme
+            && powerlineTheme !== 'custom';
 
     // Handle keyboard input
     useInput((input, key) => {
@@ -153,9 +153,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
     if (showDeleteDialog && selectedLine) {
         const suffix
-      = selectedLine.length > 0
-          ? pluralize('widget', selectedLine.length, true)
-          : 'empty';
+            = selectedLine.length > 0
+                ? pluralize('widget', selectedLine.length, true)
+                : 'empty';
 
         return (
             <Box flexDirection='column'>

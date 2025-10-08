@@ -8,6 +8,7 @@ import {
 } from 'ink';
 import Gradient from 'ink-gradient';
 import React, {
+    useCallback,
     useEffect,
     useState
 } from 'react';
@@ -15,6 +16,8 @@ import React, {
 import type { Settings } from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
 import {
+    CCSTATUSLINE_COMMANDS,
+    getClaudeSettingsPath,
     getExistingStatusLine,
     installStatusLine,
     isBunxAvailable,
@@ -129,6 +132,41 @@ export const App: React.FC = () => {
         }
     });
 
+    const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean) => {
+        void getExistingStatusLine().then((existing) => {
+            const isAlreadyInstalled = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED].includes(existing ?? '');
+            let message: string;
+
+            if (existing && !isAlreadyInstalled) {
+                message = `This will modify ${getClaudeSettingsPath()}\n\nA status line is already configured: "${existing}"\nReplace it with ${command}?`;
+            } else if (isAlreadyInstalled) {
+                message = `ccstatusline is already installed in ${getClaudeSettingsPath()}\nUpdate it with ${command}?`;
+            } else {
+                message = `This will modify ${getClaudeSettingsPath()} to add ccstatusline with ${displayName}.\nContinue?`;
+            }
+
+            setConfirmDialog({
+                message,
+                action: async () => {
+                    await installStatusLine(useBunx);
+                    setIsClaudeInstalled(true);
+                    setExistingStatusLine(command);
+                    setScreen('main');
+                    setConfirmDialog(null);
+                }
+            });
+            setScreen('confirm');
+        });
+    }, []);
+
+    const handleNpxInstall = useCallback(() => {
+        handleInstallSelection(CCSTATUSLINE_COMMANDS.NPM, 'npx', false);
+    }, [handleInstallSelection]);
+
+    const handleBunxInstall = useCallback(() => {
+        handleInstallSelection(CCSTATUSLINE_COMMANDS.BUNX, 'bunx', true);
+    }, [handleInstallSelection]);
+
     if (!settings) {
         return <Text>Loading settings...</Text>;
     }
@@ -137,7 +175,7 @@ export const App: React.FC = () => {
         if (isClaudeInstalled) {
             // Uninstall
             setConfirmDialog({
-                message: 'This will remove ccstatusline from ~/.claude/settings.json. Continue?',
+                message: `This will remove ccstatusline from ${getClaudeSettingsPath()}. Continue?`,
                 action: async () => {
                     await uninstallStatusLine();
                     setIsClaudeInstalled(false);
@@ -376,58 +414,8 @@ export const App: React.FC = () => {
                     <InstallMenu
                         bunxAvailable={isBunxAvailable()}
                         existingStatusLine={existingStatusLine}
-                        onSelectNpx={() => {
-                            void getExistingStatusLine().then((existing) => {
-                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
-                                let message: string;
-
-                                if (existing && !isAlreadyInstalled) {
-                                    message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
-                                } else if (isAlreadyInstalled) {
-                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with npx -y ccstatusline@latest?';
-                                } else {
-                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with npx.\nContinue?';
-                                }
-
-                                setConfirmDialog({
-                                    message,
-                                    action: async () => {
-                                        await installStatusLine(false);
-                                        setIsClaudeInstalled(true);
-                                        setExistingStatusLine('npx -y ccstatusline@latest');
-                                        setScreen('main');
-                                        setConfirmDialog(null);
-                                    }
-                                });
-                                setScreen('confirm');
-                            });
-                        }}
-                        onSelectBunx={() => {
-                            void getExistingStatusLine().then((existing) => {
-                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
-                                let message: string;
-
-                                if (existing && !isAlreadyInstalled) {
-                                    message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with bunx -y ccstatusline@latest?`;
-                                } else if (isAlreadyInstalled) {
-                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with bunx -y ccstatusline@latest?';
-                                } else {
-                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with bunx.\nContinue?';
-                                }
-
-                                setConfirmDialog({
-                                    message,
-                                    action: async () => {
-                                        await installStatusLine(true);
-                                        setIsClaudeInstalled(true);
-                                        setExistingStatusLine('bunx -y ccstatusline@latest');
-                                        setScreen('main');
-                                        setConfirmDialog(null);
-                                    }
-                                });
-                                setScreen('confirm');
-                            });
-                        }}
+                        onSelectNpx={handleNpxInstall}
+                        onSelectBunx={handleBunxInstall}
                         onCancel={() => {
                             setScreen('main');
                         }}
