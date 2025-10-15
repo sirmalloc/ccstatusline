@@ -59,6 +59,7 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Set global chalk level based on settings
     chalk.level = settings.colorLevel;
+
     // Update color map after setting chalk level
     updateColorMap();
 
@@ -75,16 +76,19 @@ async function renderMultipleLines(data: StatusJSON) {
     const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
 
     let tokenMetrics: TokenMetrics | null = null;
-    if (hasTokenItems && data.transcript_path)
+    if (hasTokenItems && data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
+    }
 
     let sessionDuration: string | null = null;
-    if (hasSessionClock && data.transcript_path)
+    if (hasSessionClock && data.transcript_path) {
         sessionDuration = await getSessionDuration(data.transcript_path);
+    }
 
     let blockMetrics: BlockMetrics | null = null;
-    if (hasBlockTimer && data.transcript_path)
-        blockMetrics = getBlockMetrics(data.transcript_path);
+    if (hasBlockTimer) {
+        blockMetrics = getBlockMetrics();
+    }
 
     // Create render context
     const context: RenderContext = {

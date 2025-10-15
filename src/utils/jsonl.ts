@@ -9,6 +9,8 @@ import type {
     TranscriptLine
 } from '../types';
 
+import { getClaudeConfigDir } from './claude-settings';
+
 // Ensure fs.promises compatibility for older Node versions
 const readFile = promisify(fs.readFile);
 const readFileSync = fs.readFileSync;
@@ -147,51 +149,14 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 /**
  * Gets block metrics for the current 5-hour block from JSONL files
  */
-export function getBlockMetrics(transcriptPath: string | undefined): BlockMetrics | null {
-    if (!transcriptPath || typeof transcriptPath !== 'string') {
-        return null;
-    }
+export function getBlockMetrics(): BlockMetrics | null {
+    const claudeDir: string | null = getClaudeConfigDir();
 
-    let claudePath: string | null = null;
-
-    // On Windows, always use the user's home directory .claude folder
-    if (process.platform === 'win32') {
-        const homeDir = process.env.USERPROFILE ?? process.env.HOME;
-        if (homeDir) {
-            claudePath = path.join(homeDir, '.claude');
-            // Verify the .claude folder exists
-            if (!fs.existsSync(claudePath)) {
-                return null;
-            }
-        }
-    } else {
-        // On other platforms, walk up the directory tree to find .claude folder
-        let currentPath = path.dirname(transcriptPath);
-        const visitedPaths = new Set<string>();
-
-        while (currentPath && !visitedPaths.has(currentPath)) {
-            visitedPaths.add(currentPath);
-
-            const baseName = path.basename(currentPath);
-            if (baseName === '.claude') {
-                claudePath = currentPath;
-                break;
-            }
-
-            const parentPath = path.dirname(currentPath);
-            // Stop if we've reached the root (parent is same as current)
-            if (parentPath === currentPath) {
-                break;
-            }
-            currentPath = parentPath;
-        }
-    }
-
-    if (!claudePath)
+    if (!claudeDir)
         return null;
 
     try {
-        return findMostRecentBlockStartTime(claudePath);
+        return findMostRecentBlockStartTime(claudeDir);
     } catch {
         return null;
     }
