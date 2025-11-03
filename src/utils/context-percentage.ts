@@ -1,4 +1,5 @@
 import type { RenderContext } from '../types';
+
 import { getContextConfig } from './model-context';
 
 /**

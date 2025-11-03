@@ -3,9 +3,9 @@ import {
     expect,
     it
 } from 'vitest';
-import { calculateContextPercentage } from '../context-percentage';
 
 import type { RenderContext } from '../../types';
+import { calculateContextPercentage } from '../context-percentage';
 
 describe('calculateContextPercentage', () => {
     describe('Sonnet 4.5 with 1M context window', () => {
@@ -60,9 +60,7 @@ describe('calculateContextPercentage', () => {
         });
 
         it('should return 0 when no token metrics', () => {
-            const context: RenderContext = {
-                data: { model: { id: 'claude-3-5-sonnet-20241022' } }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-3-5-sonnet-20241022' } } };
 
             const percentage = calculateContextPercentage(context);
             expect(percentage).toBe(0);

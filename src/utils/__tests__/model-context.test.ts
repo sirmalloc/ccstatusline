@@ -3,6 +3,7 @@ import {
     expect,
     it
 } from 'vitest';
+
 import { getContextConfig } from '../model-context';
 
 describe('getContextConfig', () => {
