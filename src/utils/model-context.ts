@@ -3,7 +3,7 @@ interface ModelContextConfig {
     usableTokens: number;
 }
 
-function getContextConfig(modelId?: string): ModelContextConfig {
+export function getContextConfig(modelId?: string): ModelContextConfig {
     // Default to 200k for older models
     const defaultConfig = {
         maxTokens: 200000,
@@ -14,7 +14,7 @@ function getContextConfig(modelId?: string): ModelContextConfig {
         return defaultConfig;
 
     // Sonnet 4.5 variants with 1M context
-    if (modelId.includes('sonnet-4-5')) {
+    if (modelId.includes('claude-sonnet-4-5')) {
         return {
             maxTokens: 1000000,
             usableTokens: 800000 // 80% of 1M
@@ -25,5 +25,3 @@ function getContextConfig(modelId?: string): ModelContextConfig {
 
     return defaultConfig;
 }
-
-export { getContextConfig };

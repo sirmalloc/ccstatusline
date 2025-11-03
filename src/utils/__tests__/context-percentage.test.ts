@@ -66,7 +66,7 @@ describe('calculateContextPercentage', () => {
             expect(percentage).toBe(0);
         });
 
-        it('should return 0 when model ID is undefined', () => {
+        it('should use default 200k context when model ID is undefined', () => {
             const context: RenderContext = {
                 tokenMetrics: {
                     inputTokens: 0,
