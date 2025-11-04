@@ -364,8 +364,8 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Tokens Cached** - Shows cached tokens used
 - **Tokens Total** - Shows total tokens used
 - **Context Length** - Shows current context length in tokens
-- **Context Percentage** - Shows percentage of context limit used (out of 200k)
-- **Context Percentage (usable)** - Shows percentage of usable context (out of 160k, accounting for auto-compact at 80%)
+- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for Sonnet 4.5 with `[1m]` suffix, 200k otherwise)
+- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for Sonnet 4.5 with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Custom Text** - Add your own custom text to the status line
 - **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)

@@ -20,8 +20,8 @@ bun run start
 # Run directly (TUI mode)
 bun run statusline
 
-# Test with piped input
-echo '{"model":{"id":"claude-sonnet-4-5-20250929"},"transcript_path":"test.jsonl"}' | bun run src/ccstatusline.ts
+# Test with piped input (use [1m] suffix for 1M context models)
+echo '{"model":{"id":"claude-sonnet-4-5-20250929[1m]"},"transcript_path":"test.jsonl"}' | bun run src/ccstatusline.ts
 
 # Build for npm distribution
 bun run build   # Creates dist/ccstatusline.js with Node.js 14+ compatibility
@@ -69,8 +69,9 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
   - Validates config directory paths with proper error handling
 - **colors.ts**: Color definitions and ANSI code mapping
 - **model-context.ts**: Model-to-context-window mapping
-  - Maps model IDs to their context window sizes
-  - Sonnet 4.5: 1M tokens (800k usable at 80%)
+  - Maps model IDs to their context window sizes based on [1m] suffix
+  - Sonnet 4.5 WITH [1m] suffix: 1M tokens (800k usable at 80%) - requires long context beta access
+  - Sonnet 4.5 WITHOUT [1m] suffix: 200k tokens (160k usable at 80%)
   - Legacy models: 200k tokens (160k usable at 80%)
 
 ### Widgets (src/widgets/)
@@ -78,7 +79,7 @@ Custom widgets implementing the StatusItemWidget interface:
 - Model, Version, OutputStyle - Claude Code metadata display
 - GitBranch, GitChanges - Git repository status
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
-- ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5, 200k for legacy models)
+- ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5 with [1m] suffix, 200k for all other models)
 - BlockTimer, SessionClock - Time tracking
 - CurrentWorkingDir, TerminalWidth - Environment info
 

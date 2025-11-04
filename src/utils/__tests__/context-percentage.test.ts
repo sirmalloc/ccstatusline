@@ -9,9 +9,9 @@ import { calculateContextPercentage } from '../context-percentage';
 
 describe('calculateContextPercentage', () => {
     describe('Sonnet 4.5 with 1M context window', () => {
-        it('should calculate percentage using 1M denominator', () => {
+        it('should calculate percentage using 1M denominator with [1m] suffix', () => {
             const context: RenderContext = {
-                data: { model: { id: 'claude-sonnet-4-5-20250929' } },
+                data: { model: { id: 'claude-sonnet-4-5-20250929[1m]' } },
                 tokenMetrics: {
                     inputTokens: 0,
                     outputTokens: 0,
@@ -25,9 +25,9 @@ describe('calculateContextPercentage', () => {
             expect(percentage).toBe(4.2);
         });
 
-        it('should cap at 100%', () => {
+        it('should cap at 100% with [1m] suffix', () => {
             const context: RenderContext = {
-                data: { model: { id: 'claude-sonnet-4-5-20250929' } },
+                data: { model: { id: 'claude-sonnet-4-5-20250929[1m]' } },
                 tokenMetrics: {
                     inputTokens: 0,
                     outputTokens: 0,

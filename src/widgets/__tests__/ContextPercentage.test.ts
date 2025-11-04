@@ -35,13 +35,13 @@ function render(modelId: string | undefined, contextLength: number, rawValue = f
 
 describe('ContextPercentageWidget', () => {
     describe('Sonnet 4.5 with 1M context window', () => {
-        it('should calculate percentage using 1M denominator for Sonnet 4.5', () => {
-            const result = render('claude-sonnet-4-5-20250929', 42000);
+        it('should calculate percentage using 1M denominator for Sonnet 4.5 with [1m] suffix', () => {
+            const result = render('claude-sonnet-4-5-20250929[1m]', 42000);
             expect(result).toBe('Ctx: 4.2%');
         });
 
-        it('should calculate percentage using 1M denominator for Sonnet 4.5 (raw value)', () => {
-            const result = render('claude-sonnet-4-5-20250929', 42000, true);
+        it('should calculate percentage using 1M denominator for Sonnet 4.5 (raw value) with [1m] suffix', () => {
+            const result = render('claude-sonnet-4-5-20250929[1m]', 42000, true);
             expect(result).toBe('4.2%');
         });
     });
