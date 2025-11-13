@@ -20,11 +20,17 @@ bun run start
 # Run directly (TUI mode)
 bun run statusline
 
-# Test with piped input
-echo '{"model":{"display_name":"Claude 3.5 Sonnet"},"transcript_path":"test.jsonl"}' | bun run src/ccstatusline.ts
+# Test with piped input (use [1m] suffix for 1M context models)
+echo '{"model":{"id":"claude-sonnet-4-5-20250929[1m]"},"transcript_path":"test.jsonl"}' | bun run src/ccstatusline.ts
 
 # Build for npm distribution
 bun run build   # Creates dist/ccstatusline.js with Node.js 14+ compatibility
+
+# Run tests
+bun test
+
+# Run tests in watch mode
+bun test --watch
 
 # Lint and type check
 bun run lint   # Runs TypeScript type checking and ESLint with auto-fix
@@ -62,13 +68,18 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
   - Detects installation status and manages settings.json updates
   - Validates config directory paths with proper error handling
 - **colors.ts**: Color definitions and ANSI code mapping
+- **model-context.ts**: Model-to-context-window mapping
+  - Maps model IDs to their context window sizes based on [1m] suffix
+  - Sonnet 4.5 WITH [1m] suffix: 1M tokens (800k usable at 80%) - requires long context beta access
+  - Sonnet 4.5 WITHOUT [1m] suffix: 200k tokens (160k usable at 80%)
+  - Legacy models: 200k tokens (160k usable at 80%)
 
 ### Widgets (src/widgets/)
 Custom widgets implementing the StatusItemWidget interface:
 - Model, Version, OutputStyle - Claude Code metadata display
 - GitBranch, GitChanges - Git repository status
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
-- ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics
+- ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5 with [1m] suffix, 200k for all other models)
 - BlockTimer, SessionClock - Time tracking
 - CurrentWorkingDir, TerminalWidth - Environment info
 
@@ -100,4 +111,4 @@ Default to using Bun instead of Node.js:
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
 - **Type checking and linting**: Only run via `bun run lint` command, never using `npx eslint` or `eslint` directly. Never run `tsx`, `bun tsc` or any other variation
 - **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
-- **Testing**: No test framework is currently configured. Manual testing is done via piped input and TUI interaction
+- **Testing**: Uses Bun's built-in test framework. Run tests with `bun test` (36 tests covering model context, widgets, and rendering). Manual testing also available via piped input and TUI interaction

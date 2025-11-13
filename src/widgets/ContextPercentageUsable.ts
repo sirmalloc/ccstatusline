@@ -6,10 +6,11 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getContextConfig } from '../utils/model-context';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows percentage of usable context window used or remaining (of 160k tokens before auto-compact)'; }
+    getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isInverse = item.metadata?.inverse === 'true';
@@ -46,7 +47,9 @@ export class ContextPercentageUsableWidget implements Widget {
             const previewValue = isInverse ? '88.4%' : '11.6%';
             return item.rawValue ? previewValue : `Ctx(u): ${previewValue}`;
         } else if (context.tokenMetrics) {
-            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / 160000) * 100);
+            const modelId = context.data?.model?.id;
+            const contextConfig = getContextConfig(modelId);
+            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
             return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx(u): ${displayPercentage.toFixed(1)}%`;
         }

@@ -17,6 +17,7 @@ import {
     getColorAnsiCode,
     getPowerlineTheme
 } from './colors';
+import { calculateContextPercentage } from './context-percentage';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -101,8 +102,7 @@ function renderPowerlineStatusLine(
                 terminalWidth = detectedWidth - 40;
             } else if (flexMode === 'full-until-compact') {
                 const threshold = settings.compactThreshold;
-                const contextPercentage = context.tokenMetrics
-                    ? Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
+                const contextPercentage = calculateContextPercentage(context);
 
                 if (contextPercentage >= threshold) {
                     terminalWidth = detectedWidth - 40;
@@ -680,8 +680,7 @@ export function renderStatusLine(
             } else if (flexMode === 'full-until-compact') {
                 // Check context percentage to decide
                 const threshold = settings.compactThreshold;
-                const contextPercentage = context.tokenMetrics
-                    ? Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
+                const contextPercentage = calculateContextPercentage(context);
 
                 if (contextPercentage >= threshold) {
                     // Context is high, leave space for auto-compact
