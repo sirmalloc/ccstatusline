@@ -5,11 +5,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { execSync } from 'child_process';
 
 export class ClaudeSessionIdWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
-    getDescription(): string { return 'Shows the most recently active Claude Code session ID'; }
+    getDescription(): string { return 'Shows the current Claude Code session ID reported in status JSON'; }
     getDisplayName(): string { return 'Claude Session ID'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
@@ -17,18 +16,16 @@ export class ClaudeSessionIdWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return 'cl-session-id-preview';
+            return item.rawValue ? 'preview-session-id' : 'Session ID: preview-session-id';
         } else {
-            try {
-                const sessionId = execSync('ls -td ~/.claude/session-env/*/ | head -1 | xargs basename', { encoding: 'utf8', stdio: 'pipe' }).trim();
-                return sessionId || null;
-            } catch (error) {
-                console.error('Error getting Claude Session ID:', error);
-                return 'Error';
+            const sessionId = context.data?.session_id;
+            if (!sessionId) {
+                return null;
             }
+            return item.rawValue ? sessionId : `Session ID: ${sessionId}`;
         }
     }
 
-    supportsRawValue(): boolean { return false; }
+    supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
