@@ -45,16 +45,16 @@ export class GitRootDirWidget implements Widget {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
 
         if (context.isPreview) {
-            return item.rawValue ? 'my-repo' : '\uD83D\uDCC1 my-repo';
+            return item.rawValue ? 'my-repo' : 'Repo: my-repo';
         }
 
         const rootDir = this.getGitRootDir();
         if (rootDir) {
             const dirName = rootDir.split('/').pop() ?? rootDir;
-            return item.rawValue ? dirName : `\uD83D\uDCC1 ${dirName}`;
+            return item.rawValue ? dirName : `Repo: ${dirName}`;
         }
 
-        return hideNoGit ? null : '\uD83D\uDCC1 no git';
+        return hideNoGit ? null : 'Repo: no git';
     }
 
     private getGitRootDir(): string | null {
