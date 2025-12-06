@@ -2,6 +2,7 @@ export { ModelWidget } from './Model';
 export { OutputStyleWidget } from './OutputStyle';
 export { GitBranchWidget } from './GitBranch';
 export { GitChangesWidget } from './GitChanges';
+export { GitRootDirWidget } from './GitRootDir';
 export { GitWorktreeWidget } from './GitWorktree';
 export { TokensInputWidget } from './TokensInput';
 export { TokensOutputWidget } from './TokensOutput';
