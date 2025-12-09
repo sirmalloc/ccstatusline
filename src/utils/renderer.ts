@@ -30,6 +30,47 @@ export function formatTokens(count: number): string {
     return count.toString();
 }
 
+/**
+ * Apply threshold-based color warnings to token displays
+ * @param baseText - The text to display (e.g., "Ctx: 18.6k" or "18.6k")
+ * @param tokenCount - The actual token count to check against thresholds
+ * @param settings - Settings object containing tokenWarnings configuration
+ * @returns Styled text with color warnings if thresholds are exceeded, or original text
+ */
+export function applyTokenWarning(baseText: string, tokenCount: number, settings: Settings): string {
+    // Get token warnings config with defaults
+    const tokenWarnings = settings.tokenWarnings as {
+        enabled?: boolean;
+        warningThreshold?: number;
+        criticalThreshold?: number;
+        showEmojis?: boolean;
+    } | undefined;
+
+    // If warnings are disabled, return original text
+    if (tokenWarnings?.enabled === false) {
+        return baseText;
+    }
+
+    // Get thresholds with defaults
+    const warningThreshold = tokenWarnings?.warningThreshold ?? 120000;
+    const criticalThreshold = tokenWarnings?.criticalThreshold ?? 140000;
+    const showEmojis = tokenWarnings?.showEmojis ?? true;
+
+    // Check thresholds and apply styling
+    if (tokenCount >= criticalThreshold) {
+        // Critical: red background + bold
+        const prefix = showEmojis ? '🔴 ' : '';
+        return chalk.bold.red.bgRed(prefix + baseText);
+    } else if (tokenCount >= warningThreshold) {
+        // Warning: yellow + bold
+        const prefix = showEmojis ? '⚠️  ' : '';
+        return chalk.bold.yellow(prefix + baseText);
+    }
+
+    // Below thresholds: return original text
+    return baseText;
+}
+
 function renderPowerlineStatusLine(
     widgets: WidgetItem[],
     settings: Settings,

@@ -22,6 +22,15 @@ export const SettingsSchema_v1 = z.object({
     globalBold: z.boolean().optional()
 });
 
+// Context warning alerts for monitoring context window usage
+// Applies to Context Length and Context Percentage widgets
+export const TokenWarningsSchema = z.object({
+    enabled: z.boolean().default(true),
+    warningThreshold: z.number().default(120000),
+    criticalThreshold: z.number().default(140000),
+    showEmojis: z.boolean().default(true)
+});
+
 // Main settings schema with defaults
 export const SettingsSchema = z.object({
     version: z.number().default(CURRENT_VERSION),
@@ -57,6 +66,12 @@ export const SettingsSchema = z.object({
         endCaps: [],
         theme: undefined,
         autoAlign: false
+    }),
+    tokenWarnings: TokenWarningsSchema.default({
+        enabled: true,
+        warningThreshold: 120000,
+        criticalThreshold: 140000,
+        showEmojis: true
     }),
     updatemessage: z.object({
         message: z.string().nullable().optional(),
