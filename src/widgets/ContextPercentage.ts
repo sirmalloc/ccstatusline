@@ -7,6 +7,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextConfig } from '../utils/model-context';
+import { applyTokenWarning } from '../utils/renderer';
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -51,7 +52,10 @@ export class ContextPercentageWidget implements Widget {
             const contextConfig = getContextConfig(modelId);
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
+            const baseText = item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
+
+            // Apply threshold-based warnings if configured
+            return applyTokenWarning(baseText, context.tokenMetrics.contextLength, settings);
         }
         return null;
     }
