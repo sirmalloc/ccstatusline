@@ -442,6 +442,71 @@ Some widgets support "raw value" mode which displays just the value without a la
 
 ---
 
+### ⚠️ Context Warning Alerts
+
+Context widgets (Context Length, Context Percentage) feature visual threshold warnings to help you monitor context window usage:
+
+**Visual Indicators:**
+- **Yellow Warning** - Moderate context usage (⚠️ + yellow bold text)
+- **Red Critical** - High context usage (🔴 + red bold text with background)
+
+**Why Context Warnings?**
+- Helps you stay aware of context window consumption
+- Useful for managing long conversations and avoiding auto-compact
+- Thresholds are personal preference - adjust based on your usage patterns
+
+**Configuration:**
+
+Context warnings are enabled by default but fully customizable. Edit your settings file (`~/.config/ccstatusline/settings.json`):
+
+```json
+{
+  "tokenWarnings": {
+    "enabled": true,
+    "warningThreshold": 120000,
+    "criticalThreshold": 140000,
+    "showEmojis": true
+  }
+}
+```
+
+**Options:**
+- `enabled` - Toggle warnings on/off (default: `true`)
+- `warningThreshold` - Token count for yellow warning (default: `120000`)
+- `criticalThreshold` - Token count for red alert (default: `140000`)
+- `showEmojis` - Show emoji indicators (🔴/⚠️) or just colors (default: `true`)
+
+**Setting Your Own Thresholds:**
+
+The defaults (120k/140k) are starting points. Adjust based on your workflow:
+- Short sessions: Lower thresholds (e.g., 80k/100k)
+- Long conversations: Higher thresholds (e.g., 150k/170k)
+- Experiment to find what works for you
+
+**Examples:**
+
+Disable warnings entirely:
+```json
+"tokenWarnings": { "enabled": false }
+```
+
+Earlier warnings for shorter sessions:
+```json
+"tokenWarnings": {
+  "warningThreshold": 80000,
+  "criticalThreshold": 100000
+}
+```
+
+Colors only, no emojis:
+```json
+"tokenWarnings": {
+  "showEmojis": false
+}
+```
+
+---
+
 ### 🔧 Custom Widgets
 
 #### Custom Text Widget
