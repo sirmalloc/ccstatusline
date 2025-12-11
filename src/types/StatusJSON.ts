@@ -21,6 +21,11 @@ export const StatusJSONSchema = z.looseObject({
         total_api_duration_ms: z.number().optional(),
         total_lines_added: z.number().optional(),
         total_lines_removed: z.number().optional()
+    }).optional(),
+    context_window: z.object({
+        total_input_tokens: z.number().optional(),
+        total_output_tokens: z.number().optional(),
+        context_window_size: z.number().optional()
     }).optional()
 });
 

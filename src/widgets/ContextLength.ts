@@ -18,8 +18,12 @@ export class ContextLengthWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '18.6k' : 'Ctx: 18.6k';
-        } else if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
+        }
+
+        // Prefer contextWindow from input (new), fall back to tokenMetrics (legacy)
+        const contextLength = context.contextWindow?.inputTokens ?? context.tokenMetrics?.contextLength;
+        if (contextLength !== undefined) {
+            return item.rawValue ? formatTokens(contextLength) : `Ctx: ${formatTokens(contextLength)}`;
         }
         return null;
     }

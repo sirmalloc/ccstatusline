@@ -46,10 +46,24 @@ export class ContextPercentageWidget implements Widget {
         if (context.isPreview) {
             const previewValue = isInverse ? '90.7%' : '9.3%';
             return item.rawValue ? previewValue : `Ctx: ${previewValue}`;
+        }
+
+        // Prefer contextWindow from input (new), fall back to tokenMetrics + model config (legacy)
+        let contextLength: number | undefined;
+        let maxTokens: number | undefined;
+
+        if (context.contextWindow) {
+            contextLength = context.contextWindow.inputTokens;
+            maxTokens = context.contextWindow.contextSize;
         } else if (context.tokenMetrics) {
+            contextLength = context.tokenMetrics.contextLength;
             const modelId = context.data?.model?.id;
             const contextConfig = getContextConfig(modelId);
-            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
+            maxTokens = contextConfig.maxTokens;
+        }
+
+        if (contextLength !== undefined && maxTokens !== undefined && maxTokens > 0) {
+            const usedPercentage = Math.min(100, (contextLength / maxTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
             return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
         }

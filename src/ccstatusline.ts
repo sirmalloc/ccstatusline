@@ -6,7 +6,10 @@ import type {
     BlockMetrics,
     TokenMetrics
 } from './types';
-import type { RenderContext } from './types/RenderContext';
+import type {
+    ContextWindowInfo,
+    RenderContext
+} from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { updateColorMap } from './utils/colors';
@@ -90,10 +93,24 @@ async function renderMultipleLines(data: StatusJSON) {
         blockMetrics = getBlockMetrics();
     }
 
+    // Extract context window info from input (new Claude Code feature)
+    let contextWindow: ContextWindowInfo | null = null;
+    const ctxWin = data.context_window;
+    if (ctxWin?.total_input_tokens !== undefined
+        && ctxWin.total_output_tokens !== undefined
+        && ctxWin.context_window_size !== undefined) {
+        contextWindow = {
+            inputTokens: ctxWin.total_input_tokens,
+            outputTokens: ctxWin.total_output_tokens,
+            contextSize: ctxWin.context_window_size
+        };
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
+        contextWindow,
         sessionDuration,
         blockMetrics,
         isPreview: false
