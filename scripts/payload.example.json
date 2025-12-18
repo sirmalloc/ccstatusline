@@ -15,6 +15,9 @@
   "output_style": {
     "name": "default"
   },
+  "thinking": {
+    "enabled": true
+  },
   "cost": {
     "total_cost_usd": 0.01234,
     "total_duration_ms": 45000,

@@ -15,6 +15,7 @@ export const StatusJSONSchema = z.looseObject({
     }).optional(),
     version: z.string().optional(),
     output_style: z.object({ name: z.string().optional() }).optional(),
+    thinking: z.object({ enabled: z.boolean().optional() }).optional(),
     cost: z.object({
         total_cost_usd: z.number().optional(),
         total_duration_ms: z.number().optional(),
