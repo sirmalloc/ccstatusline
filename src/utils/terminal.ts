@@ -34,6 +34,16 @@ export function getPackageVersion(): string {
 
 // Get terminal width
 export function getTerminalWidth(): number | null {
+    // Windows: use Node.js built-in (cross-platform, avoids Unix-only commands)
+    // This also works on Unix but we keep the existing logic there for compatibility
+    if (process.platform === 'win32') {
+        const cols = process.stdout.columns;
+        if (cols && cols > 0) {
+            return cols;
+        }
+        return null;
+    }
+
     try {
         // First try to get the tty of the parent process
         const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
@@ -83,6 +93,12 @@ export function getTerminalWidth(): number | null {
 
 // Check if terminal width detection is available
 export function canDetectTerminalWidth(): boolean {
+    // Windows: use Node.js built-in (cross-platform, avoids Unix-only commands)
+    if (process.platform === 'win32') {
+        const cols = process.stdout.columns;
+        return cols !== undefined && cols > 0;
+    }
+
     try {
         // First try to get the tty of the parent process
         const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
