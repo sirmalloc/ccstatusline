@@ -8,5 +8,6 @@ export * from './LineSelector';
 export * from './MainMenu';
 export * from './PowerlineSetup';
 export * from './StatusLinePreview';
+export * from './TaskTimerSetup';
 export * from './TerminalOptionsMenu';
 export * from './TerminalWidthMenu';

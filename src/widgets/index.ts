@@ -21,3 +21,4 @@ export { CustomCommandWidget } from './CustomCommand';
 export { BlockTimerWidget } from './BlockTimer';
 export { CurrentWorkingDirWidget } from './CurrentWorkingDir';
 export { ClaudeSessionIdWidget } from './ClaudeSessionId';
+export { TaskTimerWidget } from './TaskTimer';
