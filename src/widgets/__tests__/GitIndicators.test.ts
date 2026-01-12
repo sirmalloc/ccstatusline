@@ -102,4 +102,14 @@ describe('GitIndicatorsWidget', () => {
         const afterCycleUnstaged = widget.handleEditorAction('cycle-unstaged-color', item);
         expect(afterCycleUnstaged?.metadata?.unstagedColor).toBe('brightRed');
     });
+
+    it('toggles preserveColors via handleEditorAction', () => {
+        const item: WidgetItem = { id: 'test', type: 'git-indicators' };
+
+        const afterToggleOn = widget.handleEditorAction('toggle-preserve-colors', item);
+        expect(afterToggleOn?.preserveColors).toBe(true);
+
+        const afterToggleOff = widget.handleEditorAction('toggle-preserve-colors', { ...item, preserveColors: true });
+        expect(afterToggleOff?.preserveColors).toBe(false);
+    });
 });
