@@ -11,12 +11,32 @@ import type { WidgetItem } from '../../types';
 import { GitIndicatorsWidget } from '../GitIndicators';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('../../utils/colors', () => ({
+    getColorAnsiCode: vi.fn((color: string) => {
+        const codes: Record<string, string> = {
+            green: '\x1b[32m',
+            red: '\x1b[31m',
+            cyan: '\x1b[36m',
+            yellow: '\x1b[33m'
+        };
+        return codes[color] || '\x1b[0m';
+    })
+}));
 
 const widget = new GitIndicatorsWidget();
 
-function render(preserveColors = false, isPreview = false) {
-    const item: WidgetItem = { id: 'test', type: 'git-indicators', preserveColors };
-    return widget.render(item, { isPreview }, {} as any);
+function render(options: { preserveColors?: boolean; isPreview?: boolean; colorMode?: string; stagedColor?: string; unstagedColor?: string } = {}) {
+    const item: WidgetItem = {
+        id: 'test',
+        type: 'git-indicators',
+        preserveColors: options.preserveColors,
+        metadata: {
+            colorMode: options.colorMode,
+            stagedColor: options.stagedColor,
+            unstagedColor: options.unstagedColor
+        }
+    };
+    return widget.render(item, { isPreview: options.isPreview ?? false }, {} as any);
 }
 
 function mockGitState(inRepo: boolean, staged: boolean, unstaged: boolean) {
@@ -53,13 +73,33 @@ describe('GitIndicatorsWidget', () => {
         expect(render()).toBe('');
     });
 
-    it('outputs ANSI colors when preserveColors is true', () => {
+    it('outputs ANSI colors when preserveColors is true (raw mode)', () => {
         mockGitState(true, true, true);
-        expect(render(true)).toBe('\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m');
+        expect(render({ preserveColors: true })).toBe('\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m');
+    });
+
+    it('uses custom colors when colorMode is custom', () => {
+        mockGitState(true, true, true);
+        expect(render({ preserveColors: true, colorMode: 'custom', stagedColor: 'cyan', unstagedColor: 'yellow' }))
+            .toBe('\x1b[36m+\x1b[0m\x1b[33m*\x1b[0m');
     });
 
     it('shows preview with indicators', () => {
-        expect(render(false, true)).toBe('+*');
-        expect(render(true, true)).toBe('\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m');
+        expect(render({ isPreview: true })).toBe('+*');
+        expect(render({ preserveColors: true, isPreview: true })).toBe('\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m');
+    });
+
+    it('cycles staged and unstaged colors via handleEditorAction', () => {
+        const item: WidgetItem = { id: 'test', type: 'git-indicators' };
+
+        const afterToggle = widget.handleEditorAction('toggle-color-mode', item);
+        expect(afterToggle?.metadata?.colorMode).toBe('custom');
+
+        const afterCycleStaged = widget.handleEditorAction('cycle-staged-color', item);
+        expect(afterCycleStaged?.metadata?.stagedColor).toBe('brightGreen');
+        expect(afterCycleStaged?.metadata?.colorMode).toBe('custom');
+
+        const afterCycleUnstaged = widget.handleEditorAction('cycle-unstaged-color', item);
+        expect(afterCycleUnstaged?.metadata?.unstagedColor).toBe('brightRed');
     });
 });
