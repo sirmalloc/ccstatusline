@@ -17,6 +17,7 @@ export class GitIndicatorsWidget implements Widget {
     getDisplayName(): string { return 'Git Indicators'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
+        const preserveColors = item.preserveColors === true;
         const useCustomColors = item.metadata?.colorMode === 'custom';
         const modifiers: string[] = [];
 
@@ -24,10 +25,14 @@ export class GitIndicatorsWidget implements Widget {
             modifiers.push("hide 'no git'");
         }
 
-        if (useCustomColors) {
-            const staged = item.metadata?.stagedColor || 'green';
-            const unstaged = item.metadata?.unstagedColor || 'red';
-            modifiers.push(`colors: ${staged}/${unstaged}`);
+        if (preserveColors) {
+            if (useCustomColors) {
+                const staged = item.metadata?.stagedColor || 'green';
+                const unstaged = item.metadata?.unstagedColor || 'red';
+                modifiers.push(`colors: ${staged}/${unstaged}`);
+            } else {
+                modifiers.push('colors: green/red');
+            }
         }
 
         return {
@@ -45,6 +50,12 @@ export class GitIndicatorsWidget implements Widget {
                     ...item.metadata,
                     hideNoGit: (!currentState).toString()
                 }
+            };
+        }
+        if (action === 'toggle-preserve-colors') {
+            return {
+                ...item,
+                preserveColors: !item.preserveColors
             };
         }
         if (action === 'toggle-color-mode') {
@@ -167,6 +178,7 @@ export class GitIndicatorsWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'h', label: "(h)ide 'no git' message", action: 'toggle-nogit' },
+            { key: 'p', label: '(p)reserveColors: widget sets colors', action: 'toggle-preserve-colors' },
             { key: 'm', label: 'color (m)ode: raw/custom', action: 'toggle-color-mode' },
             { key: 's', label: 'cycle (s)taged color', action: 'cycle-staged-color' },
             { key: 'u', label: 'cycle (u)nstaged color', action: 'cycle-unstaged-color' }
