@@ -8,7 +8,6 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getColorAnsiCode } from '../utils/colors';
 
 export class GitIndicatorsWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -17,7 +16,6 @@ export class GitIndicatorsWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
         const preserveColors = item.preserveColors === true;
-        const useCustomColors = item.metadata?.colorMode === 'custom';
         const modifiers: string[] = [];
 
         if (hideNoGit) {
@@ -25,13 +23,7 @@ export class GitIndicatorsWidget implements Widget {
         }
 
         if (preserveColors) {
-            if (useCustomColors) {
-                const staged = item.metadata?.stagedColor || 'green';
-                const unstaged = item.metadata?.unstagedColor || 'red';
-                modifiers.push(`colors: ${staged}/${unstaged}`);
-            } else {
-                modifiers.push('colors: green/red');
-            }
+            modifiers.push('colors: green/red');
         }
 
         return {
@@ -57,66 +49,19 @@ export class GitIndicatorsWidget implements Widget {
                 preserveColors: !item.preserveColors
             };
         }
-        if (action === 'toggle-color-mode') {
-            const currentMode = item.metadata?.colorMode || 'raw';
-            const newMode = currentMode === 'raw' ? 'custom' : 'raw';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    colorMode: newMode
-                }
-            };
-        }
-        if (action === 'cycle-staged-color') {
-            const colors = ['green', 'brightGreen', 'cyan', 'brightCyan', 'yellow', 'brightYellow', 'blue', 'brightBlue', 'magenta', 'brightMagenta'];
-            const current = item.metadata?.stagedColor || 'green';
-            const idx = colors.indexOf(current);
-            const next = colors[(idx + 1) % colors.length];
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    colorMode: 'custom',
-                    stagedColor: next
-                }
-            };
-        }
-        if (action === 'cycle-unstaged-color') {
-            const colors = ['red', 'brightRed', 'yellow', 'brightYellow', 'magenta', 'brightMagenta', 'cyan', 'brightCyan', 'white', 'brightWhite'];
-            const current = item.metadata?.unstagedColor || 'red';
-            const idx = colors.indexOf(current);
-            const next = colors[(idx + 1) % colors.length];
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    colorMode: 'custom',
-                    unstagedColor: next
-                }
-            };
-        }
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
         const useColors = item.preserveColors === true;
-        const useCustomColors = item.metadata?.colorMode === 'custom';
-        const stagedColor = item.metadata?.stagedColor || 'green';
-        const unstagedColor = item.metadata?.unstagedColor || 'red';
 
         if (context.isPreview) {
             if (!useColors) return '+*';
-            if (useCustomColors) {
-                const stagedAnsi = getColorAnsiCode(stagedColor);
-                const unstagedAnsi = getColorAnsiCode(unstagedColor);
-                return `${stagedAnsi}+\x1b[0m${unstagedAnsi}*\x1b[0m`;
-            }
             return '\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m';
         }
 
-        const indicators = this.getGitIndicators(useColors, useCustomColors, stagedColor, unstagedColor);
+        const indicators = this.getGitIndicators(useColors);
 
         // Not in a git repo
         if (indicators === null) {
@@ -126,7 +71,7 @@ export class GitIndicatorsWidget implements Widget {
         return indicators;
     }
 
-    private getGitIndicators(useColors: boolean, useCustomColors: boolean, stagedColor: string, unstagedColor: string): string | null {
+    private getGitIndicators(useColors: boolean): string | null {
         try {
             // Check if we're in a git repo
             execSync('git rev-parse --git-dir', {
@@ -147,12 +92,7 @@ export class GitIndicatorsWidget implements Widget {
             });
         } catch {
             // Non-zero exit = there are staged changes
-            if (useColors) {
-                const ansi = useCustomColors ? getColorAnsiCode(stagedColor) : '\x1b[32m';
-                output += `${ansi}+\x1b[0m`;
-            } else {
-                output += '+';
-            }
+            output += useColors ? '\x1b[32m+\x1b[0m' : '+';
         }
 
         // Check for unstaged changes
@@ -163,12 +103,7 @@ export class GitIndicatorsWidget implements Widget {
             });
         } catch {
             // Non-zero exit = there are unstaged changes
-            if (useColors) {
-                const ansi = useCustomColors ? getColorAnsiCode(unstagedColor) : '\x1b[31m';
-                output += `${ansi}*\x1b[0m`;
-            } else {
-                output += '*';
-            }
+            output += useColors ? '\x1b[31m*\x1b[0m' : '*';
         }
 
         return output;
@@ -177,10 +112,7 @@ export class GitIndicatorsWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'h', label: "(h)ide 'no git' message", action: 'toggle-nogit' },
-            { key: 'p', label: '(p)reserveColors: widget sets colors', action: 'toggle-preserve-colors' },
-            { key: 'm', label: 'color (m)ode: raw/custom', action: 'toggle-color-mode' },
-            { key: 's', label: 'cycle (s)taged color', action: 'cycle-staged-color' },
-            { key: 'u', label: 'cycle (u)nstaged color', action: 'cycle-unstaged-color' }
+            { key: 'p', label: '(p)reserveColors: widget sets colors', action: 'toggle-preserve-colors' }
         ];
     }
 
