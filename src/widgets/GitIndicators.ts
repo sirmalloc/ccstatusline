@@ -43,12 +43,13 @@ export class GitIndicatorsWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
+        const useColors = item.preserveColors === true;
 
         if (context.isPreview) {
-            return '+*';
+            return useColors ? '\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m' : '+*';
         }
 
-        const indicators = this.getGitIndicators();
+        const indicators = this.getGitIndicators(useColors);
 
         // Not in a git repo
         if (indicators === null) {
@@ -58,7 +59,7 @@ export class GitIndicatorsWidget implements Widget {
         return indicators;
     }
 
-    private getGitIndicators(): string | null {
+    private getGitIndicators(useColors: boolean): string | null {
         try {
             // Check if we're in a git repo
             execSync('git rev-parse --git-dir', {
@@ -78,8 +79,8 @@ export class GitIndicatorsWidget implements Widget {
                 stdio: ['pipe', 'pipe', 'ignore']
             });
         } catch {
-            // Non-zero exit = there are staged changes
-            output += '+';
+            // Non-zero exit = there are staged changes (green +)
+            output += useColors ? '\x1b[32m+\x1b[0m' : '+';
         }
 
         // Check for unstaged changes
@@ -89,8 +90,8 @@ export class GitIndicatorsWidget implements Widget {
                 stdio: ['pipe', 'pipe', 'ignore']
             });
         } catch {
-            // Non-zero exit = there are unstaged changes
-            output += '*';
+            // Non-zero exit = there are unstaged changes (red *)
+            output += useColors ? '\x1b[31m*\x1b[0m' : '*';
         }
 
         return output;
