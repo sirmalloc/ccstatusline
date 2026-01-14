@@ -60,14 +60,24 @@ export class GitWorktreeWidget implements Widget {
                 stdio: ['pipe', 'pipe', 'ignore']
             }).trim();
 
-            // /some/path/.git or .git
+            // /some/path/.git or .git (main worktree of regular repo)
             if (worktreeDir.endsWith('/.git') || worktreeDir === '.git')
                 return 'main';
 
-            // /some/path/.git/worktrees/some-worktree or /some/path/.git/worktrees/some-dir/some-worktree
-            const [, worktree] = worktreeDir.split('.git/worktrees/');
+            // /some/path/.git/worktrees/some-worktree (worktree of regular repo)
+            if (worktreeDir.includes('.git/worktrees/')) {
+                const [, worktree] = worktreeDir.split('.git/worktrees/');
+                return worktree ?? null;
+            }
 
-            return worktree ?? null;
+            // /some/path/worktrees/some-worktree (worktree of bare repo)
+            // Bare repos store worktree metadata at <bare-repo>/worktrees/<name>
+            if (worktreeDir.includes('/worktrees/')) {
+                const [, worktree] = worktreeDir.split('/worktrees/');
+                return worktree ?? null;
+            }
+
+            return null;
         } catch {
             return null;
         }
