@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { runTUI } from './tui';
 import type {
     BlockMetrics,
+    SpeedMetrics,
     TokenMetrics
 } from './types';
 import type { RenderContext } from './types/RenderContext';
@@ -17,6 +18,7 @@ import {
 import {
     getBlockMetrics,
     getSessionDuration,
+    getSpeedMetrics,
     getTokenMetrics
 } from './utils/jsonl';
 import {
@@ -75,6 +77,9 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if block timer is needed
     const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
 
+    // Check if speed metrics widgets are needed
+    const hasSpeedItems = lines.some(line => line.some(item => ['output-speed', 'input-speed', 'total-speed'].includes(item.type)));
+
     let tokenMetrics: TokenMetrics | null = null;
     if (hasTokenItems && data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -90,10 +95,16 @@ async function renderMultipleLines(data: StatusJSON) {
         blockMetrics = getBlockMetrics();
     }
 
+    let speedMetrics: SpeedMetrics | null = null;
+    if (hasSpeedItems && data.transcript_path) {
+        speedMetrics = await getSpeedMetrics(data.transcript_path);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
+        speedMetrics,
         sessionDuration,
         blockMetrics,
         isPreview: false

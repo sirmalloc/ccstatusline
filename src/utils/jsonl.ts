@@ -5,6 +5,7 @@ import { promisify } from 'util';
 
 import type {
     BlockMetrics,
+    SpeedMetrics,
     TokenMetrics,
     TranscriptLine
 } from '../types';
@@ -143,6 +144,103 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength };
     } catch {
         return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+    }
+}
+
+/**
+ * Gets speed metrics from a JSONL transcript file.
+ * Calculates active processing time by measuring user request → assistant response pairs.
+ * This excludes idle time when the user is thinking/typing.
+ *
+ * @param transcriptPath Path to the JSONL transcript file
+ * @returns SpeedMetrics with active processing time and token counts
+ */
+export async function getSpeedMetrics(transcriptPath: string): Promise<SpeedMetrics> {
+    const emptyMetrics: SpeedMetrics = {
+        totalDurationMs: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        requestCount: 0
+    };
+
+    try {
+        if (!fs.existsSync(transcriptPath)) {
+            return emptyMetrics;
+        }
+
+        const content = await readFile(transcriptPath, 'utf-8');
+        const lines = content.trim().split('\n');
+
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let requestCount = 0;
+        let activeDurationMs = 0;
+
+        // Track timestamps for calculating processing time
+        let lastUserTimestamp: Date | null = null;
+        let lastAssistantTimestamp: Date | null = null;
+
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line) as TranscriptLine;
+
+                // Skip sidechains and API error messages
+                if (data.isSidechain === true || data.isApiErrorMessage) {
+                    continue;
+                }
+
+                // Track user message timestamps (request start time)
+                if (data.type === 'user' && data.timestamp) {
+                    const timestamp = new Date(data.timestamp);
+                    if (!Number.isNaN(timestamp.getTime())) {
+                        // When a new user message comes after assistant responses,
+                        // finalize the previous processing time
+                        if (lastUserTimestamp && lastAssistantTimestamp) {
+                            const processingTime = lastAssistantTimestamp.getTime() - lastUserTimestamp.getTime();
+                            if (processingTime > 0) {
+                                activeDurationMs += processingTime;
+                            }
+                        }
+                        lastUserTimestamp = timestamp;
+                        lastAssistantTimestamp = null;
+                    }
+                }
+
+                // Track assistant responses with usage
+                if (data.type === 'assistant' && data.message?.usage && data.timestamp) {
+                    const responseTimestamp = new Date(data.timestamp);
+                    if (!Number.isNaN(responseTimestamp.getTime())) {
+                        // Update the last assistant timestamp (we want the final one in a sequence)
+                        lastAssistantTimestamp = responseTimestamp;
+                    }
+
+                    inputTokens += data.message.usage.input_tokens || 0;
+                    outputTokens += data.message.usage.output_tokens || 0;
+                    requestCount++;
+                }
+            } catch {
+                // Skip invalid JSON lines
+            }
+        }
+
+        // Finalize the last user-assistant pair
+        if (lastUserTimestamp && lastAssistantTimestamp) {
+            const processingTime = lastAssistantTimestamp.getTime() - lastUserTimestamp.getTime();
+            if (processingTime > 0) {
+                activeDurationMs += processingTime;
+            }
+        }
+
+        return {
+            totalDurationMs: activeDurationMs,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            requestCount
+        };
+    } catch {
+        return emptyMetrics;
     }
 }
 
