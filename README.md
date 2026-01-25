@@ -355,7 +355,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
-- **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
+- **Block Timer** - Shows time elapsed or remaining in current 5-hour block, or progress bar
 - **Current Working Directory** - Shows current working directory with configurable path segments
 - **Version** - Shows Claude Code version
 - **Output Style** - Shows the currently set output style in Claude Code
@@ -421,16 +421,21 @@ The Block Timer widget helps you track your progress through Claude Code's 5-hou
 ![Block Timer](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/blockTimer.png)
 
 **Display Modes:**
-- **Time Display** - Shows elapsed time as "3hr 45m" (default)
+- **Time Display** - Shows elapsed time as "3hr 45m" or remaining time as "1hr 15m" (default)
 - **Progress Bar** - Full width 32-character progress bar with percentage
 - **Progress Bar (Short)** - Compact 16-character progress bar with percentage
+
+**Time Direction:**
+- **Elapsed** - Shows time used in current block (default)
+- **Remaining** - Shows time left in current block
 
 **Features:**
 - Automatically detects block boundaries from transcript timestamps
 - Floors block start time to the hour for consistent tracking
 - Shows "Block: 3hr 45m" in normal mode or just "3hr 45m" in raw value mode
 - Progress bars show completion percentage (e.g., "[████████████████████████░░░░░░░░] 73.9%")
-- Toggle between modes with the **(p)** key in the widgets editor
+- Toggle between elapsed/remaining time with the **(l)** key in the widgets editor
+- Toggle between display modes with the **(p)** key in the widgets editor
 
 ### 🔤 Raw Value Mode
 
