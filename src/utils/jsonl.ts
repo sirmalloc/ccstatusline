@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import os from 'node:os';
 import path from 'node:path';
 import { globSync } from 'tinyglobby';
 import { promisify } from 'util';
@@ -15,6 +16,96 @@ import { getClaudeConfigDir } from './claude-settings';
 const readFile = promisify(fs.readFile);
 const readFileSync = fs.readFileSync;
 const statSync = fs.statSync;
+const writeFileSync = fs.writeFileSync;
+const mkdirSync = fs.mkdirSync;
+const existsSync = fs.existsSync;
+
+// --- Block Cache Functions ---
+
+interface BlockCache { startTime: string }
+
+/**
+ * Returns the path to the block cache file
+ */
+export function getBlockCachePath(): string {
+    return path.join(os.homedir(), '.cache', 'ccstatusline', 'block-cache.json');
+}
+
+/**
+ * Reads the block cache file and returns the cached start time
+ * Returns null if cache doesn't exist or is invalid
+ */
+export function readBlockCache(): Date | null {
+    try {
+        const cachePath = getBlockCachePath();
+        if (!existsSync(cachePath)) {
+            return null;
+        }
+        const content = readFileSync(cachePath, 'utf-8');
+        const cache = JSON.parse(content) as BlockCache;
+        if (typeof cache.startTime !== 'string') {
+            return null;
+        }
+        const date = new Date(cache.startTime);
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+        return date;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Writes the block start time to the cache file
+ * Creates the cache directory if it doesn't exist
+ */
+export function writeBlockCache(startTime: Date): void {
+    try {
+        const cachePath = getBlockCachePath();
+        const cacheDir = path.dirname(cachePath);
+        if (!existsSync(cacheDir)) {
+            mkdirSync(cacheDir, { recursive: true });
+        }
+        const cache: BlockCache = { startTime: startTime.toISOString() };
+        writeFileSync(cachePath, JSON.stringify(cache), 'utf-8');
+    } catch {
+        // Silently fail - caching is best-effort
+    }
+}
+
+/**
+ * Gets block metrics with caching support
+ * Returns cached result if still valid, otherwise recalculates
+ */
+export function getCachedBlockMetrics(sessionDurationHours = 5): BlockMetrics | null {
+    const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
+    const now = new Date();
+
+    // Check cache first
+    const cachedStartTime = readBlockCache();
+    if (cachedStartTime) {
+        const blockEndTime = new Date(cachedStartTime.getTime() + sessionDurationMs);
+        if (now.getTime() <= blockEndTime.getTime()) {
+            // Cache is valid - return cached result
+            return {
+                startTime: cachedStartTime,
+                lastActivity: now // We don't cache lastActivity, use current time
+            };
+        }
+        // Cache expired - need to recalculate
+    }
+
+    // Cache miss or expired - run full calculation
+    const metrics = getBlockMetrics();
+
+    // Write to cache if we found a valid block
+    if (metrics) {
+        writeBlockCache(metrics.startTime);
+    }
+
+    return metrics;
+}
 
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
     try {
