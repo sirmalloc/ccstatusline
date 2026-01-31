@@ -8,6 +8,18 @@ import type {
 } from '../types/Widget';
 
 type DisplayMode = 'time' | 'progress' | 'progress-short';
+type TimeFormat = 'full' | 'compact' | 'clock';
+
+function formatTime(hours: number, minutes: number, format: TimeFormat): string {
+    switch (format) {
+    case 'compact':
+        return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
+    case 'clock':
+        return `${hours}:${minutes.toString().padStart(2, '0')}`;
+    default: // 'full'
+        return minutes === 0 ? `${hours}hr` : `${hours}hr ${minutes}m`;
+    }
+}
 
 export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -16,12 +28,17 @@ export class BlockTimerWidget implements Widget {
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = item.metadata?.display ?? 'time';
+        const timeFormat = (item.metadata?.timeFormat ?? 'full') as TimeFormat;
         const modifiers: string[] = [];
 
         if (mode === 'progress') {
             modifiers.push('progress bar');
         } else if (mode === 'progress-short') {
             modifiers.push('short bar');
+        }
+
+        if (mode === 'time' && timeFormat !== 'full') {
+            modifiers.push(timeFormat);
         }
 
         return {
@@ -51,11 +68,34 @@ export class BlockTimerWidget implements Widget {
                 }
             };
         }
+
+        if (action === 'toggle-time-format') {
+            const currentFormat = (item.metadata?.timeFormat ?? 'full') as TimeFormat;
+            let nextFormat: TimeFormat;
+
+            if (currentFormat === 'full') {
+                nextFormat = 'compact';
+            } else if (currentFormat === 'compact') {
+                nextFormat = 'clock';
+            } else {
+                nextFormat = 'full';
+            }
+
+            return {
+                ...item,
+                metadata: {
+                    ...item.metadata,
+                    timeFormat: nextFormat
+                }
+            };
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = (item.metadata?.display ?? 'time') as DisplayMode;
+        const timeFormat = (item.metadata?.timeFormat ?? 'full') as TimeFormat;
 
         if (context.isPreview) {
             const prefix = item.rawValue ? '' : 'Block ';
@@ -64,19 +104,21 @@ export class BlockTimerWidget implements Widget {
             } else if (displayMode === 'progress-short') {
                 return `${prefix}[███████░░░░░░░░] 73.9%`;
             }
-            return item.rawValue ? '3hr 45m' : 'Block: 3hr 45m';
+            const previewTime = formatTime(3, 45, timeFormat);
+            return item.rawValue ? previewTime : `Block: ${previewTime}`;
         }
 
         // Check if we have block metrics in context
         const blockMetrics = context.blockMetrics;
         if (!blockMetrics) {
-            // No active session - show empty progress bar or 0hr 0m
+            // No active session - show empty progress bar or 0:00
             if (displayMode === 'progress' || displayMode === 'progress-short') {
                 const barWidth = displayMode === 'progress' ? 32 : 16;
                 const emptyBar = '░'.repeat(barWidth);
                 return item.rawValue ? `[${emptyBar}] 0%` : `Block [${emptyBar}] 0%`;
             } else {
-                return item.rawValue ? '0hr 0m' : 'Block: 0hr 0m';
+                const zeroTime = formatTime(0, 0, timeFormat);
+                return item.rawValue ? zeroTime : `Block: ${zeroTime}`;
             }
         }
 
@@ -103,13 +145,7 @@ export class BlockTimerWidget implements Widget {
                 // Time display mode
                 const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
                 const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                let timeString: string;
-                if (elapsedMinutes === 0) {
-                    timeString = `${elapsedHours}hr`;
-                } else {
-                    timeString = `${elapsedHours}hr ${elapsedMinutes}m`;
-                }
+                const timeString = formatTime(elapsedHours, elapsedMinutes, timeFormat);
 
                 return item.rawValue ? timeString : `Block: ${timeString}`;
             }
@@ -120,7 +156,8 @@ export class BlockTimerWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'f', label: 'time (f)ormat', action: 'toggle-time-format' }
         ];
     }
 
