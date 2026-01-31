@@ -356,7 +356,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
-- **Task Timer** - Shows real-time task execution time (requires hook installation, e.g., "执行中：1分23秒" or "执行完成：2分45秒")
+- **Task Timer** - Shows real-time task execution time (requires hook installation, e.g., "Running: 1m 23s" or "Completed: 2m 45s")
 - **Current Working Directory** - Shows current working directory with configurable path segments
 - **Version** - Shows Claude Code version
 - **Output Style** - Shows the currently set output style in Claude Code
@@ -449,18 +449,18 @@ Before using the Task Timer widget, you need to install the required hooks:
    - Adds hooks for: `UserPromptSubmit`, `Stop`, and `SessionEnd`
 
 **Display Modes:**
-- **Executing** - Shows "执行中：1分23秒" while Claude is working
-- **Completed** - Shows "执行完成：2分45秒" after task finishes
-- **Raw Value** - Shows just the time (e.g., "1分23秒") without prefix
+- **Running** - Shows "Running: 1m 23s" while Claude is working
+- **Completed** - Shows "Completed: 2m 45s" after task finishes
+- **Raw Value** - Shows just the time (e.g., "1m 23s") without prefix
 
 **Features:**
 - **Real-time Updates** - Timer updates during task execution (refresh rate depends on Claude Code)
 - **Multi-session Support** - Each Claude Code instance has an independent timer
 - **Automatic Cleanup** - State is cleaned up when sessions end
 - **Smart Formatting** - Time automatically scales:
-  - Less than 60s: "42秒"
-  - 60s to 1hr: "5分30秒"
-  - Over 1hr: "2时15分30秒"
+  - Less than 60s: "42s"
+  - 60s to 1hr: "5m 30s"
+  - Over 1hr: "2h 15m 30s"
 - **Persistent State** - Timer state survives terminal restarts
 - **Cross-platform** - Works on Linux, macOS, and Windows (requires bash)
 
@@ -493,7 +493,7 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
 - Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
-- Normal: `执行中：1分23秒` → Raw: `1分23秒`
+- Normal: `Running: 1m 23s` → Raw: `1m 23s`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
 ---

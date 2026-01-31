@@ -22,7 +22,7 @@ export class TaskTimerWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '1分23秒' : '执行中：1分23秒';
+            return item.rawValue ? '1m 23s' : 'Running: 1m 23s';
         }
 
         // Get timing hook script path
@@ -52,7 +52,7 @@ export class TaskTimerWidget implements Widget {
                 return null;
             }
 
-            // If rawValue is true, strip the prefix (e.g., "执行中：" or "执行完成：")
+            // If rawValue is true, strip the prefix (e.g., "Running: " or "Completed: ")
             if (item.rawValue) {
                 const match = /[:：]\s*(.+)$/.exec(output);
                 if (match?.[1]) {
