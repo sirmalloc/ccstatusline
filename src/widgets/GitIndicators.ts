@@ -19,7 +19,7 @@ export class GitIndicatorsWidget implements Widget {
         const modifiers: string[] = [];
 
         if (hideNoGit) {
-            modifiers.push("hide 'no git'");
+            modifiers.push('hide \'no git\'');
         }
 
         if (preserveColors) {
@@ -57,7 +57,8 @@ export class GitIndicatorsWidget implements Widget {
         const useColors = item.preserveColors === true;
 
         if (context.isPreview) {
-            if (!useColors) return '+*';
+            if (!useColors)
+                return '+*';
             return '\x1b[32m+\x1b[0m\x1b[31m*\x1b[0m';
         }
 
@@ -111,7 +112,7 @@ export class GitIndicatorsWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'h', label: "(h)ide 'no git' message", action: 'toggle-nogit' },
+            { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' },
             { key: 'p', label: '(p)reserveColors: widget sets colors', action: 'toggle-preserve-colors' }
         ];
     }
