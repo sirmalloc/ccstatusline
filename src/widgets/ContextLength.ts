@@ -5,10 +5,8 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import {
-    applyTokenWarning,
-    formatTokens
-} from '../utils/renderer';
+import { formatTokens } from '../utils/renderer';
+import { applyTokenWarning } from '../utils/token-warnings';
 
 export class ContextLengthWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }

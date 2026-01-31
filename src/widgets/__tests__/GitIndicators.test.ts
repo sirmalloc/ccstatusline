@@ -4,14 +4,17 @@ import {
     describe,
     expect,
     it,
-    vi
+    vi,
+    type Mock
 } from 'vitest';
 
 import type { WidgetItem } from '../../types';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { GitIndicatorsWidget } from '../GitIndicators';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
 
+const mockExecSync = execSync as Mock;
 const widget = new GitIndicatorsWidget();
 
 function render(options: { preserveColors?: boolean; isPreview?: boolean } = {}) {
@@ -20,17 +23,20 @@ function render(options: { preserveColors?: boolean; isPreview?: boolean } = {})
         type: 'git-indicators',
         preserveColors: options.preserveColors
     };
-    return widget.render(item, { isPreview: options.isPreview ?? false }, {} as any);
+    return widget.render(item, { isPreview: options.isPreview ?? false }, DEFAULT_SETTINGS);
 }
 
 function mockGitState(inRepo: boolean, staged: boolean, unstaged: boolean) {
-    vi.mocked(execSync).mockImplementation((cmd: string) => {
+    mockExecSync.mockImplementation((cmd: string) => {
         if (cmd === 'git rev-parse --git-dir') {
-            if (!inRepo) throw new Error('Not a git repo');
+            if (!inRepo)
+                throw new Error('Not a git repo');
             return '.git';
         }
-        if (cmd === 'git diff --staged --quiet' && staged) throw new Error('Changes');
-        if (cmd === 'git diff --quiet' && unstaged) throw new Error('Changes');
+        if (cmd === 'git diff --staged --quiet' && staged)
+            throw new Error('Changes');
+        if (cmd === 'git diff --quiet' && unstaged)
+            throw new Error('Changes');
         return '';
     });
 }

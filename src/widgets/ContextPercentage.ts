@@ -7,7 +7,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextConfig } from '../utils/model-context';
-import { applyTokenWarning } from '../utils/renderer';
+import { applyTokenWarning } from '../utils/token-warnings';
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
