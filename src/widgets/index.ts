@@ -3,6 +3,8 @@ export { OutputStyleWidget } from './OutputStyle';
 export { GitBranchWidget } from './GitBranch';
 export { GitChangesWidget } from './GitChanges';
 export { GitWorktreeWidget } from './GitWorktree';
+export { MercurialChangesWidget } from './MercurialChanges';
+export { MercurialBranchWidget } from './MercurialBranch';
 export { TokensInputWidget } from './TokensInput';
 export { TokensOutputWidget } from './TokensOutput';
 export { TokensCachedWidget } from './TokensCached';
