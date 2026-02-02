@@ -10,7 +10,8 @@ export function calculateContextPercentage(context: RenderContext): number {
         return 0;
     }
 
-    const modelId = context.data?.model?.id;
+    const model = context.data?.model;
+    const modelId = typeof model === 'string' ? model : model?.id;
     const contextConfig = getContextConfig(modelId);
 
     return Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
