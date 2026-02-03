@@ -6,7 +6,6 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getContextConfig } from '../utils/model-context';
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -40,18 +39,15 @@ export class ContextPercentageWidget implements Widget {
         return null;
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const isInverse = item.metadata?.inverse === 'true';
 
         if (context.isPreview) {
             const previewValue = isInverse ? '90.7%' : '9.3%';
             return item.rawValue ? previewValue : `Ctx: ${previewValue}`;
         } else if (context.tokenMetrics) {
-            const model = context.data?.model;
-            const modelId = typeof model === 'string' ? model : model?.id;
-            const contextConfig = getContextConfig(modelId);
-            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
-            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+            const displayPercentage = isInverse ? context.tokenMetrics.remainingPercentage : context.tokenMetrics.usedPercentage;
+
             return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
         }
         return null;

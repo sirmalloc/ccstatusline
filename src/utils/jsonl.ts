@@ -10,6 +10,8 @@ import type {
 } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
+import { formatDurationMs } from './input-parsers';
+import { getContextConfig } from './model-context';
 
 // Ensure fs.promises compatibility for older Node versions
 const readFile = promisify(fs.readFile);
@@ -65,33 +67,19 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
         // Calculate duration in milliseconds
         const durationMs = lastTimestamp.getTime() - firstTimestamp.getTime();
 
-        // Convert to minutes
-        const totalMinutes = Math.floor(durationMs / (1000 * 60));
-
-        if (totalMinutes < 1) {
-            return '<1m';
-        }
-
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-
-        if (hours === 0) {
-            return `${minutes}m`;
-        } else if (minutes === 0) {
-            return `${hours}hr`;
-        } else {
-            return `${hours}hr ${minutes}m`;
-        }
+        return formatDurationMs(durationMs);
     } catch {
         return null;
     }
 }
 
-export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
+export async function getTokenMetrics(transcriptPath: string, modelId?: string): Promise<TokenMetrics> {
+    const contextWindowSize = getContextConfig(modelId);
+
     try {
         // Use Node.js-compatible file reading
         if (!fs.existsSync(transcriptPath)) {
-            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0, contextWindowSize, usedPercentage: 0, remainingPercentage: 100 };
         }
 
         const content = await readFile(transcriptPath, 'utf-8');
@@ -139,10 +127,12 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         }
 
         const totalTokens = inputTokens + outputTokens + cachedTokens;
+        const usedPercentage = Math.min(100, contextLength / contextWindowSize * 100);
+        const remainingPercentage = Math.max(0, 100 - usedPercentage);
 
-        return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength };
+        return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength, contextWindowSize, usedPercentage, remainingPercentage };
     } catch {
-        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0, contextWindowSize, usedPercentage: 0, remainingPercentage: 100 };
     }
 }
 
