@@ -21,5 +21,18 @@
     "total_api_duration_ms": 2300,
     "total_lines_added": 156,
     "total_lines_removed": 23
+  },
+  "context_window": {
+    "total_input_tokens": 15234,
+    "total_output_tokens": 4521,
+    "context_window_size": 200000,
+    "used_percentage": 42.5,
+    "remaining_percentage": 57.5,
+    "current_usage": {
+      "input_tokens": 8500,
+      "output_tokens": 1200,
+      "cache_creation_input_tokens": 5000,
+      "cache_read_input_tokens": 2000
+    }
   }
 }

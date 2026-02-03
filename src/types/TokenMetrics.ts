@@ -18,4 +18,7 @@ export interface TokenMetrics {
     cachedTokens: number;
     totalTokens: number;
     contextLength: number;
+    contextWindowSize: number;
+    usedPercentage: number;
+    remainingPercentage: number;
 }

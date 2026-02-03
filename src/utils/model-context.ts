@@ -1,14 +1,6 @@
-interface ModelContextConfig {
-    maxTokens: number;
-    usableTokens: number;
-}
-
-export function getContextConfig(modelId?: string): ModelContextConfig {
+export function getContextConfig(modelId?: string): number {
     // Default to 200k for older models
-    const defaultConfig = {
-        maxTokens: 200000,
-        usableTokens: 160000
-    };
+    const defaultConfig = 200000;
 
     if (!modelId)
         return defaultConfig;
@@ -18,10 +10,7 @@ export function getContextConfig(modelId?: string): ModelContextConfig {
         modelId.includes('claude-sonnet-4-5')
         && modelId.toLowerCase().includes('[1m]')
     ) {
-        return {
-            maxTokens: 1000000,
-            usableTokens: 800000 // 80% of 1M
-        };
+        return 1000000;
     }
 
     // Add future models here as needed
