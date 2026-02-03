@@ -371,6 +371,55 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
 - **Separator** - Visual divider between widgets (customizable: |, -, comma, space)
 - **Flex Separator** - Expands to fill available space
+- **Skills** - Shows skill invocations from Claude Code hooks (requires hook setup)
+
+---
+
+### 🛠️ Skills Widget
+
+The Skills widget displays Claude Code skill invocations (e.g., `/commit`, `/review-pr`). It requires a hook to track skill usage.
+
+**Display Modes:**
+- **Current** - Shows the most recent skill (e.g., "Skill: commit")
+- **Count** - Shows total invocations (e.g., "Skills: 5")
+- **List** - Shows unique skills used (e.g., "Skills: commit, review-pr")
+
+Toggle between modes with the **(m)** key in the widget editor.
+
+<details>
+<summary><b>Hook Setup Instructions</b></summary>
+
+1. **Copy the hook script:**
+```bash
+mkdir -p ~/.claude/hooks
+curl -o ~/.claude/hooks/track-skill.sh https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/scripts/hooks/track-skill.sh
+chmod +x ~/.claude/hooks/track-skill.sh
+```
+
+2. **Configure Claude Code** - Add to `~/.claude/settings.json`:
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/track-skill.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+3. **Restart Claude Code** - The hook will now log skill invocations.
+
+**Requirements:** `jq` must be installed (`brew install jq` on macOS)
+
+</details>
 
 ---
 
