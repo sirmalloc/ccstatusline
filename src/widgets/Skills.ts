@@ -6,7 +6,6 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getSkillsMetrics } from '../utils/skills';
 
 type SkillsDisplayMode = 'current' | 'count' | 'list';
 
@@ -56,16 +55,9 @@ export class SkillsWidget implements Widget {
             return this.renderPreview(item, mode);
         }
 
-        // Get session ID from context
-        const sessionId = context.data?.session_id;
-        if (!sessionId) {
-            return null;
-        }
-
-        // Get skills metrics for this session
-        const metrics = getSkillsMetrics(sessionId);
-
-        if (metrics.totalInvocations === 0) {
+        // Get skills metrics from context (loaded by ccstatusline.ts)
+        const metrics = context.skillsMetrics;
+        if (!metrics || metrics.totalInvocations === 0) {
             return null;
         }
 
