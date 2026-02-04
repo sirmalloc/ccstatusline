@@ -355,6 +355,7 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
+- **Session Name** - Shows the session name set via `/rename` command in Claude Code
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
 - **Current Working Directory** - Shows current working directory with configurable path segments
 - **Version** - Shows Claude Code version
