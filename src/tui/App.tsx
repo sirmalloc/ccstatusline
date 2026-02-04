@@ -46,6 +46,7 @@ import {
     MainMenu,
     PowerlineSetup,
     StatusLinePreview,
+    TaskTimerSetup,
     TerminalOptionsMenu,
     TerminalWidthMenu
 } from './components';
@@ -55,7 +56,7 @@ export const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colorLines' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline' | 'install'>('main');
+    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colorLines' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline' | 'taskTimer' | 'install'>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
@@ -208,6 +209,9 @@ export const App: React.FC = () => {
         case 'powerline':
             setScreen('powerline');
             break;
+        case 'taskTimer':
+            setScreen('taskTimer');
+            break;
         case 'install':
             handleInstallUninstall();
             break;
@@ -273,9 +277,10 @@ export const App: React.FC = () => {
                                     lines: 0,
                                     colors: 1,
                                     powerline: 2,
-                                    terminalConfig: 3,
-                                    globalOverrides: 4,
-                                    install: 5
+                                    taskTimer: 3,
+                                    terminalConfig: 4,
+                                    globalOverrides: 5,
+                                    install: 6
                                 };
                                 setMenuSelections({ ...menuSelections, main: menuMap[value] ?? 0 });
                             }
@@ -449,6 +454,13 @@ export const App: React.FC = () => {
                         installingFonts={installingFonts}
                         fontInstallMessage={fontInstallMessage}
                         onClearMessage={() => { setFontInstallMessage(null); }}
+                    />
+                )}
+                {screen === 'taskTimer' && (
+                    <TaskTimerSetup
+                        onBack={() => {
+                            setScreen('main');
+                        }}
                     />
                 )}
             </Box>

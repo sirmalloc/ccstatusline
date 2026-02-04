@@ -26,6 +26,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
         { label: '🎨 Edit Colors', value: 'colors', selectable: true },
         { label: '⚡ Powerline Setup', value: 'powerline', selectable: true },
+        { label: '⏱️ Task Timer Setup', value: 'taskTimer', selectable: true },
         { label: '', value: '_gap1', selectable: false },  // Visual gap
         { label: '💻 Terminal Options', value: 'terminalConfig', selectable: true },
         { label: '🌐 Global Overrides', value: 'globalOverrides', selectable: true },
@@ -64,6 +65,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
             lines: 'Configure any number of status lines with various widgets like model info, git status, and token usage',
             colors: 'Customize colors for each widget including foreground, background, and bold styling',
             powerline: 'Install Powerline fonts for enhanced visual separators and symbols in your status line',
+            taskTimer: 'Install hooks to track and display task execution time in your status line',
             globalOverrides: 'Set global padding, separators, and color overrides that apply to all widgets',
             install: isClaudeInstalled
                 ? 'Remove ccstatusline from your Claude Code settings'

@@ -8,7 +8,8 @@
     "ccstatusline": "dist/ccstatusline.js"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "templates/"
   ],
   "scripts": {
     "start": "bun run src/ccstatusline.ts",
