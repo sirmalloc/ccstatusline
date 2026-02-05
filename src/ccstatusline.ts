@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { runTUI } from './tui';
 import type {
     BlockMetrics,
+    SkillsMetrics,
     TokenMetrics
 } from './types';
 import type { RenderContext } from './types/RenderContext';
@@ -24,6 +25,7 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
+import { getSkillsMetrics } from './utils/skills';
 
 async function readStdin(): Promise<string | null> {
     // Check if stdin is a TTY (terminal) - if it is, there's no piped data
@@ -75,6 +77,9 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if block timer is needed
     const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
 
+    // Check if skills widget is needed
+    const hasSkills = lines.some(line => line.some(item => item.type === 'skills'));
+
     let tokenMetrics: TokenMetrics | null = null;
     if (hasTokenItems && data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -90,12 +95,18 @@ async function renderMultipleLines(data: StatusJSON) {
         blockMetrics = getBlockMetrics();
     }
 
+    let skillsMetrics: SkillsMetrics | null = null;
+    if (hasSkills && data.session_id) {
+        skillsMetrics = getSkillsMetrics(data.session_id);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
         sessionDuration,
         blockMetrics,
+        skillsMetrics,
         isPreview: false
     };
 
