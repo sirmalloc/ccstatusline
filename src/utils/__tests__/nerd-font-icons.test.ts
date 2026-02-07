@@ -89,4 +89,51 @@ describe('formatWidgetLabel', () => {
         const expectedIcon = NERD_FONT_ICONS['git-branch'];
         expect(result).toBe(`${expectedIcon} main`);
     });
+
+    describe('edge cases', () => {
+        it('should handle empty string value', () => {
+            const result = formatWidgetLabel('model', '', 'Model: ', false, false);
+            expect(result).toBe('Model: ');
+        });
+
+        it('should handle empty string value with nerdFontIcons enabled', () => {
+            const result = formatWidgetLabel('model', '', 'Model: ', false, true);
+            const expectedIcon = NERD_FONT_ICONS.model;
+            expect(result).toBe(`${expectedIcon} `);
+        });
+
+        it('should handle empty string textLabel', () => {
+            const result = formatWidgetLabel('model', 'Claude', '', false, false);
+            expect(result).toBe('Claude');
+        });
+
+        it('should handle empty string textLabel with nerdFontIcons enabled', () => {
+            // When nerdFontIcons is true, textLabel is ignored in favor of icon
+            const result = formatWidgetLabel('model', 'Claude', '', false, true);
+            const expectedIcon = NERD_FONT_ICONS.model;
+            expect(result).toBe(`${expectedIcon} Claude`);
+        });
+
+        it('should return just the value when rawValue is true even for mapped widget type', () => {
+            // Widget type exists in icon map, but rawValue takes priority
+            const result = formatWidgetLabel('model', 'Claude', 'Model: ', true, true);
+            expect(result).toBe('Claude');
+        });
+
+        it('should handle empty string value with rawValue true', () => {
+            const result = formatWidgetLabel('model', '', 'Model: ', true, false);
+            expect(result).toBe('');
+        });
+
+        it('should handle both empty string value and empty string textLabel', () => {
+            const result = formatWidgetLabel('model', '', '', false, false);
+            expect(result).toBe('');
+        });
+
+        it('should handle unknown widget type with empty textLabel and nerdFontIcons enabled', () => {
+            // Falls back to textLabel (empty) + value since no icon mapping
+            const result = formatWidgetLabel('unknown-type', 'value', '', false, true);
+            expect(result).toBe('value');
+        });
+    });
 });

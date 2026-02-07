@@ -44,7 +44,8 @@ export class GitChangesWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
-        const iconPrefix = settings.nerdFontIcons ? `${getNerdFontIcon('git-changes')} ` : '';
+        const icon = getNerdFontIcon('git-changes');
+        const iconPrefix = settings.nerdFontIcons && icon ? `${icon} ` : '';
 
         if (context.isPreview) {
             return `${iconPrefix}(+42,-10)`;
