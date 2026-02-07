@@ -22,6 +22,7 @@ import {
     installStatusLine,
     isBunxAvailable,
     isInstalled,
+    isKnownCommand,
     uninstallStatusLine
 } from '../utils/claude-settings';
 import {
@@ -145,7 +146,7 @@ export const App: React.FC = () => {
 
     const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean) => {
         void getExistingStatusLine().then((existing) => {
-            const isAlreadyInstalled = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED].includes(existing ?? '');
+            const isAlreadyInstalled = isKnownCommand(existing ?? '');
             let message: string;
 
             if (existing && !isAlreadyInstalled) {
