@@ -9,6 +9,7 @@ import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
+    initConfigPath,
     loadSettings,
     saveSettings
 } from './utils/config';
@@ -164,7 +165,23 @@ async function renderMultipleLines(data: StatusJSON) {
     }
 }
 
+function parseConfigArg(): string | undefined {
+    const idx = process.argv.indexOf('--config');
+    if (idx === -1)
+        return undefined;
+    const configPath = process.argv[idx + 1];
+    if (!configPath || configPath.startsWith('--')) {
+        console.error('--config requires a file path argument');
+        process.exit(1);
+    }
+    process.argv.splice(idx, 2);
+    return configPath;
+}
+
 async function main() {
+    // Parse --config before anything else
+    initConfigPath(parseConfigArg());
+
     // Check if we're in a piped/non-TTY environment first
     if (!process.stdin.isTTY) {
         await ensureWindowsUtf8CodePage();

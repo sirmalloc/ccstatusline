@@ -19,9 +19,23 @@ const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
 
-const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
-const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
-const SETTINGS_BACKUP_PATH = path.join(CONFIG_DIR, 'settings.bak');
+const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+
+let SETTINGS_PATH = DEFAULT_SETTINGS_PATH;
+let SETTINGS_BACKUP_PATH = `${DEFAULT_SETTINGS_PATH}.bak`;
+
+export function initConfigPath(filePath?: string): void {
+    SETTINGS_PATH = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+    SETTINGS_BACKUP_PATH = `${SETTINGS_PATH}.bak`;
+}
+
+export function getConfigPath(): string {
+    return SETTINGS_PATH;
+}
+
+export function isCustomConfigPath(): boolean {
+    return SETTINGS_PATH !== DEFAULT_SETTINGS_PATH;
+}
 
 async function backupBadSettings(): Promise<void> {
     try {
@@ -43,7 +57,7 @@ async function writeDefaultSettings(): Promise<Settings> {
     };
 
     try {
-        await mkdir(CONFIG_DIR, { recursive: true });
+        await mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
         await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
         console.error(`Default settings written to ${SETTINGS_PATH}`);
     } catch (error) {
@@ -111,7 +125,7 @@ export async function loadSettings(): Promise<Settings> {
 
 export async function saveSettings(settings: Settings): Promise<void> {
     // Ensure config directory exists
-    await mkdir(CONFIG_DIR, { recursive: true });
+    await mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
 
     // Always include version when saving
     const settingsWithVersion = {
