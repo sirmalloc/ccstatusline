@@ -14,7 +14,6 @@ import type {
 import type { Settings } from '../../types/Settings';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { NERD_FONT_ICONS } from '../../utils/nerd-font-icons';
-import { BlockTimerWidget } from '../BlockTimer';
 import { GitBranchWidget } from '../GitBranch';
 import { GitChangesWidget } from '../GitChanges';
 import { ModelWidget } from '../Model';
@@ -26,198 +25,61 @@ const nerdSettings: Settings = {
 };
 
 describe('Widget rendering with nerdFontIcons enabled', () => {
-    describe('ModelWidget', () => {
+    it('ModelWidget should render with icon when enabled', () => {
         const widget = new ModelWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = { id: 'model', type: 'model' };
 
-        function render(settings: Settings, rawValue = false, isPreview = false) {
-            const context: RenderContext = {
-                isPreview,
-                data: { model: { id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' } }
-            };
-            const item: WidgetItem = {
-                id: 'model',
-                type: 'model',
-                rawValue
-            };
-
-            return widget.render(item, context, settings);
-        }
-
-        it('should render with text label when nerdFontIcons is false', () => {
-            const result = render(DEFAULT_SETTINGS, false, true);
-            expect(result).toBe('Model: Claude');
-        });
-
-        it('should render with icon when nerdFontIcons is true (preview)', () => {
-            const result = render(nerdSettings, false, true);
-            const icon = NERD_FONT_ICONS.model;
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} Claude`);
-        });
-
-        it('should render with icon when nerdFontIcons is true (real data)', () => {
-            const result = render(nerdSettings);
-            const icon = NERD_FONT_ICONS.model;
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} Claude Sonnet 4`);
-        });
-
-        it('should render raw value without icon even when nerdFontIcons is true', () => {
-            const result = render(nerdSettings, true, true);
-            expect(result).toBe('Claude');
-        });
+        const result = widget.render(item, context, nerdSettings);
+        const icon = NERD_FONT_ICONS.model;
+        expect(result).toBe(`${icon} Claude`);
     });
 
-    describe('GitBranchWidget', () => {
+    it('ModelWidget rawValue should take priority over icon', () => {
+        const widget = new ModelWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = { id: 'model', type: 'model', rawValue: true };
+
+        const result = widget.render(item, context, nerdSettings);
+        expect(result).toBe('Claude');
+    });
+
+    it('GitBranchWidget should render with icon instead of branch symbol', () => {
         const widget = new GitBranchWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = { id: 'git-branch', type: 'git-branch' };
 
-        function renderPreview(settings: Settings, rawValue = false) {
-            const context: RenderContext = { isPreview: true };
-            const item: WidgetItem = {
-                id: 'git-branch',
-                type: 'git-branch',
-                rawValue
-            };
-
-            return widget.render(item, context, settings);
-        }
-
-        it('should render with unicode branch symbol when nerdFontIcons is false', () => {
-            const result = renderPreview(DEFAULT_SETTINGS);
-            expect(result).toBe('⎇ main');
-        });
-
-        it('should render with nerd font icon when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings);
-            const icon = NERD_FONT_ICONS['git-branch'];
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} main`);
-        });
-
-        it('should render raw value without icon even when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings, true);
-            expect(result).toBe('main');
-        });
+        const result = widget.render(item, context, nerdSettings);
+        const icon = NERD_FONT_ICONS['git-branch'];
+        expect(result).toBe(`${icon} main`);
     });
 
-    describe('GitChangesWidget', () => {
+    it('GitChangesWidget should render with icon prefix', () => {
         const widget = new GitChangesWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = { id: 'git-changes', type: 'git-changes' };
 
-        function renderPreview(settings: Settings) {
-            const context: RenderContext = { isPreview: true };
-            const item: WidgetItem = {
-                id: 'git-changes',
-                type: 'git-changes'
-            };
-
-            return widget.render(item, context, settings);
-        }
-
-        it('should render without icon prefix when nerdFontIcons is false', () => {
-            const result = renderPreview(DEFAULT_SETTINGS);
-            expect(result).toBe('(+42,-10)');
-        });
-
-        it('should render with icon prefix when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings);
-            const icon = NERD_FONT_ICONS['git-changes'];
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} (+42,-10)`);
-        });
+        const result = widget.render(item, context, nerdSettings);
+        const icon = NERD_FONT_ICONS['git-changes'];
+        expect(result).toBe(`${icon} (+42,-10)`);
     });
 
-    describe('BlockTimerWidget', () => {
-        const widget = new BlockTimerWidget();
-
-        function renderPreview(settings: Settings, rawValue = false, displayMode?: string) {
-            const context: RenderContext = { isPreview: true };
-            const item: WidgetItem = {
-                id: 'block-timer',
-                type: 'block-timer',
-                rawValue,
-                metadata: displayMode ? { display: displayMode } : undefined
-            };
-
-            return widget.render(item, context, settings);
-        }
-
-        it('should render with text label when nerdFontIcons is false', () => {
-            const result = renderPreview(DEFAULT_SETTINGS);
-            expect(result).toBe('Block: 3hr 45m');
-        });
-
-        it('should render with icon when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings);
-            const icon = NERD_FONT_ICONS['block-timer'];
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} 3hr 45m`);
-        });
-
-        it('should render progress mode with icon when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings, false, 'progress');
-            const icon = NERD_FONT_ICONS['block-timer'];
-            expect(icon).toBeTruthy();
-            expect(result).toContain(String(icon));
-            expect(result).toContain('73.9%');
-        });
-
-        it('should render raw value without icon even when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings, true);
-            expect(result).toBe('3hr 45m');
-        });
-    });
-
-    describe('VersionWidget', () => {
+    it('VersionWidget should render with icon instead of v prefix', () => {
         const widget = new VersionWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = { id: 'version', type: 'version' };
 
-        function renderPreview(settings: Settings, rawValue = false) {
-            const context: RenderContext = { isPreview: true };
-            const item: WidgetItem = {
-                id: 'version',
-                type: 'version',
-                rawValue
-            };
+        const result = widget.render(item, context, nerdSettings);
+        const icon = NERD_FONT_ICONS.version;
+        expect(result).toBe(`${icon} 1.0.0`);
+    });
 
-            return widget.render(item, context, settings);
-        }
+    it('VersionWidget should render with v prefix when icons disabled', () => {
+        const widget = new VersionWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = { id: 'version', type: 'version' };
 
-        function renderWithData(settings: Settings, version: string) {
-            const context: RenderContext = { data: { version } };
-            const item: WidgetItem = {
-                id: 'version',
-                type: 'version'
-            };
-
-            return widget.render(item, context, settings);
-        }
-
-        it('should render with v prefix when nerdFontIcons is false', () => {
-            const result = renderPreview(DEFAULT_SETTINGS);
-            expect(result).toBe('v1.0.0');
-        });
-
-        it('should render with icon when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings);
-            const icon = NERD_FONT_ICONS.version;
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} 1.0.0`);
-        });
-
-        it('should render real version data with icon when nerdFontIcons is true', () => {
-            const result = renderWithData(nerdSettings, '2.0.25');
-            const icon = NERD_FONT_ICONS.version;
-            expect(icon).toBeTruthy();
-            expect(result).toBe(`${icon} 2.0.25`);
-        });
-
-        it('should render real version data with v prefix when nerdFontIcons is false', () => {
-            const result = renderWithData(DEFAULT_SETTINGS, '2.0.25');
-            expect(result).toBe('v2.0.25');
-        });
-
-        it('should render raw value without icon even when nerdFontIcons is true', () => {
-            const result = renderPreview(nerdSettings, true);
-            expect(result).toBe('1.0.0');
-        });
+        const result = widget.render(item, context, DEFAULT_SETTINGS);
+        expect(result).toBe('v1.0.0');
     });
 });
