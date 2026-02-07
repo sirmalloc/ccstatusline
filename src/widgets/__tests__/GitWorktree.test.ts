@@ -14,6 +14,7 @@ import type {
     RenderContext,
     WidgetItem
 } from '../../types';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { GitWorktreeWidget } from '../GitWorktree';
 
 const mockExecSync = vi.mocked(execSync);
@@ -27,7 +28,7 @@ function render(rawValue = false, isPreview = false) {
         rawValue
     };
 
-    return widget.render(item, context);
+    return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
 describe('GitWorktreeWidget', () => {

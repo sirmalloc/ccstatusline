@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 import { formatTokens } from '../utils/renderer';
 
 export class ContextLengthWidget implements Widget {
@@ -17,9 +18,10 @@ export class ContextLengthWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '18.6k' : 'Ctx: 18.6k';
+            return formatWidgetLabel('context-length', '18.6k', 'Ctx: ', item.rawValue, settings.nerdFontIcons);
         } else if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
+            const value = formatTokens(context.tokenMetrics.contextLength);
+            return formatWidgetLabel('context-length', value, 'Ctx: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

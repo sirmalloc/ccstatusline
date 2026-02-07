@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -16,7 +17,7 @@ export class ModelWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'Claude' : 'Model: Claude';
+            return formatWidgetLabel('model', 'Claude', 'Model: ', item.rawValue, settings.nerdFontIcons);
         }
 
         const model = context.data?.model;
@@ -25,7 +26,7 @@ export class ModelWidget implements Widget {
             : (model?.display_name ?? model?.id);
 
         if (modelDisplayName) {
-            return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
+            return formatWidgetLabel('model', modelDisplayName, 'Model: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

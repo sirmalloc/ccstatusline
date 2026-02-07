@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class SessionCostWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -16,7 +17,7 @@ export class SessionCostWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '$2.45' : 'Cost: $2.45';
+            return formatWidgetLabel('session-cost', '$2.45', 'Cost: ', item.rawValue, settings.nerdFontIcons);
         }
 
         const totalCost = context.data?.cost?.total_cost_usd;
@@ -24,10 +25,8 @@ export class SessionCostWidget implements Widget {
             return null;
         }
 
-        // Format the cost to 2 decimal places
         const formattedCost = `$${totalCost.toFixed(2)}`;
-
-        return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
+        return formatWidgetLabel('session-cost', formattedCost, 'Cost: ', item.rawValue, settings.nerdFontIcons);
     }
 
     supportsRawValue(): boolean { return true; }

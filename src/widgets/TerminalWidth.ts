@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 import { getTerminalWidth } from '../utils/terminal';
 
 export class TerminalWidthWidget implements Widget {
@@ -19,9 +20,9 @@ export class TerminalWidthWidget implements Widget {
         const width = context.terminalWidth ?? getTerminalWidth();
         if (context.isPreview) {
             const detectedWidth = width ?? '??';
-            return item.rawValue ? `${detectedWidth}` : `Term: ${detectedWidth}`;
+            return formatWidgetLabel('terminal-width', `${detectedWidth}`, 'Term: ', item.rawValue, settings.nerdFontIcons);
         } else if (width) {
-            return item.rawValue ? `${width}` : `Term: ${width}`;
+            return formatWidgetLabel('terminal-width', `${width}`, 'Term: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

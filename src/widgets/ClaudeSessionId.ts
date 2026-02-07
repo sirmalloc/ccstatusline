@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class ClaudeSessionIdWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -16,13 +17,13 @@ export class ClaudeSessionIdWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'preview-session-id' : 'Session ID: preview-session-id';
+            return formatWidgetLabel('claude-session-id', 'preview-session-id', 'Session ID: ', item.rawValue, settings.nerdFontIcons);
         } else {
             const sessionId = context.data?.session_id;
             if (!sessionId) {
                 return null;
             }
-            return item.rawValue ? sessionId : `Session ID: ${sessionId}`;
+            return formatWidgetLabel('claude-session-id', sessionId, 'Session ID: ', item.rawValue, settings.nerdFontIcons);
         }
     }
 

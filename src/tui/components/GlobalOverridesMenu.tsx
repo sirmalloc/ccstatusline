@@ -28,6 +28,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator ?? '');
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
     const [globalBold, setGlobalBold] = useState(settings.globalBold);
+    const [nerdFontIcons, setNerdFontIcons] = useState(settings.nerdFontIcons);
     const isPowerlineEnabled = settings.powerline.enabled;
 
     // Check if there are any manual separators in the current configuration
@@ -132,6 +133,15 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     globalBold: newGlobalBold
                 };
                 onUpdate(updatedSettings);
+            } else if (input === 'n' || input === 'N') {
+                // Toggle nerd font icons
+                const newNerdFontIcons = !nerdFontIcons;
+                setNerdFontIcons(newNerdFontIcons);
+                const updatedSettings = {
+                    ...settings,
+                    nerdFontIcons: newNerdFontIcons
+                };
+                onUpdate(updatedSettings);
             } else if (input === 'f' || input === 'F') {
                 // Cycle through foreground colors
                 const nextIndex = (currentFgIndex + 1) % fgColors.length;
@@ -222,6 +232,12 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     </Box>
 
                     <Box>
+                        <Text>  Nerd Font Icons: </Text>
+                        <Text color={nerdFontIcons ? 'green' : 'red'}>{nerdFontIcons ? '✓ Enabled' : '✗ Disabled'}</Text>
+                        <Text dimColor> - Press (n) to toggle</Text>
+                    </Box>
+
+                    <Box>
                         <Text>  Default Padding: </Text>
                         <Text color='cyan'>{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
                         <Text dimColor> - Press (p) to edit</Text>
@@ -305,6 +321,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         </Text>
                         <Text dimColor wrap='wrap'>
                             • Override colors: All widgets will use these colors instead of their configured colors
+                        </Text>
+                        <Text dimColor wrap='wrap'>
+                            • Nerd Font Icons: Replaces text labels with icons (requires Nerd Font v3)
                         </Text>
                     </Box>
                 </>

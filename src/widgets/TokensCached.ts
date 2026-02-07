@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 import { formatTokens } from '../utils/renderer';
 
 export class TokensCachedWidget implements Widget {
@@ -17,9 +18,10 @@ export class TokensCachedWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '12k' : 'Cached: 12k';
+            return formatWidgetLabel('tokens-cached', '12k', 'Cached: ', item.rawValue, settings.nerdFontIcons);
         } else if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.cachedTokens) : `Cached: ${formatTokens(context.tokenMetrics.cachedTokens)}`;
+            const value = formatTokens(context.tokenMetrics.cachedTokens);
+            return formatWidgetLabel('tokens-cached', value, 'Cached: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

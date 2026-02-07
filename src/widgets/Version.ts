@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class VersionWidget implements Widget {
     getDefaultColor(): string { return 'gray'; }
@@ -16,9 +17,9 @@ export class VersionWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '1.0.0' : 'v1.0.0';
+            return formatWidgetLabel('version', '1.0.0', 'v', item.rawValue, settings.nerdFontIcons);
         } else if (context.data?.version) {
-            return item.rawValue ? context.data.version : `v${context.data.version}`;
+            return formatWidgetLabel('version', context.data.version, 'v', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

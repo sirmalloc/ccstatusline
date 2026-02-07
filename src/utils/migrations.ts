@@ -111,6 +111,23 @@ export const migrations: Migration[] = [
 
             return migrated;
         }
+    },
+    {
+        fromVersion: 3,
+        toVersion: 4,
+        description: 'Add Nerd Font icons support',
+        migrate: (data) => {
+            const migrated: Record<string, unknown> = { ...data };
+
+            migrated.version = 4;
+
+            migrated.updatemessage = {
+                message: 'ccstatusline updated: Nerd Font icon support available! Run TUI to enable.',
+                remaining: 12
+            };
+
+            return migrated;
+        }
     }
 ];
 

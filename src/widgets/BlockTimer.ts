@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 type DisplayMode = 'time' | 'progress' | 'progress-short';
 
@@ -58,13 +59,14 @@ export class BlockTimerWidget implements Widget {
         const displayMode = (item.metadata?.display ?? 'time') as DisplayMode;
 
         if (context.isPreview) {
-            const prefix = item.rawValue ? '' : 'Block ';
             if (displayMode === 'progress') {
-                return `${prefix}[██████████████████████░░░░░░░░] 73.9%`;
+                const bar = '[██████████████████████░░░░░░░░] 73.9%';
+                return formatWidgetLabel('block-timer', bar, 'Block ', item.rawValue, settings.nerdFontIcons);
             } else if (displayMode === 'progress-short') {
-                return `${prefix}[███████░░░░░░░░] 73.9%`;
+                const bar = '[███████░░░░░░░░] 73.9%';
+                return formatWidgetLabel('block-timer', bar, 'Block ', item.rawValue, settings.nerdFontIcons);
             }
-            return item.rawValue ? '3hr 45m' : 'Block: 3hr 45m';
+            return formatWidgetLabel('block-timer', '3hr 45m', 'Block: ', item.rawValue, settings.nerdFontIcons);
         }
 
         // Check if we have block metrics in context
@@ -74,9 +76,9 @@ export class BlockTimerWidget implements Widget {
             if (displayMode === 'progress' || displayMode === 'progress-short') {
                 const barWidth = displayMode === 'progress' ? 32 : 16;
                 const emptyBar = '░'.repeat(barWidth);
-                return item.rawValue ? `[${emptyBar}] 0%` : `Block [${emptyBar}] 0%`;
+                return formatWidgetLabel('block-timer', `[${emptyBar}] 0%`, 'Block ', item.rawValue, settings.nerdFontIcons);
             } else {
-                return item.rawValue ? '0hr 0m' : 'Block: 0hr 0m';
+                return formatWidgetLabel('block-timer', '0hr 0m', 'Block: ', item.rawValue, settings.nerdFontIcons);
             }
         }
 
@@ -94,11 +96,7 @@ export class BlockTimerWidget implements Widget {
                 const emptyWidth = barWidth - filledWidth;
                 const progressBar = '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
 
-                if (item.rawValue) {
-                    return `[${progressBar}] ${percentage}%`;
-                } else {
-                    return `Block [${progressBar}] ${percentage}%`;
-                }
+                return formatWidgetLabel('block-timer', `[${progressBar}] ${percentage}%`, 'Block ', item.rawValue, settings.nerdFontIcons);
             } else {
                 // Time display mode
                 const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
@@ -111,7 +109,7 @@ export class BlockTimerWidget implements Widget {
                     timeString = `${elapsedHours}hr ${elapsedMinutes}m`;
                 }
 
-                return item.rawValue ? timeString : `Block: ${timeString}`;
+                return formatWidgetLabel('block-timer', timeString, 'Block: ', item.rawValue, settings.nerdFontIcons);
             }
         } catch {
             return null;

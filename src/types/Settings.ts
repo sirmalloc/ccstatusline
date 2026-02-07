@@ -6,7 +6,7 @@ import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
 
 // Current version - bump this when making breaking changes to the schema
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 // Schema for v1 settings (before version field was added)
 export const SettingsSchema_v1 = z.object({
@@ -49,6 +49,7 @@ export const SettingsSchema = z.object({
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
     globalBold: z.boolean().default(false),
+    nerdFontIcons: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,
         separators: ['\uE0B0'],

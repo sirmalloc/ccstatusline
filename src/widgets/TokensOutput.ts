@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 import { formatTokens } from '../utils/renderer';
 
 export class TokensOutputWidget implements Widget {
@@ -17,9 +18,10 @@ export class TokensOutputWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '3.4k' : 'Out: 3.4k';
+            return formatWidgetLabel('tokens-output', '3.4k', 'Out: ', item.rawValue, settings.nerdFontIcons);
         } else if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
+            const value = formatTokens(context.tokenMetrics.outputTokens);
+            return formatWidgetLabel('tokens-output', value, 'Out: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

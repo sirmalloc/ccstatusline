@@ -15,6 +15,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class CurrentWorkingDirWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -88,7 +89,7 @@ export class CurrentWorkingDirWidget implements Widget {
                 previewPath = '/Users/example/Documents/Projects/my-project';
             }
 
-            return item.rawValue ? previewPath : `cwd: ${previewPath}`;
+            return formatWidgetLabel('current-working-dir', previewPath, 'cwd: ', item.rawValue, settings.nerdFontIcons);
         }
 
         const cwd = context.data?.cwd;
@@ -115,7 +116,7 @@ export class CurrentWorkingDirWidget implements Widget {
             }
         }
 
-        return item.rawValue ? displayPath : `cwd: ${displayPath}`;
+        return formatWidgetLabel('current-working-dir', displayPath, 'cwd: ', item.rawValue, settings.nerdFontIcons);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

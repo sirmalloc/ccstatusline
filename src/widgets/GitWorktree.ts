@@ -1,12 +1,14 @@
 import { execSync } from 'child_process';
 
 import type { RenderContext } from '../types/RenderContext';
+import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class GitWorktreeWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -40,17 +42,17 @@ export class GitWorktreeWidget implements Widget {
         return null;
     }
 
-    render(item: WidgetItem, context: RenderContext): string | null {
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
 
         if (context.isPreview)
-            return item.rawValue ? 'main' : '𖠰 main';
+            return formatWidgetLabel('git-worktree', 'main', '𖠰 ', item.rawValue, settings.nerdFontIcons);
 
         const worktree = this.getGitWorktree();
         if (worktree)
-            return item.rawValue ? worktree : `𖠰 ${worktree}`;
+            return formatWidgetLabel('git-worktree', worktree, '𖠰 ', item.rawValue, settings.nerdFontIcons);
 
-        return hideNoGit ? null : '𖠰 no git';
+        return hideNoGit ? null : formatWidgetLabel('git-worktree', 'no git', '𖠰 ', false, settings.nerdFontIcons);
     }
 
     private getGitWorktree(): string | null {

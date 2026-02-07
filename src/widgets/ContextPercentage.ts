@@ -7,6 +7,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextConfig } from '../utils/model-context';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -45,14 +46,14 @@ export class ContextPercentageWidget implements Widget {
 
         if (context.isPreview) {
             const previewValue = isInverse ? '90.7%' : '9.3%';
-            return item.rawValue ? previewValue : `Ctx: ${previewValue}`;
+            return formatWidgetLabel('context-percentage', previewValue, 'Ctx: ', item.rawValue, settings.nerdFontIcons);
         } else if (context.tokenMetrics) {
             const model = context.data?.model;
             const modelId = typeof model === 'string' ? model : model?.id;
             const contextConfig = getContextConfig(modelId);
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
+            return formatWidgetLabel('context-percentage', `${displayPercentage.toFixed(1)}%`, 'Ctx: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

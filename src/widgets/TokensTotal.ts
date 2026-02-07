@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 import { formatTokens } from '../utils/renderer';
 
 export class TokensTotalWidget implements Widget {
@@ -17,9 +18,10 @@ export class TokensTotalWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '30.6k' : 'Total: 30.6k';
+            return formatWidgetLabel('tokens-total', '30.6k', 'Total: ', item.rawValue, settings.nerdFontIcons);
         } else if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
+            const value = formatTokens(context.tokenMetrics.totalTokens);
+            return formatWidgetLabel('tokens-total', value, 'Total: ', item.rawValue, settings.nerdFontIcons);
         }
         return null;
     }

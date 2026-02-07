@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class SessionClockWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -16,11 +17,11 @@ export class SessionClockWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
+            return formatWidgetLabel('session-clock', '2hr 15m', 'Session: ', item.rawValue, settings.nerdFontIcons);
         }
 
         const duration = context.sessionDuration ?? '0m';
-        return item.rawValue ? duration : `Session: ${duration}`;
+        return formatWidgetLabel('session-clock', duration, 'Session: ', item.rawValue, settings.nerdFontIcons);
     }
 
     supportsRawValue(): boolean { return true; }

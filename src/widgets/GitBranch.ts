@@ -8,6 +8,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { formatWidgetLabel } from '../utils/nerd-font-icons';
 
 export class GitBranchWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
@@ -45,14 +46,14 @@ export class GitBranchWidget implements Widget {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
 
         if (context.isPreview) {
-            return item.rawValue ? 'main' : '⎇ main';
+            return formatWidgetLabel('git-branch', 'main', '⎇ ', item.rawValue, settings.nerdFontIcons);
         }
 
         const branch = this.getGitBranch();
         if (branch)
-            return item.rawValue ? branch : `⎇ ${branch}`;
+            return formatWidgetLabel('git-branch', branch, '⎇ ', item.rawValue, settings.nerdFontIcons);
 
-        return hideNoGit ? null : '⎇ no git';
+        return hideNoGit ? null : formatWidgetLabel('git-branch', 'no git', '⎇ ', false, settings.nerdFontIcons);
     }
 
     private getGitBranch(): string | null {

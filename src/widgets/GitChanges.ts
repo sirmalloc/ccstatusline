@@ -8,6 +8,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getNerdFontIcon } from '../utils/nerd-font-icons';
 
 export class GitChangesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -43,16 +44,17 @@ export class GitChangesWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
+        const iconPrefix = settings.nerdFontIcons ? `${getNerdFontIcon('git-changes')} ` : '';
 
         if (context.isPreview) {
-            return '(+42,-10)';
+            return `${iconPrefix}(+42,-10)`;
         }
 
         const changes = this.getGitChanges();
         if (changes)
-            return `(+${changes.insertions},-${changes.deletions})`;
+            return `${iconPrefix}(+${changes.insertions},-${changes.deletions})`;
         else
-            return hideNoGit ? null : '(no git)';
+            return hideNoGit ? null : `${iconPrefix}(no git)`;
     }
 
     private getGitChanges(): { insertions: number; deletions: number } | null {
