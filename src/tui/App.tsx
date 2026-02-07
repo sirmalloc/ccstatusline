@@ -26,6 +26,8 @@ import {
     uninstallStatusLine
 } from '../utils/claude-settings';
 import {
+    getConfigPath,
+    isCustomConfigPath,
     loadSettings,
     saveSettings
 } from '../utils/config';
@@ -290,6 +292,9 @@ export const App: React.FC = () => {
                     </Text>
                 )}
             </Box>
+            {isCustomConfigPath() && (
+                <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
+            )}
 
             <StatusLinePreview
                 lines={settings.lines}
