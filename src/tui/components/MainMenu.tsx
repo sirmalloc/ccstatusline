@@ -8,8 +8,17 @@ import React, { useState } from 'react';
 import type { Settings } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
+export type MainMenuOption = 'lines'
+    | 'colors'
+    | 'powerline'
+    | 'terminalConfig'
+    | 'globalOverrides'
+    | 'install'
+    | 'save'
+    | 'exit';
+
 export interface MainMenuProps {
-    onSelect: (value: string) => void;
+    onSelect: (value: MainMenuOption) => void;
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
@@ -22,7 +31,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
     // Build menu structure with visual gaps
-    const menuItems = [
+    const menuItems: { label: string; value: MainMenuOption | '_gap1' | '_gap2'; selectable: boolean }[] = [
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
         { label: '🎨 Edit Colors', value: 'colors', selectable: true },
         { label: '⚡ Powerline Setup', value: 'powerline', selectable: true },
@@ -53,14 +62,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
         } else if (key.return) {
             const item = selectableItems[selectedIndex];
             if (item) {
-                onSelect(item.value);
+                // Since we filtered by selectable: true, value is guaranteed to be MainMenuOption
+                onSelect(item.value as MainMenuOption);
             }
         }
     });
 
     // Get description for selected item
-    const getDescription = (value: string): string => {
-        const descriptions: Record<string, string> = {
+    const getDescription = (value: MainMenuOption): string => {
+        const descriptions: Record<MainMenuOption, string> = {
             lines: 'Configure any number of status lines with various widgets like model info, git status, and token usage',
             colors: 'Customize colors for each widget including foreground, background, and bold styling',
             powerline: 'Install Powerline fonts for enhanced visual separators and symbols in your status line',
@@ -74,11 +84,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                 ? 'Exit without saving your changes'
                 : 'Exit the configuration tool'
         };
-        return descriptions[value] ?? '';
+        return descriptions[value];
     };
 
     const selectedItem = selectableItems[selectedIndex];
-    const description = selectedItem ? getDescription(selectedItem.value) : '';
+    const description = selectedItem ? getDescription(selectedItem.value as MainMenuOption) : '';
 
     // Check if we should show the truncation warning
     const showTruncationWarning = previewIsTruncated && settings?.flexMode === 'full-minus-40';

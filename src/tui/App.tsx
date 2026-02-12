@@ -47,7 +47,8 @@ import {
     PowerlineSetup,
     StatusLinePreview,
     TerminalOptionsMenu,
-    TerminalWidthMenu
+    TerminalWidthMenu,
+    type MainMenuOption
 } from './components';
 
 export const App: React.FC = () => {
@@ -191,36 +192,25 @@ export const App: React.FC = () => {
         }
     };
 
-    const handleMainMenuSelect = async (value: string) => {
-        switch (value) {
-            case 'lines':
-                setScreen('lines');
-                break;
-            case 'colors':
-                setScreen('colorLines');
-                break;
-            case 'terminalConfig':
-                setScreen('terminalConfig');
-                break;
-            case 'globalOverrides':
-                setScreen('globalOverrides');
-                break;
-            case 'powerline':
-                setScreen('powerline');
-                break;
-            case 'install':
-                handleInstallUninstall();
-                break;
-            case 'save':
-                await saveSettings(settings);
-                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
-                setHasChanges(false);
-                exit();
-                break;
-            case 'exit':
-                exit();
-                break;
+    const handleMainMenuSelect = async (value: MainMenuOption) => {
+        if (value === 'install') {
+            handleInstallUninstall();
+            return;
         }
+        if (value === 'save') {
+            await saveSettings(settings);
+            setOriginalSettings(
+                JSON.parse(JSON.stringify(settings)) as Settings
+            ); // Update original after save
+            setHasChanges(false);
+            exit();
+            return;
+        }
+        if (value === 'exit') {
+            exit();
+            return;
+        }
+        setScreen(value);
     };
 
     const updateLine = (lineIndex: number, widgets: WidgetItem[]) => {
