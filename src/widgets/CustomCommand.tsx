@@ -128,10 +128,10 @@ interface EditorMode { type: 'command' | 'width' | 'timeout' | null }
 const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const getMode = (): EditorMode['type'] => {
         switch (action) {
-        case 'edit-command': return 'command';
-        case 'edit-width': return 'width';
-        case 'edit-timeout': return 'timeout';
-        default: return 'command';
+            case 'edit-command': return 'command';
+            case 'edit-width': return 'width';
+            case 'edit-timeout': return 'timeout';
+            default: return 'command';
         }
     };
     const mode = getMode();

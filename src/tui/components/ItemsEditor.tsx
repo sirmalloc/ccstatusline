@@ -215,7 +215,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             } else if (input === ' ' && widgets.length > 0) {
                 // Space key - cycle separator character for separator types only (not flex)
                 const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'separator') {
+                if (currentWidget?.type === 'separator') {
                     const currentChar = currentWidget.character ?? '|';
                     const currentCharIndex = separatorChars.indexOf(currentChar);
                     const nextChar = separatorChars[(currentCharIndex + 1) % separatorChars.length];

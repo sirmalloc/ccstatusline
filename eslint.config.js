@@ -150,10 +150,12 @@ export default ts.config([
     },
     {
         ignores: [
-            '**/dist/',
+            '**/dist/*',
             '**/node_modules/',
             '**/*.js',
-            '!eslint.config.js'
+            '!eslint.config.js',
+            "vitest.config.ts",
+            "**/*.test.*"
         ]
     }
 ]);
