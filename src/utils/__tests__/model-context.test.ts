@@ -7,9 +7,16 @@ import {
 import { getContextConfig } from '../model-context';
 
 describe('getContextConfig', () => {
-    describe('Sonnet 4.5 models with [1m] suffix', () => {
+    describe('Models with [1m] suffix', () => {
         it('should return 1M context window for claude-sonnet-4-5 with [1m] suffix', () => {
             const config = getContextConfig('claude-sonnet-4-5-20250929[1m]');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should return 1M context window for claude-opus-4-6 with [1m] suffix', () => {
+            const config = getContextConfig('claude-opus-4-6[1m]');
 
             expect(config.maxTokens).toBe(1000000);
             expect(config.usableTokens).toBe(800000);
@@ -32,7 +39,7 @@ describe('getContextConfig', () => {
         });
     });
 
-    describe('Sonnet 4.5 models without [1m] suffix', () => {
+    describe('Models without [1m] suffix', () => {
         it('should return 200k context window for claude-sonnet-4-5 without [1m] suffix', () => {
             const config = getContextConfig('claude-sonnet-4-5-20250929');
 
