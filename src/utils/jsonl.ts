@@ -16,6 +16,32 @@ const readFile = promisify(fs.readFile);
 const readFileSync = fs.readFileSync;
 const statSync = fs.statSync;
 
+export async function getSessionSlug(transcriptPath: string): Promise<string | null> {
+    try {
+        if (!fs.existsSync(transcriptPath)) {
+            return null;
+        }
+
+        const content = await readFile(transcriptPath, 'utf-8');
+        const lines = content.trim().split('\n');
+
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line) as { slug?: string };
+                if (data.slug) {
+                    return data.slug;
+                }
+            } catch {
+                // Skip invalid lines
+            }
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
     try {
         if (!fs.existsSync(transcriptPath)) {

@@ -17,6 +17,7 @@ import {
 import {
     getBlockMetrics,
     getSessionDuration,
+    getSessionSlug,
     getTokenMetrics
 } from './utils/jsonl';
 import {
@@ -72,6 +73,9 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if session clock is needed
     const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
+    // Check if session name is needed
+    const hasSessionName = lines.some(line => line.some(item => item.type === 'session-name'));
+
     // Check if block timer is needed
     const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
 
@@ -85,6 +89,11 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
+    let sessionSlug: string | null = null;
+    if (hasSessionName && data.transcript_path) {
+        sessionSlug = await getSessionSlug(data.transcript_path);
+    }
+
     let blockMetrics: BlockMetrics | null = null;
     if (hasBlockTimer) {
         blockMetrics = getBlockMetrics();
@@ -95,6 +104,7 @@ async function renderMultipleLines(data: StatusJSON) {
         data,
         tokenMetrics,
         sessionDuration,
+        sessionSlug,
         blockMetrics,
         isPreview: false
     };
