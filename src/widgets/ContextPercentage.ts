@@ -6,6 +6,12 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    THRESHOLD_CYCLE_ORDER,
+    getCurrentPreset,
+    getContextThresholdColor,
+    getPresetLabel
+} from '../utils/color-thresholds';
 import { getContextConfig } from '../utils/model-context';
 
 export class ContextPercentageWidget implements Widget {
@@ -19,6 +25,9 @@ export class ContextPercentageWidget implements Widget {
         if (isInverse) {
             modifiers.push('remaining');
         }
+
+        const preset = getCurrentPreset(item);
+        modifiers.push(getPresetLabel(preset));
 
         return {
             displayText: this.getDisplayName(),
@@ -35,6 +44,23 @@ export class ContextPercentageWidget implements Widget {
                     ...item.metadata,
                     inverse: (!currentState).toString()
                 }
+            };
+        }
+        if (action === 'cycle-thresholds') {
+            const current = getCurrentPreset(item);
+            const currentIndex = THRESHOLD_CYCLE_ORDER.indexOf(current);
+            const nextPreset = THRESHOLD_CYCLE_ORDER[(currentIndex + 1) % THRESHOLD_CYCLE_ORDER.length] ?? 'default';
+            const { colorThresholds, thresholdPreset, ...restMetadata } = item.metadata ?? {};
+            void colorThresholds; void thresholdPreset;
+            if (nextPreset === 'off') {
+                return {
+                    ...item,
+                    metadata: { ...restMetadata, colorThresholds: 'false' }
+                };
+            }
+            return {
+                ...item,
+                metadata: { ...restMetadata, thresholdPreset: nextPreset }
             };
         }
         return null;
@@ -57,9 +83,22 @@ export class ContextPercentageWidget implements Widget {
         return null;
     }
 
+    getEffectiveColor(item: WidgetItem, context: RenderContext, settings: Settings): string | undefined {
+        if (context.isPreview) return undefined;
+        if (!context.tokenMetrics) return undefined;
+
+        const model = context.data?.model;
+        const modelId = typeof model === 'string' ? model : model?.id;
+        const contextConfig = getContextConfig(modelId);
+        const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
+
+        return getContextThresholdColor(item, usedPercentage);
+    }
+
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' }
+            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' },
+            { key: 't', label: '(t)hresholds', action: 'cycle-thresholds' }
         ];
     }
 
