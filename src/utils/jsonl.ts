@@ -556,7 +556,7 @@ function getEstimatedMax(claudeDir: string, currentBlockStart: Date): EstimatedM
     let maxBlockCost = 0;
 
     for (const entry of entries) {
-        if (!currentStart || entry.time.getTime() > currentEnd!.getTime()) {
+        if (!currentStart || !currentEnd || entry.time.getTime() > currentEnd.getTime()) {
             // Save previous block (skip the current active block)
             if (currentStart && currentStart.getTime() !== currentBlockStart.getTime()) {
                 if (blockTokens > maxBlockTokens) {

@@ -27,11 +27,31 @@ interface ApiData {
     sessionUsage?: number;  // five_hour.utilization (percentage)
     sessionResetAt?: string; // five_hour.reset_at
     weeklyUsage?: number;   // seven_day.utilization (percentage)
+    weeklyResetAt?: string;  // seven_day.resets_at
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;      // in cents
     extraUsageUsed?: number;       // in cents
     extraUsageUtilization?: number;
     error?: ApiError;
+}
+
+interface CredentialData { claudeAiOauth?: { accessToken?: string } }
+
+interface UsageApiResponse {
+    five_hour?: {
+        utilization: number;
+        resets_at: string;
+    };
+    seven_day?: {
+        utilization: number;
+        resets_at: string;
+    };
+    extra_usage?: {
+        is_enabled: boolean;
+        monthly_limit: number;
+        used_credits: number;
+        utilization: number;
+    };
 }
 
 // Memory caches
@@ -56,8 +76,8 @@ function getToken(): string | null {
                 'security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null',
                 { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
             ).trim();
-            const parsed = JSON.parse(result);
-            const token = parsed?.claudeAiOauth?.accessToken ?? null;
+            const parsed = JSON.parse(result) as CredentialData;
+            const token = parsed.claudeAiOauth?.accessToken ?? null;
             if (token) {
                 cachedToken = token;
                 tokenCacheTime = now;
@@ -66,8 +86,8 @@ function getToken(): string | null {
         } else {
             // Linux: read from credentials file
             const credFile = path.join(process.env.HOME ?? '', '.claude', '.credentials.json');
-            const creds = JSON.parse(fs.readFileSync(credFile, 'utf8'));
-            const token = creds?.claudeAiOauth?.accessToken ?? null;
+            const creds = JSON.parse(fs.readFileSync(credFile, 'utf8')) as CredentialData;
+            const token = creds.claudeAiOauth?.accessToken ?? null;
             if (token) {
                 cachedToken = token;
                 tokenCacheTime = now;
@@ -81,7 +101,7 @@ function getToken(): string | null {
 
 function readStaleCache(): ApiData | null {
     try {
-        return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+        return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) as ApiData;
     } catch {
         return null;
     }
@@ -144,7 +164,7 @@ function fetchApiData(): ApiData {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         if (fileAge < CACHE_MAX_AGE) {
-            const fileData: ApiData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+            const fileData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) as ApiData;
             if (!fileData.error) {
                 cachedData = fileData;
                 cacheTime = now;
@@ -201,7 +221,7 @@ function fetchApiData(): ApiData {
             return { error: 'api-error' };
         }
 
-        const data = JSON.parse(response);
+        const data = JSON.parse(response) as UsageApiResponse;
 
         // Extract utilization data
         const apiData: ApiData = {};
@@ -211,9 +231,10 @@ function fetchApiData(): ApiData {
         }
         if (data.seven_day) {
             apiData.weeklyUsage = data.seven_day.utilization;
+            apiData.weeklyResetAt = data.seven_day.resets_at;
         }
         if (data.extra_usage) {
-            apiData.extraUsageEnabled = data.extra_usage.is_enabled === true;
+            apiData.extraUsageEnabled = data.extra_usage.is_enabled;
             apiData.extraUsageLimit = data.extra_usage.monthly_limit;
             apiData.extraUsageUsed = data.extra_usage.used_credits;
             apiData.extraUsageUtilization = data.extra_usage.utilization;
@@ -258,6 +279,38 @@ function getErrorMessage(error: ApiError): string {
     }
 }
 
+function formatResetCountdown(resetAt: string): string | null {
+    try {
+        const diffMs = new Date(resetAt).getTime() - Date.now();
+        if (diffMs <= 0)
+            return '0hr 0m';
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        return `${hours}hr ${minutes}m`;
+    } catch {
+        return null;
+    }
+}
+
+function formatResetDay(resetAt: string): string | null {
+    try {
+        const resetDate = new Date(resetAt);
+        if (isNaN(resetDate.getTime()))
+            return null;
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const resetDayStart = new Date(resetDate.getFullYear(), resetDate.getMonth(), resetDate.getDate());
+        const daysDiff = Math.round((resetDayStart.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysDiff <= 0)
+            return 'today';
+        if (daysDiff === 1)
+            return 'tomorrow';
+        return resetDate.toLocaleDateString('en-US', { weekday: 'long' });
+    } catch {
+        return null;
+    }
+}
+
 function makeProgressBar(percent: number, width = 15): string {
     const filled = Math.round((percent / 100) * width);
     const empty = width - filled;
@@ -276,7 +329,7 @@ export class SessionUsageWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview)
-            return 'Session: [███░░░░░░░░░░░░] 20%';
+            return item.rawValue ? 'Block: 20.0% (~$14/$89) resets in 3hr 45m' : 'Session: [███░░░░░░░░░░░░] 20%';
 
         const data = fetchApiData();
         if (data.error)
@@ -285,10 +338,29 @@ export class SessionUsageWidget implements Widget {
             return null;
 
         const percent = data.sessionUsage;
+
+        if (item.rawValue) {
+            let result = `Block: ${percent.toFixed(1)}%`;
+            const metrics = context.blockTokenMetrics;
+            if (metrics) {
+                const current = `~$${Math.round(metrics.estimatedCostUsd)}`;
+                const max = metrics.estimatedMaxCostUsd > 0
+                    ? `$${Math.round(metrics.estimatedMaxCostUsd)}`
+                    : '?';
+                result += ` (${current}/${max})`;
+            }
+            if (data.sessionResetAt) {
+                const countdown = formatResetCountdown(data.sessionResetAt);
+                if (countdown)
+                    result += ` resets in ${countdown}`;
+            }
+            return result;
+        }
+
         return `Session: ${makeProgressBar(percent)} ${percent.toFixed(1)}%`;
     }
 
-    supportsRawValue(): boolean { return false; }
+    supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
 
@@ -304,7 +376,7 @@ export class WeeklyUsageWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview)
-            return 'Weekly: [██░░░░░░░░░░░░░] 12%';
+            return item.rawValue ? 'Weekly: 12.0% resets Friday' : 'Weekly: [██░░░░░░░░░░░░░] 12%';
 
         const data = fetchApiData();
         if (data.error)
@@ -313,10 +385,21 @@ export class WeeklyUsageWidget implements Widget {
             return null;
 
         const percent = data.weeklyUsage;
+
+        if (item.rawValue) {
+            let result = `Weekly: ${percent.toFixed(1)}%`;
+            if (data.weeklyResetAt) {
+                const day = formatResetDay(data.weeklyResetAt);
+                if (day)
+                    result += ` resets ${day}`;
+            }
+            return result;
+        }
+
         return `Weekly: ${makeProgressBar(percent)} ${percent.toFixed(1)}%`;
     }
 
-    supportsRawValue(): boolean { return false; }
+    supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
 

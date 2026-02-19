@@ -26,7 +26,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     'claude-sonnet-3-7': { inputPerMillion: 3,    outputPerMillion: 15,   cacheWritePerMillion: 3.75,  cacheReadPerMillion: 0.30  },
     'claude-haiku-4-5':  { inputPerMillion: 1,    outputPerMillion: 5,    cacheWritePerMillion: 1.25,  cacheReadPerMillion: 0.10  },
     'claude-haiku-3-5':  { inputPerMillion: 0.80, outputPerMillion: 4,    cacheWritePerMillion: 1.00,  cacheReadPerMillion: 0.08  },
-    'claude-haiku-3':    { inputPerMillion: 0.25, outputPerMillion: 1.25, cacheWritePerMillion: 0.30,  cacheReadPerMillion: 0.03  },
+    'claude-haiku-3':    { inputPerMillion: 0.25, outputPerMillion: 1.25, cacheWritePerMillion: 0.30,  cacheReadPerMillion: 0.03  }
 };
 
 /** Sorted prefixes longest-first for matching. */
@@ -44,7 +44,8 @@ export const DEFAULT_PRICING: ModelPricing = {
  * Resolve pricing for a model ID by longest prefix match.
  */
 export function getPricingForModel(modelId?: string): ModelPricing {
-    if (!modelId) return DEFAULT_PRICING;
+    if (!modelId)
+        return DEFAULT_PRICING;
     for (const prefix of SORTED_PREFIXES) {
         const pricing = MODEL_PRICING[prefix];
         if (modelId.startsWith(prefix) && pricing) {
