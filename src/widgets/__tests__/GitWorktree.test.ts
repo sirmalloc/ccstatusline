@@ -1,14 +1,12 @@
+import { execSync } from 'child_process';
 import {
     beforeEach,
     describe,
     expect,
     it,
-    vi
+    vi,
+    type Mock
 } from 'vitest';
-
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
-
-import { execSync } from 'child_process';
 
 import type {
     RenderContext,
@@ -16,7 +14,9 @@ import type {
 } from '../../types';
 import { GitWorktreeWidget } from '../GitWorktree';
 
-const mockExecSync = vi.mocked(execSync);
+vi.mock('child_process', () => ({ execSync: vi.fn() }));
+
+const mockExecSync = execSync as Mock;
 
 function render(rawValue = false, isPreview = false) {
     const widget = new GitWorktreeWidget();

@@ -5,11 +5,13 @@ import { promisify } from 'util';
 
 import type {
     BlockMetrics,
+    BlockTokenMetrics,
     TokenMetrics,
     TranscriptLine
 } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
+import { estimateCostUsd } from './pricing';
 
 // Ensure fs.promises compatibility for older Node versions
 const readFile = promisify(fs.readFile);
@@ -358,6 +360,290 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
     } catch {
         return [];
     }
+}
+
+// Cache for block token metrics per file (keyed by filepath, invalidated by mtime)
+const blockTokenCache = new Map<string, { mtimeMs: number; metrics: BlockTokenMetrics }>();
+
+// Cache for estimated max tokens (recomputed hourly)
+const FALLBACK_MAX_TOKENS = 5_000_000;
+const MIN_MAX_TOKENS = 1_000_000;
+const MAX_CACHE_TTL_MS = 3600 * 1000; // 1 hour
+let maxCache: { tokens: number; costUsd: number; isEstimated: boolean; computedAt: number } | null = null;
+
+/**
+ * Sums token usage from a single JSONL file for entries within the block timeframe.
+ * Results are cached by file path + mtime.
+ */
+function getFileBlockTokens(filePath: string, blockStart: Date, blockEnd: Date): BlockTokenMetrics {
+    const empty: BlockTokenMetrics = {
+        inputTokens: 0, outputTokens: 0,
+        cacheCreationTokens: 0, cacheReadTokens: 0,
+        totalTokens: 0, readCostUsd: 0, writeCostUsd: 0, estimatedCostUsd: 0,
+        estimatedMaxTokens: 0, estimatedMaxCostUsd: 0, isMaxEstimated: true
+    };
+
+    try {
+        const stats = statSync(filePath);
+
+        // Skip files not modified since block start
+        if (stats.mtime.getTime() < blockStart.getTime()) {
+            return empty;
+        }
+
+        // Check cache
+        const cached = blockTokenCache.get(filePath);
+        if (cached && cached.mtimeMs === stats.mtimeMs) {
+            return cached.metrics;
+        }
+
+        const content = readFileSync(filePath, 'utf-8');
+        const lines = content.trim().split('\n').filter(line => line.length > 0);
+
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let cacheCreationTokens = 0;
+        let cacheReadTokens = 0;
+        let readCostUsd = 0;
+        let writeCostUsd = 0;
+
+        for (const line of lines) {
+            // Quick pre-filter for performance
+            if (!line.includes('"usage"')) {
+                continue;
+            }
+
+            try {
+                const data = JSON.parse(line) as TranscriptLine;
+                const usage = data.message?.usage;
+                if (!usage)
+                    continue;
+                if (data.isSidechain === true)
+                    continue;
+
+                // Filter by timestamp within block
+                if (data.timestamp) {
+                    const entryTime = new Date(data.timestamp);
+                    if (entryTime.getTime() < blockStart.getTime() || entryTime.getTime() > blockEnd.getTime()) {
+                        continue;
+                    }
+                }
+
+                const inp = usage.input_tokens || 0;
+                const out = usage.output_tokens || 0;
+                const cc = usage.cache_creation_input_tokens ?? 0;
+                const cr = usage.cache_read_input_tokens ?? 0;
+                const modelId = data.message?.model;
+
+                inputTokens += inp;
+                outputTokens += out;
+                cacheCreationTokens += cc;
+                cacheReadTokens += cr;
+                readCostUsd += estimateCostUsd(inp, 0, cc, cr, modelId);
+                writeCostUsd += estimateCostUsd(0, out, 0, 0, modelId);
+            } catch {
+                continue;
+            }
+        }
+
+        const totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
+        const estimatedCostUsd = readCostUsd + writeCostUsd;
+
+        const metrics: BlockTokenMetrics = {
+            inputTokens, outputTokens,
+            cacheCreationTokens, cacheReadTokens,
+            totalTokens, readCostUsd, writeCostUsd, estimatedCostUsd,
+            estimatedMaxTokens: 0, estimatedMaxCostUsd: 0, isMaxEstimated: true
+        };
+
+        blockTokenCache.set(filePath, { mtimeMs: stats.mtimeMs, metrics });
+        return metrics;
+    } catch {
+        return empty;
+    }
+}
+
+interface EstimatedMax {
+    tokens: number;
+    costUsd: number;
+    isEstimated: boolean;
+}
+
+/**
+ * Estimates the max tokens and cost per block by scanning historical blocks (last 14 days).
+ * Finds the block with the highest total token usage among completed blocks.
+ * Results are cached for 1 hour.
+ */
+function getEstimatedMax(claudeDir: string, currentBlockStart: Date): EstimatedMax {
+    const now = Date.now();
+    if (maxCache && (now - maxCache.computedAt) < MAX_CACHE_TTL_MS) {
+        return { tokens: maxCache.tokens, costUsd: maxCache.costUsd, isEstimated: maxCache.isEstimated };
+    }
+
+    const sessionDurationMs = 5 * 60 * 60 * 1000;
+    const lookbackMs = 14 * 24 * 60 * 60 * 1000; // 14 days
+    const cutoffTime = new Date(now - lookbackMs);
+
+    const pattern = path.posix.join(claudeDir.replace(/\\/g, '/'), 'projects', '**', '*.jsonl');
+    const files = globSync([pattern], { absolute: true, cwd: claudeDir });
+
+    // Collect timestamps + token/cost data from files modified in lookback period
+    interface Entry { time: Date; tokens: number; costUsd: number }
+    const entries: Entry[] = [];
+
+    for (const file of files) {
+        try {
+            const stats = statSync(file);
+            if (stats.mtime.getTime() < cutoffTime.getTime()) {
+                continue;
+            }
+
+            const content = readFileSync(file, 'utf-8');
+            const lines = content.trim().split('\n').filter(line => line.length > 0);
+
+            for (const line of lines) {
+                if (!line.includes('"usage"')) {
+                    continue;
+                }
+
+                try {
+                    const data = JSON.parse(line) as TranscriptLine;
+                    const usage = data.message?.usage;
+                    if (!usage)
+                        continue;
+                    if (data.isSidechain === true)
+                        continue;
+                    if (!data.timestamp)
+                        continue;
+
+                    const entryTime = new Date(data.timestamp);
+                    if (Number.isNaN(entryTime.getTime()))
+                        continue;
+
+                    const inp = usage.input_tokens || 0;
+                    const out = usage.output_tokens || 0;
+                    const cc = usage.cache_creation_input_tokens ?? 0;
+                    const cr = usage.cache_read_input_tokens ?? 0;
+
+                    const tokens = inp + out + cc + cr;
+                    const costUsd = estimateCostUsd(inp, out, cc, cr, data.message?.model);
+
+                    entries.push({ time: entryTime, tokens, costUsd });
+                } catch {
+                    continue;
+                }
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    const fallback: EstimatedMax = { tokens: FALLBACK_MAX_TOKENS, costUsd: 0, isEstimated: true };
+
+    if (entries.length === 0) {
+        maxCache = { tokens: fallback.tokens, costUsd: fallback.costUsd, isEstimated: true, computedAt: now };
+        return fallback;
+    }
+
+    entries.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+    // Group entries into 5-hour blocks, track the block with the highest token total
+    let currentStart: Date | null = null;
+    let currentEnd: Date | null = null;
+    let blockTokens = 0;
+    let blockCost = 0;
+    let maxBlockTokens = 0;
+    let maxBlockCost = 0;
+
+    for (const entry of entries) {
+        if (!currentStart || !currentEnd || entry.time.getTime() > currentEnd.getTime()) {
+            // Save previous block (skip the current active block)
+            if (currentStart && currentStart.getTime() !== currentBlockStart.getTime()) {
+                if (blockTokens > maxBlockTokens) {
+                    maxBlockTokens = blockTokens;
+                    maxBlockCost = blockCost;
+                }
+            }
+            currentStart = floorToHour(entry.time);
+            currentEnd = new Date(currentStart.getTime() + sessionDurationMs);
+            blockTokens = 0;
+            blockCost = 0;
+        }
+        blockTokens += entry.tokens;
+        blockCost += entry.costUsd;
+    }
+
+    // Don't count the current block in the max
+    if (currentStart && currentStart.getTime() !== currentBlockStart.getTime()) {
+        if (blockTokens > maxBlockTokens) {
+            maxBlockTokens = blockTokens;
+            maxBlockCost = blockCost;
+        }
+    }
+
+    const isEstimated = maxBlockTokens === 0 || maxBlockTokens < MIN_MAX_TOKENS;
+    const resultTokens = maxBlockTokens > 0 ? Math.max(maxBlockTokens, MIN_MAX_TOKENS) : FALLBACK_MAX_TOKENS;
+    const resultCost = maxBlockCost;
+    maxCache = { tokens: resultTokens, costUsd: resultCost, isEstimated, computedAt: now };
+    return { tokens: resultTokens, costUsd: resultCost, isEstimated };
+}
+
+/**
+ * Gets total token usage across all sessions in the current 5-hour block.
+ * Requires blockMetrics to determine the block timeframe.
+ */
+export function getBlockTokenMetrics(blockMetrics: BlockMetrics): BlockTokenMetrics {
+    const claudeDir = getClaudeConfigDir();
+    if (!claudeDir) {
+        return {
+            inputTokens: 0, outputTokens: 0,
+            cacheCreationTokens: 0, cacheReadTokens: 0,
+            totalTokens: 0, readCostUsd: 0, writeCostUsd: 0, estimatedCostUsd: 0,
+            estimatedMaxTokens: FALLBACK_MAX_TOKENS, estimatedMaxCostUsd: 0,
+            isMaxEstimated: true
+        };
+    }
+
+    const blockStart = blockMetrics.startTime;
+    const blockEnd = new Date(blockStart.getTime() + 5 * 60 * 60 * 1000);
+
+    // Find all JSONL files
+    const pattern = path.posix.join(claudeDir.replace(/\\/g, '/'), 'projects', '**', '*.jsonl');
+    const files = globSync([pattern], { absolute: true, cwd: claudeDir });
+
+    let totalInput = 0;
+    let totalOutput = 0;
+    let totalCacheCreation = 0;
+    let totalCacheRead = 0;
+    let totalReadCost = 0;
+    let totalWriteCost = 0;
+
+    for (const file of files) {
+        const metrics = getFileBlockTokens(file, blockStart, blockEnd);
+        totalInput += metrics.inputTokens;
+        totalOutput += metrics.outputTokens;
+        totalCacheCreation += metrics.cacheCreationTokens;
+        totalCacheRead += metrics.cacheReadTokens;
+        totalReadCost += metrics.readCostUsd;
+        totalWriteCost += metrics.writeCostUsd;
+    }
+
+    const totalTokens = totalInput + totalOutput + totalCacheCreation + totalCacheRead;
+    const estimatedMax = getEstimatedMax(claudeDir, blockStart);
+
+    return {
+        inputTokens: totalInput,
+        outputTokens: totalOutput,
+        cacheCreationTokens: totalCacheCreation,
+        cacheReadTokens: totalCacheRead,
+        totalTokens,
+        readCostUsd: totalReadCost,
+        writeCostUsd: totalWriteCost,
+        estimatedCostUsd: totalReadCost + totalWriteCost,
+        estimatedMaxTokens: estimatedMax.tokens,
+        estimatedMaxCostUsd: estimatedMax.costUsd,
+        isMaxEstimated: estimatedMax.isEstimated
+    };
 }
 
 /**

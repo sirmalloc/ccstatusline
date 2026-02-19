@@ -53,6 +53,21 @@ export class ContextPercentageWidget implements Widget {
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
             return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
+        } else if (context.data?.context_window) {
+            const ctxWindow = context.data.context_window;
+            let usedPercentage: number | null = null;
+
+            // Use pre-calculated percentage if available (Claude Code v2.1.19+)
+            if (typeof ctxWindow.used_percentage === 'number') {
+                usedPercentage = ctxWindow.used_percentage;
+            } else if (typeof ctxWindow.current_usage === 'number' && ctxWindow.context_window_size) {
+                usedPercentage = Math.min(100, (ctxWindow.current_usage / ctxWindow.context_window_size) * 100);
+            }
+
+            if (usedPercentage !== null) {
+                const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+                return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
+            }
         }
         return null;
     }
