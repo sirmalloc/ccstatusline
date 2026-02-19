@@ -23,6 +23,7 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['session-clock', new widgets.SessionClockWidget()],
     ['session-cost', new widgets.SessionCostWidget()],
     ['block-timer', new widgets.BlockTimerWidget()],
+    ['block-usage', new widgets.BlockUsageWidget()],
     ['terminal-width', new widgets.TerminalWidthWidget()],
     ['version', new widgets.VersionWidget()],
     ['custom-text', new widgets.CustomTextWidget()],

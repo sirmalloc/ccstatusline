@@ -6,7 +6,7 @@ export interface TokenUsage {
 }
 
 export interface TranscriptLine {
-    message?: { usage?: TokenUsage };
+    message?: { model?: string; usage?: TokenUsage };
     isSidechain?: boolean;
     timestamp?: string;
     isApiErrorMessage?: boolean;
@@ -18,4 +18,18 @@ export interface TokenMetrics {
     cachedTokens: number;
     totalTokens: number;
     contextLength: number;
+}
+
+export interface BlockTokenMetrics {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+    totalTokens: number;
+    readCostUsd: number;
+    writeCostUsd: number;
+    estimatedCostUsd: number;
+    estimatedMaxTokens: number;
+    estimatedMaxCostUsd: number;
+    isMaxEstimated: boolean;
 }

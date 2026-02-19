@@ -17,5 +17,6 @@ export { VersionWidget } from './Version';
 export { CustomTextWidget } from './CustomText';
 export { CustomCommandWidget } from './CustomCommand';
 export { BlockTimerWidget } from './BlockTimer';
+export { BlockUsageWidget } from './BlockUsage';
 export { CurrentWorkingDirWidget } from './CurrentWorkingDir';
 export { ClaudeSessionIdWidget } from './ClaudeSessionId';
