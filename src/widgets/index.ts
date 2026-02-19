@@ -20,3 +20,4 @@ export { BlockTimerWidget } from './BlockTimer';
 export { BlockUsageWidget } from './BlockUsage';
 export { CurrentWorkingDirWidget } from './CurrentWorkingDir';
 export { ClaudeSessionIdWidget } from './ClaudeSessionId';
+export { ContextBarWidget, ResetTimerWidget, SessionUsageWidget, WeeklyUsageWidget } from './ApiUsage';
