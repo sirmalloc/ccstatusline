@@ -12,6 +12,7 @@ export class SessionNameWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows the session name set via /rename command in Claude Code'; }
     getDisplayName(): string { return 'Session Name'; }
+    getCategory(): string { return 'Session'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }

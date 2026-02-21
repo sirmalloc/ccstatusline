@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -14,8 +15,6 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { SessionNameWidget } from '../SessionName';
 
-vi.mock('fs');
-
 function render(transcriptPath: string | undefined, fileContent: string | null, rawValue = false, isPreview = false) {
     const widget = new SessionNameWidget();
     const context: RenderContext = {
@@ -28,10 +27,11 @@ function render(transcriptPath: string | undefined, fileContent: string | null, 
         rawValue
     };
 
+    const readFileSyncSpy = vi.spyOn(fs, 'readFileSync');
     if (fileContent !== null) {
-        vi.mocked(fs.readFileSync).mockReturnValue(fileContent);
+        readFileSyncSpy.mockImplementation(() => fileContent as never);
     } else {
-        vi.mocked(fs.readFileSync).mockImplementation(() => {
+        readFileSyncSpy.mockImplementation(() => {
             throw new Error('File not found');
         });
     }
@@ -42,6 +42,15 @@ function render(transcriptPath: string | undefined, fileContent: string | null, 
 describe('SessionNameWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('should have session category', () => {
+        const widget = new SessionNameWidget();
+        expect(widget.getCategory()).toBe('Session');
     });
 
     it('should return preview text when in preview mode', () => {
