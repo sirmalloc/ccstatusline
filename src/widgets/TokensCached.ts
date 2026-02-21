@@ -11,6 +11,7 @@ export class TokensCachedWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows cached token count for the current session'; }
     getDisplayName(): string { return 'Tokens Cached'; }
+    getCategory(): string { return 'Tokens'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }

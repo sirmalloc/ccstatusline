@@ -10,6 +10,7 @@ export class SessionClockWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows elapsed time since current session started'; }
     getDisplayName(): string { return 'Session Clock'; }
+    getCategory(): string { return 'Session'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }

@@ -5,10 +5,13 @@ export const StatusJSONSchema = z.looseObject({
     session_id: z.string().optional(),
     transcript_path: z.string().optional(),
     cwd: z.string().optional(),
-    model: z.object({
-        id: z.string().optional(),
-        display_name: z.string().optional()
-    }).optional(),
+    model: z.union([
+        z.string(),
+        z.object({
+            id: z.string().optional(),
+            display_name: z.string().optional()
+        })
+    ]).optional(),
     workspace: z.object({
         current_dir: z.string().optional(),
         project_dir: z.string().optional()

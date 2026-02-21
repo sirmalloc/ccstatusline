@@ -11,6 +11,7 @@ export class TokensInputWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows input token count for the current session'; }
     getDisplayName(): string { return 'Tokens Input'; }
+    getCategory(): string { return 'Tokens'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }

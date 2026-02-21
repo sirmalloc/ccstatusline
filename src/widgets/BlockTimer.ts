@@ -13,6 +13,7 @@ export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows elapsed time since beginning of current 5hr block'; }
     getDisplayName(): string { return 'Block Timer'; }
+    getCategory(): string { return 'Session'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = item.metadata?.display ?? 'time';

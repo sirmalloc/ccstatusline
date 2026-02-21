@@ -6,6 +6,7 @@ import {
 import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
+import { shouldInsertInput } from '../../utils/input-guards';
 
 export type EditorMode = 'separator' | 'startCap' | 'endCap';
 
@@ -133,7 +134,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
             } else if (key.backspace && cursorPos > 0) {
                 setHexInput(hexInput.slice(0, cursorPos - 1) + hexInput.slice(cursorPos));
                 setCursorPos(cursorPos - 1);
-            } else if (input && /[0-9a-fA-F]/.test(input) && hexInput.length < 4) {
+            } else if (shouldInsertInput(input, key) && /[0-9a-fA-F]/.test(input) && hexInput.length < 4) {
                 setHexInput(hexInput.slice(0, cursorPos) + input.toUpperCase() + hexInput.slice(cursorPos));
                 setCursorPos(cursorPos + 1);
             }
