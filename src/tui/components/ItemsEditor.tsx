@@ -391,9 +391,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     onUpdate(newWidgets);
                 }
             } else if (input === 'r' && widgets.length > 0) {
-                // Toggle raw value for non-separator items
+                // Toggle raw value for widgets that support it
                 const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator' && currentWidget.type !== 'custom-text') {
+                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+                    const widgetImpl = getWidget(currentWidget.type);
+                    if (!widgetImpl?.supportsRawValue()) {
+                        return;
+                    }
                     const newWidgets = [...widgets];
                     newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
                     onUpdate(newWidgets);
@@ -767,6 +771,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 const isSelected = index === selectedIndex;
                                 const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
                                 const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
+                                const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
 
                                 return (
                                     <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
@@ -784,7 +789,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                 {modifierText}
                                             </Text>
                                         )}
-                                        {widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
                                         {widget.merge === true && <Text dimColor> (merged→)</Text>}
                                         {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
                                     </Box>

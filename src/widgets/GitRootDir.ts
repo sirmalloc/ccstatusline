@@ -13,6 +13,7 @@ export class GitRootDirWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows the git repository root directory name'; }
     getDisplayName(): string { return 'Git Root Dir'; }
+    getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
         const modifiers: string[] = [];
@@ -50,8 +51,7 @@ export class GitRootDirWidget implements Widget {
 
         const rootDir = this.getGitRootDir();
         if (rootDir) {
-            const dirName = rootDir.split('/').pop() ?? rootDir;
-            return dirName;
+            return this.getRootDirName(rootDir);
         }
 
         return hideNoGit ? null : 'no git';
@@ -69,12 +69,20 @@ export class GitRootDirWidget implements Widget {
         }
     }
 
+    private getRootDirName(rootDir: string): string {
+        const trimmedRootDir = rootDir.replace(/[\\/]+$/, '');
+        const normalizedRootDir = trimmedRootDir.length > 0 ? trimmedRootDir : rootDir;
+        const parts = normalizedRootDir.split(/[\\/]/).filter(Boolean);
+        const lastPart = parts[parts.length - 1];
+        return lastPart && lastPart.length > 0 ? lastPart : normalizedRootDir;
+    }
+
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' }
         ];
     }
 
-    supportsRawValue(): boolean { return true; }
+    supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
