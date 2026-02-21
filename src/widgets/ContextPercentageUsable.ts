@@ -12,6 +12,7 @@ export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
+    getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isInverse = item.metadata?.inverse === 'true';
         const modifiers: string[] = [];
@@ -47,7 +48,8 @@ export class ContextPercentageUsableWidget implements Widget {
             const previewValue = isInverse ? '88.4%' : '11.6%';
             return item.rawValue ? previewValue : `Ctx(u): ${previewValue}`;
         } else if (context.tokenMetrics) {
-            const modelId = context.data?.model?.id;
+            const model = context.data?.model;
+            const modelId = typeof model === 'string' ? model : model?.id;
             const contextConfig = getContextConfig(modelId);
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;

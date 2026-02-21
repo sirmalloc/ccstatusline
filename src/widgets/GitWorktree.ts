@@ -12,6 +12,7 @@ export class GitWorktreeWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows the current git worktree name'; }
     getDisplayName(): string { return 'Git Worktree'; }
+    getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
         const modifiers: string[] = [];
