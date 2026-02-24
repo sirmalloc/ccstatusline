@@ -64,7 +64,7 @@ export class JjBookmarksWidget implements Widget {
     }
 
     private getJjBookmarks(context: RenderContext): string | null {
-        const output = runJj('log --no-graph -r @ --template bookmarks', context);
+        const output = runJj('log --no-graph -r \'heads(::@ & bookmarks())\' --template bookmarks', context);
         if (!output) {
             return null;
         }

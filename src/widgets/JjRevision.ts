@@ -64,7 +64,7 @@ export class JjRevisionWidget implements Widget {
     }
 
     private getJjRevision(context: RenderContext): string | null {
-        return runJj('log --no-graph -r @ -T \'change_id.short()\'', context);
+        return runJj('log --no-graph -r @ -T \'change_id.shortest()\'', context);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
