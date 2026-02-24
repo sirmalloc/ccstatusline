@@ -64,6 +64,7 @@ describe('widget catalog', () => {
 
         expect(categories).toContain('Core');
         expect(categories).toContain('Git');
+        expect(categories).toContain('Jujutsu');
         expect(categories).toContain('Context');
         expect(categories).toContain('Tokens');
         expect(categories).toContain('Session');

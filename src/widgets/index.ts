@@ -21,3 +21,8 @@ export { BlockTimerWidget } from './BlockTimer';
 export { CurrentWorkingDirWidget } from './CurrentWorkingDir';
 export { ClaudeSessionIdWidget } from './ClaudeSessionId';
 export { SessionNameWidget } from './SessionName';
+export { JjBookmarksWidget } from './JjBookmarks';
+export { JjWorkspaceWidget } from './JjWorkspace';
+export { JjRootDirWidget } from './JjRootDir';
+export { JjChangesWidget } from './JjChanges';
+export { JjRevisionWidget } from './JjRevision';
