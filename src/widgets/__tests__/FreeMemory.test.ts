@@ -1,4 +1,4 @@
-import * as childProcess from 'child_process';
+import { execSync } from 'child_process';
 import os from 'os';
 import {
     afterEach,
@@ -16,18 +16,47 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { FreeMemoryWidget } from '../FreeMemory';
 
+vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('os', () => {
+    const mockOs = {
+        totalmem: vi.fn(),
+        freemem: vi.fn(),
+        platform: vi.fn()
+    };
+
+    return {
+        default: mockOs,
+        ...mockOs
+    };
+});
+
+const mockTotalmem = os.totalmem as unknown as {
+    mockReturnValue: (value: number) => void;
+    mockReset: () => void;
+};
+const mockFreemem = os.freemem as unknown as {
+    mockReturnValue: (value: number) => void;
+    mockReset: () => void;
+};
+const mockPlatform = os.platform as unknown as {
+    mockReturnValue: (value: NodeJS.Platform) => void;
+    mockReset: () => void;
+};
+const mockExecSync = execSync as unknown as {
+    mockReturnValue: (value: string) => void;
+    mockImplementation: (impl: () => never) => void;
+    mockReset: () => void;
+};
+
 describe('FreeMemoryWidget', () => {
     const widget = new FreeMemoryWidget();
-    let totalmemSpy = vi.spyOn(os, 'totalmem');
-    let freememSpy = vi.spyOn(os, 'freemem');
-    let platformSpy = vi.spyOn(os, 'platform');
-    let execSyncSpy = vi.spyOn(childProcess, 'execSync');
 
     beforeEach(() => {
-        totalmemSpy = vi.spyOn(os, 'totalmem');
-        freememSpy = vi.spyOn(os, 'freemem');
-        platformSpy = vi.spyOn(os, 'platform');
-        execSyncSpy = vi.spyOn(childProcess, 'execSync');
+        vi.clearAllMocks();
+        mockTotalmem.mockReset();
+        mockFreemem.mockReset();
+        mockPlatform.mockReset();
+        mockExecSync.mockReset();
     });
 
     afterEach(() => {
@@ -79,14 +108,14 @@ describe('FreeMemoryWidget', () => {
 
     describe('render on macOS (vm_stat)', () => {
         beforeEach(() => {
-            platformSpy.mockReturnValue('darwin');
-            totalmemSpy.mockReturnValue(16 * 1024 ** 3); // 16GB total
+            mockPlatform.mockReturnValue('darwin');
+            mockTotalmem.mockReturnValue(16 * 1024 ** 3); // 16GB total
         });
 
         it('should calculate used memory from vm_stat (active + wired)', () => {
             // Page size 16384, active 500000 pages, wired 100000 pages
             // Used = (500000 + 100000) * 16384 = 9,830,400,000 bytes ≈ 9.2G
-            execSyncSpy.mockReturnValue(`Mach Virtual Memory Statistics: (page size of 16384 bytes)
+            mockExecSync.mockReturnValue(`Mach Virtual Memory Statistics: (page size of 16384 bytes)
 Pages free:                              100000.
 Pages active:                            500000.
 Pages inactive:                          200000.
@@ -105,7 +134,7 @@ Pages purgeable:                           5000.
         });
 
         it('should show raw value without label', () => {
-            execSyncSpy.mockReturnValue(`Mach Virtual Memory Statistics: (page size of 16384 bytes)
+            mockExecSync.mockReturnValue(`Mach Virtual Memory Statistics: (page size of 16384 bytes)
 Pages free:                              100000.
 Pages active:                            500000.
 Pages inactive:                          200000.
@@ -121,10 +150,10 @@ Pages wired down:                        100000.
         });
 
         it('should fallback to os.freemem if vm_stat fails', () => {
-            execSyncSpy.mockImplementation(() => {
+            mockExecSync.mockImplementation(() => {
                 throw new Error('command not found');
             });
-            freememSpy.mockReturnValue(8 * 1024 ** 3); // 8GB free -> 8GB used
+            mockFreemem.mockReturnValue(8 * 1024 ** 3); // 8GB free -> 8GB used
 
             const context: RenderContext = {};
             const item: WidgetItem = { id: 'mem', type: 'free-memory', rawValue: true };
@@ -135,8 +164,8 @@ Pages wired down:                        100000.
         });
 
         it('should fallback if vm_stat output is malformed', () => {
-            execSyncSpy.mockReturnValue('garbage output');
-            freememSpy.mockReturnValue(4 * 1024 ** 3); // 4GB free -> 12GB used
+            mockExecSync.mockReturnValue('garbage output');
+            mockFreemem.mockReturnValue(4 * 1024 ** 3); // 4GB free -> 12GB used
 
             const context: RenderContext = {};
             const item: WidgetItem = { id: 'mem', type: 'free-memory', rawValue: true };
@@ -149,12 +178,12 @@ Pages wired down:                        100000.
 
     describe('render on non-macOS (os.freemem fallback)', () => {
         beforeEach(() => {
-            platformSpy.mockReturnValue('linux');
+            mockPlatform.mockReturnValue('linux');
         });
 
         it('should use total - free calculation on Linux', () => {
-            freememSpy.mockReturnValue(8 * 1024 ** 3); // 8GB free
-            totalmemSpy.mockReturnValue(16 * 1024 ** 3); // 16GB total -> 8GB used
+            mockFreemem.mockReturnValue(8 * 1024 ** 3); // 8GB free
+            mockTotalmem.mockReturnValue(16 * 1024 ** 3); // 16GB total -> 8GB used
 
             const context: RenderContext = {};
             const item: WidgetItem = { id: 'mem', type: 'free-memory' };
@@ -165,8 +194,8 @@ Pages wired down:                        100000.
         });
 
         it('should handle fractional gigabytes', () => {
-            freememSpy.mockReturnValue(4.5 * 1024 ** 3); // 4.5GB free
-            totalmemSpy.mockReturnValue(32 * 1024 ** 3); // 32GB total -> 27.5GB used
+            mockFreemem.mockReturnValue(4.5 * 1024 ** 3); // 4.5GB free
+            mockTotalmem.mockReturnValue(32 * 1024 ** 3); // 32GB total -> 27.5GB used
 
             const context: RenderContext = {};
             const item: WidgetItem = { id: 'mem', type: 'free-memory', rawValue: true };
@@ -177,8 +206,8 @@ Pages wired down:                        100000.
         });
 
         it('should handle megabyte values', () => {
-            freememSpy.mockReturnValue(512 * 1024 ** 2); // 512MB free
-            totalmemSpy.mockReturnValue(1024 * 1024 ** 2); // 1GB total -> 512MB used
+            mockFreemem.mockReturnValue(512 * 1024 ** 2); // 512MB free
+            mockTotalmem.mockReturnValue(1024 * 1024 ** 2); // 1GB total -> 512MB used
 
             const context: RenderContext = {};
             const item: WidgetItem = { id: 'mem', type: 'free-memory', rawValue: true };

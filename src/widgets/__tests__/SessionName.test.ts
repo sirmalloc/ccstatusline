@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import { readFileSync } from 'fs';
 import {
     afterEach,
     beforeEach,
@@ -15,6 +15,13 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { SessionNameWidget } from '../SessionName';
 
+vi.mock('fs', () => ({ readFileSync: vi.fn() }));
+
+const mockReadFileSync = readFileSync as unknown as {
+    mockImplementation: (impl: () => string) => void;
+    mockReset: () => void;
+};
+
 function render(transcriptPath: string | undefined, fileContent: string | null, rawValue = false, isPreview = false) {
     const widget = new SessionNameWidget();
     const context: RenderContext = {
@@ -27,11 +34,10 @@ function render(transcriptPath: string | undefined, fileContent: string | null, 
         rawValue
     };
 
-    const readFileSyncSpy = vi.spyOn(fs, 'readFileSync');
     if (fileContent !== null) {
-        readFileSyncSpy.mockImplementation(() => fileContent as never);
+        mockReadFileSync.mockImplementation(() => fileContent);
     } else {
-        readFileSyncSpy.mockImplementation(() => {
+        mockReadFileSync.mockImplementation(() => {
             throw new Error('File not found');
         });
     }
@@ -42,6 +48,7 @@ function render(transcriptPath: string | undefined, fileContent: string | null, 
 describe('SessionNameWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockReadFileSync.mockReset();
     });
 
     afterEach(() => {
