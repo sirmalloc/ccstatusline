@@ -1,6 +1,7 @@
 import chalk, { type ChalkInstance } from 'chalk';
 
 import type { ColorEntry } from '../types/ColorEntry';
+import type { HeatGaugeThresholdSet } from '../types/Settings';
 
 // Re-export for backward compatibility
 export type { ColorEntry };
@@ -80,6 +81,58 @@ export function bgToFg(colorName: string | undefined): string | undefined {
 
     // Already a foreground color
     return colorName;
+}
+
+/**
+ * Maps a percentage value (0-100) to a heat gauge color.
+ *
+ * Default thresholds: cool=30, warm=40, hot=55, veryHot=70
+ * - < 30%: Cool cyan - plenty of space
+ * - 30-40%: Comfortable green
+ * - 40-55%: "Pretty hot" yellow - getting warm
+ * - 55-70%: "Very hot" orange - concerning
+ * - 70%+: Critical red - take action
+ *
+ * **Color Selection**: All colors are from the Tailwind CSS palette and tested
+ * for visibility in both light and dark terminal themes.
+ *
+ * **Usage**: Called by ContextPercentage widgets to provide visual feedback.
+ * Heat gauge colors override widget-level color settings to ensure consistent
+ * visual warnings about context usage.
+ *
+ * @param percentage - The percentage value (0-100) to colorize
+ * @param customThresholds - Optional custom thresholds that override defaults
+ * @returns A color name string in hex:XXXXXX format, compatible with getChalkColor
+ *
+ * @example
+ * // 45% usage - shows yellow (pretty hot)
+ * const color = getHeatGaugeColor(45); // Returns 'hex:FDE047'
+ *
+ * @example
+ * // Custom thresholds
+ * const color = getHeatGaugeColor(25, { cool: 20, warm: 35, hot: 50, veryHot: 65 }); // Returns 'hex:4ADE80'
+ */
+export function getHeatGaugeColor(percentage: number, customThresholds?: HeatGaugeThresholdSet): string {
+    const thresholds = customThresholds ?? {
+        cool: 30,     // < 30%: Cool (cyan)
+        warm: 40,     // 30-40%: Warm (green/yellow)
+        hot: 55,      // 40-55%: Hot (orange) - "very hot"
+        veryHot: 70   // 55-70%: Very hot (orange-red)
+        // 70%+: Critical (red)
+    };
+
+    // Apply colors based on thresholds
+    if (percentage < thresholds.cool) {
+        return 'hex:00D9FF'; // Cyan - cool, plenty of space
+    } else if (percentage < thresholds.warm) {
+        return 'hex:4ADE80'; // Green - comfortable
+    } else if (percentage < thresholds.hot) {
+        return 'hex:FDE047'; // Yellow - "pretty hot", getting warm
+    } else if (percentage < thresholds.veryHot) {
+        return 'hex:FB923C'; // Orange - "very hot", concerning
+    } else {
+        return 'hex:F87171'; // Red - critical, take action
+    }
 }
 
 export function getChalkColor(colorName: string | undefined, colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16', isBackground = false): ChalkInstance | undefined {

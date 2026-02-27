@@ -22,6 +22,18 @@ export const SettingsSchema_v1 = z.object({
     globalBold: z.boolean().optional()
 });
 
+const HeatGaugeThresholdSetSchema = z.object({
+    cool: z.number().min(0).max(100),
+    warm: z.number().min(0).max(100),
+    hot: z.number().min(0).max(100),
+    veryHot: z.number().min(0).max(100)
+}).refine(
+    t => t.cool < t.warm && t.warm < t.hot && t.hot < t.veryHot,
+    { message: 'Thresholds must be strictly ascending: cool < warm < hot < veryHot' }
+);
+
+export type HeatGaugeThresholdSet = z.infer<typeof HeatGaugeThresholdSetSchema>;
+
 // Main settings schema with defaults
 export const SettingsSchema = z.object({
     version: z.number().default(CURRENT_VERSION),
@@ -61,7 +73,8 @@ export const SettingsSchema = z.object({
     updatemessage: z.object({
         message: z.string().nullable().optional(),
         remaining: z.number().nullable().optional()
-    }).optional()
+    }).optional(),
+    heatGaugeThresholds: HeatGaugeThresholdSetSchema.optional()
 });
 
 // Inferred type from schema

@@ -6,6 +6,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    getChalkColor,
+    getHeatGaugeColor
+} from '../utils/colors';
 import { getContextConfig } from '../utils/model-context';
 
 export class ContextPercentageUsableWidget implements Widget {
@@ -15,15 +19,17 @@ export class ContextPercentageUsableWidget implements Widget {
     getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isInverse = item.metadata?.inverse === 'true';
+        const heatGaugeOn = item.heatGaugeColors ?? true;
         const modifiers: string[] = [];
 
         if (isInverse) {
             modifiers.push('remaining');
         }
+        modifiers.push(`heat:${heatGaugeOn ? 'ON' : 'OFF'}`);
 
         return {
             displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+            modifierText: `(${modifiers.join(', ')})`
         };
     }
 
@@ -38,29 +44,69 @@ export class ContextPercentageUsableWidget implements Widget {
                 }
             };
         }
+        if (action === 'toggle-heat-gauge') {
+            return { ...item, heatGaugeColors: !(item.heatGaugeColors ?? true) };
+        }
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = item.metadata?.inverse === 'true';
+        const useHeatGauge = item.heatGaugeColors ?? true;
 
         if (context.isPreview) {
             const previewValue = isInverse ? '88.4%' : '11.6%';
+            const previewPercentage = isInverse ? 88.4 : 11.6;
+            if (useHeatGauge) {
+                const heatColor = getHeatGaugeColor(previewPercentage, settings.heatGaugeThresholds);
+                const chalkColor = getChalkColor(heatColor, 'truecolor');
+                const coloredValue = chalkColor ? chalkColor(previewValue) : previewValue;
+                return item.rawValue ? coloredValue : `Ctx(u): ${coloredValue}`;
+            }
             return item.rawValue ? previewValue : `Ctx(u): ${previewValue}`;
-        } else if (context.tokenMetrics) {
+        }
+
+        // Prefer context_window data from Claude Code (v2.0.65+)
+        if (context.contextWindow && context.contextWindow.contextWindowSize > 0) {
+            const usableTokens = context.contextWindow.contextWindowSize * 0.8;
+            const usedPercentage = Math.min(100, (context.contextWindow.totalInputTokens / usableTokens) * 100);
+            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+            const percentageString = `${displayPercentage.toFixed(1)}%`;
+
+            if (useHeatGauge) {
+                const heatColor = getHeatGaugeColor(displayPercentage, settings.heatGaugeThresholds);
+                const chalkColor = getChalkColor(heatColor, 'truecolor');
+                const coloredPercentage = chalkColor ? chalkColor(percentageString) : percentageString;
+                return item.rawValue ? coloredPercentage : `Ctx(u): ${coloredPercentage}`;
+            }
+            return item.rawValue ? percentageString : `Ctx(u): ${percentageString}`;
+        }
+
+        // Fall back to transcript-based metrics with model lookup
+        if (context.tokenMetrics) {
             const model = context.data?.model;
             const modelId = typeof model === 'string' ? model : model?.id;
             const contextConfig = getContextConfig(modelId);
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx(u): ${displayPercentage.toFixed(1)}%`;
+            const percentageString = `${displayPercentage.toFixed(1)}%`;
+
+            if (useHeatGauge) {
+                const heatColor = getHeatGaugeColor(displayPercentage, settings.heatGaugeThresholds);
+                const chalkColor = getChalkColor(heatColor, 'truecolor');
+                const coloredPercentage = chalkColor ? chalkColor(percentageString) : percentageString;
+                return item.rawValue ? coloredPercentage : `Ctx(u): ${coloredPercentage}`;
+            }
+            return item.rawValue ? percentageString : `Ctx(u): ${percentageString}`;
         }
+
         return null;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' }
+            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' },
+            { key: 'h', label: '(h)eat gauge on/off', action: 'toggle-heat-gauge' }
         ];
     }
 

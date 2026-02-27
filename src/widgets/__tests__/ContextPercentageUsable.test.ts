@@ -1,4 +1,6 @@
+import chalk from 'chalk';
 import {
+    beforeAll,
     describe,
     expect,
     it
@@ -10,6 +12,11 @@ import type {
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { ContextPercentageUsableWidget } from '../ContextPercentageUsable';
+
+// Force enable colors in test environment to verify color application
+beforeAll(() => {
+    chalk.level = 3; // Enable truecolor support
+});
 
 function render(modelId: string | undefined, contextLength: number, rawValue = false, inverse = false) {
     const widget = new ContextPercentageUsableWidget();
@@ -27,6 +34,7 @@ function render(modelId: string | undefined, contextLength: number, rawValue = f
         id: 'context-percentage-usable',
         type: 'context-percentage-usable',
         rawValue,
+        heatGaugeColors: false,
         metadata: inverse ? { inverse: 'true' } : undefined
     };
 
@@ -60,6 +68,50 @@ describe('ContextPercentageUsableWidget', () => {
         it('should calculate percentage using 160k denominator for unknown model', () => {
             const result = render('claude-unknown-model', 42000);
             expect(result).toBe('Ctx(u): 26.3%');
+        });
+    });
+
+    describe('Heat gauge colors', () => {
+        it('should apply colors when heatGaugeColors is true (default)', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = {
+                data: { model: { id: 'claude-3-5-sonnet-20241022' } },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 10000
+                }
+            };
+            const item: WidgetItem = {
+                id: 'context-percentage-usable',
+                type: 'context-percentage-usable'
+            };
+            const result = widget.render(item, context, DEFAULT_SETTINGS);
+            expect(result).toContain('6.3%');
+            expect(result).toMatch(/\x1b\[/); // ANSI escape sequence present
+        });
+
+        it('should not apply colors when heatGaugeColors is false', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = {
+                data: { model: { id: 'claude-3-5-sonnet-20241022' } },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 10000
+                }
+            };
+            const item: WidgetItem = {
+                id: 'context-percentage-usable',
+                type: 'context-percentage-usable',
+                heatGaugeColors: false
+            };
+            const result = widget.render(item, context, DEFAULT_SETTINGS);
+            expect(result).toBe('Ctx(u): 6.3%');
         });
     });
 });
