@@ -129,6 +129,23 @@ let usageCacheTime = 0;
 let cachedUsageToken: string | null = null;
 let usageTokenCacheTime = 0;
 
+function setCachedUsageError(error: UsageError, now: number): UsageData {
+    const errorData: UsageData = { error };
+    cachedUsageData = errorData;
+    usageCacheTime = now;
+    return errorData;
+}
+
+function getStaleUsageOrError(error: UsageError, now: number): UsageData {
+    const stale = readStaleUsageCache();
+    if (stale && !stale.error) {
+        cachedUsageData = stale;
+        usageCacheTime = now;
+        return stale;
+    }
+    return setCachedUsageError(error, now);
+}
+
 function getUsageToken(): string | null {
     const now = Math.floor(Date.now() / 1000);
 
@@ -232,8 +249,14 @@ export function fetchUsageData(): UsageData {
     const now = Math.floor(Date.now() / 1000);
 
     // Check memory cache (fast path)
-    if (cachedUsageData && !cachedUsageData.error && (now - usageCacheTime) < CACHE_MAX_AGE) {
-        return cachedUsageData;
+    if (cachedUsageData) {
+        const cacheAge = now - usageCacheTime;
+        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE) {
+            return cachedUsageData;
+        }
+        if (cachedUsageData.error && cacheAge < LOCK_MAX_AGE) {
+            return cachedUsageData;
+        }
     }
 
     // Check file cache
@@ -250,6 +273,12 @@ export function fetchUsageData(): UsageData {
         }
     } catch {
         // File doesn't exist or read error - continue to API call
+    }
+
+    // Get token before lock/rate-limit checks so auth failures are not masked as timeout.
+    const token = getUsageToken();
+    if (!token) {
+        return getStaleUsageOrError('no-credentials', now);
     }
 
     // Rate limit: only try API once per 30 seconds
@@ -278,40 +307,22 @@ export function fetchUsageData(): UsageData {
         // Ignore lock file errors
     }
 
-    // Get token
-    const token = getUsageToken();
-    if (!token) {
-        const stale = readStaleUsageCache();
-        if (stale && !stale.error)
-            return stale;
-        return { error: 'no-credentials' };
-    }
-
     // Fetch from API using Node's https module
     try {
         const response = fetchFromUsageApi(token);
 
         if (!response) {
-            const stale = readStaleUsageCache();
-            if (stale && !stale.error)
-                return stale;
-            return { error: 'api-error' };
+            return getStaleUsageOrError('api-error', now);
         }
 
         const usageData = parseUsageApiResponse(response);
         if (!usageData) {
-            const stale = readStaleUsageCache();
-            if (stale && !stale.error)
-                return stale;
-            return { error: 'parse-error' };
+            return getStaleUsageOrError('parse-error', now);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
-            const stale = readStaleUsageCache();
-            if (stale && !stale.error)
-                return stale;
-            return { error: 'parse-error' };
+            return getStaleUsageOrError('parse-error', now);
         }
 
         // Save to cache
@@ -328,10 +339,7 @@ export function fetchUsageData(): UsageData {
         usageCacheTime = now;
         return usageData;
     } catch {
-        const stale = readStaleUsageCache();
-        if (stale && !stale.error)
-            return stale;
-        return { error: 'parse-error' };
+        return getStaleUsageOrError('parse-error', now);
     }
 }
 

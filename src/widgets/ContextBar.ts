@@ -82,10 +82,11 @@ export class ContextBarWidget implements Widget {
         }
 
         const percent = (used / total) * 100;
+        const clampedPercent = Math.max(0, Math.min(100, percent));
 
         const usedK = Math.round(used / 1000);
         const totalK = Math.round(total / 1000);
-        const display = `${makeUsageProgressBar(percent, barWidth)} ${usedK}k/${totalK}k (${Math.round(percent)}%)`;
+        const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedK}k/${totalK}k (${Math.round(clampedPercent)}%)`;
 
         return item.rawValue ? display : `Context: ${display}`;
     }

@@ -47,6 +47,25 @@ describe('ContextBarWidget', () => {
         expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:25.0:16] 50k/200k (25%)');
     });
 
+    it('clamps usage percentage to 100 when context length exceeds total', () => {
+        const context: RenderContext = {
+            data: {
+                context_window: {
+                    context_window_size: 200000,
+                    current_usage: {
+                        input_tokens: 250000,
+                        output_tokens: 50000,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0
+                    }
+                }
+            }
+        };
+        const widget = new ContextBarWidget();
+
+        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:100.0:16] 250k/200k (100%)');
+    });
+
     it('supports raw mode without context label', () => {
         const context: RenderContext = {
             data: {
