@@ -8,8 +8,8 @@ import type {
 } from '../types/Widget';
 import {
     fetchUsageData,
-    formatUsageDuration,
-    resolveUsageWindowWithFallback
+    getUsageErrorMessage,
+    makeUsageProgressBar
 } from '../utils/usage';
 
 type DisplayMode = 'time' | 'progress' | 'progress-short';
@@ -26,17 +26,10 @@ function isInverted(item: WidgetItem): boolean {
     return item.metadata?.invert === 'true';
 }
 
-function makeTimerProgressBar(percent: number, width: number): string {
-    const clampedPercent = Math.max(0, Math.min(100, percent));
-    const filledWidth = Math.floor((clampedPercent / 100) * width);
-    const emptyWidth = width - filledWidth;
-    return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
-}
-
-export class BlockTimerWidget implements Widget {
-    getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows current 5hr block elapsed time or progress'; }
-    getDisplayName(): string { return 'Block Timer'; }
+export class SessionUsageWidget implements Widget {
+    getDefaultColor(): string { return 'brightBlue'; }
+    getDescription(): string { return 'Shows daily/session API usage percentage'; }
+    getDisplayName(): string { return 'Session Usage'; }
     getCategory(): string { return 'Session'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -105,46 +98,33 @@ export class BlockTimerWidget implements Widget {
         const inverted = isInverted(item);
 
         if (context.isPreview) {
-            const previewPercent = inverted ? 26.1 : 73.9;
-            const prefix = item.rawValue ? '' : 'Block ';
+            const previewPercent = 20;
+            const renderedPercent = inverted ? 100 - previewPercent : previewPercent;
 
             if (displayMode === 'progress' || displayMode === 'progress-short') {
-                const barWidth = displayMode === 'progress' ? 32 : 16;
-                const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return `${prefix}[${progressBar}] ${previewPercent.toFixed(1)}%`;
+                const width = displayMode === 'progress' ? 32 : 16;
+                const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
+                return item.rawValue ? progressDisplay : `Session: ${progressDisplay}`;
             }
 
-            return item.rawValue ? '3hr 45m' : 'Block: 3hr 45m';
+            return item.rawValue ? `${previewPercent.toFixed(1)}%` : `Session: ${previewPercent.toFixed(1)}%`;
         }
 
-        const usageData = fetchUsageData();
-        const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
+        const data = fetchUsageData();
+        if (data.error)
+            return getUsageErrorMessage(data.error);
+        if (data.sessionUsage === undefined)
+            return null;
 
-        if (!window) {
-            if (displayMode === 'progress' || displayMode === 'progress-short') {
-                const barWidth = displayMode === 'progress' ? 32 : 16;
-                const emptyBar = '░'.repeat(barWidth);
-                return item.rawValue ? `[${emptyBar}] 0.0%` : `Block [${emptyBar}] 0.0%`;
-            }
-
-            return item.rawValue ? '0hr 0m' : 'Block: 0hr 0m';
-        }
-
+        const percent = Math.max(0, Math.min(100, data.sessionUsage));
         if (displayMode === 'progress' || displayMode === 'progress-short') {
-            const barWidth = displayMode === 'progress' ? 32 : 16;
-            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
-            const progressBar = makeTimerProgressBar(percent, barWidth);
-            const percentage = percent.toFixed(1);
-
-            if (item.rawValue) {
-                return `[${progressBar}] ${percentage}%`;
-            }
-
-            return `Block [${progressBar}] ${percentage}%`;
+            const width = displayMode === 'progress' ? 32 : 16;
+            const renderedPercent = inverted ? 100 - percent : percent;
+            const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
+            return item.rawValue ? progressDisplay : `Session: ${progressDisplay}`;
         }
 
-        const elapsedTime = formatUsageDuration(window.elapsedMs);
-        return item.rawValue ? elapsedTime : `Block: ${elapsedTime}`;
+        return item.rawValue ? `${percent.toFixed(1)}%` : `Session: ${percent.toFixed(1)}%`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

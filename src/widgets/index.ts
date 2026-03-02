@@ -22,4 +22,7 @@ export { CurrentWorkingDirWidget } from './CurrentWorkingDir';
 export { ClaudeSessionIdWidget } from './ClaudeSessionId';
 export { FreeMemoryWidget } from './FreeMemory';
 export { SessionNameWidget } from './SessionName';
-export { ContextBarWidget, ResetTimerWidget, SessionUsageWidget, WeeklyUsageWidget } from './ApiUsage';
+export { SessionUsageWidget } from './SessionUsage';
+export { WeeklyUsageWidget } from './WeeklyUsage';
+export { ResetTimerWidget } from './ResetTimer';
+export { ContextBarWidget } from './ContextBar';

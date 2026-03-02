@@ -2,10 +2,7 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
-import type {
-    BlockMetrics,
-    TokenMetrics
-} from './types';
+import type { TokenMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
@@ -15,7 +12,6 @@ import {
     saveSettings
 } from './utils/config';
 import {
-    getCachedBlockMetrics,
     getSessionDuration,
     getTokenMetrics
 } from './utils/jsonl';
@@ -85,9 +81,6 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if session clock is needed
     const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
-    // Check if block timer is needed
-    const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
-
     let tokenMetrics: TokenMetrics | null = null;
     if (hasTokenItems && data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -98,17 +91,11 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
-    let blockMetrics: BlockMetrics | null = null;
-    if (hasBlockTimer) {
-        blockMetrics = getCachedBlockMetrics();
-    }
-
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
         sessionDuration,
-        blockMetrics,
         isPreview: false
     };
 
