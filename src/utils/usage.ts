@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import type { BlockMetrics } from '../types';
 
+import { getClaudeConfigDir } from './claude-settings';
 import { getCachedBlockMetrics } from './jsonl';
 
 // Cache configuration
@@ -152,8 +153,8 @@ function getUsageToken(): string | null {
             return token;
         }
 
-        // Linux: read from credentials file
-        const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
+        // Non-macOS: read from credentials file, honoring CLAUDE_CONFIG_DIR
+        const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
         const token = parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
         if (token) {
             cachedUsageToken = token;
@@ -174,36 +175,47 @@ function readStaleUsageCache(): UsageData | null {
 }
 
 function fetchFromUsageApi(token: string): string | null {
-    // Use Node to make HTTPS request synchronously via spawnSync
+    // Use the active runtime to make a synchronous API call via spawnSync.
     const script = `
+        const token = process.env.TOKEN;
+        if (!token) {
+            process.exit(1);
+        }
+
         const https = require('https');
         const options = {
             hostname: 'api.anthropic.com',
             path: '/api/oauth/usage',
             method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + process.env.TOKEN,
+                'Authorization': 'Bearer ' + token,
                 'anthropic-beta': 'oauth-2025-04-20'
             },
             timeout: 5000
         };
+
         const req = https.request(options, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
-                if (res.statusCode === 200) {
+                if (res.statusCode === 200 && data) {
                     process.stdout.write(data);
                 } else {
                     process.exit(1);
                 }
             });
         });
+
         req.on('error', () => process.exit(1));
-        req.on('timeout', () => { req.destroy(); process.exit(1); });
+        req.on('timeout', () => {
+            req.destroy();
+            process.exit(1);
+        });
         req.end();
     `;
 
-    const result = spawnSync('node', ['-e', script], {
+    const runtimePath = process.execPath || 'node';
+    const result = spawnSync(runtimePath, ['-e', script], {
         encoding: 'utf8',
         timeout: 6000,
         env: { ...process.env, TOKEN: token }
