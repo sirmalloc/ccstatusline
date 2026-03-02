@@ -46,6 +46,11 @@
 
 ## 🆕 Recent Updates
 
+### v2.1.0 - Usage widgets and reliability fixes
+
+- **🧩 New Usage widgets** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
+- **📊 More accurate counts** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
+
 ### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
 - **🧠 Memory Usage widget (v2.0.29)** - Added a new widget that shows current system memory usage (`Mem: used/total`).
@@ -68,7 +73,7 @@
 
 ### v2.0.14 - Add remaining mode toggle to Context Percentage widgets
 
-- **Remaining Mode** - You can now toggle the Context Percentage widgets between usage percentage and remaining percentage when configuring them in the TUI by pressing the 'l' key.
+- **Remaining Mode** - You can now toggle the Context Percentage widgets between usage percentage and remaining percentage when configuring them in the TUI by pressing the 'u' key.
 
 ### v2.0.12 - Custom Text widget now supports emojis
 
@@ -408,10 +413,13 @@ bun run example
 - **Git Root Dir** - Shows the git repository root directory name
 - **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
+- **Session Usage** - Shows current 5-hour/session API usage percentage
+- **Weekly Usage** - Shows rolling 7-day API usage percentage
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Session Name** - Shows the session name set via `/rename` command in Claude Code
 - **Claude Session ID** - Shows the current Claude Code session ID from status JSON
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
+- **Reset Timer** - Shows time remaining until the current 5-hour block resets
 - **Current Working Directory** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
 - **Version** - Shows Claude Code version
 - **Output Style** - Shows the currently set output style in Claude Code
@@ -422,6 +430,7 @@ bun run example
 - **Context Length** - Shows current context length in tokens
 - **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with `[1m]` suffix, 200k otherwise)
 - **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
+- **Context Bar** - Shows context usage as a progress bar with short/full display modes
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
 - **Custom Text** - Add your own custom text to the status line
@@ -509,7 +518,7 @@ Common controls in the line editor:
 
 Widget-specific shortcuts:
 - **Git widgets**: `h` toggle hide `no git` output
-- **Context % widgets**: `l` toggle used vs remaining display
+- **Context % widgets**: `u` toggle used vs remaining display
 - **Block Timer**: `p` cycle display mode (time/full bar/short bar)
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
