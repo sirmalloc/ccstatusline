@@ -70,7 +70,7 @@ export class ContextPercentageWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' }
+            { key: 'u', label: '(u)sed/remaining', action: 'toggle-inverse' }
         ];
     }
 
