@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import {
     afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -12,12 +13,24 @@ import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { CurrentWorkingDirWidget } from '../CurrentWorkingDir';
 
+vi.mock('node:os', () => ({ homedir: vi.fn() }));
+
+const mockHomedir = os.homedir as unknown as {
+    mockReset: () => void;
+    mockReturnValue: (value: string) => void;
+};
+
 describe('CurrentWorkingDirWidget', () => {
     const widget = new CurrentWorkingDirWidget();
-    const homeDir = os.homedir();
+    const defaultHomeDir = '/Users/alice';
+
+    beforeEach(() => {
+        mockHomedir.mockReset();
+        mockHomedir.mockReturnValue(defaultHomeDir);
+    });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        vi.clearAllMocks();
     });
 
     const createContext = (cwd?: string, isPreview = false): RenderContext => ({
@@ -57,10 +70,11 @@ describe('CurrentWorkingDirWidget', () => {
 
     describe('abbreviateHome', () => {
         it('should replace home directory with ~ when enabled', () => {
+            mockHomedir.mockReturnValue(defaultHomeDir);
             const item = createItem({ abbreviateHome: 'true' }, true);
             const result = widget.render(
                 item,
-                createContext(`${homeDir}/Documents/Projects`),
+                createContext(`${defaultHomeDir}/Documents/Projects`),
                 defaultSettings
             );
             expect(result).toBe('~/Documents/Projects');
@@ -70,10 +84,10 @@ describe('CurrentWorkingDirWidget', () => {
             const item = createItem(undefined, true);
             const result = widget.render(
                 item,
-                createContext(`${homeDir}/Documents/Projects`),
+                createContext(`${defaultHomeDir}/Documents/Projects`),
                 defaultSettings
             );
-            expect(result).toBe(`${homeDir}/Documents/Projects`);
+            expect(result).toBe(`${defaultHomeDir}/Documents/Projects`);
         });
 
         it('should not modify paths outside home directory', () => {
@@ -87,7 +101,7 @@ describe('CurrentWorkingDirWidget', () => {
         });
 
         it('should not abbreviate non-home sibling paths with shared prefix', () => {
-            vi.spyOn(os, 'homedir').mockReturnValue('/Users/al');
+            mockHomedir.mockReturnValue('/Users/al');
 
             const item = createItem({ abbreviateHome: 'true' }, true);
             const result = widget.render(
@@ -100,10 +114,11 @@ describe('CurrentWorkingDirWidget', () => {
         });
 
         it('should combine with segments option', () => {
+            mockHomedir.mockReturnValue(defaultHomeDir);
             const item = createItem({ abbreviateHome: 'true', segments: '2' }, true);
             const result = widget.render(
                 item,
-                createContext(`${homeDir}/Documents/Projects/my-project`),
+                createContext(`${defaultHomeDir}/Documents/Projects/my-project`),
                 defaultSettings
             );
             expect(result).toBe('~/.../Projects/my-project');
@@ -140,7 +155,7 @@ describe('CurrentWorkingDirWidget', () => {
         });
 
         it('should preserve windows path separators when combining home abbreviation and segments', () => {
-            vi.spyOn(os, 'homedir').mockReturnValue('C:\\Users\\alice');
+            mockHomedir.mockReturnValue('C:\\Users\\alice');
 
             const item = createItem({ abbreviateHome: 'true', segments: '2' }, true);
             const result = widget.render(

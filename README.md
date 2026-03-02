@@ -46,8 +46,9 @@
 
 ## 🆕 Recent Updates
 
-### v2.0.26 - v2.0.28 - Performance, git internals, and workflow improvements
+### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
+- **🧠 Memory Usage widget (v2.0.29)** - Added a new widget that shows current system memory usage (`Mem: used/total`).
 - **⚡ Block timer cache (v2.0.28)** - Cache block timer metrics to reduce JSONL parsing on every render, with per-config hashed cache files and automatic 5-hour block invalidation.
 - **🧱 Git widget command refactor (v2.0.28)** - Refactored git widgets to use shared git command helpers and expanded coverage for failure and edge-case tests.
 - **🪟 Windows UTF-8 piped output fix (v2.0.28)** - Sets the Windows UTF-8 code page for piped status line rendering.
@@ -136,6 +137,7 @@
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure multiple independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
+- **🔎 Fast Widget Picker** - Add/change widgets by category with search and ranked matching
 - **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, background)
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **🔧 Flexible Configuration** - Supports custom Claude Code config directory via `CLAUDE_CONFIG_DIR` environment variable
@@ -150,10 +152,10 @@
 
 ```bash
 # Run the configuration TUI with npm
-npx ccstatusline@latest
+npx -y ccstatusline@latest
 
 # Or with Bun (faster)
-bunx ccstatusline@latest
+bunx -y ccstatusline@latest
 ```
 
 ### Configure ccstatusline
@@ -178,6 +180,24 @@ The interactive configuration tool provides a terminal UI where you can:
 > $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
 > ```
 
+### Claude Code settings.json format
+
+When you install from the TUI, ccstatusline writes a `statusLine` command object to your Claude Code settings:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y ccstatusline@latest",
+    "padding": 0
+  }
+}
+```
+
+Other supported command values are:
+- `bunx -y ccstatusline@latest`
+- `ccstatusline` (for self-managed/global installs)
+
 ---
 
 ## 🪟 Windows Support
@@ -192,13 +212,13 @@ ccstatusline works seamlessly on Windows with full feature compatibility across 
 irm bun.sh/install.ps1 | iex
 
 # Run ccstatusline
-bunx ccstatusline@latest
+bunx -y ccstatusline@latest
 ```
 
 #### Option 2: Using Node.js
 ```powershell
 # Using npm
-npx ccstatusline@latest
+npx -y ccstatusline@latest
 
 # Or with Yarn
 yarn dlx ccstatusline@latest
@@ -259,7 +279,7 @@ winget install Git.Git
 **Issue**: Permission errors during installation
 ```powershell
 # Use non-global installation (recommended)
-npx ccstatusline@latest
+npx -y ccstatusline@latest
 
 # Or run PowerShell as Administrator for global install
 ```
@@ -287,7 +307,7 @@ ccstatusline works perfectly in WSL environments:
 # Install in WSL Ubuntu/Debian
 curl -fsSL https://bun.sh/install | bash
 source ~/.bashrc
-bunx ccstatusline@latest
+bunx -y ccstatusline@latest
 ```
 
 **WSL Benefits**:
@@ -324,14 +344,22 @@ Configure ccstatusline in your Claude Code settings:
 **For Bun users**:
 ```json
 {
-  "statusLine": "bunx ccstatusline@latest"
+  "statusLine": {
+    "type": "command",
+    "command": "bunx -y ccstatusline@latest",
+    "padding": 0
+  }
 }
 ```
 
 **For npm users**:
 ```json
 {
-  "statusLine": "npx ccstatusline@latest"
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y ccstatusline@latest",
+    "padding": 0
+  }
 }
 ```
 
@@ -339,11 +367,10 @@ Configure ccstatusline in your Claude Code settings:
 
 ### Performance on Windows
 
-ccstatusline is optimized for Windows performance:
-- **Bun runtime**: Significantly faster startup times on Windows
-- **Caching**: Intelligent caching of git status and file operations
-- **Async operations**: Non-blocking command execution
-- **Memory efficient**: Minimal resource usage
+ccstatusline includes Windows-specific runtime behavior:
+- **UTF-8 piped output fix**: In piped mode, it attempts to set code page `65001` for reliable symbol rendering
+- **Path compatibility**: Git and CWD widgets handle both `/` and `\` separators
+- **Block timer cache**: Cached block metrics reduce repeated JSONL scanning
 
 ### Windows-Specific Widget Behavior
 
@@ -360,17 +387,32 @@ Some widgets have Windows-specific optimizations:
 
 Once configured, ccstatusline automatically formats your Claude Code status line. The status line appears at the bottom of your terminal during Claude Code sessions.
 
+### Runtime Modes
+
+- **Interactive mode (TUI)**: Launches when there is no stdin input
+- **Piped mode (renderer)**: Parses Claude Code status JSON from stdin and prints one or more formatted lines
+
+```bash
+# Interactive TUI
+bun run start
+
+# Piped mode with example payload
+bun run example
+```
+
 ### 📊 Available Widgets
 
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
+- **Git Root Dir** - Shows the git repository root directory name
 - **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Session Name** - Shows the session name set via `/rename` command in Claude Code
+- **Claude Session ID** - Shows the current Claude Code session ID from status JSON
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
-- **Current Working Directory** - Shows current working directory with configurable path segments
+- **Current Working Directory** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
 - **Version** - Shows Claude Code version
 - **Output Style** - Shows the currently set output style in Claude Code
 - **Tokens Input** - Shows input tokens used
@@ -378,13 +420,14 @@ Once configured, ccstatusline automatically formats your Claude Code status line
 - **Tokens Cached** - Shows cached tokens used
 - **Tokens Total** - Shows total tokens used
 - **Context Length** - Shows current context length in tokens
-- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for Sonnet 4.5 with `[1m]` suffix, 200k otherwise)
-- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for Sonnet 4.5 with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
+- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with `[1m]` suffix, 200k otherwise)
+- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
 - **Terminal Width** - Shows detected terminal width (for debugging)
+- **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
 - **Custom Text** - Add your own custom text to the status line
 - **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
-- **Separator** - Visual divider between widgets (customizable: |, -, comma, space)
-- **Flex Separator** - Expands to fill available space
+- **Separator** - Visual divider between widgets (customizable: |, -, comma, space; available when Powerline mode is off and no default separator is configured)
+- **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 
 ---
 
@@ -454,6 +497,23 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
+### ⌨️ Widget Editor Keybinds
+
+Common controls in the line editor:
+- `a` add widget
+- `i` insert widget
+- `Enter` enter/exit move mode
+- `d` delete selected widget
+- `r` toggle raw value (supported widgets)
+- `m` cycle merge mode (`off` → `merge` → `merge no padding`)
+
+Widget-specific shortcuts:
+- **Git widgets**: `h` toggle hide `no git` output
+- **Context % widgets**: `l` toggle used vs remaining display
+- **Block Timer**: `p` cycle display mode (time/full bar/short bar)
+- **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
+- **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
+
 ---
 
 ### 🔧 Custom Widgets
@@ -470,6 +530,8 @@ Execute shell commands and display their output dynamically:
 - Receives the full Claude Code JSON data via stdin (model info, session ID, transcript path, etc.)
 - Displays command output inline in your status line
 - Configurable timeout (default: 1000ms)
+- Optional max-width truncation
+- Optional ANSI color preservation (`preserve colors`)
 - Examples:
   - `pwd | xargs basename` - Show current directory name
   - `node -v` - Display Node.js version
@@ -541,7 +603,7 @@ The documentation will be generated in the `docs/` directory and can be viewed b
 
 - [Bun](https://bun.sh) (v1.0+)
 - Git
-- Node.js 18+ (optional, for npm publishing)
+- Node.js 14+ (optional, for running the built `dist/ccstatusline.js` binary or npm publishing)
 
 ### Setup
 
@@ -557,12 +619,37 @@ bun install
 ### Development Commands
 
 ```bash
-# Run in TUI mode (configuration)
-bun run src/ccstatusline.ts
+# Run in TUI mode
+bun run start
+
+# Test piped mode with example payload
+bun run example
+
+# Run tests
+bun test
+
+# Run typecheck + eslint autofix
+bun run lint
 
 # Build for distribution
 bun run build
+
+# Generate TypeDoc documentation
+bun run docs
 ```
+
+### Configuration Files
+
+- `~/.config/ccstatusline/settings.json` - ccstatusline UI/render settings
+- `~/.claude/settings.json` - Claude Code settings (`statusLine` command object)
+- `~/.cache/ccstatusline/block-cache-*.json` - block timer cache (keyed by Claude config directory hash)
+
+If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
+
+### Build Notes
+
+- Build target is Node.js 14+ (`dist/ccstatusline.js`)
+- During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
 
 ### 📁 Project Structure
 
@@ -611,6 +698,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+---
+
+## Support
+
+If ccstatusline is useful to you, consider buying me a coffee:
+
+<a href="https://www.buymeacoffee.com/sirmalloc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ---
 
