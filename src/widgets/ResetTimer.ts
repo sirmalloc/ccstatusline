@@ -9,6 +9,7 @@ import type {
 import {
     fetchUsageData,
     formatUsageDuration,
+    getUsageErrorMessage,
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
@@ -33,10 +34,10 @@ function makeTimerProgressBar(percent: number, width: number): string {
     return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
 }
 
-export class BlockTimerWidget implements Widget {
-    getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows current 5hr block elapsed time or progress'; }
-    getDisplayName(): string { return 'Block Timer'; }
+export class ResetTimerWidget implements Widget {
+    getDefaultColor(): string { return 'brightBlue'; }
+    getDescription(): string { return 'Shows time remaining until current 5hr block reset'; }
+    getDisplayName(): string { return 'Reset Timer'; }
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -105,8 +106,8 @@ export class BlockTimerWidget implements Widget {
         const inverted = isInverted(item);
 
         if (context.isPreview) {
-            const previewPercent = inverted ? 26.1 : 73.9;
-            const prefix = item.rawValue ? '' : 'Block ';
+            const previewPercent = inverted ? 90.0 : 10.0;
+            const prefix = item.rawValue ? '' : 'Reset ';
 
             if (displayMode === 'progress' || displayMode === 'progress-short') {
                 const barWidth = displayMode === 'progress' ? 32 : 16;
@@ -114,20 +115,18 @@ export class BlockTimerWidget implements Widget {
                 return `${prefix}[${progressBar}] ${previewPercent.toFixed(1)}%`;
             }
 
-            return item.rawValue ? '3hr 45m' : 'Block: 3hr 45m';
+            return item.rawValue ? '4hr 30m' : 'Reset: 4hr 30m';
         }
 
         const usageData = fetchUsageData();
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {
-            if (displayMode === 'progress' || displayMode === 'progress-short') {
-                const barWidth = displayMode === 'progress' ? 32 : 16;
-                const emptyBar = '░'.repeat(barWidth);
-                return item.rawValue ? `[${emptyBar}] 0.0%` : `Block [${emptyBar}] 0.0%`;
+            if (usageData.error) {
+                return getUsageErrorMessage(usageData.error);
             }
 
-            return item.rawValue ? '0hr 0m' : 'Block: 0hr 0m';
+            return null;
         }
 
         if (displayMode === 'progress' || displayMode === 'progress-short') {
@@ -140,11 +139,11 @@ export class BlockTimerWidget implements Widget {
                 return `[${progressBar}] ${percentage}%`;
             }
 
-            return `Block [${progressBar}] ${percentage}%`;
+            return `Reset [${progressBar}] ${percentage}%`;
         }
 
-        const elapsedTime = formatUsageDuration(window.elapsedMs);
-        return item.rawValue ? elapsedTime : `Block: ${elapsedTime}`;
+        const remainingTime = formatUsageDuration(window.remainingMs);
+        return item.rawValue ? remainingTime : `Reset: ${remainingTime}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

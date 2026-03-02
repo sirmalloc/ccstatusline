@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetItem,
     WidgetItemType
@@ -120,6 +121,23 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             selectedCategory,
             selectedType: hasSelectedType ? state.selectedType : (filteredWidgets[0]?.type ?? null)
         };
+    };
+
+    const shouldShowCustomKeybind = (widget: WidgetItem, keybind: CustomKeybind): boolean => {
+        if (keybind.action !== 'toggle-invert') {
+            return true;
+        }
+
+        const mode = widget.metadata?.display;
+        return mode === 'progress' || mode === 'progress-short';
+    };
+
+    const getVisibleCustomKeybinds = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
+        if (!widgetImpl.getCustomKeybinds) {
+            return [];
+        }
+
+        return widgetImpl.getCustomKeybinds().filter(keybind => shouldShowCustomKeybind(widget, keybind));
     };
 
     const openWidgetPicker = (action: WidgetPickerAction) => {
@@ -437,7 +455,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     const widgetImpl = getWidget(currentWidget.type);
                     if (widgetImpl) {
                         if (widgetImpl.getCustomKeybinds) {
-                            const customKeybinds = widgetImpl.getCustomKeybinds();
+                            const customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
                             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
 
                             if (matchedKeybind && !key.ctrl) {
@@ -517,15 +535,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Check if widget supports raw value using registry
     let canToggleRaw = false;
-    let customKeybinds: { key: string; label: string; action: string }[] = [];
+    let customKeybinds: CustomKeybind[] = [];
     if (currentWidget && !isSeparator && !isFlexSeparator) {
         const widgetImpl = getWidget(currentWidget.type);
         if (widgetImpl) {
             canToggleRaw = widgetImpl.supportsRawValue();
             // Get custom keybinds from the widget
-            if (widgetImpl.getCustomKeybinds) {
-                customKeybinds = widgetImpl.getCustomKeybinds();
-            }
+            customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
         } else {
             canToggleRaw = false;
         }
