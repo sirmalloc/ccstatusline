@@ -61,9 +61,8 @@ export class ContextPercentageWidget implements Widget {
             // Use pre-calculated percentage if available (Claude Code v2.1.19+)
             if (typeof ctxWindow.used_percentage === 'number') {
                 usedPercentage = ctxWindow.used_percentage;
-            }
-            // Fall back to calculating from current_usage if it's a number
-            else if (typeof ctxWindow.current_usage === 'number' && ctxWindow.context_window_size) {
+            } else if (typeof ctxWindow.current_usage === 'number' && ctxWindow.context_window_size) {
+                // Fall back to calculating from current_usage if it's a number
                 usedPercentage = Math.min(100, (ctxWindow.current_usage / ctxWindow.context_window_size) * 100);
             }
 

@@ -5,6 +5,7 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { z } from 'zod';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -15,14 +16,16 @@ import type {
 } from '../types/Widget';
 
 // Cache configuration
-const CACHE_FILE = path.join(os.homedir(), '.cache', 'ccstatusline-api.json');
-const LOCK_FILE = path.join(os.homedir(), '.cache', 'ccstatusline-api.lock');
+const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
+const CACHE_FILE = path.join(CACHE_DIR, 'usage.json');
+const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const TOKEN_CACHE_MAX_AGE = 3600; // 1 hour
 
 // Error types matching shell script
-type ApiError = 'no-credentials' | 'timeout' | 'api-error' | 'parse-error';
+const ApiErrorSchema = z.enum(['no-credentials', 'timeout', 'api-error', 'parse-error']);
+type ApiError = z.infer<typeof ApiErrorSchema>;
 
 interface ApiData {
     sessionUsage?: number;  // five_hour.utilization (percentage)
@@ -33,6 +36,85 @@ interface ApiData {
     extraUsageUsed?: number;       // in cents
     extraUsageUtilization?: number;
     error?: ApiError;
+}
+
+const CredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
+
+const CachedApiDataSchema = z.object({
+    sessionUsage: z.number().nullable().optional(),
+    sessionResetAt: z.string().nullable().optional(),
+    weeklyUsage: z.number().nullable().optional(),
+    extraUsageEnabled: z.boolean().nullable().optional(),
+    extraUsageLimit: z.number().nullable().optional(),
+    extraUsageUsed: z.number().nullable().optional(),
+    extraUsageUtilization: z.number().nullable().optional(),
+    error: z.string().nullable().optional()
+});
+
+const ApiUsageResponseSchema = z.object({
+    five_hour: z.object({
+        utilization: z.number().nullable().optional(),
+        reset_at: z.string().nullable().optional(),
+        resets_at: z.string().nullable().optional()
+    }).optional(),
+    seven_day: z.object({ utilization: z.number().nullable().optional() }).optional(),
+    extra_usage: z.object({
+        is_enabled: z.boolean().nullable().optional(),
+        monthly_limit: z.number().nullable().optional(),
+        used_credits: z.number().nullable().optional(),
+        utilization: z.number().nullable().optional()
+    }).optional()
+});
+
+function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
+    try {
+        const parsed = schema.safeParse(JSON.parse(rawJson));
+        return parsed.success ? parsed.data : null;
+    } catch {
+        return null;
+    }
+}
+
+function parseAccessToken(rawJson: string): string | null {
+    const parsed = parseJsonWithSchema(rawJson, CredentialsSchema);
+    return parsed?.claudeAiOauth?.accessToken ?? null;
+}
+
+function parseCachedApiData(rawJson: string): ApiData | null {
+    const parsed = parseJsonWithSchema(rawJson, CachedApiDataSchema);
+    if (!parsed) {
+        return null;
+    }
+
+    const parsedError = ApiErrorSchema.safeParse(parsed.error);
+
+    return {
+        sessionUsage: parsed.sessionUsage ?? undefined,
+        sessionResetAt: parsed.sessionResetAt ?? undefined,
+        weeklyUsage: parsed.weeklyUsage ?? undefined,
+        extraUsageEnabled: parsed.extraUsageEnabled ?? undefined,
+        extraUsageLimit: parsed.extraUsageLimit ?? undefined,
+        extraUsageUsed: parsed.extraUsageUsed ?? undefined,
+        extraUsageUtilization: parsed.extraUsageUtilization ?? undefined,
+        error: parsedError.success ? parsedError.data : undefined
+    };
+}
+
+function parseApiUsageResponse(rawJson: string): ApiData | null {
+    const parsed = parseJsonWithSchema(rawJson, ApiUsageResponseSchema);
+    if (!parsed) {
+        return null;
+    }
+
+    return {
+        sessionUsage: parsed.five_hour?.utilization ?? undefined,
+        sessionResetAt: parsed.five_hour?.resets_at ?? parsed.five_hour?.reset_at ?? undefined,
+        weeklyUsage: parsed.seven_day?.utilization ?? undefined,
+        extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
+        extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
+        extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
+        extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined
+    };
 }
 
 // Memory caches
@@ -57,8 +139,7 @@ function getToken(): string | null {
                 'security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null',
                 { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
             ).trim();
-            const parsed = JSON.parse(result);
-            const token = parsed?.claudeAiOauth?.accessToken ?? null;
+            const token = parseAccessToken(result);
             if (token) {
                 cachedToken = token;
                 tokenCacheTime = now;
@@ -67,8 +148,7 @@ function getToken(): string | null {
         } else {
             // Linux: read from credentials file
             const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
-            const creds = JSON.parse(fs.readFileSync(credFile, 'utf8'));
-            const token = creds?.claudeAiOauth?.accessToken ?? null;
+            const token = parseAccessToken(fs.readFileSync(credFile, 'utf8'));
             if (token) {
                 cachedToken = token;
                 tokenCacheTime = now;
@@ -82,7 +162,7 @@ function getToken(): string | null {
 
 function readStaleCache(): ApiData | null {
     try {
-        return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+        return parseCachedApiData(fs.readFileSync(CACHE_FILE, 'utf8'));
     } catch {
         return null;
     }
@@ -145,8 +225,8 @@ function fetchApiData(): ApiData {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         if (fileAge < CACHE_MAX_AGE) {
-            const fileData: ApiData = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-            if (!fileData.error) {
+            const fileData = parseCachedApiData(fs.readFileSync(CACHE_FILE, 'utf8'));
+            if (fileData && !fileData.error) {
                 cachedData = fileData;
                 cacheTime = now;
                 return fileData;
@@ -202,22 +282,12 @@ function fetchApiData(): ApiData {
             return { error: 'api-error' };
         }
 
-        const data = JSON.parse(response);
-
-        // Extract utilization data
-        const apiData: ApiData = {};
-        if (data.five_hour) {
-            apiData.sessionUsage = data.five_hour.utilization;
-            apiData.sessionResetAt = data.five_hour.resets_at;
-        }
-        if (data.seven_day) {
-            apiData.weeklyUsage = data.seven_day.utilization;
-        }
-        if (data.extra_usage) {
-            apiData.extraUsageEnabled = data.extra_usage.is_enabled === true;
-            apiData.extraUsageLimit = data.extra_usage.monthly_limit;
-            apiData.extraUsageUsed = data.extra_usage.used_credits;
-            apiData.extraUsageUtilization = data.extra_usage.utilization;
+        const apiData = parseApiUsageResponse(response);
+        if (!apiData) {
+            const stale = readStaleCache();
+            if (stale && !stale.error)
+                return stale;
+            return { error: 'parse-error' };
         }
 
         // Validate we got actual data
@@ -270,6 +340,7 @@ export class SessionUsageWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows daily/session API usage percentage'; }
     getDisplayName(): string { return 'Session Usage'; }
+    getCategory(): string { return 'Session'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
@@ -298,6 +369,7 @@ export class WeeklyUsageWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows weekly API usage percentage'; }
     getDisplayName(): string { return 'Weekly Usage'; }
+    getCategory(): string { return 'Session'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
@@ -326,6 +398,7 @@ export class ResetTimerWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows extra usage spending or time until limit reset'; }
     getDisplayName(): string { return 'Reset Timer'; }
+    getCategory(): string { return 'Session'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
@@ -390,6 +463,7 @@ export class ContextBarWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows context usage as a progress bar'; }
     getDisplayName(): string { return 'Context Bar'; }
+    getCategory(): string { return 'Context'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
