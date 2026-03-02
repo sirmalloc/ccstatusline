@@ -5,6 +5,8 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getContextWindowMetrics } from '../utils/context-window';
+import { getContextConfig } from '../utils/model-context';
 import { makeUsageProgressBar } from '../utils/usage';
 
 export class ContextBarWidget implements Widget {
@@ -21,28 +23,26 @@ export class ContextBarWidget implements Widget {
         if (context.isPreview)
             return 'Context: [████░░░░░░░░░░░] 50k/200k (25%)';
 
-        const cw = context.data?.context_window;
-        if (!cw)
-            return null;
+        const contextWindowMetrics = getContextWindowMetrics(context.data);
 
-        const total = Number(cw.context_window_size) || 200000;
+        let total = contextWindowMetrics.windowSize;
+        let used = contextWindowMetrics.usedTokens;
 
-        // current_usage can be a number or an object with token breakdown
-        let used = 0;
-        if (typeof cw.current_usage === 'number') {
-            used = cw.current_usage;
-        } else if (cw.current_usage && typeof cw.current_usage === 'object') {
-            const u = cw.current_usage;
-            used = (Number(u.input_tokens) || 0)
-                + (Number(u.output_tokens) || 0)
-                + (Number(u.cache_creation_input_tokens) || 0)
-                + (Number(u.cache_read_input_tokens) || 0);
+        if (used === null && context.tokenMetrics) {
+            used = context.tokenMetrics.contextLength;
         }
 
-        if (isNaN(total) || isNaN(used))
-            return null;
+        if (total === null && context.tokenMetrics) {
+            const model = context.data?.model;
+            const modelId = typeof model === 'string' ? model : model?.id;
+            total = getContextConfig(modelId).maxTokens;
+        }
 
-        const percent = total > 0 ? (used / total) * 100 : 0;
+        if (used === null || total === null || total <= 0) {
+            return null;
+        }
+
+        const percent = (used / total) * 100;
 
         const usedK = Math.round(used / 1000);
         const totalK = Math.round(total / 1000);

@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getContextWindowMetrics } from '../utils/context-window';
 import { getContextConfig } from '../utils/model-context';
 
 export class ContextPercentageUsableWidget implements Widget {
@@ -43,14 +44,23 @@ export class ContextPercentageUsableWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = item.metadata?.inverse === 'true';
+        const model = context.data?.model;
+        const modelId = typeof model === 'string' ? model : model?.id;
+        const contextWindowMetrics = getContextWindowMetrics(context.data);
+        const contextConfig = getContextConfig(modelId, contextWindowMetrics.windowSize);
 
         if (context.isPreview) {
             const previewValue = isInverse ? '88.4%' : '11.6%';
             return item.rawValue ? previewValue : `Ctx(u): ${previewValue}`;
-        } else if (context.tokenMetrics) {
-            const model = context.data?.model;
-            const modelId = typeof model === 'string' ? model : model?.id;
-            const contextConfig = getContextConfig(modelId);
+        }
+
+        if (contextWindowMetrics.contextLengthTokens !== null) {
+            const usedPercentage = Math.min(100, (contextWindowMetrics.contextLengthTokens / contextConfig.usableTokens) * 100);
+            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx(u): ${displayPercentage.toFixed(1)}%`;
+        }
+
+        if (context.tokenMetrics) {
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
             return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx(u): ${displayPercentage.toFixed(1)}%`;
