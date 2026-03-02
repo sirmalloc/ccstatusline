@@ -37,7 +37,7 @@ export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows current 5hr block elapsed time or progress'; }
     getDisplayName(): string { return 'Block Timer'; }
-    getCategory(): string { return 'Session'; }
+    getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = getDisplayMode(item);

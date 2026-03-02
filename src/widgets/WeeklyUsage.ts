@@ -30,7 +30,7 @@ export class WeeklyUsageWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows weekly API usage percentage'; }
     getDisplayName(): string { return 'Weekly Usage'; }
-    getCategory(): string { return 'Session'; }
+    getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = getDisplayMode(item);

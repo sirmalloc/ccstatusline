@@ -67,6 +67,7 @@ describe('widget catalog', () => {
         expect(categories).toContain('Context');
         expect(categories).toContain('Tokens');
         expect(categories).toContain('Session');
+        expect(categories).toContain('Usage');
         expect(categories).toContain('Environment');
         expect(categories).toContain('Custom');
         expect(categories).toContain('Layout');

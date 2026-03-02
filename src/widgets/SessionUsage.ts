@@ -30,7 +30,7 @@ export class SessionUsageWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows daily/session API usage percentage'; }
     getDisplayName(): string { return 'Session Usage'; }
-    getCategory(): string { return 'Session'; }
+    getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = getDisplayMode(item);

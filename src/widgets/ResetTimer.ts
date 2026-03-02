@@ -38,7 +38,7 @@ export class ResetTimerWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows time remaining until current 5hr block reset'; }
     getDisplayName(): string { return 'Reset Timer'; }
-    getCategory(): string { return 'Session'; }
+    getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = getDisplayMode(item);
