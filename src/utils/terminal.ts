@@ -34,13 +34,9 @@ export function getPackageVersion(): string {
 
 // Get terminal width
 export function getTerminalWidth(): number | null {
-    // Windows: use Node.js built-in (cross-platform, avoids Unix-only commands)
-    // This also works on Unix but we keep the existing logic there for compatibility
+    // Preserve historical behavior on Windows: width detection is unavailable.
+    // This avoids Unix fallback command behavior (e.g. 2>/dev/null) on Windows.
     if (process.platform === 'win32') {
-        const cols = process.stdout.columns;
-        if (cols && cols > 0) {
-            return cols;
-        }
         return null;
     }
 
@@ -93,10 +89,9 @@ export function getTerminalWidth(): number | null {
 
 // Check if terminal width detection is available
 export function canDetectTerminalWidth(): boolean {
-    // Windows: use Node.js built-in (cross-platform, avoids Unix-only commands)
+    // Preserve historical behavior on Windows: width detection is unavailable.
     if (process.platform === 'win32') {
-        const cols = process.stdout.columns;
-        return cols !== undefined && cols > 0;
+        return false;
     }
 
     try {
