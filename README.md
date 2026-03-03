@@ -46,11 +46,14 @@
 
 ## 🆕 Recent Updates
 
-### v2.1.0 - v2.1.1 - Usage widgets and reliability fixes
+### v2.1.0 - v2.1.4 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
 
 - **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
 - **📊 More accurate counts (v2.1.0)** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
 - **🪟 Windows empty file bug fix (v2.1.1)** - Fixed a Windows issue that could create an empty `c:\dev\null` file.
+- **🔗 New Link widget (v2.1.3)** - Added a new **Link** widget with clickable OSC8 rendering, preview parity, and raw mode support.
+- **➕ New Git Insertions widget (v2.1.4)** - Added a dedicated Git widget that shows only uncommitted insertions (e.g., `+42`).
+- **➖ New Git Deletions widget (v2.1.4)** - Added a dedicated Git widget that shows only uncommitted deletions (e.g., `-10`).
 
 ### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
@@ -411,6 +414,8 @@ bun run example
 - **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
 - **Git Branch** - Displays current git branch name
 - **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
+- **Git Insertions** - Shows uncommitted insertions only (e.g., "+42")
+- **Git Deletions** - Shows uncommitted deletions only (e.g., "-10")
 - **Git Root Dir** - Shows the git repository root directory name
 - **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
@@ -436,6 +441,7 @@ bun run example
 - **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
 - **Custom Text** - Add your own custom text to the status line
 - **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
+- **Link** - Add clickable terminal hyperlinks (OSC 8) with configurable URL and display text
 - **Separator** - Visual divider between widgets (customizable: |, -, comma, space; available when Powerline mode is off and no default separator is configured)
 - **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 
@@ -523,6 +529,7 @@ Widget-specific shortcuts:
 - **Block Timer**: `p` cycle display mode (time/full bar/short bar)
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
+- **Link**: `u` URL, `e` link text
 
 ---
 
@@ -554,6 +561,12 @@ Execute shell commands and display their output dynamically:
 
 > 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters! They receive the same JSON via stdin that ccstatusline receives from Claude Code, allowing you to chain or combine multiple status line tools.
 
+#### Link Widget
+Create clickable links in terminals that support OSC 8 hyperlinks:
+- `metadata.url` - target URL (http/https)
+- `metadata.text` - optional display text (defaults to URL)
+- Falls back to plain text when URL is missing or unsupported
+
 ---
 
 ### 🔗 Integration Example: ccusage
@@ -572,6 +585,7 @@ Execute shell commands and display their output dynamically:
 ### ✂️ Smart Truncation
 
 When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
+Truncation is ANSI/OSC-aware, so preserved color output and OSC 8 hyperlinks remain well-formed.
 
 ---
 

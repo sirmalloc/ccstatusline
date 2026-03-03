@@ -15,6 +15,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { getVisibleText } from '../utils/ansi';
 import { shouldInsertInput } from '../utils/input-guards';
 
 export class CustomCommandWidget implements Widget {
@@ -70,8 +71,8 @@ export class CustomCommandWidget implements Widget {
 
                 // Strip ANSI codes if preserveColors is false
                 if (!item.preserveColors) {
-                    // Strip all ANSI escape sequences
-                    output = output.replace(/\x1b\[[0-9;]*m/g, '');
+                    // Strip ANSI/OSC escape sequences and keep only visible text
+                    output = getVisibleText(output);
                 }
 
                 if (item.maxWidth && output.length > item.maxWidth) {

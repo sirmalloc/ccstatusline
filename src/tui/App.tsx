@@ -28,6 +28,7 @@ import {
     loadSettings,
     saveSettings
 } from '../utils/config';
+import { openExternalUrl } from '../utils/open-url';
 import {
     checkPowerlineFonts,
     checkPowerlineFontsAsync,
@@ -50,6 +51,13 @@ import {
     TerminalWidthMenu
 } from './components';
 
+const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
+
+interface FlashMessage {
+    text: string;
+    color: 'green' | 'red';
+}
+
 export const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
@@ -65,7 +73,7 @@ export const App: React.FC = () => {
     const [installingFonts, setInstallingFonts] = useState(false);
     const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
     const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
-    const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
     const [previewIsTruncated, setPreviewIsTruncated] = useState(false);
 
     useEffect(() => {
@@ -107,15 +115,15 @@ export const App: React.FC = () => {
         }
     }, [settings, originalSettings]);
 
-    // Clear save message after 2 seconds
+    // Clear header message after 2 seconds
     useEffect(() => {
-        if (saveMessage) {
+        if (flashMessage) {
             const timer = setTimeout(() => {
-                setSaveMessage(null);
+                setFlashMessage(null);
             }, 2000);
             return () => { clearTimeout(timer); };
         }
-    }, [saveMessage]);
+    }, [flashMessage]);
 
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
@@ -127,7 +135,10 @@ export const App: React.FC = () => {
                 await saveSettings(settings);
                 setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings);
                 setHasChanges(false);
-                setSaveMessage('✓ Configuration saved');
+                setFlashMessage({
+                    text: '✓ Configuration saved',
+                    color: 'green'
+                });
             })();
         }
     });
@@ -211,6 +222,29 @@ export const App: React.FC = () => {
         case 'install':
             handleInstallUninstall();
             break;
+        case 'starGithub':
+            setConfirmDialog({
+                message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
+                action: () => {
+                    const result = openExternalUrl(GITHUB_REPO_URL);
+                    if (result.success) {
+                        setFlashMessage({
+                            text: '✓ Opened GitHub repository in browser',
+                            color: 'green'
+                        });
+                    } else {
+                        setFlashMessage({
+                            text: `✗ Could not open browser. Visit: ${GITHUB_REPO_URL}`,
+                            color: 'red'
+                        });
+                    }
+                    setScreen('main');
+                    setConfirmDialog(null);
+                    return Promise.resolve();
+                }
+            });
+            setScreen('confirm');
+            break;
         case 'save':
             await saveSettings(settings);
             setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
@@ -249,9 +283,9 @@ export const App: React.FC = () => {
                 <Text bold>
                     {` | ${getPackageVersion() && `v${getPackageVersion()}`}`}
                 </Text>
-                {saveMessage && (
-                    <Text color='green' bold>
-                        {`  ${saveMessage}`}
+                {flashMessage && (
+                    <Text color={flashMessage.color} bold>
+                        {`  ${flashMessage.text}`}
                     </Text>
                 )}
             </Box>
@@ -275,7 +309,8 @@ export const App: React.FC = () => {
                                     powerline: 2,
                                     terminalConfig: 3,
                                     globalOverrides: 4,
-                                    install: 5
+                                    install: 5,
+                                    starGithub: hasChanges ? 8 : 7
                                 };
                                 setMenuSelections({ ...menuSelections, main: menuMap[value] ?? 0 });
                             }

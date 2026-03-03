@@ -11,10 +11,10 @@ import {
     isInsideGitWorkTree
 } from '../utils/git';
 
-export class GitChangesWidget implements Widget {
-    getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows git changes count (+insertions, -deletions)'; }
-    getDisplayName(): string { return 'Git Changes'; }
+export class GitInsertionsWidget implements Widget {
+    getDefaultColor(): string { return 'green'; }
+    getDescription(): string { return 'Shows git insertions count'; }
+    getDisplayName(): string { return 'Git Insertions'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
@@ -48,7 +48,7 @@ export class GitChangesWidget implements Widget {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
 
         if (context.isPreview) {
-            return '(+42,-10)';
+            return '+42';
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -56,7 +56,7 @@ export class GitChangesWidget implements Widget {
         }
 
         const changes = getGitChangeCounts(context);
-        return `(+${changes.insertions},-${changes.deletions})`;
+        return `+${changes.insertions}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
