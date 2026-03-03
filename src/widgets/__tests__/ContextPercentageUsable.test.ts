@@ -34,6 +34,59 @@ function render(modelId: string | undefined, contextLength: number, rawValue = f
 }
 
 describe('ContextPercentageUsableWidget', () => {
+    it('prefers context_window usage over token metrics when both exist', () => {
+        const widget = new ContextPercentageUsableWidget();
+        const item: WidgetItem = {
+            id: 'context-percentage-usable',
+            type: 'context-percentage-usable'
+        };
+        const context: RenderContext = {
+            data: {
+                model: { id: 'claude-sonnet-4-5-20250929[1m]' },
+                context_window: {
+                    current_usage: {
+                        input_tokens: 40000,
+                        output_tokens: 10000,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0
+                    }
+                }
+            },
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 200000
+            }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx(u): 5.0%');
+    });
+
+    it('uses context_window_size for usable denominator even without [1m] model suffix', () => {
+        const widget = new ContextPercentageUsableWidget();
+        const item: WidgetItem = {
+            id: 'context-percentage-usable',
+            type: 'context-percentage-usable'
+        };
+        const context: RenderContext = {
+            data: {
+                model: { id: 'claude-sonnet-4-6' },
+                context_window: { context_window_size: 1000000 }
+            },
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 42000
+            }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx(u): 5.3%');
+    });
+
     describe('Sonnet 4.5 with 800k usable tokens', () => {
         it('should calculate percentage using 800k denominator for Sonnet 4.5 with [1m] suffix', () => {
             const result = render('claude-sonnet-4-5-20250929[1m]', 42000);
@@ -43,6 +96,11 @@ describe('ContextPercentageUsableWidget', () => {
         it('should calculate percentage using 800k denominator for Sonnet 4.5 (raw value) with [1m] suffix', () => {
             const result = render('claude-sonnet-4-5-20250929[1m]', 42000, true);
             expect(result).toBe('5.3%');
+        });
+
+        it('should treat [1M] suffix case-insensitively in fallback mode', () => {
+            const result = render('claude-sonnet-4-5-20250929[1M]', 42000);
+            expect(result).toBe('Ctx(u): 5.3%');
         });
     });
 

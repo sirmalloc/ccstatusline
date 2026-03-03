@@ -1,0 +1,105 @@
+import {
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi
+} from 'vitest';
+
+import type { BlockMetrics } from '../../types';
+import { getCachedBlockMetrics } from '../jsonl';
+import {
+    FIVE_HOUR_BLOCK_MS,
+    formatUsageDuration,
+    getUsageWindowFromResetAt,
+    resolveUsageWindowWithFallback
+} from '../usage';
+
+vi.mock('../jsonl', () => ({ getCachedBlockMetrics: vi.fn() }));
+
+const mockGetCachedBlockMetrics = getCachedBlockMetrics as unknown as {
+    mock: { calls: unknown[][] };
+    mockReturnValue: (value: BlockMetrics | null) => void;
+};
+
+describe('usage window helpers', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('parses usage reset timestamp into elapsed and remaining metrics', () => {
+        const nowMs = Date.parse('2026-03-02T20:00:00.000Z');
+        const resetAt = '2026-03-02T22:00:00.000Z';
+
+        const window = getUsageWindowFromResetAt(resetAt, nowMs);
+
+        expect(window).not.toBeNull();
+        expect(window?.elapsedMs).toBe(3 * 60 * 60 * 1000);
+        expect(window?.remainingMs).toBe(2 * 60 * 60 * 1000);
+        expect(window?.elapsedPercent).toBeCloseTo(60, 5);
+        expect(window?.remainingPercent).toBeCloseTo(40, 5);
+        expect(window?.sessionDurationMs).toBe(FIVE_HOUR_BLOCK_MS);
+    });
+
+    it('uses usage data first and does not parse JSONL when reset timestamp exists', () => {
+        const nowMs = Date.parse('2026-03-02T20:00:00.000Z');
+        const fallbackMetrics: BlockMetrics = {
+            startTime: new Date('2026-03-02T15:00:00.000Z'),
+            lastActivity: new Date('2026-03-02T20:00:00.000Z')
+        };
+
+        mockGetCachedBlockMetrics.mockReturnValue(fallbackMetrics);
+
+        const window = resolveUsageWindowWithFallback({ sessionResetAt: '2026-03-02T22:00:00.000Z' }, undefined, nowMs);
+
+        expect(window).not.toBeNull();
+        expect(window?.elapsedMs).toBe(3 * 60 * 60 * 1000);
+        expect(mockGetCachedBlockMetrics.mock.calls.length).toBe(0);
+    });
+
+    it('uses provided block metrics fallback without parsing JSONL', () => {
+        const nowMs = Date.parse('2026-03-02T18:30:00.000Z');
+        const providedMetrics: BlockMetrics = {
+            startTime: new Date('2026-03-02T15:00:00.000Z'),
+            lastActivity: new Date('2026-03-02T18:30:00.000Z')
+        };
+
+        const window = resolveUsageWindowWithFallback({}, providedMetrics, nowMs);
+
+        expect(window).not.toBeNull();
+        expect(window?.elapsedMs).toBe(3.5 * 60 * 60 * 1000);
+        expect(mockGetCachedBlockMetrics.mock.calls.length).toBe(0);
+    });
+
+    it('parses JSONL fallback only when usage reset data is missing', () => {
+        const nowMs = Date.parse('2026-03-02T18:00:00.000Z');
+        const fallbackMetrics: BlockMetrics = {
+            startTime: new Date('2026-03-02T15:00:00.000Z'),
+            lastActivity: new Date('2026-03-02T18:00:00.000Z')
+        };
+
+        mockGetCachedBlockMetrics.mockReturnValue(fallbackMetrics);
+
+        const window = resolveUsageWindowWithFallback({}, undefined, nowMs);
+
+        expect(window).not.toBeNull();
+        expect(window?.elapsedMs).toBe(3 * 60 * 60 * 1000);
+        expect(mockGetCachedBlockMetrics.mock.calls.length).toBe(1);
+    });
+
+    it('returns null when neither usage reset data nor JSONL fallback is available', () => {
+        mockGetCachedBlockMetrics.mockReturnValue(null);
+
+        const window = resolveUsageWindowWithFallback({}, undefined, Date.now());
+
+        expect(window).toBeNull();
+        expect(mockGetCachedBlockMetrics.mock.calls.length).toBe(1);
+    });
+
+    it('formats duration in block timer style', () => {
+        expect(formatUsageDuration(0)).toBe('0hr');
+        expect(formatUsageDuration(3 * 60 * 60 * 1000)).toBe('3hr');
+        expect(formatUsageDuration(3.5 * 60 * 60 * 1000)).toBe('3hr 30m');
+        expect(formatUsageDuration(4 * 60 * 60 * 1000 + 5 * 60 * 1000)).toBe('4hr 5m');
+    });
+});

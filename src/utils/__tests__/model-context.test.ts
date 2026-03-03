@@ -7,6 +7,22 @@ import {
 import { getContextConfig } from '../model-context';
 
 describe('getContextConfig', () => {
+    describe('Status JSON context window size override', () => {
+        it('should use context_window_size as max tokens when provided', () => {
+            const config = getContextConfig('claude-3-5-sonnet-20241022', 1000000);
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should prioritize context_window_size over [1m] model suffix', () => {
+            const config = getContextConfig('claude-sonnet-4-5-20250929[1m]', 200000);
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(160000);
+        });
+    });
+
     describe('Models with [1m] suffix', () => {
         it('should return 1M context window for claude-sonnet-4-5 with [1m] suffix', () => {
             const config = getContextConfig('claude-sonnet-4-5-20250929[1m]');

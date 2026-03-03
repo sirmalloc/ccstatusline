@@ -35,7 +35,11 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['custom-command', new widgets.CustomCommandWidget()],
     ['claude-session-id', new widgets.ClaudeSessionIdWidget()],
     ['session-name', new widgets.SessionNameWidget()],
-    ['free-memory', new widgets.FreeMemoryWidget()]
+    ['free-memory', new widgets.FreeMemoryWidget()],
+    ['session-usage', new widgets.SessionUsageWidget()],
+    ['weekly-usage', new widgets.WeeklyUsageWidget()],
+    ['reset-timer', new widgets.ResetTimerWidget()],
+    ['context-bar', new widgets.ContextBarWidget()]
 ]);
 
 export function getWidget(type: WidgetItemType): Widget | null {

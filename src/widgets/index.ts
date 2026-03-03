@@ -27,3 +27,7 @@ export { JjChangesWidget } from './JjChanges';
 export { JjRevisionWidget } from './JjRevision';
 export { FreeMemoryWidget } from './FreeMemory';
 export { SessionNameWidget } from './SessionName';
+export { SessionUsageWidget } from './SessionUsage';
+export { WeeklyUsageWidget } from './WeeklyUsage';
+export { ResetTimerWidget } from './ResetTimer';
+export { ContextBarWidget } from './ContextBar';

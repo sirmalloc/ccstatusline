@@ -24,7 +24,23 @@ export const StatusJSONSchema = z.looseObject({
         total_api_duration_ms: z.number().optional(),
         total_lines_added: z.number().optional(),
         total_lines_removed: z.number().optional()
-    }).optional()
+    }).optional(),
+    context_window: z.object({
+        context_window_size: z.number().nullable().optional(),
+        total_input_tokens: z.number().nullable().optional(),
+        total_output_tokens: z.number().nullable().optional(),
+        current_usage: z.union([
+            z.number(),
+            z.object({
+                input_tokens: z.number().optional(),
+                output_tokens: z.number().optional(),
+                cache_creation_input_tokens: z.number().optional(),
+                cache_read_input_tokens: z.number().optional()
+            })
+        ]).nullable().optional(),
+        used_percentage: z.number().nullable().optional(),
+        remaining_percentage: z.number().nullable().optional()
+    }).nullable().optional()
 });
 
 export type StatusJSON = z.infer<typeof StatusJSONSchema>;

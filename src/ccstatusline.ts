@@ -2,10 +2,7 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
-import type {
-    BlockMetrics,
-    TokenMetrics
-} from './types';
+import type { TokenMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
@@ -15,7 +12,6 @@ import {
     saveSettings
 } from './utils/config';
 import {
-    getCachedBlockMetrics,
     getSessionDuration,
     getTokenMetrics
 } from './utils/jsonl';
@@ -24,6 +20,11 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
+
+function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
+    const durationMs = data.cost?.total_duration_ms;
+    return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
+}
 
 async function readStdin(): Promise<string | null> {
     // Check if stdin is a TTY (terminal) - if it is, there's no piped data
@@ -79,28 +80,17 @@ async function renderMultipleLines(data: StatusJSON) {
     // Get all lines to render
     const lines = settings.lines;
 
-    // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)));
-
     // Check if session clock is needed
     const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
-    // Check if block timer is needed
-    const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
-
     let tokenMetrics: TokenMetrics | null = null;
-    if (hasTokenItems && data.transcript_path) {
+    if (data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
     }
 
     let sessionDuration: string | null = null;
-    if (hasSessionClock && data.transcript_path) {
+    if (hasSessionClock && !hasSessionDurationInStatusJson(data) && data.transcript_path) {
         sessionDuration = await getSessionDuration(data.transcript_path);
-    }
-
-    let blockMetrics: BlockMetrics | null = null;
-    if (hasBlockTimer) {
-        blockMetrics = getCachedBlockMetrics();
     }
 
     // Create render context
@@ -108,7 +98,6 @@ async function renderMultipleLines(data: StatusJSON) {
         data,
         tokenMetrics,
         sessionDuration,
-        blockMetrics,
         isPreview: false
     };
 
