@@ -15,6 +15,7 @@ import {
     getAvailableBackgroundColorsForUI,
     getAvailableColorsForUI
 } from '../../utils/colors';
+import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -97,7 +98,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 }
             } else if (key.backspace || key.delete) {
                 setHexInput(hexInput.slice(0, -1));
-            } else if (input && hexInput.length < 6) {
+            } else if (shouldInsertInput(input, key) && hexInput.length < 6) {
                 // Only accept hex characters (0-9, A-F, a-f)
                 const upperInput = input.toUpperCase();
                 if (/^[0-9A-F]$/.test(upperInput)) {
@@ -144,7 +145,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 }
             } else if (key.backspace || key.delete) {
                 setAnsi256Input(ansi256Input.slice(0, -1));
-            } else if (input && ansi256Input.length < 3) {
+            } else if (shouldInsertInput(input, key) && ansi256Input.length < 3) {
                 // Only accept numeric characters (0-9)
                 if (/^[0-9]$/.test(input)) {
                     const newInput = ansi256Input + input;

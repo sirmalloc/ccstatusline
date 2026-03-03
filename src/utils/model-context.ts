@@ -3,7 +3,23 @@ interface ModelContextConfig {
     usableTokens: number;
 }
 
-export function getContextConfig(modelId?: string): ModelContextConfig {
+function toValidWindowSize(value: number | null | undefined): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        return null;
+    }
+
+    return value;
+}
+
+export function getContextConfig(modelId?: string, contextWindowSize?: number | null): ModelContextConfig {
+    const statusWindowSize = toValidWindowSize(contextWindowSize);
+    if (statusWindowSize !== null) {
+        return {
+            maxTokens: statusWindowSize,
+            usableTokens: Math.floor(statusWindowSize * 0.8)
+        };
+    }
+
     // Default to 200k for older models
     const defaultConfig = {
         maxTokens: 200000,
@@ -13,11 +29,8 @@ export function getContextConfig(modelId?: string): ModelContextConfig {
     if (!modelId)
         return defaultConfig;
 
-    // Sonnet 4.5 variants with 1M context (requires [1m] suffix for long context beta)
-    if (
-        modelId.includes('claude-sonnet-4-5')
-        && modelId.toLowerCase().includes('[1m]')
-    ) {
+    // Any model with [1m] suffix has 1M context
+    if (modelId.toLowerCase().includes('[1m]')) {
         return {
             maxTokens: 1000000,
             usableTokens: 800000 // 80% of 1M

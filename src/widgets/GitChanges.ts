@@ -1,5 +1,3 @@
-import { execSync } from 'child_process';
-
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
@@ -8,11 +6,16 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    isInsideGitWorkTree,
+    runGit
+} from '../utils/git';
 
 export class GitChangesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows git changes count (+insertions, -deletions)'; }
     getDisplayName(): string { return 'Git Changes'; }
+    getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
         const modifiers: string[] = [];
@@ -48,46 +51,39 @@ export class GitChangesWidget implements Widget {
             return '(+42,-10)';
         }
 
-        const changes = this.getGitChanges();
+        if (!isInsideGitWorkTree(context)) {
+            return hideNoGit ? null : '(no git)';
+        }
+
+        const changes = this.getGitChanges(context);
         if (changes)
             return `(+${changes.insertions},-${changes.deletions})`;
         else
             return hideNoGit ? null : '(no git)';
     }
 
-    private getGitChanges(): { insertions: number; deletions: number } | null {
-        try {
-            let totalInsertions = 0;
-            let totalDeletions = 0;
+    private getGitChanges(context: RenderContext): { insertions: number; deletions: number } | null {
+        let totalInsertions = 0;
+        let totalDeletions = 0;
 
-            const unstagedStat = execSync('git diff --shortstat', {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
+        const unstagedStat = runGit('diff --shortstat', context) ?? '';
+        const stagedStat = runGit('diff --cached --shortstat', context) ?? '';
 
-            const stagedStat = execSync('git diff --cached --shortstat', {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
-
-            if (unstagedStat) {
-                const insertMatch = /(\d+) insertion/.exec(unstagedStat);
-                const deleteMatch = /(\d+) deletion/.exec(unstagedStat);
-                totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-                totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
-            }
-
-            if (stagedStat) {
-                const insertMatch = /(\d+) insertion/.exec(stagedStat);
-                const deleteMatch = /(\d+) deletion/.exec(stagedStat);
-                totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-                totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
-            }
-
-            return { insertions: totalInsertions, deletions: totalDeletions };
-        } catch {
-            return null;
+        if (unstagedStat) {
+            const insertMatch = /(\d+) insertion/.exec(unstagedStat);
+            const deleteMatch = /(\d+) deletion/.exec(unstagedStat);
+            totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
+            totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
         }
+
+        if (stagedStat) {
+            const insertMatch = /(\d+) insertion/.exec(stagedStat);
+            const deleteMatch = /(\d+) deletion/.exec(stagedStat);
+            totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
+            totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
+        }
+
+        return { insertions: totalInsertions, deletions: totalDeletions };
     }
 
     getCustomKeybinds(): CustomKeybind[] {

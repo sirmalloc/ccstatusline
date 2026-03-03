@@ -6,12 +6,14 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getContextWindowMetrics } from '../utils/context-window';
 import { getContextConfig } from '../utils/model-context';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
+    getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isInverse = item.metadata?.inverse === 'true';
         const modifiers: string[] = [];
@@ -42,13 +44,23 @@ export class ContextPercentageUsableWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = item.metadata?.inverse === 'true';
+        const model = context.data?.model;
+        const modelId = typeof model === 'string' ? model : model?.id;
+        const contextWindowMetrics = getContextWindowMetrics(context.data);
+        const contextConfig = getContextConfig(modelId, contextWindowMetrics.windowSize);
 
         if (context.isPreview) {
             const previewValue = isInverse ? '88.4%' : '11.6%';
             return item.rawValue ? previewValue : `Ctx(u): ${previewValue}`;
-        } else if (context.tokenMetrics) {
-            const modelId = context.data?.model?.id;
-            const contextConfig = getContextConfig(modelId);
+        }
+
+        if (contextWindowMetrics.contextLengthTokens !== null) {
+            const usedPercentage = Math.min(100, (contextWindowMetrics.contextLengthTokens / contextConfig.usableTokens) * 100);
+            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx(u): ${displayPercentage.toFixed(1)}%`;
+        }
+
+        if (context.tokenMetrics) {
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
             return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx(u): ${displayPercentage.toFixed(1)}%`;
@@ -58,7 +70,7 @@ export class ContextPercentageUsableWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' }
+            { key: 'u', label: '(u)sed/remaining', action: 'toggle-inverse' }
         ];
     }
 

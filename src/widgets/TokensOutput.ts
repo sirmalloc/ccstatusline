@@ -5,12 +5,14 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getContextWindowOutputTotalTokens } from '../utils/context-window';
 import { formatTokens } from '../utils/renderer';
 
 export class TokensOutputWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
     getDescription(): string { return 'Shows output token count for the current session'; }
     getDisplayName(): string { return 'Tokens Output'; }
+    getCategory(): string { return 'Tokens'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -18,7 +20,14 @@ export class TokensOutputWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '3.4k' : 'Out: 3.4k';
-        } else if (context.tokenMetrics) {
+        }
+
+        const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
+        if (outputTotalTokens !== null) {
+            return item.rawValue ? formatTokens(outputTotalTokens) : `Out: ${formatTokens(outputTotalTokens)}`;
+        }
+
+        if (context.tokenMetrics) {
             return item.rawValue ? formatTokens(context.tokenMetrics.outputTokens) : `Out: ${formatTokens(context.tokenMetrics.outputTokens)}`;
         }
         return null;

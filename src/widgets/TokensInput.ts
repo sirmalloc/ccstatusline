@@ -5,12 +5,14 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getContextWindowInputTotalTokens } from '../utils/context-window';
 import { formatTokens } from '../utils/renderer';
 
 export class TokensInputWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows input token count for the current session'; }
     getDisplayName(): string { return 'Tokens Input'; }
+    getCategory(): string { return 'Tokens'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -18,7 +20,14 @@ export class TokensInputWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '15.2k' : 'In: 15.2k';
-        } else if (context.tokenMetrics) {
+        }
+
+        const inputTotalTokens = getContextWindowInputTotalTokens(context.data);
+        if (inputTotalTokens !== null) {
+            return item.rawValue ? formatTokens(inputTotalTokens) : `In: ${formatTokens(inputTotalTokens)}`;
+        }
+
+        if (context.tokenMetrics) {
             return item.rawValue ? formatTokens(context.tokenMetrics.inputTokens) : `In: ${formatTokens(context.tokenMetrics.inputTokens)}`;
         }
         return null;

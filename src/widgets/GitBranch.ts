@@ -1,5 +1,3 @@
-import { execSync } from 'child_process';
-
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
@@ -8,11 +6,16 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    isInsideGitWorkTree,
+    runGit
+} from '../utils/git';
 
 export class GitBranchWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
     getDescription(): string { return 'Shows the current git branch name'; }
     getDisplayName(): string { return 'Git Branch'; }
+    getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const hideNoGit = item.metadata?.hideNoGit === 'true';
         const modifiers: string[] = [];
@@ -48,23 +51,19 @@ export class GitBranchWidget implements Widget {
             return item.rawValue ? 'main' : '⎇ main';
         }
 
-        const branch = this.getGitBranch();
+        if (!isInsideGitWorkTree(context)) {
+            return hideNoGit ? null : '⎇ no git';
+        }
+
+        const branch = this.getGitBranch(context);
         if (branch)
             return item.rawValue ? branch : `⎇ ${branch}`;
 
         return hideNoGit ? null : '⎇ no git';
     }
 
-    private getGitBranch(): string | null {
-        try {
-            const branch = execSync('git branch --show-current', {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
-            return branch || null;
-        } catch {
-            return null;
-        }
+    private getGitBranch(context: RenderContext): string | null {
+        return runGit('branch --show-current', context);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

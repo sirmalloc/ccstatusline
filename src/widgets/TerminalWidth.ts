@@ -11,6 +11,7 @@ export class TerminalWidthWidget implements Widget {
     getDefaultColor(): string { return 'gray'; }
     getDescription(): string { return 'Shows current terminal width in columns'; }
     getDisplayName(): string { return 'Terminal Width'; }
+    getCategory(): string { return 'Environment'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
