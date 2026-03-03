@@ -46,6 +46,12 @@
 
 ## 🆕 Recent Updates
 
+### v2.1.5 - Activity widgets and transcript-driven telemetry
+
+- **🏃 New Activity widgets (v2.1.5)** - Added **All Activity**, **Tools Activity**, **Agents Activity**, and **Todo Progress** widgets for live workflow visibility.
+- **🧠 Transcript activity parsing (v2.1.5)** - Parses `tool_use`/`tool_result`, `Task` subagent calls, and todo updates (`TodoWrite`, `TaskCreate`, `TaskUpdate`) from Claude transcript JSONL.
+- **📏 Activity widget width control (v2.1.5)** - New activity widgets now support per-widget max-width editing with **(w)**, including clearing truncation.
+
 ### v2.1.0 - v2.1.4 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
 
 - **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
@@ -424,6 +430,10 @@ bun run example
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Session Name** - Shows the session name set via `/rename` command in Claude Code
 - **Claude Session ID** - Shows the current Claude Code session ID from status JSON
+- **All Activity** - Compact running-first summary across tools, agents, and todos, with completion counters
+- **Tools Activity** - Shows currently running and recently completed tool operations
+- **Agents Activity** - Shows running and recently completed Claude subagent tasks
+- **Todo Progress** - Shows in-progress todo focus and completion ratio from transcript tasks
 - **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
 - **Reset Timer** - Shows time remaining until the current 5-hour block resets
 - **Current Working Directory** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
@@ -529,6 +539,7 @@ Widget-specific shortcuts:
 - **Block Timer**: `p` cycle display mode (time/full bar/short bar)
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
+- **All Activity / Tools Activity / Agents Activity / Todo Progress**: `w` edit max width (set `0` or blank to disable truncation)
 - **Link**: `u` URL, `e` link text
 
 ---

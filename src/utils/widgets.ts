@@ -25,6 +25,10 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['context-percentage-usable', new widgets.ContextPercentageUsableWidget()],
     ['session-clock', new widgets.SessionClockWidget()],
     ['session-cost', new widgets.SessionCostWidget()],
+    ['tools-activity', new widgets.ToolsActivityWidget()],
+    ['agents-activity', new widgets.AgentsActivityWidget()],
+    ['todo-progress', new widgets.TodoProgressWidget()],
+    ['activity', new widgets.ActivityWidget()],
     ['block-timer', new widgets.BlockTimerWidget()],
     ['terminal-width', new widgets.TerminalWidthWidget()],
     ['version', new widgets.VersionWidget()],
@@ -78,6 +82,17 @@ const LAYOUT_WIDGETS: Record<string, Omit<WidgetCatalogEntry, 'type' | 'searchTe
         category: 'Layout'
     }
 };
+
+const WIDGET_SORT_PRIORITY: Partial<Record<WidgetItemType, number>> = { activity: 0 };
+
+function getWidgetSortPriority(entry: WidgetCatalogEntry): number {
+    // Only apply explicit ordering within the Activity category.
+    if (entry.category !== 'Activity') {
+        return Number.MAX_SAFE_INTEGER;
+    }
+
+    return WIDGET_SORT_PRIORITY[entry.type] ?? Number.MAX_SAFE_INTEGER;
+}
 
 function getLayoutCatalogEntry(type: WidgetItemType): WidgetCatalogEntry | null {
     const layout = LAYOUT_WIDGETS[type];
@@ -170,6 +185,13 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
         .sort((a, b) => {
             if (a.score !== b.score) {
                 return a.score - b.score;
+            }
+
+            if (a.entry.category === b.entry.category) {
+                const byPriority = getWidgetSortPriority(a.entry) - getWidgetSortPriority(b.entry);
+                if (byPriority !== 0) {
+                    return byPriority;
+                }
             }
 
             const byDisplayName = a.entry.displayName.localeCompare(b.entry.displayName);

@@ -29,3 +29,7 @@ export { WeeklyUsageWidget } from './WeeklyUsage';
 export { ResetTimerWidget } from './ResetTimer';
 export { ContextBarWidget } from './ContextBar';
 export { LinkWidget } from './Link';
+export { ToolsActivityWidget } from './ToolsActivity';
+export { AgentsActivityWidget } from './AgentsActivity';
+export { TodoProgressWidget } from './TodoProgress';
+export { ActivityWidget } from './Activity';

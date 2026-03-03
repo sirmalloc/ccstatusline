@@ -18,3 +18,13 @@ export type { PowerlineFontStatus } from './PowerlineFontStatus';
 export type { ClaudeSettings } from './ClaudeSettings';
 export type { ColorEntry } from './ColorEntry';
 export type { BlockMetrics } from './BlockMetrics';
+export type {
+    ActivityAgentEntry,
+    ActivityAgentStatus,
+    ActivityParseOptions,
+    ActivitySnapshot,
+    ActivityTodoItem,
+    ActivityTodoStatus,
+    ActivityToolEntry,
+    ActivityToolStatus
+} from './Activity';

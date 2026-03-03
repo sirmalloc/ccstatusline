@@ -76,10 +76,12 @@ describe('widget catalog', () => {
         expect(categories).toContain('Context');
         expect(categories).toContain('Tokens');
         expect(categories).toContain('Session');
+        expect(categories).toContain('Activity');
         expect(categories).toContain('Usage');
         expect(categories).toContain('Environment');
         expect(categories).toContain('Custom');
         expect(categories).toContain('Layout');
+        expect(categories.indexOf('Activity')).toBe(categories.indexOf('Session') + 1);
     });
 });
 
@@ -107,6 +109,11 @@ describe('widget catalog filtering', () => {
     it('applies category and query filters together', () => {
         const results = filterWidgetCatalog(catalog, 'Git', 'context');
         expect(results).toHaveLength(0);
+    });
+
+    it('keeps all activity at the top within the Activity category', () => {
+        const results = filterWidgetCatalog(catalog, 'Activity', '');
+        expect(results[0]?.type).toBe('activity');
     });
 
     it('prioritizes name match before type and description matches', () => {
