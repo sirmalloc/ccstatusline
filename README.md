@@ -46,10 +46,11 @@
 
 ## 🆕 Recent Updates
 
-### v2.1.0 - Usage widgets and reliability fixes
+### v2.1.0 - v2.1.1 - Usage widgets and reliability fixes
 
-- **🧩 New Usage widgets** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
-- **📊 More accurate counts** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
+- **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
+- **📊 More accurate counts (v2.1.0)** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
+- **🪟 Windows empty file bug fix (v2.1.1)** - Fixed a Windows issue that could create an empty `c:\dev\null` file.
 
 ### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
