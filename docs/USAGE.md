@@ -28,6 +28,13 @@ bun run example
 - **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort reads live status JSON first, then `/model` or `/effort` transcript output, then settings fallback; it supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`.
 - **Session Clock** / **Session Cost** - Show elapsed session time and the current session cost in USD.
 
+### Activity
+
+- **All Activity** - Show a compact running-first summary across tools, agents, and todos, with completion counters.
+- **Tools Activity** - Show currently running and recently completed tool operations.
+- **Agents Activity** - Show running and recently completed Claude subagent tasks.
+- **Todo Progress** - Show in-progress todo focus and completion ratio from transcript tasks.
+
 ### Git
 
 - **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Works with GitHub (`gh`) and GitLab (`glab`); for self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
@@ -167,6 +174,7 @@ Widget-specific shortcuts:
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
+- **All Activity / Tools Activity / Agents Activity / Todo Progress**: `w` edit max width (set `0` or blank to disable truncation)
 - **Custom Text / Custom Symbol**: `e` edit text or symbol
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
 - **Link**: `u` URL, `e` link text

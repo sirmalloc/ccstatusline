@@ -63,3 +63,7 @@ export { GitWorktreeNameWidget } from './GitWorktreeName';
 export { GitWorktreeBranchWidget } from './GitWorktreeBranch';
 export { GitWorktreeOriginalBranchWidget } from './GitWorktreeOriginalBranch';
 export { CompactionCounterWidget } from './CompactionCounter';
+export { ToolsActivityWidget } from './ToolsActivity';
+export { AgentsActivityWidget } from './AgentsActivity';
+export { TodoProgressWidget } from './TodoProgress';
+export { ActivityWidget } from './Activity';

@@ -74,6 +74,17 @@ const layoutCatalogEntries = new Map<WidgetItemType, WidgetCatalogEntry>(
     ])
 );
 
+const WIDGET_SORT_PRIORITY: Partial<Record<WidgetItemType, number>> = { activity: 0 };
+
+function getWidgetSortPriority(entry: WidgetCatalogEntry): number {
+    // Only apply explicit ordering within the Activity category.
+    if (entry.category !== 'Activity') {
+        return Number.MAX_SAFE_INTEGER;
+    }
+
+    return WIDGET_SORT_PRIORITY[entry.type] ?? Number.MAX_SAFE_INTEGER;
+}
+
 function getLayoutCatalogEntry(type: WidgetItemType): WidgetCatalogEntry | null {
     return layoutCatalogEntries.get(type) ?? null;
 }
@@ -114,6 +125,7 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
     const categoryFiltered = category === 'All'
         ? [...catalog]
         : catalog.filter(entry => entry.category === category);
+    const shouldPrioritizeActivity = category === 'Activity';
 
     const records: FuzzySearchRecord<WidgetCatalogEntry>[] = categoryFiltered.map(entry => ({
         item: entry,
@@ -121,7 +133,9 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
         type: entry.type,
         description: entry.description,
         searchText: entry.searchText,
-        sortText: entry.displayName,
+        sortText: shouldPrioritizeActivity
+            ? `${String(getWidgetSortPriority(entry)).padStart(16, '0')} ${entry.displayName}`
+            : entry.displayName,
         secondarySortText: entry.type
     }));
 

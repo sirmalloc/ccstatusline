@@ -47,6 +47,12 @@
 
 ## 🆕 Recent Updates
 
+### v2.3.0 - Activity widgets and transcript-driven telemetry
+
+- **🏃 New Activity widgets** - Added **All Activity**, **Tools Activity**, **Agents Activity**, and **Todo Progress** widgets for live workflow visibility.
+- **🧠 Transcript activity parsing** - Parses `tool_use`/`tool_result`, `Task` subagent calls, and todo updates (`TodoWrite`, `TaskCreate`, `TaskUpdate`) from Claude transcript JSONL.
+- **📏 Activity widget width control** - Activity widgets support per-widget max-width editing with **(w)**, including clearing truncation.
+
 ### v2.2.9 - v2.2.11 - GitLab support, reset timers, context, compaction, and git widgets
 
 - **🦊 GitLab PR/MR support** - `Git Branch` and `Git PR/MR` now support GitHub, GitLab, and compatible self-hosted remotes, using `gh` or `glab` as appropriate.

@@ -3,6 +3,7 @@ import type {
     SkillsMetrics
 } from '../types';
 
+import type { ActivitySnapshot } from './Activity';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
@@ -31,6 +32,7 @@ export interface RenderContext {
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     compactionData?: CompactionData | null;
+    activity?: ActivitySnapshot | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     minimalist?: boolean;
