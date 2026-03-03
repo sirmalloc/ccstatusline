@@ -34,6 +34,12 @@ export function getPackageVersion(): string {
 
 // Get terminal width
 export function getTerminalWidth(): number | null {
+    // Preserve historical behavior on Windows: width detection is unavailable.
+    // This avoids Unix fallback command behavior (e.g. 2>/dev/null) on Windows.
+    if (process.platform === 'win32') {
+        return null;
+    }
+
     try {
         // First try to get the tty of the parent process
         const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
@@ -83,6 +89,11 @@ export function getTerminalWidth(): number | null {
 
 // Check if terminal width detection is available
 export function canDetectTerminalWidth(): boolean {
+    // Preserve historical behavior on Windows: width detection is unavailable.
+    if (process.platform === 'win32') {
+        return false;
+    }
+
     try {
         // First try to get the tty of the parent process
         const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
