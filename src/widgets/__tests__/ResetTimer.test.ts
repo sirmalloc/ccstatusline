@@ -142,4 +142,33 @@ describe('ResetTimerWidget', () => {
         expect(updated?.metadata?.display).toBe('time');
         expect(updated?.metadata?.invert).toBeUndefined();
     });
+
+    it('cycles display modes in the expected order', () => {
+        const widget = new ResetTimerWidget();
+        const base: WidgetItem = { id: 'reset', type: 'reset-timer' };
+
+        const first = widget.handleEditorAction('toggle-progress', base);
+        const second = widget.handleEditorAction('toggle-progress', first ?? base);
+        const third = widget.handleEditorAction('toggle-progress', second ?? base);
+
+        expect(first?.metadata?.display).toBe('progress');
+        expect(second?.metadata?.display).toBe('progress-short');
+        expect(third?.metadata?.display).toBe('time');
+    });
+
+    it('toggles invert metadata and shows editor modifiers', () => {
+        const widget = new ResetTimerWidget();
+        const base: WidgetItem = { id: 'reset', type: 'reset-timer' };
+
+        const inverted = widget.handleEditorAction('toggle-invert', base);
+        const cleared = widget.handleEditorAction('toggle-invert', inverted ?? base);
+
+        expect(inverted?.metadata?.invert).toBe('true');
+        expect(cleared?.metadata?.invert).toBe('false');
+        expect(widget.getEditorDisplay(base).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay({
+            ...base,
+            metadata: { display: 'progress-short', invert: 'true' }
+        }).modifierText).toBe('(short bar, inverted)');
+    });
 });

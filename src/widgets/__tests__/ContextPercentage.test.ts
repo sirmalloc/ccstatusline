@@ -34,6 +34,25 @@ function render(modelId: string | undefined, contextLength: number, rawValue = f
 }
 
 describe('ContextPercentageWidget', () => {
+    it('toggles inverse metadata and editor modifier', () => {
+        const widget = new ContextPercentageWidget();
+        const base: WidgetItem = {
+            id: 'context-percentage',
+            type: 'context-percentage'
+        };
+
+        const inverted = widget.handleEditorAction('toggle-inverse', base);
+        const cleared = widget.handleEditorAction('toggle-inverse', inverted ?? base);
+
+        expect(inverted?.metadata?.inverse).toBe('true');
+        expect(cleared?.metadata?.inverse).toBe('false');
+        expect(widget.getEditorDisplay(base).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay({
+            ...base,
+            metadata: { inverse: 'true' }
+        }).modifierText).toBe('(remaining)');
+    });
+
     it('prefers context_window percentage over token metrics when both exist', () => {
         const widget = new ContextPercentageWidget();
         const item: WidgetItem = {
