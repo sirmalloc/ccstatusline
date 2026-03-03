@@ -9,6 +9,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import {
+    getGitChangeCounts,
     isInsideGitWorkTree,
     resolveGitCwd,
     runGit
@@ -20,6 +21,7 @@ const mockExecSync = execSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
+    mockReturnValueOnce: (value: string) => void;
 };
 
 describe('git utils', () => {
@@ -132,6 +134,37 @@ describe('git utils', () => {
             mockExecSync.mockImplementation(() => { throw new Error('git failed'); });
 
             expect(isInsideGitWorkTree({})).toBe(false);
+        });
+    });
+
+    describe('getGitChangeCounts', () => {
+        it('sums staged and unstaged insertions/deletions', () => {
+            mockExecSync.mockReturnValueOnce('1 file changed, 2 insertions(+), 1 deletion(-)');
+            mockExecSync.mockReturnValueOnce('1 file changed, 3 insertions(+), 4 deletions(-)');
+
+            expect(getGitChangeCounts({})).toEqual({
+                insertions: 5,
+                deletions: 5
+            });
+        });
+
+        it('handles singular insertion/deletion forms', () => {
+            mockExecSync.mockReturnValueOnce('1 file changed, 1 insertion(+), 1 deletion(-)');
+            mockExecSync.mockReturnValueOnce('');
+
+            expect(getGitChangeCounts({})).toEqual({
+                insertions: 1,
+                deletions: 1
+            });
+        });
+
+        it('returns zero counts when git diff commands fail', () => {
+            mockExecSync.mockImplementation(() => { throw new Error('git failed'); });
+
+            expect(getGitChangeCounts({})).toEqual({
+                insertions: 0,
+                deletions: 0
+            });
         });
     });
 });

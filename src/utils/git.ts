@@ -2,6 +2,11 @@ import { execSync } from 'child_process';
 
 import type { RenderContext } from '../types/RenderContext';
 
+export interface GitChangeCounts {
+    insertions: number;
+    deletions: number;
+}
+
 export function resolveGitCwd(context: RenderContext): string | undefined {
     const candidates = [
         context.data?.cwd,
@@ -35,4 +40,26 @@ export function runGit(command: string, context: RenderContext): string | null {
 
 export function isInsideGitWorkTree(context: RenderContext): boolean {
     return runGit('rev-parse --is-inside-work-tree', context) === 'true';
+}
+
+function parseDiffShortStat(stat: string): GitChangeCounts {
+    const insertMatch = /(\d+)\s+insertions?/.exec(stat);
+    const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
+
+    return {
+        insertions: insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0,
+        deletions: deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0
+    };
+}
+
+export function getGitChangeCounts(context: RenderContext): GitChangeCounts {
+    const unstagedStat = runGit('diff --shortstat', context) ?? '';
+    const stagedStat = runGit('diff --cached --shortstat', context) ?? '';
+    const unstagedCounts = parseDiffShortStat(unstagedStat);
+    const stagedCounts = parseDiffShortStat(stagedStat);
+
+    return {
+        insertions: unstagedCounts.insertions + stagedCounts.insertions,
+        deletions: unstagedCounts.deletions + stagedCounts.deletions
+    };
 }

@@ -11,6 +11,8 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['output-style', new widgets.OutputStyleWidget()],
     ['git-branch', new widgets.GitBranchWidget()],
     ['git-changes', new widgets.GitChangesWidget()],
+    ['git-insertions', new widgets.GitInsertionsWidget()],
+    ['git-deletions', new widgets.GitDeletionsWidget()],
     ['git-root-dir', new widgets.GitRootDirWidget()],
     ['git-worktree', new widgets.GitWorktreeWidget()],
     ['current-working-dir', new widgets.CurrentWorkingDirWidget()],

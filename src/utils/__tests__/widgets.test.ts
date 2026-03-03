@@ -28,6 +28,8 @@ describe('widget catalog', () => {
         const model = catalog.find(entry => entry.type === 'model');
         const separator = catalog.find(entry => entry.type === 'separator');
         const link = catalog.find(entry => entry.type === 'link');
+        const gitInsertions = catalog.find(entry => entry.type === 'git-insertions');
+        const gitDeletions = catalog.find(entry => entry.type === 'git-deletions');
 
         expect(model?.displayName).toBe('Model');
         expect(model?.category).toBe('Core');
@@ -35,6 +37,10 @@ describe('widget catalog', () => {
         expect(separator?.category).toBe('Layout');
         expect(link?.displayName).toBe('Link');
         expect(link?.category).toBe('Custom');
+        expect(gitInsertions?.displayName).toBe('Git Insertions');
+        expect(gitInsertions?.category).toBe('Git');
+        expect(gitDeletions?.displayName).toBe('Git Deletions');
+        expect(gitDeletions?.category).toBe('Git');
     });
 
     it('hides manual separator when default separator is configured', () => {
