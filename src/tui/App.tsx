@@ -24,6 +24,7 @@ import {
     isInstalled,
     uninstallStatusLine
 } from '../utils/claude-settings';
+import { cloneSettings } from '../utils/clone-settings';
 import {
     loadSettings,
     saveSettings
@@ -84,7 +85,7 @@ export const App: React.FC = () => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
             setSettings(loadedSettings);
-            setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings)) as Settings); // Deep copy
+            setOriginalSettings(cloneSettings(loadedSettings));
         });
         void isInstalled().then(setIsClaudeInstalled);
 
@@ -133,7 +134,7 @@ export const App: React.FC = () => {
         if (key.ctrl && input === 's' && settings) {
             void (async () => {
                 await saveSettings(settings);
-                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings);
+                setOriginalSettings(cloneSettings(settings));
                 setHasChanges(false);
                 setFlashMessage({
                     text: '✓ Configuration saved',
@@ -247,7 +248,7 @@ export const App: React.FC = () => {
             break;
         case 'save':
             await saveSettings(settings);
-            setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
+            setOriginalSettings(cloneSettings(settings)); // Update original after save
             setHasChanges(false);
             exit();
             break;
@@ -312,7 +313,7 @@ export const App: React.FC = () => {
                                     install: 5,
                                     starGithub: hasChanges ? 8 : 7
                                 };
-                                setMenuSelections({ ...menuSelections, main: menuMap[value] ?? 0 });
+                                setMenuSelections(prev => ({ ...prev, main: menuMap[value] ?? 0 }));
                             }
                             void handleMainMenuSelect(value);
                         }}
@@ -328,14 +329,14 @@ export const App: React.FC = () => {
                     <LineSelector
                         lines={settings.lines}
                         onSelect={(line) => {
-                            setMenuSelections({ ...menuSelections, lines: line });
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
                             handleLineSelect(line);
                         }}
                         onLinesUpdate={updateLines}
                         onBack={() => {
                             // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
-                            setMenuSelections({ ...menuSelections, main: 0 });
+                            setMenuSelections(prev => ({ ...prev, main: 0 }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -349,7 +350,7 @@ export const App: React.FC = () => {
                         onUpdate={(widgets) => { updateLine(selectedLine, widgets); }}
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
-                            setMenuSelections({ ...menuSelections, lines: selectedLine });
+                            setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
                             setScreen('lines');
                         }}
                         lineNumber={selectedLine + 1}
@@ -361,13 +362,13 @@ export const App: React.FC = () => {
                         lines={settings.lines}
                         onLinesUpdate={updateLines}
                         onSelect={(line) => {
-                            setMenuSelections({ ...menuSelections, lines: line });
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
                             setSelectedLine(line);
                             setScreen('colors');
                         }}
                         onBack={() => {
                             // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections({ ...menuSelections, main: 1 });
+                            setMenuSelections(prev => ({ ...prev, main: 1 }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -405,7 +406,7 @@ export const App: React.FC = () => {
                                 setScreen('terminalWidth');
                             } else {
                                 // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections({ ...menuSelections, main: 3 });
+                                setMenuSelections(prev => ({ ...prev, main: 3 }));
                                 setScreen('main');
                             }
                         }}
@@ -430,7 +431,7 @@ export const App: React.FC = () => {
                         }}
                         onBack={() => {
                             // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections({ ...menuSelections, main: 4 });
+                            setMenuSelections(prev => ({ ...prev, main: 4 }));
                             setScreen('main');
                         }}
                     />
