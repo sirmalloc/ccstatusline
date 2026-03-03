@@ -1,8 +1,4 @@
 import chalk from 'chalk';
-import stringWidth from 'string-width';
-
-// ANSI escape sequence for stripping color codes
-const ANSI_REGEX = new RegExp(`\\x1b\\[[0-9;]*m`, 'g');
 
 import type {
     RenderContext,
@@ -11,6 +7,11 @@ import type {
 import { getColorLevelString } from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
+import {
+    getVisibleWidth,
+    stripSgrCodes,
+    truncateStyledText
+} from './ansi';
 import {
     applyColors,
     bgToFg,
@@ -161,7 +162,7 @@ function renderPowerlineStatusLine(
             if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
                 && widget.type === 'custom-command' && widget.preserveColors) {
                 // Strip ANSI color codes when override is active
-                widgetText = widgetText.replace(ANSI_REGEX, '');
+                widgetText = stripSgrCodes(widgetText);
             }
 
             // Check if padding should be omitted due to no-padding merge
@@ -231,13 +232,13 @@ function renderPowerlineStatusLine(
                 const maxWidth = preCalculatedMaxWidths[alignmentPos];
                 if (maxWidth !== undefined) {
                     // Calculate combined width if this widget merges with following ones
-                    let combinedLength = stringWidth(element.content.replace(ANSI_REGEX, ''));
+                    let combinedLength = getVisibleWidth(element.content);
                     let j = i;
                     while (j < widgetElements.length - 1 && widgetElements[j]?.widget.merge) {
                         j++;
                         const nextElement = widgetElements[j];
                         if (nextElement) {
-                            combinedLength += stringWidth(nextElement.content.replace(ANSI_REGEX, ''));
+                            combinedLength += getVisibleWidth(nextElement.content);
                         }
                     }
 
@@ -438,33 +439,9 @@ function renderPowerlineStatusLine(
 
     // Handle truncation if terminal width is known
     if (terminalWidth && terminalWidth > 0) {
-        const plainLength = result.replace(ANSI_REGEX, '').length;
+        const plainLength = getVisibleWidth(result);
         if (plainLength > terminalWidth) {
-            // Truncate to terminal width
-            let truncated = '';
-            let currentLength = 0;
-            let inAnsiCode = false;
-
-            for (const char of result) {
-                if (char === '\x1b') {
-                    inAnsiCode = true;
-                    truncated += char;
-                } else if (inAnsiCode) {
-                    truncated += char;
-                    if (char === 'm') {
-                        inAnsiCode = false;
-                    }
-                } else {
-                    if (currentLength < terminalWidth - 3) {
-                        truncated += char;
-                        currentLength++;
-                    } else {
-                        truncated += '...';
-                        break;
-                    }
-                }
-            }
-            result = truncated;
+            result = truncateStyledText(result, terminalWidth, { ellipsis: true });
         }
     }
 
@@ -529,7 +506,7 @@ export function preRenderAllWidgets(
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
-            const plainLength = stringWidth(widgetText.replace(ANSI_REGEX, ''));
+            const plainLength = getVisibleWidth(widgetText);
             preRenderedLine.push({
                 content: widgetText,
                 plainLength,
@@ -776,35 +753,9 @@ export function renderStatusLine(
                     // Handle max width truncation for commands with ANSI codes
                     let finalOutput = widgetText;
                     if (widget.maxWidth && widget.maxWidth > 0) {
-                        const plainLength = widgetText.replace(ANSI_REGEX, '').length;
+                        const plainLength = getVisibleWidth(widgetText);
                         if (plainLength > widget.maxWidth) {
-                            // Truncate while preserving ANSI codes
-                            let truncated = '';
-                            let currentLength = 0;
-                            let inAnsiCode = false;
-                            let ansiBuffer = '';
-
-                            for (const char of widgetText) {
-                                if (char === '\x1b') {
-                                    inAnsiCode = true;
-                                    ansiBuffer = char;
-                                } else if (inAnsiCode) {
-                                    ansiBuffer += char;
-                                    if (char === 'm') {
-                                        truncated += ansiBuffer;
-                                        inAnsiCode = false;
-                                        ansiBuffer = '';
-                                    }
-                                } else {
-                                    if (currentLength < widget.maxWidth) {
-                                        truncated += char;
-                                        currentLength++;
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-                            finalOutput = truncated;
+                            finalOutput = truncateStyledText(widgetText, widget.maxWidth, { ellipsis: false });
                         }
                     }
                     // Preserve original colors from command output
@@ -925,7 +876,7 @@ export function renderStatusLine(
         // Calculate total length of all non-flex content
         const partLengths = parts.map((part) => {
             const joined = part.join('');
-            return joined.replace(ANSI_REGEX, '').length;
+            return getVisibleWidth(joined);
         });
         const totalContentLength = partLengths.reduce((sum, len) => sum + len, 0);
 
@@ -964,38 +915,10 @@ export function renderStatusLine(
     const maxWidth = terminalWidth ?? detectedWidth;
     if (maxWidth && maxWidth > 0) {
         // Remove ANSI escape codes to get actual length
-        const plainLength = statusLine.replace(ANSI_REGEX, '').length;
+        const plainLength = getVisibleWidth(statusLine);
 
         if (plainLength > maxWidth) {
-            // Need to truncate - preserve ANSI codes while truncating
-            let truncated = '';
-            let currentLength = 0;
-            let inAnsiCode = false;
-            let ansiBuffer = '';
-            const targetLength = context.isPreview ? maxWidth - 3 : maxWidth - 3; // Reserve 3 chars for ellipsis
-
-            for (const char of statusLine) {
-                if (char === '\x1b') {
-                    inAnsiCode = true;
-                    ansiBuffer = char;
-                } else if (inAnsiCode) {
-                    ansiBuffer += char;
-                    if (char === 'm') {
-                        truncated += ansiBuffer;
-                        inAnsiCode = false;
-                        ansiBuffer = '';
-                    }
-                } else {
-                    if (currentLength < targetLength) {
-                        truncated += char;
-                        currentLength++;
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            statusLine = truncated + '...';
+            statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
         }
     }
 

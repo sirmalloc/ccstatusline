@@ -26,3 +26,4 @@ export { SessionUsageWidget } from './SessionUsage';
 export { WeeklyUsageWidget } from './WeeklyUsage';
 export { ResetTimerWidget } from './ResetTimer';
 export { ContextBarWidget } from './ContextBar';
+export { LinkWidget } from './Link';

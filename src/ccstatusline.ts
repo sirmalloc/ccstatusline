@@ -6,6 +6,7 @@ import type { TokenMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
+import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
     loadSettings,
@@ -116,7 +117,7 @@ async function renderMultipleLines(data: StatusJSON) {
 
             // Only output the line if it has content (not just ANSI codes)
             // Strip ANSI codes to check if there's actual text
-            const strippedLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+            const strippedLine = getVisibleText(line).trim();
             if (strippedLine.length > 0) {
                 // Count separators used in this line (widgets - 1, excluding merged widgets)
                 const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);

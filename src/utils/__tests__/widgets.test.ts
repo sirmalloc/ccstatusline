@@ -27,11 +27,14 @@ describe('widget catalog', () => {
 
         const model = catalog.find(entry => entry.type === 'model');
         const separator = catalog.find(entry => entry.type === 'separator');
+        const link = catalog.find(entry => entry.type === 'link');
 
         expect(model?.displayName).toBe('Model');
         expect(model?.category).toBe('Core');
         expect(separator?.displayName).toBe('Separator');
         expect(separator?.category).toBe('Layout');
+        expect(link?.displayName).toBe('Link');
+        expect(link?.category).toBe('Custom');
     });
 
     it('hides manual separator when default separator is configured', () => {
