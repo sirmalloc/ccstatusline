@@ -30,6 +30,8 @@ describe('widget catalog', () => {
         const link = catalog.find(entry => entry.type === 'link');
         const gitInsertions = catalog.find(entry => entry.type === 'git-insertions');
         const gitDeletions = catalog.find(entry => entry.type === 'git-deletions');
+        const resetTimer = catalog.find(entry => entry.type === 'reset-timer');
+        const weeklyResetTimer = catalog.find(entry => entry.type === 'weekly-reset-timer');
 
         expect(model?.displayName).toBe('Model');
         expect(model?.category).toBe('Core');
@@ -41,6 +43,10 @@ describe('widget catalog', () => {
         expect(gitInsertions?.category).toBe('Git');
         expect(gitDeletions?.displayName).toBe('Git Deletions');
         expect(gitDeletions?.category).toBe('Git');
+        expect(resetTimer?.displayName).toBe('Block Reset Timer');
+        expect(resetTimer?.category).toBe('Usage');
+        expect(weeklyResetTimer?.displayName).toBe('Weekly Reset Timer');
+        expect(weeklyResetTimer?.category).toBe('Usage');
     });
 
     it('hides manual separator when default separator is configured', () => {

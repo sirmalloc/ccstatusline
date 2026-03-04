@@ -13,34 +13,35 @@ import {
     fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
-    resolveUsageWindowWithFallback
+    resolveWeeklyUsageWindow
 } from '../../utils/usage';
-import { ResetTimerWidget } from '../ResetTimer';
+import { WeeklyResetTimerWidget } from '../WeeklyResetTimer';
 
 vi.mock('../../utils/usage', () => ({
     fetchUsageData: vi.fn(),
     formatUsageDuration: vi.fn(),
     getUsageErrorMessage: vi.fn(),
-    resolveUsageWindowWithFallback: vi.fn()
+    resolveWeeklyUsageWindow: vi.fn()
 }));
 
 const mockFetchUsageData = fetchUsageData as unknown as { mockReturnValue: (value: unknown) => void };
 const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
 const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
-const mockResolveUsageWindowWithFallback = resolveUsageWindowWithFallback as unknown as { mockReturnValue: (value: unknown) => void };
+const mockResolveWeeklyUsageWindow = resolveWeeklyUsageWindow as unknown as { mockReturnValue: (value: unknown) => void };
 
-function render(widget: ResetTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
+function render(widget: WeeklyResetTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
-describe('ResetTimerWidget', () => {
+describe('WeeklyResetTimerWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
     it('supports raw value and exposes progress/invert keybinds', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new WeeklyResetTimerWidget();
 
+        expect(widget.getDisplayName()).toBe('Weekly Reset Timer');
         expect(widget.supportsRawValue()).toBe(true);
         expect(widget.getCustomKeybinds()).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
@@ -48,33 +49,33 @@ describe('ResetTimerWidget', () => {
         ]);
     });
 
-    it('renders preview using block-style reset format', () => {
-        const widget = new ResetTimerWidget();
+    it('renders preview using weekly reset format', () => {
+        const widget = new WeeklyResetTimerWidget();
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { isPreview: true })).toBe('Reset: 4hr 30m');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { isPreview: true })).toBe('Weekly Reset: 36hr 30m');
     });
 
     it('renders remaining time in time mode', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new WeeklyResetTimerWidget();
 
         mockFetchUsageData.mockReturnValue({});
-        mockResolveUsageWindowWithFallback.mockReturnValue({
-            sessionDurationMs: 18000000,
-            elapsedMs: 3600000,
-            remainingMs: 14400000,
-            elapsedPercent: 20,
-            remainingPercent: 80
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 120000000,
+            remainingMs: 484800000,
+            elapsedPercent: 19.8412698413,
+            remainingPercent: 80.1587301587
         });
-        mockFormatUsageDuration.mockReturnValue('4hr');
+        mockFormatUsageDuration.mockReturnValue('134hr 40m');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBe('Reset: 4hr');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' })).toBe('Weekly Reset: 134hr 40m');
     });
 
     it('renders short progress bar with inverted fill', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new WeeklyResetTimerWidget();
         const item: WidgetItem = {
-            id: 'reset',
-            type: 'reset-timer',
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
             metadata: {
                 display: 'progress-short',
                 invert: 'true'
@@ -82,57 +83,57 @@ describe('ResetTimerWidget', () => {
         };
 
         mockFetchUsageData.mockReturnValue({});
-        mockResolveUsageWindowWithFallback.mockReturnValue({
-            sessionDurationMs: 18000000,
-            elapsedMs: 14400000,
-            remainingMs: 3600000,
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 483840000,
+            remainingMs: 120960000,
             elapsedPercent: 80,
             remainingPercent: 20
         });
 
-        expect(render(widget, item)).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
+        expect(render(widget, item)).toBe('Weekly Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
-    it('returns usage error when no timer data is available', () => {
-        const widget = new ResetTimerWidget();
+    it('returns usage error when no weekly reset data is available', () => {
+        const widget = new WeeklyResetTimerWidget();
 
         mockFetchUsageData.mockReturnValue({ error: 'timeout' });
-        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+        mockResolveWeeklyUsageWindow.mockReturnValue(null);
         mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBe('[Timeout]');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' })).toBe('[Timeout]');
     });
 
-    it('returns null when neither timer data nor usage error exists', () => {
-        const widget = new ResetTimerWidget();
+    it('returns null when neither weekly reset data nor usage error exists', () => {
+        const widget = new WeeklyResetTimerWidget();
 
         mockFetchUsageData.mockReturnValue({});
-        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+        mockResolveWeeklyUsageWindow.mockReturnValue(null);
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBeNull();
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' })).toBeNull();
     });
 
     it('shows raw value without label in time mode', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new WeeklyResetTimerWidget();
 
         mockFetchUsageData.mockReturnValue({});
-        mockResolveUsageWindowWithFallback.mockReturnValue({
-            sessionDurationMs: 18000000,
-            elapsedMs: 4500000,
-            remainingMs: 13500000,
-            elapsedPercent: 25,
-            remainingPercent: 75
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 171900000,
+            remainingMs: 432900000,
+            elapsedPercent: 28.4216269841,
+            remainingPercent: 71.5783730159
         });
-        mockFormatUsageDuration.mockReturnValue('3hr 45m');
+        mockFormatUsageDuration.mockReturnValue('120hr 15m');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true })).toBe('3hr 45m');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true })).toBe('120hr 15m');
     });
 
     it('clears invert metadata when cycling back to time mode', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new WeeklyResetTimerWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
-            id: 'reset',
-            type: 'reset-timer',
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
             metadata: {
                 display: 'progress-short',
                 invert: 'true'
@@ -144,8 +145,8 @@ describe('ResetTimerWidget', () => {
     });
 
     it('cycles display modes in the expected order', () => {
-        const widget = new ResetTimerWidget();
-        const base: WidgetItem = { id: 'reset', type: 'reset-timer' };
+        const widget = new WeeklyResetTimerWidget();
+        const base: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer' };
 
         const first = widget.handleEditorAction('toggle-progress', base);
         const second = widget.handleEditorAction('toggle-progress', first ?? base);
@@ -157,8 +158,8 @@ describe('ResetTimerWidget', () => {
     });
 
     it('toggles invert metadata and shows editor modifiers', () => {
-        const widget = new ResetTimerWidget();
-        const base: WidgetItem = { id: 'reset', type: 'reset-timer' };
+        const widget = new WeeklyResetTimerWidget();
+        const base: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer' };
 
         const inverted = widget.handleEditorAction('toggle-invert', base);
         const cleared = widget.handleEditorAction('toggle-invert', inverted ?? base);

@@ -10,7 +10,7 @@ import {
     fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
-    resolveUsageWindowWithFallback
+    resolveWeeklyUsageWindow
 } from '../utils/usage';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -31,10 +31,10 @@ function makeTimerProgressBar(percent: number, width: number): string {
     return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
 }
 
-export class ResetTimerWidget implements Widget {
+export class WeeklyResetTimerWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
-    getDescription(): string { return 'Shows time remaining until current 5hr block reset'; }
-    getDisplayName(): string { return 'Reset Timer'; }
+    getDescription(): string { return 'Shows time remaining until weekly usage reset'; }
+    getDisplayName(): string { return 'Weekly Reset Timer'; }
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -66,14 +66,14 @@ export class ResetTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
-            return formatRawOrLabeledValue(item, 'Reset: ', '4hr 30m');
+            return formatRawOrLabeledValue(item, 'Weekly Reset: ', '36hr 30m');
         }
 
         const usageData = fetchUsageData();
-        const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
+        const window = resolveWeeklyUsageWindow(usageData);
 
         if (!window) {
             if (usageData.error) {
@@ -88,11 +88,11 @@ export class ResetTimerWidget implements Widget {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
             const percentage = percent.toFixed(1);
-            return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${percentage}%`);
+            return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${percentage}%`);
         }
 
         const remainingTime = formatUsageDuration(window.remainingMs);
-        return formatRawOrLabeledValue(item, 'Reset: ', remainingTime);
+        return formatRawOrLabeledValue(item, 'Weekly Reset: ', remainingTime);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

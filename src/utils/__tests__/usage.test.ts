@@ -10,9 +10,12 @@ import type { BlockMetrics } from '../../types';
 import { getCachedBlockMetrics } from '../jsonl';
 import {
     FIVE_HOUR_BLOCK_MS,
+    SEVEN_DAY_WINDOW_MS,
     formatUsageDuration,
     getUsageWindowFromResetAt,
-    resolveUsageWindowWithFallback
+    getWeeklyUsageWindowFromResetAt,
+    resolveUsageWindowWithFallback,
+    resolveWeeklyUsageWindow
 } from '../usage';
 
 vi.mock('../jsonl', () => ({ getCachedBlockMetrics: vi.fn() }));
@@ -94,6 +97,34 @@ describe('usage window helpers', () => {
 
         expect(window).toBeNull();
         expect(mockGetCachedBlockMetrics.mock.calls.length).toBe(1);
+    });
+
+    it('parses weekly reset timestamp into elapsed and remaining metrics', () => {
+        const nowMs = Date.parse('2026-03-04T20:00:00.000Z');
+        const resetAt = '2026-03-09T20:00:00.000Z';
+
+        const window = getWeeklyUsageWindowFromResetAt(resetAt, nowMs);
+
+        expect(window).not.toBeNull();
+        expect(window?.elapsedMs).toBe(2 * 24 * 60 * 60 * 1000);
+        expect(window?.remainingMs).toBe(5 * 24 * 60 * 60 * 1000);
+        expect(window?.elapsedPercent).toBeCloseTo((2 / 7) * 100, 5);
+        expect(window?.remainingPercent).toBeCloseTo((5 / 7) * 100, 5);
+        expect(window?.sessionDurationMs).toBe(SEVEN_DAY_WINDOW_MS);
+    });
+
+    it('returns null for missing or invalid weekly reset timestamps', () => {
+        expect(getWeeklyUsageWindowFromResetAt(undefined, Date.now())).toBeNull();
+        expect(getWeeklyUsageWindowFromResetAt('not-a-date', Date.now())).toBeNull();
+    });
+
+    it('resolves weekly window directly from usage data without JSONL fallback', () => {
+        const nowMs = Date.parse('2026-03-04T20:00:00.000Z');
+        const window = resolveWeeklyUsageWindow({ weeklyResetAt: '2026-03-09T20:00:00.000Z' }, nowMs);
+
+        expect(window).not.toBeNull();
+        expect(window?.remainingMs).toBe(5 * 24 * 60 * 60 * 1000);
+        expect(mockGetCachedBlockMetrics.mock.calls.length).toBe(0);
     });
 
     it('formats duration in block timer style', () => {

@@ -20,6 +20,7 @@ const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const TOKEN_CACHE_MAX_AGE = 3600; // 1 hour
 export const FIVE_HOUR_BLOCK_MS = 5 * 60 * 60 * 1000;
+export const SEVEN_DAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Error types matching shell script
 const UsageErrorSchema = z.enum(['no-credentials', 'timeout', 'api-error', 'parse-error']);
@@ -27,8 +28,9 @@ export type UsageError = z.infer<typeof UsageErrorSchema>;
 
 export interface UsageData {
     sessionUsage?: number;  // five_hour.utilization (percentage)
-    sessionResetAt?: string; // five_hour.reset_at
+    sessionResetAt?: string; // five_hour.resets_at
     weeklyUsage?: number;   // seven_day.utilization (percentage)
+    weeklyResetAt?: string; // seven_day.resets_at
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;      // in cents
     extraUsageUsed?: number;       // in cents
@@ -50,6 +52,7 @@ const CachedUsageDataSchema = z.object({
     sessionUsage: z.number().nullable().optional(),
     sessionResetAt: z.string().nullable().optional(),
     weeklyUsage: z.number().nullable().optional(),
+    weeklyResetAt: z.string().nullable().optional(),
     extraUsageEnabled: z.boolean().nullable().optional(),
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
@@ -60,10 +63,12 @@ const CachedUsageDataSchema = z.object({
 const UsageApiResponseSchema = z.object({
     five_hour: z.object({
         utilization: z.number().nullable().optional(),
-        reset_at: z.string().nullable().optional(),
         resets_at: z.string().nullable().optional()
     }).optional(),
-    seven_day: z.object({ utilization: z.number().nullable().optional() }).optional(),
+    seven_day: z.object({
+        utilization: z.number().nullable().optional(),
+        resets_at: z.string().nullable().optional()
+    }).optional(),
     extra_usage: z.object({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
@@ -98,6 +103,7 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         sessionUsage: parsed.sessionUsage ?? undefined,
         sessionResetAt: parsed.sessionResetAt ?? undefined,
         weeklyUsage: parsed.weeklyUsage ?? undefined,
+        weeklyResetAt: parsed.weeklyResetAt ?? undefined,
         extraUsageEnabled: parsed.extraUsageEnabled ?? undefined,
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
@@ -114,8 +120,9 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
 
     return {
         sessionUsage: parsed.five_hour?.utilization ?? undefined,
-        sessionResetAt: parsed.five_hour?.resets_at ?? parsed.five_hour?.reset_at ?? undefined,
+        sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
         weeklyUsage: parsed.seven_day?.utilization ?? undefined,
+        weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
@@ -347,18 +354,18 @@ function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
 }
 
-function buildUsageWindow(resetAtMs: number, nowMs: number): UsageWindowMetrics | null {
-    if (!Number.isFinite(resetAtMs) || !Number.isFinite(nowMs)) {
+function buildUsageWindow(resetAtMs: number, nowMs: number, durationMs: number): UsageWindowMetrics | null {
+    if (!Number.isFinite(resetAtMs) || !Number.isFinite(nowMs) || !Number.isFinite(durationMs) || durationMs <= 0) {
         return null;
     }
 
-    const startAtMs = resetAtMs - FIVE_HOUR_BLOCK_MS;
-    const elapsedMs = clamp(nowMs - startAtMs, 0, FIVE_HOUR_BLOCK_MS);
-    const remainingMs = FIVE_HOUR_BLOCK_MS - elapsedMs;
-    const elapsedPercent = (elapsedMs / FIVE_HOUR_BLOCK_MS) * 100;
+    const startAtMs = resetAtMs - durationMs;
+    const elapsedMs = clamp(nowMs - startAtMs, 0, durationMs);
+    const remainingMs = durationMs - elapsedMs;
+    const elapsedPercent = (elapsedMs / durationMs) * 100;
 
     return {
-        sessionDurationMs: FIVE_HOUR_BLOCK_MS,
+        sessionDurationMs: durationMs,
         elapsedMs,
         remainingMs,
         elapsedPercent,
@@ -376,7 +383,7 @@ export function getUsageWindowFromResetAt(sessionResetAt: string | undefined, no
         return null;
     }
 
-    return buildUsageWindow(resetAtMs, nowMs);
+    return buildUsageWindow(resetAtMs, nowMs, FIVE_HOUR_BLOCK_MS);
 }
 
 export function getUsageWindowFromBlockMetrics(blockMetrics: BlockMetrics, nowMs = Date.now()): UsageWindowMetrics | null {
@@ -385,7 +392,7 @@ export function getUsageWindowFromBlockMetrics(blockMetrics: BlockMetrics, nowMs
         return null;
     }
 
-    return buildUsageWindow(startAtMs + FIVE_HOUR_BLOCK_MS, nowMs);
+    return buildUsageWindow(startAtMs + FIVE_HOUR_BLOCK_MS, nowMs, FIVE_HOUR_BLOCK_MS);
 }
 
 export function resolveUsageWindowWithFallback(
@@ -404,6 +411,23 @@ export function resolveUsageWindowWithFallback(
     }
 
     return getUsageWindowFromBlockMetrics(fallbackMetrics, nowMs);
+}
+
+export function getWeeklyUsageWindowFromResetAt(weeklyResetAt: string | undefined, nowMs = Date.now()): UsageWindowMetrics | null {
+    if (!weeklyResetAt) {
+        return null;
+    }
+
+    const resetAtMs = Date.parse(weeklyResetAt);
+    if (Number.isNaN(resetAtMs)) {
+        return null;
+    }
+
+    return buildUsageWindow(resetAtMs, nowMs, SEVEN_DAY_WINDOW_MS);
+}
+
+export function resolveWeeklyUsageWindow(usageData: UsageData, nowMs = Date.now()): UsageWindowMetrics | null {
+    return getWeeklyUsageWindowFromResetAt(usageData.weeklyResetAt, nowMs);
 }
 
 export function formatUsageDuration(durationMs: number): string {

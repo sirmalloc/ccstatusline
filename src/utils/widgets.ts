@@ -36,7 +36,8 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['free-memory', new widgets.FreeMemoryWidget()],
     ['session-usage', new widgets.SessionUsageWidget()],
     ['weekly-usage', new widgets.WeeklyUsageWidget()],
-    ['reset-timer', new widgets.ResetTimerWidget()],
+    ['reset-timer', new widgets.BlockResetTimerWidget()],
+    ['weekly-reset-timer', new widgets.WeeklyResetTimerWidget()],
     ['context-bar', new widgets.ContextBarWidget()]
 ]);
 
