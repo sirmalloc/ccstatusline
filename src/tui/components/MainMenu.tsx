@@ -8,8 +8,18 @@ import React, { useState } from 'react';
 import type { Settings } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
+export type MainMenuOption = 'lines'
+    | 'colors'
+    | 'powerline'
+    | 'terminalConfig'
+    | 'globalOverrides'
+    | 'install'
+    | 'starGithub'
+    | 'save'
+    | 'exit';
+
 export interface MainMenuProps {
-    onSelect: (value: string) => void;
+    onSelect: (value: MainMenuOption) => void;
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
@@ -59,7 +69,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
         } else if (key.return) {
             const item = selectableItems[selectedIndex];
             if (item) {
-                onSelect(item.value);
+                // Since we filtered by selectable: true, value is guaranteed to be MainMenuOption
+                onSelect(item.value as MainMenuOption);
             }
         }
     });

@@ -52,7 +52,8 @@ import {
     PowerlineSetup,
     StatusLinePreview,
     TerminalOptionsMenu,
-    TerminalWidthMenu
+    TerminalWidthMenu,
+    type MainMenuOption
 } from './components';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
@@ -206,7 +207,7 @@ export const App: React.FC = () => {
         }
     };
 
-    const handleMainMenuSelect = async (value: string) => {
+    const handleMainMenuSelect = async (value: MainMenuOption) => {
         switch (value) {
             case 'lines':
                 setScreen('lines');
