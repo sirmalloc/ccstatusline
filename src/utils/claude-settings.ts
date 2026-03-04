@@ -92,19 +92,26 @@ export function getClaudeSettingsPath(): string {
 /**
  * Creates a backup of the current Claude settings file.
  */
-async function backupClaudeSettings(suffix: string = '.bak'): Promise<void> {
+async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
     const settingsPath = getClaudeSettingsPath();
+    const backupPath = settingsPath + suffix;
     try {
         if (fs.existsSync(settingsPath)) {
             const content = await readFile(settingsPath, 'utf-8');
-            await writeFile(settingsPath + suffix, content, 'utf-8');
+            await writeFile(backupPath, content, 'utf-8');
+            return backupPath;
         }
     } catch (error) {
         console.error('Failed to backup Claude settings:', error);
     }
+
+    return null;
 }
 
-export async function loadClaudeSettings(): Promise<ClaudeSettings> {
+interface LoadClaudeSettingsOptions { logErrors?: boolean }
+
+export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}): Promise<ClaudeSettings> {
+    const { logErrors = true } = options;
     const settingsPath = getClaudeSettingsPath();
 
     // File doesn't exist - return empty object
@@ -116,8 +123,9 @@ export async function loadClaudeSettings(): Promise<ClaudeSettings> {
         const content = await readFile(settingsPath, 'utf-8');
         return JSON.parse(content) as ClaudeSettings;
     } catch (error) {
-        // Log and re-throw
-        console.error('Failed to load Claude settings:', error);
+        if (logErrors) {
+            console.error('Failed to load Claude settings:', error);
+        }
         throw error;
     }
 }
@@ -139,7 +147,7 @@ export async function isInstalled(): Promise<boolean> {
     let settings: ClaudeSettings;
 
     try {
-        settings = await loadClaudeSettings();
+        settings = await loadClaudeSettings({ logErrors: false });
     } catch {
         return false; // Can't determine if installed, assume not
     }
@@ -173,11 +181,12 @@ function buildCommand(baseCommand: string): string {
 export async function installStatusLine(useBunx = false): Promise<void> {
     let settings: ClaudeSettings;
 
-    await backupClaudeSettings('.orig');
+    const backupPath = await backupClaudeSettings('.orig');
     try {
-        settings = await loadClaudeSettings();
-    } catch (error) {
-        console.error('Warning: Could not read existing Claude settings. A backup exists.');
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
+        console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
         settings = {};
     }
 
@@ -199,8 +208,8 @@ export async function uninstallStatusLine(): Promise<void> {
     let settings: ClaudeSettings;
 
     try {
-        settings = await loadClaudeSettings();
-    } catch (error) {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
         console.error('Warning: Could not read existing Claude settings.');
         return; // if we can't read, return... what are we uninstalling?
     }
@@ -213,7 +222,7 @@ export async function uninstallStatusLine(): Promise<void> {
 
 export async function getExistingStatusLine(): Promise<string | null> {
     try {
-        const settings = await loadClaudeSettings();
+        const settings = await loadClaudeSettings({ logErrors: false });
         return settings.statusLine?.command ?? null;
     } catch {
         return null; // Can't read settings, return null
