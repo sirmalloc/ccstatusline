@@ -12,8 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
-        with:
-          cache: true
       - run: bun install
       - run: bun tsc --noEmit
       - run: bunx eslint . --config eslint.config.js --max-warnings=999999
@@ -24,8 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
-        with:
-          cache: true
       - run: bun install
       - run: bun test
 
@@ -36,8 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
-        with:
-          cache: true
       - run: bun install
       - run: bun run build
       - run: test -f dist/ccstatusline.js
