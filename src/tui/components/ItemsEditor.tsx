@@ -245,7 +245,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             ? widgetPicker.selectedCategory
             : (pickerCategories[0] ?? null))
         : null;
-    const topLevelSearchEntries = widgetPicker && widgetPicker.level === 'category' && widgetPicker.categoryQuery.trim().length > 0
+    const topLevelSearchEntries = widgetPicker?.level === 'category' && widgetPicker.categoryQuery.trim().length > 0
         ? filterWidgetCatalog(widgetCatalog, 'All', widgetPicker.categoryQuery)
         : [];
     const selectedTopLevelSearchEntry = widgetPicker

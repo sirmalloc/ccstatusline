@@ -159,11 +159,11 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
 
 export const getColorLevelLabel = (level?: 0 | 1 | 2 | 3): string => {
     switch (level) {
-    case 0: return 'No Color';
-    case 1: return 'Basic';
-    case 2:
-    case undefined: return '256 Color (default)';
-    case 3: return 'Truecolor';
-    default: return '256 Color (default)';
+        case 0: return 'No Color';
+        case 1: return 'Basic';
+        case 2:
+        case undefined: return '256 Color (default)';
+        case 3: return 'Truecolor';
+        default: return '256 Color (default)';
     }
 };

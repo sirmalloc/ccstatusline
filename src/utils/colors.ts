@@ -111,13 +111,13 @@ export function getChalkColor(colorName: string | undefined, colorLevel: 'ansi16
     }
 
     switch (colorLevel) {
-    case 'ansi256':
-        return colorEntry.ansi256;
-    case 'truecolor':
-        return colorEntry.truecolor;
-    case 'ansi16':
-    default:
-        return colorEntry.ansi16;
+        case 'ansi256':
+            return colorEntry.ansi256;
+        case 'truecolor':
+            return colorEntry.truecolor;
+        case 'ansi16':
+        default:
+            return colorEntry.ansi16;
     }
 }
 
@@ -198,15 +198,15 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
     // Now that chalk.level is set correctly, we can use chalk to generate the codes
     let chalkFn: ChalkInstance;
     switch (colorLevel) {
-    case 'ansi256':
-        chalkFn = colorEntry.ansi256;
-        break;
-    case 'truecolor':
-        chalkFn = colorEntry.truecolor;
-        break;
-    default:
-        chalkFn = colorEntry.ansi16;
-        break;
+        case 'ansi256':
+            chalkFn = colorEntry.ansi256;
+            break;
+        case 'truecolor':
+            chalkFn = colorEntry.truecolor;
+            break;
+        default:
+            chalkFn = colorEntry.ansi16;
+            break;
     }
 
     // Apply the color and extract the opening ANSI code

@@ -5,6 +5,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    ignore:
+      - dependency-name: "ink"
     open-pull-requests-limit: 10
     cooldown:
       semver-major-days: 30
