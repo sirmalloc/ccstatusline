@@ -19,10 +19,9 @@ import {
 
 const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
 
-vi.mock('os', () => ({ homedir: () => MOCK_HOME_DIR }));
-
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
+let initConfigPath: (filePath?: string) => void;
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 function getSettingsPaths(): { configDir: string; settingsPath: string; backupPath: string } {
@@ -39,10 +38,13 @@ describe('config utilities', () => {
         const configModule = await import('../config');
         loadSettings = configModule.loadSettings;
         saveSettings = configModule.saveSettings;
+        initConfigPath = configModule.initConfigPath;
     });
 
     beforeEach(() => {
         fs.rmSync(MOCK_HOME_DIR, { recursive: true, force: true });
+        const { settingsPath } = getSettingsPaths();
+        initConfigPath(settingsPath);
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
@@ -52,6 +54,7 @@ describe('config utilities', () => {
 
     afterAll(() => {
         fs.rmSync(MOCK_HOME_DIR, { recursive: true, force: true });
+        initConfigPath();
     });
 
     it('writes defaults when settings file does not exist', async () => {
