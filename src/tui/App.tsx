@@ -207,7 +207,7 @@ export const App: React.FC = () => {
         }
     };
 
-    const handleMainMenuSelect = async (value: string) => {
+    const handleMainMenuSelect = async (value: MainMenuOption) => {
         switch (value) {
             case 'lines':
                 setScreen('lines');
@@ -260,11 +260,6 @@ export const App: React.FC = () => {
                 exit();
                 break;
         }
-        if (value === 'exit') {
-            exit();
-            return;
-        }
-        setScreen(value);
     };
 
     const updateLine = (lineIndex: number, widgets: WidgetItem[]) => {

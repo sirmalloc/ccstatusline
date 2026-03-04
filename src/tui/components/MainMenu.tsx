@@ -14,6 +14,7 @@ export type MainMenuOption = 'lines'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'install'
+    | 'starGithub'
     | 'save'
     | 'exit';
 
@@ -31,7 +32,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
     // Build menu structure with visual gaps
-    const menuItems: { label: string; value: MainMenuOption | '_gap1' | '_gap2'; selectable: boolean }[] = [
+    const menuItems: { label: string; value: MainMenuOption | '_gap1' | '_gap2' | '_gap3'; selectable: boolean }[] = [
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
         { label: '🎨 Edit Colors', value: 'colors', selectable: true },
         { label: '⚡ Powerline Setup', value: 'powerline', selectable: true },
