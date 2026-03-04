@@ -1,6 +1,6 @@
 {
   "name": "ccstatusline",
-  "version": "2.0.23",
+  "version": "2.1.10",
   "description": "A customizable status line formatter for Claude Code CLI",
   "module": "src/ccstatusline.ts",
   "type": "module",
@@ -16,8 +16,7 @@
     "postbuild": "bun run scripts/replace-version.ts",
     "example": "cat scripts/payload.example.json | bun start",
     "prepublishOnly": "bun run build",
-    "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix",
-    "test": "bun vitest",
+    "lint": "bun tsc --noEmit && eslint . --config eslint.config.js --max-warnings=999999 --fix",
     "docs": "typedoc",
     "docs:clean": "rm -rf docs"
   },

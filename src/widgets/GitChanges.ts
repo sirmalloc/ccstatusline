@@ -1,5 +1,3 @@
-import { execSync } from 'child_process';
-
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
@@ -8,92 +6,51 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    getGitChangeCounts,
+    isInsideGitWorkTree
+} from '../utils/git';
+
+import {
+    getHideNoGitKeybinds,
+    getHideNoGitModifierText,
+    handleToggleNoGitAction,
+    isHideNoGitEnabled
+} from './shared/git-no-git';
 
 export class GitChangesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows git changes count (+insertions, -deletions)'; }
     getDisplayName(): string { return 'Git Changes'; }
+    getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const hideNoGit = item.metadata?.hideNoGit === 'true';
-        const modifiers: string[] = [];
-
-        if (hideNoGit) {
-            modifiers.push('hide \'no git\'');
-        }
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+            modifierText: getHideNoGitModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-nogit') {
-            const currentState = item.metadata?.hideNoGit === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    hideNoGit: (!currentState).toString()
-                }
-            };
-        }
-        return null;
+        return handleToggleNoGitAction(action, item);
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const hideNoGit = item.metadata?.hideNoGit === 'true';
+    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
+        const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
             return '(+42,-10)';
         }
 
-        const changes = this.getGitChanges();
-        if (changes)
-            return `(+${changes.insertions},-${changes.deletions})`;
-        else
+        if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : '(no git)';
-    }
-
-    private getGitChanges(): { insertions: number; deletions: number } | null {
-        try {
-            let totalInsertions = 0;
-            let totalDeletions = 0;
-
-            const unstagedStat = execSync('git diff --shortstat', {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
-
-            const stagedStat = execSync('git diff --cached --shortstat', {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
-
-            if (unstagedStat) {
-                const insertMatch = /(\d+) insertion/.exec(unstagedStat);
-                const deleteMatch = /(\d+) deletion/.exec(unstagedStat);
-                totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-                totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
-            }
-
-            if (stagedStat) {
-                const insertMatch = /(\d+) insertion/.exec(stagedStat);
-                const deleteMatch = /(\d+) deletion/.exec(stagedStat);
-                totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-                totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
-            }
-
-            return { insertions: totalInsertions, deletions: totalDeletions };
-        } catch {
-            return null;
         }
+
+        const changes = getGitChangeCounts(context);
+        return `(+${changes.insertions},-${changes.deletions})`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' }
-        ];
+        return getHideNoGitKeybinds();
     }
 
     supportsRawValue(): boolean { return false; }
