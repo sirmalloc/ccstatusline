@@ -47,6 +47,38 @@ describe('ContextBarWidget', () => {
         expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:25.0:16] 50k/200k (25%)');
     });
 
+    it('uses 1M context label model IDs in fallback mode', () => {
+        const context: RenderContext = {
+            data: { model: { id: 'Opus 4.6 (1M context)' } },
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 50000
+            }
+        };
+        const widget = new ContextBarWidget();
+
+        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:5.0:16] 50k/1000k (5%)');
+    });
+
+    it('uses 1M in parentheses model IDs in fallback mode', () => {
+        const context: RenderContext = {
+            data: { model: { id: 'Opus 4.6 (1M)' } },
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 50000
+            }
+        };
+        const widget = new ContextBarWidget();
+
+        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:5.0:16] 50k/1000k (5%)');
+    });
+
     it('clamps usage percentage to 100 when context length exceeds total', () => {
         const context: RenderContext = {
             data: {

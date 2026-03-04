@@ -10,54 +10,42 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
     resolveUsageWindowWithFallback
 } from '../../utils/usage';
-import { ResetTimerWidget } from '../ResetTimer';
+import { BlockResetTimerWidget } from '../BlockResetTimer';
+
+import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
 
 vi.mock('../../utils/usage', () => ({
-    fetchUsageData: vi.fn(),
     formatUsageDuration: vi.fn(),
     getUsageErrorMessage: vi.fn(),
     resolveUsageWindowWithFallback: vi.fn()
 }));
 
-const mockFetchUsageData = fetchUsageData as unknown as { mockReturnValue: (value: unknown) => void };
 const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
 const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
 const mockResolveUsageWindowWithFallback = resolveUsageWindowWithFallback as unknown as { mockReturnValue: (value: unknown) => void };
 
-function render(widget: ResetTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
+function render(widget: BlockResetTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
-describe('ResetTimerWidget', () => {
+describe('BlockResetTimerWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('supports raw value and exposes progress/invert keybinds', () => {
-        const widget = new ResetTimerWidget();
-
-        expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ]);
-    });
-
     it('renders preview using block-style reset format', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new BlockResetTimerWidget();
 
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { isPreview: true })).toBe('Reset: 4hr 30m');
     });
 
     it('renders remaining time in time mode', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 3600000,
@@ -67,11 +55,11 @@ describe('ResetTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('4hr');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBe('Reset: 4hr');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBe('Reset: 4hr');
     });
 
     it('renders short progress bar with inverted fill', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new BlockResetTimerWidget();
         const item: WidgetItem = {
             id: 'reset',
             type: 'reset-timer',
@@ -81,7 +69,6 @@ describe('ResetTimerWidget', () => {
             }
         };
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 14400000,
@@ -90,32 +77,29 @@ describe('ResetTimerWidget', () => {
             remainingPercent: 20
         });
 
-        expect(render(widget, item)).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
+        expect(render(widget, item, { usageData: {} })).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
     it('returns usage error when no timer data is available', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({ error: 'timeout' });
         mockResolveUsageWindowWithFallback.mockReturnValue(null);
         mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBe('[Timeout]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
     it('returns null when neither timer data nor usage error exists', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue(null);
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBeNull();
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBeNull();
     });
 
     it('shows raw value without label in time mode', () => {
-        const widget = new ResetTimerWidget();
+        const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 4500000,
@@ -125,21 +109,18 @@ describe('ResetTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('3hr 45m');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true })).toBe('3hr 45m');
+        expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('3hr 45m');
     });
 
-    it('clears invert metadata when cycling back to time mode', () => {
-        const widget = new ResetTimerWidget();
-        const updated = widget.handleEditorAction('toggle-progress', {
+    runUsageTimerEditorSuite({
+        baseItem: { id: 'reset', type: 'reset-timer' },
+        createWidget: () => new BlockResetTimerWidget(),
+        expectedDisplayName: 'Block Reset Timer',
+        expectedModifierText: '(short bar, inverted)',
+        modifierItem: {
             id: 'reset',
             type: 'reset-timer',
-            metadata: {
-                display: 'progress-short',
-                invert: 'true'
-            }
-        });
-
-        expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
+            metadata: { display: 'progress-short', invert: 'true' }
+        }
     });
 });

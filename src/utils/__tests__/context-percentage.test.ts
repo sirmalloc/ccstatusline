@@ -102,6 +102,59 @@ describe('calculateContextPercentage', () => {
             const percentage = calculateContextPercentage(context);
             expect(percentage).toBe(100);
         });
+
+        it('should calculate percentage using 1M denominator with 1M context label', () => {
+            const context: RenderContext = {
+                data: { model: { id: 'Opus 4.6 (1M context)' } },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 42000
+                }
+            };
+
+            const percentage = calculateContextPercentage(context);
+            expect(percentage).toBe(4.2);
+        });
+
+        it('should calculate percentage using 1M denominator with 1M in parentheses', () => {
+            const context: RenderContext = {
+                data: { model: { id: 'Opus 4.6 (1M)' } },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 42000
+                }
+            };
+
+            const percentage = calculateContextPercentage(context);
+            expect(percentage).toBe(4.2);
+        });
+
+        it('should calculate percentage from display_name when model id lacks context size suffix', () => {
+            const context: RenderContext = {
+                data: {
+                    model: {
+                        id: 'claude-opus-4-6',
+                        display_name: 'Opus 4.6 (1M context)'
+                    }
+                },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 42000
+                }
+            };
+
+            const percentage = calculateContextPercentage(context);
+            expect(percentage).toBe(4.2);
+        });
     });
 
     describe('Older models with 200k context window', () => {

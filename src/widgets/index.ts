@@ -26,6 +26,7 @@ export { FreeMemoryWidget } from './FreeMemory';
 export { SessionNameWidget } from './SessionName';
 export { SessionUsageWidget } from './SessionUsage';
 export { WeeklyUsageWidget } from './WeeklyUsage';
-export { ResetTimerWidget } from './ResetTimer';
+export { BlockResetTimerWidget } from './BlockResetTimer';
+export { WeeklyResetTimerWidget } from './WeeklyResetTimer';
 export { ContextBarWidget } from './ContextBar';
 export { LinkWidget } from './Link';

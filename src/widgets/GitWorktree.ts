@@ -10,41 +10,31 @@ import {
     runGit
 } from '../utils/git';
 
+import {
+    getHideNoGitKeybinds,
+    getHideNoGitModifierText,
+    handleToggleNoGitAction,
+    isHideNoGitEnabled
+} from './shared/git-no-git';
+
 export class GitWorktreeWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows the current git worktree name'; }
     getDisplayName(): string { return 'Git Worktree'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const hideNoGit = item.metadata?.hideNoGit === 'true';
-        const modifiers: string[] = [];
-
-        if (hideNoGit) {
-            modifiers.push('hide \'no git\'');
-        }
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+            modifierText: getHideNoGitModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-nogit') {
-            const currentState = item.metadata?.hideNoGit === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    hideNoGit: (!currentState).toString()
-                }
-            };
-        }
-        return null;
+        return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext): string | null {
-        const hideNoGit = item.metadata?.hideNoGit === 'true';
+        const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview)
             return item.rawValue ? 'main' : '𖠰 main';
@@ -85,9 +75,7 @@ export class GitWorktreeWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' }
-        ];
+        return getHideNoGitKeybinds();
     }
 
     supportsRawValue(): boolean { return true; }

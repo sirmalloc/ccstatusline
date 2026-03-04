@@ -31,6 +31,47 @@ export function formatTokens(count: number): string {
     return count.toString();
 }
 
+function resolveEffectiveTerminalWidth(
+    detectedWidth: number | null,
+    settings: Settings,
+    context: RenderContext
+): number | null {
+    if (!detectedWidth) {
+        return null;
+    }
+
+    const flexMode = settings.flexMode as string;
+
+    if (context.isPreview) {
+        if (flexMode === 'full') {
+            return detectedWidth - 6;
+        }
+        if (flexMode === 'full-minus-40') {
+            return detectedWidth - 40;
+        }
+        if (flexMode === 'full-until-compact') {
+            return detectedWidth - 6;
+        }
+        return null;
+    }
+
+    if (flexMode === 'full') {
+        return detectedWidth - 6;
+    }
+    if (flexMode === 'full-minus-40') {
+        return detectedWidth - 40;
+    }
+    if (flexMode === 'full-until-compact') {
+        const threshold = settings.compactThreshold;
+        const contextPercentage = calculateContextPercentage(context);
+        return contextPercentage >= threshold
+            ? detectedWidth - 40
+            : detectedWidth - 6;
+    }
+
+    return null;
+}
+
 function renderPowerlineStatusLine(
     widgets: WidgetItem[],
     settings: Settings,
@@ -82,37 +123,7 @@ function renderPowerlineStatusLine(
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
 
     // Calculate terminal width based on flex mode settings
-    let terminalWidth: number | null = null;
-    if (detectedWidth) {
-        const flexMode = settings.flexMode as string;
-
-        if (context.isPreview) {
-            // In preview mode, account for box borders and padding (6 chars total)
-            if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 6;
-            } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 40;
-            } else if (flexMode === 'full-until-compact') {
-                terminalWidth = detectedWidth - 6;
-            }
-        } else {
-            // In actual rendering mode
-            if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 6;
-            } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 40;
-            } else if (flexMode === 'full-until-compact') {
-                const threshold = settings.compactThreshold;
-                const contextPercentage = calculateContextPercentage(context);
-
-                if (contextPercentage >= threshold) {
-                    terminalWidth = detectedWidth - 40;
-                } else {
-                    terminalWidth = detectedWidth - 6;
-                }
-            }
-        }
-    }
+    const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
     // Build widget elements (similar to regular mode but without separators)
     const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
@@ -632,43 +643,7 @@ export function renderStatusLine(
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
 
     // Calculate terminal width based on flex mode settings
-    let terminalWidth: number | null = null;
-    if (detectedWidth) {
-        const flexMode = settings.flexMode as string;
-
-        if (context.isPreview) {
-            // In preview mode, account for box borders and padding (6 chars total)
-            if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 6; // Subtract 6 for box borders and padding in preview
-            } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 40; // -40 for auto-compact + 3 for preview
-            } else if (flexMode === 'full-until-compact') {
-                // For preview, always show full width minus preview padding
-                terminalWidth = detectedWidth - 6;
-            }
-        } else {
-            // In actual rendering mode
-            if (flexMode === 'full') {
-                // Use full width minus 4 for terminal padding
-                terminalWidth = detectedWidth - 6;
-            } else if (flexMode === 'full-minus-40') {
-                // Always subtract 41 for auto-compact message
-                terminalWidth = detectedWidth - 40;
-            } else if (flexMode === 'full-until-compact') {
-                // Check context percentage to decide
-                const threshold = settings.compactThreshold;
-                const contextPercentage = calculateContextPercentage(context);
-
-                if (contextPercentage >= threshold) {
-                    // Context is high, leave space for auto-compact
-                    terminalWidth = detectedWidth - 40;
-                } else {
-                    // Context is low, use full width minus 4 for padding
-                    terminalWidth = detectedWidth - 6;
-                }
-            }
-        }
-    }
+    const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
     const elements: { content: string; type: string; widget?: WidgetItem }[] = [];
     let hasFlexSeparator = false;

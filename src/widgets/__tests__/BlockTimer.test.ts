@@ -10,19 +10,18 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     resolveUsageWindowWithFallback
 } from '../../utils/usage';
 import { BlockTimerWidget } from '../BlockTimer';
 
+import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
+
 vi.mock('../../utils/usage', () => ({
-    fetchUsageData: vi.fn(),
     formatUsageDuration: vi.fn(),
     resolveUsageWindowWithFallback: vi.fn()
 }));
 
-const mockFetchUsageData = fetchUsageData as unknown as { mockReturnValue: (value: unknown) => void };
 const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
 const mockResolveUsageWindowWithFallback = resolveUsageWindowWithFallback as unknown as { mockReturnValue: (value: unknown) => void };
 
@@ -35,21 +34,10 @@ describe('BlockTimerWidget', () => {
         vi.clearAllMocks();
     });
 
-    it('supports raw value and exposes progress/invert keybinds', () => {
-        const widget = new BlockTimerWidget();
-
-        expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ]);
-    });
-
     it('renders elapsed time in time mode', () => {
         const widget = new BlockTimerWidget();
         const item: WidgetItem = { id: 'block', type: 'block-timer' };
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 13500000,
@@ -59,7 +47,7 @@ describe('BlockTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('3hr 45m');
 
-        expect(render(widget, item)).toBe('Block: 3hr 45m');
+        expect(render(widget, item, { usageData: {} })).toBe('Block: 3hr 45m');
     });
 
     it('renders short progress bar with inverted fill', () => {
@@ -73,7 +61,6 @@ describe('BlockTimerWidget', () => {
             }
         };
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 13500000,
@@ -82,27 +69,25 @@ describe('BlockTimerWidget', () => {
             remainingPercent: 25
         });
 
-        expect(render(widget, item)).toBe('Block [████░░░░░░░░░░░░] 25.0%');
+        expect(render(widget, item, { usageData: {} })).toBe('Block [████░░░░░░░░░░░░] 25.0%');
     });
 
     it('renders empty values when no usage or fallback data exists', () => {
         const widget = new BlockTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({ error: 'timeout' });
         mockResolveUsageWindowWithFallback.mockReturnValue(null);
 
-        expect(render(widget, { id: 'block', type: 'block-timer' })).toBe('Block: 0hr 0m');
+        expect(render(widget, { id: 'block', type: 'block-timer' }, { usageData: { error: 'timeout' } })).toBe('Block: 0hr 0m');
         expect(render(widget, {
             id: 'block',
             type: 'block-timer',
             metadata: { display: 'progress' }
-        })).toBe(`Block [${'░'.repeat(32)}] 0.0%`);
+        }, { usageData: { error: 'timeout' } })).toBe(`Block [${'░'.repeat(32)}] 0.0%`);
     });
 
     it('shows raw value without label in time mode', () => {
         const widget = new BlockTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 7200000,
@@ -112,21 +97,18 @@ describe('BlockTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('2hr');
 
-        expect(render(widget, { id: 'block', type: 'block-timer', rawValue: true })).toBe('2hr');
+        expect(render(widget, { id: 'block', type: 'block-timer', rawValue: true }, { usageData: {} })).toBe('2hr');
     });
 
-    it('clears invert metadata when cycling back to time mode', () => {
-        const widget = new BlockTimerWidget();
-        const updated = widget.handleEditorAction('toggle-progress', {
+    runUsageTimerEditorSuite({
+        baseItem: { id: 'block', type: 'block-timer' },
+        createWidget: () => new BlockTimerWidget(),
+        expectedDisplayName: 'Block Timer',
+        expectedModifierText: '(progress bar, inverted)',
+        modifierItem: {
             id: 'block',
             type: 'block-timer',
-            metadata: {
-                display: 'progress-short',
-                invert: 'true'
-            }
-        });
-
-        expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
+            metadata: { display: 'progress', invert: 'true' }
+        }
     });
 });

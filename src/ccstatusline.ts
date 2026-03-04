@@ -22,6 +22,8 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
+import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
@@ -95,10 +97,13 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
+    const usageData = await prefetchUsageDataIfNeeded(lines);
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
+        usageData,
         sessionDuration,
         isPreview: false
     };
@@ -120,17 +125,14 @@ async function renderMultipleLines(data: StatusJSON) {
             // Strip ANSI codes to check if there's actual text
             const strippedLine = getVisibleText(line).trim();
             if (strippedLine.length > 0) {
-                // Count separators used in this line (widgets - 1, excluding merged widgets)
-                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
-                if (nonMergedWidgets.length > 1)
-                    globalSeparatorIndex += nonMergedWidgets.length - 1;
-
                 // Replace all spaces with non-breaking spaces to prevent VSCode trimming
                 let outputLine = line.replace(/ /g, '\u00A0');
 
                 // Add reset code at the beginning to override Claude Code's dim setting
                 outputLine = '\x1b[0m' + outputLine;
                 console.log(outputLine);
+
+                globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
             }
         }
     }
