@@ -10,6 +10,7 @@ export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Displays the Claude model name (e.g., Claude 3.5 Sonnet)'; }
     getDisplayName(): string { return 'Model'; }
+    getCategory(): string { return 'Core'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -17,8 +18,15 @@ export class ModelWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? 'Claude' : 'Model: Claude';
-        } else if (context.data?.model?.display_name) {
-            return item.rawValue ? context.data.model.display_name : `Model: ${context.data.model.display_name}`;
+        }
+
+        const model = context.data?.model;
+        const modelDisplayName = typeof model === 'string'
+            ? model
+            : (model?.display_name ?? model?.id);
+
+        if (modelDisplayName) {
+            return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
         }
         return null;
     }

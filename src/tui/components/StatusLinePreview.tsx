@@ -15,7 +15,7 @@ import {
     type PreRenderedWidget,
     type RenderResult
 } from '../../utils/renderer';
-import { canDetectTerminalWidth } from '../../utils/terminal';
+import { advanceGlobalSeparatorIndex } from '../../utils/separator-index';
 
 export interface StatusLinePreviewProps {
     lines: WidgetItem[][];
@@ -27,7 +27,6 @@ export interface StatusLinePreviewProps {
 const renderSingleLine = (
     widgets: WidgetItem[],
     terminalWidth: number,
-    widthDetectionAvailable: boolean,
     settings: Settings,
     lineIndex: number,
     globalSeparatorIndex: number,
@@ -46,8 +45,6 @@ const renderSingleLine = (
 };
 
 export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings, onTruncationChange }) => {
-    const widthDetectionAvailable = React.useMemo(() => canDetectTerminalWidth(), []);
-
     // Render each configured line
     // Pass the full terminal width - the renderer will handle preview adjustments
     const { renderedLines, anyTruncated } = React.useMemo(() => {
@@ -66,22 +63,18 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             const lineItems = lines[i];
             if (lineItems && lineItems.length > 0) {
                 const preRenderedWidgets = preRenderedLines[i] ?? [];
-                const renderResult = renderSingleLine(lineItems, terminalWidth, widthDetectionAvailable, settings, i, globalSeparatorIndex, preRenderedWidgets, preCalculatedMaxWidths);
+                const renderResult = renderSingleLine(lineItems, terminalWidth, settings, i, globalSeparatorIndex, preRenderedWidgets, preCalculatedMaxWidths);
                 result.push(renderResult.line);
                 if (renderResult.wasTruncated) {
                     truncated = true;
                 }
 
-                // Count separators used in this line (widgets - 1, excluding merged widgets)
-                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
-                if (nonMergedWidgets.length > 1) {
-                    globalSeparatorIndex += nonMergedWidgets.length - 1;
-                }
+                globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
             }
         }
 
         return { renderedLines: result, anyTruncated: truncated };
-    }, [lines, terminalWidth, widthDetectionAvailable, settings]);
+    }, [lines, terminalWidth, settings]);
 
     // Notify parent when truncation status changes
     React.useEffect(() => {

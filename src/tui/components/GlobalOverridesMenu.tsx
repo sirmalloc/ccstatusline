@@ -11,6 +11,7 @@ import {
     getChalkColor,
     getColorDisplayName
 } from '../../utils/colors';
+import { shouldInsertInput } from '../../utils/input-guards';
 
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -57,7 +58,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 setPaddingInput(paddingInput.slice(0, -1));
             } else if (key.delete) {
                 // For simple text inputs without cursor, forward delete does nothing
-            } else if (input) {
+            } else if (shouldInsertInput(input, key)) {
                 setPaddingInput(paddingInput + input);
             }
         } else if (editingSeparator) {
@@ -86,7 +87,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 setSeparatorInput(separatorInput.slice(0, -1));
             } else if (key.delete) {
                 // For simple text inputs without cursor, forward delete does nothing
-            } else if (input) {
+            } else if (shouldInsertInput(input, key)) {
                 setSeparatorInput(separatorInput + input);
             }
         } else if (confirmingSeparator) {

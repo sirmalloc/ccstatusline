@@ -7,8 +7,10 @@ import {
 import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import type { WidgetItem } from '../../types/Widget';
-import { getWidget } from '../../utils/widgets';
+import {
+    hasCustomWidgetColors,
+    sanitizeLinesForColorLevel
+} from '../../utils/color-sanitize';
 
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -33,10 +35,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
         } else if (selectedIndex === 1) {
             // Color Level
             // Check if there are any custom colors that would be lost
-            const hasCustomColors = settings.lines.some((line: WidgetItem[]) => line.some((widget: WidgetItem) => Boolean(widget.color && (widget.color.startsWith('ansi256:') || widget.color.startsWith('hex:')))
-                || Boolean(widget.backgroundColor && (widget.backgroundColor.startsWith('ansi256:') || widget.backgroundColor.startsWith('hex:')))
-            )
-            );
+            const hasCustomColors = hasCustomWidgetColors(settings.lines);
 
             const currentLevel = settings.colorLevel;
             const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
@@ -51,53 +50,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
                 // Update chalk level immediately
                 chalk.level = nextLevel;
 
-                // Clean up incompatible custom colors even when no warning is shown
-                const cleanedLines = settings.lines.map(line => line.map((widget) => {
-                    const newWidget = { ...widget };
-                    // Remove custom colors incompatible with the new mode
-                    if (nextLevel === 2) {
-                        // Switching to 256 color mode - remove hex colors
-                        if (widget.color?.startsWith('hex:')) {
-                            if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-                                const widgetImpl = getWidget(widget.type);
-                                if (widgetImpl) {
-                                    newWidget.color = widgetImpl.getDefaultColor();
-                                }
-                            }
-                        }
-                        if (widget.backgroundColor?.startsWith('hex:')) {
-                            newWidget.backgroundColor = undefined;
-                        }
-                    } else if (nextLevel === 3) {
-                        // Switching to truecolor mode - remove ansi256 colors
-                        if (widget.color?.startsWith('ansi256:')) {
-                            if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-                                const widgetImpl = getWidget(widget.type);
-                                if (widgetImpl) {
-                                    newWidget.color = widgetImpl.getDefaultColor();
-                                }
-                            }
-                        }
-                        if (widget.backgroundColor?.startsWith('ansi256:')) {
-                            newWidget.backgroundColor = undefined;
-                        }
-                    } else {
-                        // Switching to 16 color mode - remove all custom colors
-                        if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
-                            if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-                                const widgetImpl = getWidget(widget.type);
-                                if (widgetImpl) {
-                                    newWidget.color = widgetImpl.getDefaultColor();
-                                }
-                            }
-                        }
-                        if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
-                            newWidget.backgroundColor = undefined;
-                        }
-                    }
-                    return newWidget;
-                })
-                );
+                const cleanedLines = sanitizeLinesForColorLevel(settings.lines, nextLevel);
 
                 onUpdate({
                     ...settings,
@@ -113,29 +66,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
         if (pendingColorLevel !== null) {
             chalk.level = pendingColorLevel;
 
-            // Clean up custom colors if switching away from modes that support them
-            const cleanedLines = settings.lines.map(line => line.map((widget) => {
-                const newWidget = { ...widget };
-                // Remove custom colors if switching to a mode that doesn't support them
-                if ((pendingColorLevel !== 2 && pendingColorLevel !== 3)
-                    || (pendingColorLevel === 2 && (widget.color?.startsWith('hex:') || widget.backgroundColor?.startsWith('hex:')))
-                    || (pendingColorLevel === 3 && (widget.color?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('ansi256:')))) {
-                    // Reset custom colors to defaults
-                    if (widget.color?.startsWith('ansi256:') || widget.color?.startsWith('hex:')) {
-                        if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-                            const widgetImpl = getWidget(widget.type);
-                            if (widgetImpl) {
-                                newWidget.color = widgetImpl.getDefaultColor();
-                            }
-                        }
-                    }
-                    if (widget.backgroundColor?.startsWith('ansi256:') || widget.backgroundColor?.startsWith('hex:')) {
-                        newWidget.backgroundColor = undefined;
-                    }
-                }
-                return newWidget;
-            })
-            );
+            const cleanedLines = sanitizeLinesForColorLevel(settings.lines, pendingColorLevel);
 
             onUpdate({
                 ...settings,

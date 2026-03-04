@@ -40,6 +40,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [moveMode, setMoveMode] = useState(false);
     const [localLines, setLocalLines] = useState(lines);
 
     useEffect(() => {
@@ -90,6 +91,33 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             return;
         }
 
+        if (moveMode) {
+            if (key.upArrow && selectedIndex > 0) {
+                const newLines = [...localLines];
+                const temp = newLines[selectedIndex];
+                const prev = newLines[selectedIndex - 1];
+                if (temp && prev) {
+                    [newLines[selectedIndex], newLines[selectedIndex - 1]] = [prev, temp];
+                }
+                setLocalLines(newLines);
+                onLinesUpdate(newLines);
+                setSelectedIndex(selectedIndex - 1);
+            } else if (key.downArrow && selectedIndex < localLines.length - 1) {
+                const newLines = [...localLines];
+                const temp = newLines[selectedIndex];
+                const next = newLines[selectedIndex + 1];
+                if (temp && next) {
+                    [newLines[selectedIndex], newLines[selectedIndex + 1]] = [next, temp];
+                }
+                setLocalLines(newLines);
+                onLinesUpdate(newLines);
+                setSelectedIndex(selectedIndex + 1);
+            } else if (key.escape || key.return) {
+                setMoveMode(false);
+            }
+            return;
+        }
+
         switch (input) {
         case 'a':
             if (allowEditing) {
@@ -99,6 +127,11 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         case 'd':
             if (allowEditing && localLines.length > 1) {
                 setShowDeleteDialog(true);
+            }
+            return;
+        case 'm':
+            if (allowEditing && localLines.length > 1 && selectedIndex < localLines.length) {
+                setMoveMode(true);
             }
             return;
         }
@@ -198,17 +231,27 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     return (
         <>
             <Box flexDirection='column'>
-                <Text bold>{title ?? 'Select Line to Edit'}</Text>
+                <Box>
+                    <Text bold>
+                        {title ?? 'Select Line to Edit'}
+                        {' '}
+                    </Text>
+                    {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                </Box>
                 <Text dimColor>
                     Choose which status line to configure
                 </Text>
-                <Text dimColor>
-                    {allowEditing ? (
-                        localLines.length > 1
-                            ? '(a) to append new line, (d) to delete line, ESC to go back'
-                            : '(a) to append new line, ESC to go back'
-                    ) : 'ESC to go back'}
-                </Text>
+                {moveMode ? (
+                    <Text dimColor>↑↓ to move line, ESC or Enter to exit move mode</Text>
+                ) : (
+                    <Text dimColor>
+                        {allowEditing ? (
+                            localLines.length > 1
+                                ? '(a) to append new line, (d) to delete line, (m) to move line, ESC to go back'
+                                : '(a) to append new line, ESC to go back'
+                        ) : 'ESC to go back'}
+                    </Text>
+                )}
 
                 <Box marginTop={1} flexDirection='column'>
                     {localLines.map((line, index) => {
@@ -219,8 +262,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
                         return (
                             <Box key={index}>
-                                <Text color={isSelected ? 'green' : undefined}>
-                                    <Text>{isSelected ? '▶  ' : '   '}</Text>
+                                <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                    <Text>{isSelected ? (moveMode ? '◆  ' : '▶  ') : '   '}</Text>
                                     <Text>
                                         <Text>
                                             ☰ Line
@@ -239,12 +282,14 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         );
                     })}
 
-                    <Box marginTop={1}>
-                        <Text color={selectedIndex === localLines.length ? 'green' : undefined}>
-                            {selectedIndex === localLines.length ? '▶  ' : '   '}
-                            ← Back
-                        </Text>
-                    </Box>
+                    {!moveMode && (
+                        <Box marginTop={1}>
+                            <Text color={selectedIndex === localLines.length ? 'green' : undefined}>
+                                {selectedIndex === localLines.length ? '▶  ' : '   '}
+                                ← Back
+                            </Text>
+                        </Box>
+                    )}
                 </Box>
             </Box>
         </>

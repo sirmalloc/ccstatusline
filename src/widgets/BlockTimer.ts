@@ -6,121 +6,99 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatUsageDuration,
+    resolveUsageWindowWithFallback
+} from '../utils/usage';
 
-type DisplayMode = 'time' | 'progress' | 'progress-short';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import {
+    cycleUsageDisplayMode,
+    getUsageDisplayMode,
+    getUsageDisplayModifierText,
+    getUsageProgressBarWidth,
+    isUsageInverted,
+    isUsageProgressMode,
+    toggleUsageInverted
+} from './shared/usage-display';
+
+function makeTimerProgressBar(percent: number, width: number): string {
+    const clampedPercent = Math.max(0, Math.min(100, percent));
+    const filledWidth = Math.floor((clampedPercent / 100) * width);
+    const emptyWidth = width - filledWidth;
+    return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
+}
 
 export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows elapsed time since beginning of current 5hr block'; }
+    getDescription(): string { return 'Shows current 5hr block elapsed time or progress'; }
     getDisplayName(): string { return 'Block Timer'; }
+    getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const mode = item.metadata?.display ?? 'time';
-        const modifiers: string[] = [];
-
-        if (mode === 'progress') {
-            modifiers.push('progress bar');
-        } else if (mode === 'progress-short') {
-            modifiers.push('short bar');
-        }
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+            modifierText: getUsageDisplayModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            const currentMode = (item.metadata?.display ?? 'time') as DisplayMode;
-            let nextMode: DisplayMode;
-
-            if (currentMode === 'time') {
-                nextMode = 'progress';
-            } else if (currentMode === 'progress') {
-                nextMode = 'progress-short';
-            } else {
-                nextMode = 'time';
-            }
-
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    display: nextMode
-                }
-            };
+            return cycleUsageDisplayMode(item);
         }
+
+        if (action === 'toggle-invert') {
+            return toggleUsageInverted(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const displayMode = (item.metadata?.display ?? 'time') as DisplayMode;
+        const displayMode = getUsageDisplayMode(item);
+        const inverted = isUsageInverted(item);
 
         if (context.isPreview) {
-            const prefix = item.rawValue ? '' : 'Block ';
-            if (displayMode === 'progress') {
-                return `${prefix}[██████████████████████░░░░░░░░] 73.9%`;
-            } else if (displayMode === 'progress-short') {
-                return `${prefix}[███████░░░░░░░░] 73.9%`;
+            const previewPercent = inverted ? 26.1 : 73.9;
+
+            if (isUsageProgressMode(displayMode)) {
+                const barWidth = getUsageProgressBarWidth(displayMode);
+                const progressBar = makeTimerProgressBar(previewPercent, barWidth);
+                return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
-            return item.rawValue ? '3hr 45m' : 'Block: 3hr 45m';
+
+            return formatRawOrLabeledValue(item, 'Block: ', '3hr 45m');
         }
 
-        // Check if we have block metrics in context
-        const blockMetrics = context.blockMetrics;
-        if (!blockMetrics) {
-            // No active session - show empty progress bar or 0hr 0m
-            if (displayMode === 'progress' || displayMode === 'progress-short') {
-                const barWidth = displayMode === 'progress' ? 32 : 16;
+        const usageData = context.usageData ?? {};
+        const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
+
+        if (!window) {
+            if (isUsageProgressMode(displayMode)) {
+                const barWidth = getUsageProgressBarWidth(displayMode);
                 const emptyBar = '░'.repeat(barWidth);
-                return item.rawValue ? `[${emptyBar}] 0%` : `Block [${emptyBar}] 0%`;
-            } else {
-                return item.rawValue ? '0hr 0m' : 'Block: 0hr 0m';
+                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] 0.0%`);
             }
+
+            return formatRawOrLabeledValue(item, 'Block: ', '0hr 0m');
         }
 
-        try {
-            // Calculate elapsed time and progress
-            const now = new Date();
-            const elapsedMs = now.getTime() - blockMetrics.startTime.getTime();
-            const sessionDurationMs = 5 * 60 * 60 * 1000; // 5 hours
-            const progress = Math.min(elapsedMs / sessionDurationMs, 1.0);
-            const percentage = (progress * 100).toFixed(1);
-
-            if (displayMode === 'progress' || displayMode === 'progress-short') {
-                const barWidth = displayMode === 'progress' ? 32 : 16;
-                const filledWidth = Math.floor(progress * barWidth);
-                const emptyWidth = barWidth - filledWidth;
-                const progressBar = '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
-
-                if (item.rawValue) {
-                    return `[${progressBar}] ${percentage}%`;
-                } else {
-                    return `Block [${progressBar}] ${percentage}%`;
-                }
-            } else {
-                // Time display mode
-                const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
-                const elapsedMinutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                let timeString: string;
-                if (elapsedMinutes === 0) {
-                    timeString = `${elapsedHours}hr`;
-                } else {
-                    timeString = `${elapsedHours}hr ${elapsedMinutes}m`;
-                }
-
-                return item.rawValue ? timeString : `Block: ${timeString}`;
-            }
-        } catch {
-            return null;
+        if (isUsageProgressMode(displayMode)) {
+            const barWidth = getUsageProgressBarWidth(displayMode);
+            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
+            const progressBar = makeTimerProgressBar(percent, barWidth);
+            const percentage = percent.toFixed(1);
+            return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${percentage}%`);
         }
+
+        const elapsedTime = formatUsageDuration(window.elapsedMs);
+        return formatRawOrLabeledValue(item, 'Block: ', elapsedTime);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
         ];
     }
 

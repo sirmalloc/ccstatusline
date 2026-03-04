@@ -10,6 +10,7 @@ export class SessionCostWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows the total session cost in USD'; }
     getDisplayName(): string { return 'Session Cost'; }
+    getCategory(): string { return 'Session'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }

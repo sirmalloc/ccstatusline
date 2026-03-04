@@ -1,5 +1,3 @@
-import { execSync } from 'child_process';
-
 import type { RenderContext } from '../types/RenderContext';
 import type {
     CustomKeybind,
@@ -7,76 +5,77 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    isInsideGitWorkTree,
+    runGit
+} from '../utils/git';
+
+import {
+    getHideNoGitKeybinds,
+    getHideNoGitModifierText,
+    handleToggleNoGitAction,
+    isHideNoGitEnabled
+} from './shared/git-no-git';
 
 export class GitWorktreeWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows the current git worktree name'; }
     getDisplayName(): string { return 'Git Worktree'; }
+    getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const hideNoGit = item.metadata?.hideNoGit === 'true';
-        const modifiers: string[] = [];
-
-        if (hideNoGit) {
-            modifiers.push('hide \'no git\'');
-        }
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+            modifierText: getHideNoGitModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-nogit') {
-            const currentState = item.metadata?.hideNoGit === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    hideNoGit: (!currentState).toString()
-                }
-            };
-        }
-        return null;
+        return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext): string | null {
-        const hideNoGit = item.metadata?.hideNoGit === 'true';
+        const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview)
             return item.rawValue ? 'main' : '𖠰 main';
 
-        const worktree = this.getGitWorktree();
+        if (!isInsideGitWorkTree(context)) {
+            return hideNoGit ? null : '𖠰 no git';
+        }
+
+        const worktree = this.getGitWorktree(context);
         if (worktree)
             return item.rawValue ? worktree : `𖠰 ${worktree}`;
 
         return hideNoGit ? null : '𖠰 no git';
     }
 
-    private getGitWorktree(): string | null {
-        try {
-            const worktreeDir = execSync('git rev-parse --git-dir', {
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            }).trim();
-
-            // /some/path/.git or .git
-            if (worktreeDir.endsWith('/.git') || worktreeDir === '.git')
-                return 'main';
-
-            // /some/path/.git/worktrees/some-worktree or /some/path/.git/worktrees/some-dir/some-worktree
-            const [, worktree] = worktreeDir.split('.git/worktrees/');
-
-            return worktree ?? null;
-        } catch {
+    private getGitWorktree(context: RenderContext): string | null {
+        const worktreeDir = runGit('rev-parse --git-dir', context);
+        if (!worktreeDir) {
             return null;
         }
+
+        const normalizedGitDir = worktreeDir.replace(/\\/g, '/');
+
+        // /some/path/.git or .git
+        if (normalizedGitDir.endsWith('/.git') || normalizedGitDir === '.git')
+            return 'main';
+
+        // /some/path/.git/worktrees/some-worktree or /some/path/.git/worktrees/some-dir/some-worktree
+        const marker = '.git/worktrees/';
+        const markerIndex = normalizedGitDir.lastIndexOf(marker);
+        if (markerIndex === -1) {
+            return null;
+        }
+
+        const worktree = normalizedGitDir.slice(markerIndex + marker.length);
+
+        return worktree.length > 0 ? worktree : null;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' }
-        ];
+        return getHideNoGitKeybinds();
     }
 
     supportsRawValue(): boolean { return true; }

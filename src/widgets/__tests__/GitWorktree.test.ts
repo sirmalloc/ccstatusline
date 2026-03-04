@@ -15,13 +15,29 @@ import { GitWorktreeWidget } from '../GitWorktree';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
 
-function render(rawValue = false, isPreview = false) {
+const mockExecSync = execSync as unknown as {
+    mock: { calls: unknown[][] };
+    mockImplementation: (impl: () => never) => void;
+    mockReturnValue: (value: string) => void;
+    mockReturnValueOnce: (value: string) => void;
+};
+
+function render(options: {
+    cwd?: string;
+    hideNoGit?: boolean;
+    isPreview?: boolean;
+    rawValue?: boolean;
+} = {}) {
     const widget = new GitWorktreeWidget();
-    const context: RenderContext = { isPreview };
+    const context: RenderContext = {
+        isPreview: options.isPreview,
+        data: options.cwd ? { cwd: options.cwd } : undefined
+    };
     const item: WidgetItem = {
         id: 'git-worktree',
         type: 'git-worktree',
-        rawValue
+        rawValue: options.rawValue,
+        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
     };
 
     return widget.render(item, context);
@@ -33,45 +49,72 @@ describe('GitWorktreeWidget', () => {
     });
 
     it('should render preview', () => {
-        const isPreview = true;
-        const rawValue = false;
-
-        expect(render(rawValue, isPreview)).toBe('𖠰 main');
+        expect(render({ isPreview: true })).toBe('𖠰 main');
     });
 
     it('should render preview with raw value', () => {
-        const isPreview = true;
-        const rawValue = true;
-
-        expect(render(rawValue, isPreview)).toBe('main');
+        expect(render({ isPreview: true, rawValue: true })).toBe('main');
     });
 
     it('should render with worktree', () => {
-        vi.mocked(execSync).mockReturnValue('/some/path/.git/worktrees/some-worktree');
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('/some/path/.git/worktrees/some-worktree');
 
-        expect(render()).toBe('𖠰 some-worktree');
+        expect(render({ cwd: '/tmp/worktree' })).toBe('𖠰 some-worktree');
+        expect(mockExecSync.mock.calls[0]?.[1]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/worktree'
+        });
+        expect(mockExecSync.mock.calls[1]?.[1]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/worktree'
+        });
     });
 
     it('should render with nested worktree', () => {
-        vi.mocked(execSync).mockReturnValue('/some/path/.git/worktrees/some-dir/some-worktree');
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('/some/path/.git/worktrees/some-dir/some-worktree');
 
         expect(render()).toBe('𖠰 some-dir/some-worktree');
     });
 
     it('should render with no worktree', () => {
-        vi.mocked(execSync).mockReturnValue('.git');
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('.git');
 
         expect(render()).toBe('𖠰 main');
     });
 
-    it('should render with no git', () => {
-        vi.mocked(execSync).mockRejectedValue(new Error('No git'));
+    it('should handle windows git-dir paths', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('C:\\repo\\.git\\worktrees\\some-worktree');
+
+        expect(render()).toBe('𖠰 some-worktree');
+    });
+
+    it('should render with no git when probe returns false', () => {
+        mockExecSync.mockReturnValue('false\n');
 
         expect(render()).toBe('𖠰 no git');
     });
 
+    it('should render with no git', () => {
+        mockExecSync.mockImplementation(() => { throw new Error('No git'); });
+
+        expect(render()).toBe('𖠰 no git');
+    });
+
+    it('should hide no git when configured', () => {
+        mockExecSync.mockReturnValue('false\n');
+
+        expect(render({ hideNoGit: true })).toBeNull();
+    });
+
     it('should render with invalid git dir', () => {
-        vi.mocked(execSync).mockReturnValue('');
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('');
 
         expect(render()).toBe('𖠰 no git');
     });

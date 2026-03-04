@@ -10,6 +10,7 @@ export class OutputStyleWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows the current Claude Code output style'; }
     getDisplayName(): string { return 'Output Style'; }
+    getCategory(): string { return 'Core'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
