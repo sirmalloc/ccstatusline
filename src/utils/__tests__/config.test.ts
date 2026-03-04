@@ -8,7 +8,8 @@ import {
     describe,
     expect,
     it,
-    vi
+    vi,
+    type MockInstance
 } from 'vitest';
 
 import {
@@ -22,7 +23,7 @@ const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
 let initConfigPath: (filePath?: string) => void;
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: MockInstance<typeof console.error>;
 
 function getSettingsPaths(): { configDir: string; settingsPath: string; backupPath: string } {
     const configDir = path.join(MOCK_HOME_DIR, '.config', 'ccstatusline');
