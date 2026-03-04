@@ -11,8 +11,11 @@ import {
 import type { WidgetItemType } from '../../types/Widget';
 import {
     filterWidgetCatalog,
+    getAllWidgetTypes,
+    getWidget,
     getWidgetCatalog,
     getWidgetCatalogCategories,
+    isKnownWidgetType,
     type WidgetCatalogEntry
 } from '../widgets';
 
@@ -86,6 +89,25 @@ describe('widget catalog', () => {
         expect(categories).toContain('Environment');
         expect(categories).toContain('Custom');
         expect(categories).toContain('Layout');
+    });
+
+    it('returns runtime widget instances for non-layout widget types', () => {
+        const runtimeTypes = getAllWidgetTypes(baseSettings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            expect(widget).not.toBeNull();
+            expect(widget?.getDisplayName().length).toBeGreaterThan(0);
+        }
+    });
+
+    it('recognizes known widget and layout types', () => {
+        expect(isKnownWidgetType('model')).toBe(true);
+        expect(isKnownWidgetType('separator')).toBe(true);
+        expect(isKnownWidgetType('flex-separator')).toBe(true);
+        expect(isKnownWidgetType('unknown-widget-type')).toBe(false);
     });
 });
 

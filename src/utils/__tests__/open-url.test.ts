@@ -93,6 +93,43 @@ describe('openExternalUrl', () => {
         expect(mockSpawnSync.mock.calls.length).toBe(0);
     });
 
+    it('rejects malformed URLs', () => {
+        const result = openExternalUrl('not-a-valid-url');
+
+        expect(result).toEqual({
+            success: false,
+            error: 'Invalid URL'
+        });
+        expect(mockSpawnSync.mock.calls.length).toBe(0);
+    });
+
+    it('returns command spawn error details', () => {
+        vi.spyOn(os, 'platform').mockReturnValue('darwin');
+        mockSpawnSync.mockReturnValue({ error: new Error('spawn failed') });
+
+        const result = openExternalUrl('https://github.com/sirmalloc/ccstatusline');
+
+        expect(result).toEqual({
+            success: false,
+            error: 'spawn failed'
+        });
+    });
+
+    it('preserves status-based error formatting when signal is present', () => {
+        vi.spyOn(os, 'platform').mockReturnValue('darwin');
+        mockSpawnSync.mockReturnValue({
+            status: null,
+            signal: 'SIGTERM'
+        });
+
+        const result = openExternalUrl('https://github.com/sirmalloc/ccstatusline');
+
+        expect(result).toEqual({
+            success: false,
+            error: 'Command exited with status null'
+        });
+    });
+
     it('returns unsupported platform error', () => {
         vi.spyOn(os, 'platform').mockReturnValue('freebsd');
 

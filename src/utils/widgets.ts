@@ -3,50 +3,24 @@ import type {
     Widget,
     WidgetItemType
 } from '../types/Widget';
-import * as widgets from '../widgets';
+
+import {
+    LAYOUT_WIDGET_MANIFEST,
+    WIDGET_MANIFEST
+} from './widget-manifest';
 
 // Create widget registry
-const widgetRegistry = new Map<WidgetItemType, Widget>([
-    ['model', new widgets.ModelWidget()],
-    ['output-style', new widgets.OutputStyleWidget()],
-    ['git-branch', new widgets.GitBranchWidget()],
-    ['git-changes', new widgets.GitChangesWidget()],
-    ['git-insertions', new widgets.GitInsertionsWidget()],
-    ['git-deletions', new widgets.GitDeletionsWidget()],
-    ['git-root-dir', new widgets.GitRootDirWidget()],
-    ['git-worktree', new widgets.GitWorktreeWidget()],
-    ['current-working-dir', new widgets.CurrentWorkingDirWidget()],
-    ['tokens-input', new widgets.TokensInputWidget()],
-    ['tokens-output', new widgets.TokensOutputWidget()],
-    ['tokens-cached', new widgets.TokensCachedWidget()],
-    ['tokens-total', new widgets.TokensTotalWidget()],
-    ['context-length', new widgets.ContextLengthWidget()],
-    ['context-percentage', new widgets.ContextPercentageWidget()],
-    ['context-percentage-usable', new widgets.ContextPercentageUsableWidget()],
-    ['session-clock', new widgets.SessionClockWidget()],
-    ['session-cost', new widgets.SessionCostWidget()],
-    ['block-timer', new widgets.BlockTimerWidget()],
-    ['terminal-width', new widgets.TerminalWidthWidget()],
-    ['version', new widgets.VersionWidget()],
-    ['custom-text', new widgets.CustomTextWidget()],
-    ['custom-command', new widgets.CustomCommandWidget()],
-    ['link', new widgets.LinkWidget()],
-    ['claude-session-id', new widgets.ClaudeSessionIdWidget()],
-    ['session-name', new widgets.SessionNameWidget()],
-    ['free-memory', new widgets.FreeMemoryWidget()],
-    ['session-usage', new widgets.SessionUsageWidget()],
-    ['weekly-usage', new widgets.WeeklyUsageWidget()],
-    ['reset-timer', new widgets.BlockResetTimerWidget()],
-    ['weekly-reset-timer', new widgets.WeeklyResetTimerWidget()],
-    ['context-bar', new widgets.ContextBarWidget()]
-]);
+const widgetRegistry = new Map<WidgetItemType, Widget>(
+    WIDGET_MANIFEST.map((entry): [WidgetItemType, Widget] => [entry.type, entry.create()])
+);
+const layoutWidgetTypes = new Set<WidgetItemType>(LAYOUT_WIDGET_MANIFEST.map(entry => entry.type));
 
 export function getWidget(type: WidgetItemType): Widget | null {
     return widgetRegistry.get(type) ?? null;
 }
 
 export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
-    const allTypes = Array.from(widgetRegistry.keys());
+    const allTypes = WIDGET_MANIFEST.map(entry => entry.type);
 
     // Add separator types based on settings
     if (!settings.powerline.enabled) {
@@ -67,32 +41,21 @@ export interface WidgetCatalogEntry {
     searchText: string;
 }
 
-const LAYOUT_WIDGETS: Record<string, Omit<WidgetCatalogEntry, 'type' | 'searchText'>> = {
-    'separator': {
-        displayName: 'Separator',
-        description: 'A separator character between status line widgets',
-        category: 'Layout'
-    },
-    'flex-separator': {
-        displayName: 'Flex Separator',
-        description: 'Expands to fill available terminal width',
-        category: 'Layout'
-    }
-};
+const layoutCatalogEntries = new Map<WidgetItemType, WidgetCatalogEntry>(
+    LAYOUT_WIDGET_MANIFEST.map((entry): [WidgetItemType, WidgetCatalogEntry] => [
+        entry.type,
+        {
+            type: entry.type,
+            displayName: entry.displayName,
+            description: entry.description,
+            category: entry.category,
+            searchText: `${entry.displayName} ${entry.description} ${entry.type}`.toLowerCase()
+        }
+    ])
+);
 
 function getLayoutCatalogEntry(type: WidgetItemType): WidgetCatalogEntry | null {
-    const layout = LAYOUT_WIDGETS[type];
-    if (!layout) {
-        return null;
-    }
-
-    return {
-        type,
-        displayName: layout.displayName,
-        description: layout.description,
-        category: layout.category,
-        searchText: `${layout.displayName} ${layout.description} ${type}`.toLowerCase()
-    };
+    return layoutCatalogEntries.get(type) ?? null;
 }
 
 export function getWidgetCatalog(settings: Settings): WidgetCatalogEntry[] {
@@ -185,6 +148,5 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
 
 export function isKnownWidgetType(type: string): boolean {
     return widgetRegistry.has(type)
-        || type === 'separator'
-        || type === 'flex-separator';
+        || layoutWidgetTypes.has(type);
 }
