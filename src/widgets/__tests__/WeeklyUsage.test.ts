@@ -9,19 +9,14 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import {
-    fetchUsageData,
-    getUsageErrorMessage
-} from '../../utils/usage';
+import { getUsageErrorMessage } from '../../utils/usage';
 import { WeeklyUsageWidget } from '../WeeklyUsage';
 
 vi.mock('../../utils/usage', () => ({
-    fetchUsageData: vi.fn(),
     getUsageErrorMessage: vi.fn(),
     makeUsageProgressBar: vi.fn((percent: number, width = 15) => `[bar:${percent.toFixed(1)}:${width}]`)
 }));
 
-const mockFetchUsageData = fetchUsageData as unknown as { mockReturnValue: (value: unknown) => void };
 const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
 
 function render(widget: WeeklyUsageWidget, item: WidgetItem, context: RenderContext = {}): string | null {
@@ -46,9 +41,7 @@ describe('WeeklyUsageWidget', () => {
     it('renders percentage text in time mode', () => {
         const widget = new WeeklyUsageWidget();
 
-        mockFetchUsageData.mockReturnValue({ weeklyUsage: 42.06 });
-
-        expect(render(widget, { id: 'weekly', type: 'weekly-usage' })).toBe('Weekly: 42.1%');
+        expect(render(widget, { id: 'weekly', type: 'weekly-usage' }, { usageData: { weeklyUsage: 42.06 } })).toBe('Weekly: 42.1%');
     });
 
     it('renders full inverted progress mode', () => {
@@ -62,17 +55,13 @@ describe('WeeklyUsageWidget', () => {
             }
         };
 
-        mockFetchUsageData.mockReturnValue({ weeklyUsage: 42.06 });
-
-        expect(render(widget, item)).toBe('Weekly: [bar:57.9:32] 57.9%');
+        expect(render(widget, item, { usageData: { weeklyUsage: 42.06 } })).toBe('Weekly: [bar:57.9:32] 57.9%');
     });
 
     it('renders raw text mode without label', () => {
         const widget = new WeeklyUsageWidget();
 
-        mockFetchUsageData.mockReturnValue({ weeklyUsage: 42.06 });
-
-        expect(render(widget, { id: 'weekly', type: 'weekly-usage', rawValue: true })).toBe('42.1%');
+        expect(render(widget, { id: 'weekly', type: 'weekly-usage', rawValue: true }, { usageData: { weeklyUsage: 42.06 } })).toBe('42.1%');
     });
 
     it('renders raw progress mode without label', () => {
@@ -84,18 +73,15 @@ describe('WeeklyUsageWidget', () => {
             metadata: { display: 'progress-short' }
         };
 
-        mockFetchUsageData.mockReturnValue({ weeklyUsage: 42.06 });
-
-        expect(render(widget, item)).toBe('[bar:42.1:16] 42.1%');
+        expect(render(widget, item, { usageData: { weeklyUsage: 42.06 } })).toBe('[bar:42.1:16] 42.1%');
     });
 
     it('shows usage error text when API call fails', () => {
         const widget = new WeeklyUsageWidget();
 
-        mockFetchUsageData.mockReturnValue({ error: 'timeout' });
         mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
 
-        expect(render(widget, { id: 'weekly', type: 'weekly-usage' })).toBe('[Timeout]');
+        expect(render(widget, { id: 'weekly', type: 'weekly-usage' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
     it('clears invert metadata when cycling back to time mode', () => {

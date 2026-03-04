@@ -7,7 +7,6 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
     resolveUsageWindowWithFallback
@@ -72,7 +71,7 @@ export class BlockResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Reset: ', '4hr 30m');
         }
 
-        const usageData = fetchUsageData();
+        const usageData = context.usageData ?? {};
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {

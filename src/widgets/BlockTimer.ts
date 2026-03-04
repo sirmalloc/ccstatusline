@@ -7,7 +7,6 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     resolveUsageWindowWithFallback
 } from '../utils/usage';
@@ -71,7 +70,7 @@ export class BlockTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Block: ', '3hr 45m');
         }
 
-        const usageData = fetchUsageData();
+        const usageData = context.usageData ?? {};
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {

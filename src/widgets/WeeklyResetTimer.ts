@@ -7,7 +7,6 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
     resolveWeeklyUsageWindow
@@ -72,7 +71,7 @@ export class WeeklyResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Weekly Reset: ', '36hr 30m');
         }
 
-        const usageData = fetchUsageData();
+        const usageData = context.usageData ?? {};
         const window = resolveWeeklyUsageWindow(usageData);
 
         if (!window) {

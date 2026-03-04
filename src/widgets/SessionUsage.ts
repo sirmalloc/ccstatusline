@@ -7,7 +7,6 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    fetchUsageData,
     getUsageErrorMessage,
     makeUsageProgressBar
 } from '../utils/usage';
@@ -65,7 +64,7 @@ export class SessionUsageWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Session: ', `${previewPercent.toFixed(1)}%`);
         }
 
-        const data = fetchUsageData();
+        const data = context.usageData ?? {};
         if (data.error)
             return getUsageErrorMessage(data.error);
         if (data.sessionUsage === undefined)

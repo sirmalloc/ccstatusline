@@ -22,6 +22,7 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
@@ -95,10 +96,13 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
+    const usageData = await prefetchUsageDataIfNeeded(lines);
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
+        usageData,
         sessionDuration,
         isPreview: false
     };

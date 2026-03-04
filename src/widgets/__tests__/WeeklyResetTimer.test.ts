@@ -10,7 +10,6 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
     resolveWeeklyUsageWindow
@@ -18,13 +17,11 @@ import {
 import { WeeklyResetTimerWidget } from '../WeeklyResetTimer';
 
 vi.mock('../../utils/usage', () => ({
-    fetchUsageData: vi.fn(),
     formatUsageDuration: vi.fn(),
     getUsageErrorMessage: vi.fn(),
     resolveWeeklyUsageWindow: vi.fn()
 }));
 
-const mockFetchUsageData = fetchUsageData as unknown as { mockReturnValue: (value: unknown) => void };
 const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
 const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
 const mockResolveWeeklyUsageWindow = resolveWeeklyUsageWindow as unknown as { mockReturnValue: (value: unknown) => void };
@@ -58,7 +55,6 @@ describe('WeeklyResetTimerWidget', () => {
     it('renders remaining time in time mode', () => {
         const widget = new WeeklyResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveWeeklyUsageWindow.mockReturnValue({
             sessionDurationMs: 604800000,
             elapsedMs: 120000000,
@@ -68,7 +64,7 @@ describe('WeeklyResetTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('134hr 40m');
 
-        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' })).toBe('Weekly Reset: 134hr 40m');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: {} })).toBe('Weekly Reset: 134hr 40m');
     });
 
     it('renders short progress bar with inverted fill', () => {
@@ -82,7 +78,6 @@ describe('WeeklyResetTimerWidget', () => {
             }
         };
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveWeeklyUsageWindow.mockReturnValue({
             sessionDurationMs: 604800000,
             elapsedMs: 483840000,
@@ -91,32 +86,29 @@ describe('WeeklyResetTimerWidget', () => {
             remainingPercent: 20
         });
 
-        expect(render(widget, item)).toBe('Weekly Reset [███░░░░░░░░░░░░░] 20.0%');
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
     it('returns usage error when no weekly reset data is available', () => {
         const widget = new WeeklyResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({ error: 'timeout' });
         mockResolveWeeklyUsageWindow.mockReturnValue(null);
         mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
 
-        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' })).toBe('[Timeout]');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
     it('returns null when neither weekly reset data nor usage error exists', () => {
         const widget = new WeeklyResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveWeeklyUsageWindow.mockReturnValue(null);
 
-        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' })).toBeNull();
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: {} })).toBeNull();
     });
 
     it('shows raw value without label in time mode', () => {
         const widget = new WeeklyResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveWeeklyUsageWindow.mockReturnValue({
             sessionDurationMs: 604800000,
             elapsedMs: 171900000,
@@ -126,7 +118,7 @@ describe('WeeklyResetTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('120hr 15m');
 
-        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true })).toBe('120hr 15m');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('120hr 15m');
     });
 
     it('clears invert metadata when cycling back to time mode', () => {

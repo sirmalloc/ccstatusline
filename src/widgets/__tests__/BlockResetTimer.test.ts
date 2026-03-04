@@ -10,7 +10,6 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
-    fetchUsageData,
     formatUsageDuration,
     getUsageErrorMessage,
     resolveUsageWindowWithFallback
@@ -18,13 +17,11 @@ import {
 import { BlockResetTimerWidget } from '../BlockResetTimer';
 
 vi.mock('../../utils/usage', () => ({
-    fetchUsageData: vi.fn(),
     formatUsageDuration: vi.fn(),
     getUsageErrorMessage: vi.fn(),
     resolveUsageWindowWithFallback: vi.fn()
 }));
 
-const mockFetchUsageData = fetchUsageData as unknown as { mockReturnValue: (value: unknown) => void };
 const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
 const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
 const mockResolveUsageWindowWithFallback = resolveUsageWindowWithFallback as unknown as { mockReturnValue: (value: unknown) => void };
@@ -58,7 +55,6 @@ describe('BlockResetTimerWidget', () => {
     it('renders remaining time in time mode', () => {
         const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 3600000,
@@ -68,7 +64,7 @@ describe('BlockResetTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('4hr');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBe('Reset: 4hr');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBe('Reset: 4hr');
     });
 
     it('renders short progress bar with inverted fill', () => {
@@ -82,7 +78,6 @@ describe('BlockResetTimerWidget', () => {
             }
         };
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 14400000,
@@ -91,32 +86,29 @@ describe('BlockResetTimerWidget', () => {
             remainingPercent: 20
         });
 
-        expect(render(widget, item)).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
+        expect(render(widget, item, { usageData: {} })).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
     it('returns usage error when no timer data is available', () => {
         const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({ error: 'timeout' });
         mockResolveUsageWindowWithFallback.mockReturnValue(null);
         mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBe('[Timeout]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
     it('returns null when neither timer data nor usage error exists', () => {
         const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue(null);
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' })).toBeNull();
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBeNull();
     });
 
     it('shows raw value without label in time mode', () => {
         const widget = new BlockResetTimerWidget();
 
-        mockFetchUsageData.mockReturnValue({});
         mockResolveUsageWindowWithFallback.mockReturnValue({
             sessionDurationMs: 18000000,
             elapsedMs: 4500000,
@@ -126,7 +118,7 @@ describe('BlockResetTimerWidget', () => {
         });
         mockFormatUsageDuration.mockReturnValue('3hr 45m');
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true })).toBe('3hr 45m');
+        expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('3hr 45m');
     });
 
     it('clears invert metadata when cycling back to time mode', () => {
