@@ -121,6 +121,16 @@ describe('ContextPercentageUsableWidget', () => {
             const result = render('claude-sonnet-4-5-20250929[1M]', 42000);
             expect(result).toBe('Ctx(u): 5.3%');
         });
+
+        it('uses 1M context labels in model id for fallback denominator', () => {
+            const result = render('Opus 4.6 (1M context)', 42000);
+            expect(result).toBe('Ctx(u): 5.3%');
+        });
+
+        it('uses 1M in parentheses in model id for fallback denominator', () => {
+            const result = render('Opus 4.6 (1M)', 42000);
+            expect(result).toBe('Ctx(u): 5.3%');
+        });
     });
 
     describe('Older models with 160k usable tokens', () => {

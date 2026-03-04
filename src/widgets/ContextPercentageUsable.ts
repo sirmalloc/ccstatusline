@@ -7,7 +7,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextWindowMetrics } from '../utils/context-window';
-import { getContextConfig } from '../utils/model-context';
+import {
+    getContextConfig,
+    getModelContextIdentifier
+} from '../utils/model-context';
 
 import {
     getContextInverseModifierText,
@@ -34,10 +37,9 @@ export class ContextPercentageUsableWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
-        const model = context.data?.model;
-        const modelId = typeof model === 'string' ? model : model?.id;
+        const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
-        const contextConfig = getContextConfig(modelId, contextWindowMetrics.windowSize);
+        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
 
         if (context.isPreview) {
             const previewValue = isInverse ? '88.4%' : '11.6%';

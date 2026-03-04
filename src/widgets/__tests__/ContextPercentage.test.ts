@@ -89,6 +89,16 @@ describe('ContextPercentageWidget', () => {
             const result = render('claude-sonnet-4-5-20250929[1m]', 42000, true);
             expect(result).toBe('4.2%');
         });
+
+        it('should calculate percentage using 1M denominator for 1M context label model IDs', () => {
+            const result = render('Opus 4.6 (1M context)', 42000);
+            expect(result).toBe('Ctx: 4.2%');
+        });
+
+        it('should calculate percentage using 1M denominator for 1M in parentheses model IDs', () => {
+            const result = render('Opus 4.6 (1M)', 42000);
+            expect(result).toBe('Ctx: 4.2%');
+        });
     });
 
     describe('Older models with 200k context window', () => {

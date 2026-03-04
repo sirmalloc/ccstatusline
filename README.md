@@ -46,7 +46,7 @@
 
 ## 🆕 Recent Updates
 
-### v2.1.0 - v2.1.4 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
+### v2.1.0 - v2.1.6 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
 
 - **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
 - **📊 More accurate counts (v2.1.0)** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
@@ -54,6 +54,7 @@
 - **🔗 New Link widget (v2.1.3)** - Added a new **Link** widget with clickable OSC8 rendering, preview parity, and raw mode support.
 - **➕ New Git Insertions widget (v2.1.4)** - Added a dedicated Git widget that shows only uncommitted insertions (e.g., `+42`).
 - **➖ New Git Deletions widget (v2.1.4)** - Added a dedicated Git widget that shows only uncommitted deletions (e.g., `-10`).
+- **🧠 Context format fallback fix (v2.1.6)** - When `context_window_size` is missing, context widgets now infer 1M models from long-context labels such as `[1m]` and `1M context` in model identifiers.
 
 ### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
@@ -434,8 +435,8 @@ bun run example
 - **Tokens Cached** - Shows cached tokens used
 - **Tokens Total** - Shows total tokens used
 - **Context Length** - Shows current context length in tokens
-- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with `[1m]` suffix, 200k otherwise)
-- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
+- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with long-context labels like `[1m]` or `1M context`, 200k otherwise)
+- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with long-context labels like `[1m]` or `1M context`, 160k otherwise, accounting for auto-compact at 80%)
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
