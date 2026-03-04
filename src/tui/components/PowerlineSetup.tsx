@@ -7,8 +7,8 @@ import * as os from 'os';
 import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import { getDefaultPowerlineTheme } from '../../utils/colors';
 import { type PowerlineFontStatus } from '../../utils/powerline';
+import { buildEnabledPowerlineSettings } from '../../utils/powerline-settings';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { PowerlineSeparatorEditor } from './PowerlineSeparatorEditor';
@@ -155,25 +155,8 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     if (hasSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
-                        // Set to nord theme if currently custom or undefined (first time enabling)
-                        const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
-                            ? getDefaultPowerlineTheme()
-                            : powerlineConfig.theme;
-
-                        // Enable directly without confirmation since there are no separators
-                        const updatedSettings = {
-                            ...settings,
-                            powerline: {
-                                ...powerlineConfig,
-                                enabled: true,
-                                theme,
-                                // Separators are already initialized by Zod
-                                separators: powerlineConfig.separators,
-                                separatorInvertBackground: powerlineConfig.separatorInvertBackground
-                            },
-                            defaultPadding: ' '  // Set padding to space when enabling powerline
-                        };
-                        onUpdate(updatedSettings);
+                        // Enable directly without confirmation since there are no separators.
+                        onUpdate(buildEnabledPowerlineSettings(settings, false));
                     }
                 } else {
                     // Disable without confirmation
@@ -324,28 +307,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         <ConfirmDialog
                             inline={true}
                             onConfirm={() => {
-                                // Set to nord theme if currently custom or undefined (first time enabling)
-                                const theme = (!powerlineConfig.theme || powerlineConfig.theme === 'custom')
-                                    ? getDefaultPowerlineTheme()
-                                    : powerlineConfig.theme;
-
-                                // Remove all separators and flex-separators from lines
-                                // Also set default padding to a space when enabling powerline
-                                const updatedSettings = {
-                                    ...settings,
-                                    powerline: {
-                                        ...powerlineConfig,
-                                        enabled: true,
-                                        theme,
-                                        // Separators are already initialized by Zod
-                                        separators: powerlineConfig.separators,
-                                        separatorInvertBackground: powerlineConfig.separatorInvertBackground
-                                    },
-                                    defaultPadding: ' ',  // Set padding to space when enabling powerline
-                                    lines: settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator')
-                                    )
-                                };
-                                onUpdate(updatedSettings);
+                                onUpdate(buildEnabledPowerlineSettings(settings, true));
                                 setConfirmingEnable(false);
                             }}
                             onCancel={() => {
@@ -420,21 +382,21 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                     let displayValue = '';
 
                                     switch (item.value) {
-                                    case 'separator':
-                                        displayValue = getSeparatorDisplay();
-                                        break;
-                                    case 'startCap':
-                                        displayValue = getCapDisplay('start');
-                                        break;
-                                    case 'endCap':
-                                        displayValue = getCapDisplay('end');
-                                        break;
-                                    case 'themes':
-                                        displayValue = getThemeDisplay();
-                                        break;
-                                    case 'back':
-                                        displayValue = '';
-                                        break;
+                                        case 'separator':
+                                            displayValue = getSeparatorDisplay();
+                                            break;
+                                        case 'startCap':
+                                            displayValue = getCapDisplay('start');
+                                            break;
+                                        case 'endCap':
+                                            displayValue = getCapDisplay('end');
+                                            break;
+                                        case 'themes':
+                                            displayValue = getThemeDisplay();
+                                            break;
+                                        case 'back':
+                                            displayValue = '';
+                                            break;
                                     }
 
                                     if (item.value === 'back') {

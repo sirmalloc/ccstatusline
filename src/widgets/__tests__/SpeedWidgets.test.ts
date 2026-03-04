@@ -36,6 +36,10 @@ function createItem(type: string, rawValue = false): WidgetItem {
 describe('OutputSpeedWidget', () => {
     const widget = new OutputSpeedWidget();
 
+    it('should report Token Speed category', () => {
+        expect(widget.getCategory()).toBe('Token Speed');
+    });
+
     it('should return preview value in preview mode', () => {
         const context: RenderContext = { isPreview: true };
         expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: 42.5 t/s');
@@ -70,6 +74,10 @@ describe('OutputSpeedWidget', () => {
 describe('InputSpeedWidget', () => {
     const widget = new InputSpeedWidget();
 
+    it('should report Token Speed category', () => {
+        expect(widget.getCategory()).toBe('Token Speed');
+    });
+
     it('should return preview value in preview mode', () => {
         const context: RenderContext = { isPreview: true };
         expect(widget.render(createItem('input-speed'), context, DEFAULT_SETTINGS)).toBe('In: 85.2 t/s');
@@ -98,6 +106,10 @@ describe('InputSpeedWidget', () => {
 
 describe('TotalSpeedWidget', () => {
     const widget = new TotalSpeedWidget();
+
+    it('should report Token Speed category', () => {
+        expect(widget.getCategory()).toBe('Token Speed');
+    });
 
     it('should return preview value in preview mode', () => {
         const context: RenderContext = { isPreview: true };

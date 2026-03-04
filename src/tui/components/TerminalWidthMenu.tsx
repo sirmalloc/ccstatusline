@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 
 import type { FlexMode } from '../../types/FlexMode';
 import type { Settings } from '../../types/Settings';
+import { shouldInsertInput } from '../../utils/input-guards';
 
 export interface TerminalWidthMenuProps {
     settings: Settings;
@@ -58,7 +59,7 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
                 setValidationError(null);
             } else if (key.delete) {
                 // For simple number inputs, forward delete does nothing since there's no cursor position
-            } else if (input && /\d/.test(input)) {
+            } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
                 const newValue = thresholdInput + input;
                 if (newValue.length <= 2) {
                     setThresholdInput(newValue);

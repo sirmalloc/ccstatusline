@@ -8,8 +8,18 @@ import React, { useState } from 'react';
 import type { Settings } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
+export type MainMenuOption = 'lines'
+    | 'colors'
+    | 'powerline'
+    | 'terminalConfig'
+    | 'globalOverrides'
+    | 'install'
+    | 'starGithub'
+    | 'save'
+    | 'exit';
+
 export interface MainMenuProps {
-    onSelect: (value: string) => void;
+    onSelect: (value: MainMenuOption) => void;
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
@@ -36,10 +46,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     if (hasChanges) {
         menuItems.push(
             { label: '💾 Save & Exit', value: 'save', selectable: true },
-            { label: '❌ Exit without saving', value: 'exit', selectable: true }
+            { label: '❌ Exit without saving', value: 'exit', selectable: true },
+            { label: '', value: '_gap3', selectable: false },  // Visual gap
+            { label: '⭐ Like ccstatusline? Star us on GitHub', value: 'starGithub', selectable: true }
         );
     } else {
-        menuItems.push({ label: '🚪 Exit', value: 'exit', selectable: true });
+        menuItems.push(
+            { label: '🚪 Exit', value: 'exit', selectable: true },
+            { label: '', value: '_gap3', selectable: false },  // Visual gap
+            { label: '⭐ Like ccstatusline? Star us on GitHub', value: 'starGithub', selectable: true }
+        );
     }
 
     // Get only selectable items for navigation
@@ -53,7 +69,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
         } else if (key.return) {
             const item = selectableItems[selectedIndex];
             if (item) {
-                onSelect(item.value);
+                // Since we filtered by selectable: true, value is guaranteed to be MainMenuOption
+                onSelect(item.value as MainMenuOption);
             }
         }
     });
@@ -69,6 +86,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                 ? 'Remove ccstatusline from your Claude Code settings'
                 : 'Add ccstatusline to your Claude Code settings for automatic status line rendering',
             terminalConfig: 'Configure terminal-specific settings for optimal display',
+            starGithub: 'Open the ccstatusline GitHub repository in your browser so you can star the project',
             save: 'Save all changes and exit the configuration tool',
             exit: hasChanges
                 ? 'Exit without saving your changes'
