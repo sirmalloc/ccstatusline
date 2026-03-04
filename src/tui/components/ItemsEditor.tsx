@@ -23,6 +23,15 @@ import {
 } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    handleMoveInputMode,
+    handleNormalInputMode,
+    handlePickerInputMode,
+    normalizePickerState,
+    type CustomEditorWidgetState,
+    type WidgetPickerAction,
+    type WidgetPickerState
+} from './items-editor/input-handlers';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -32,22 +41,10 @@ export interface ItemsEditorProps {
     settings: Settings;
 }
 
-type WidgetPickerAction = 'change' | 'add' | 'insert';
-type WidgetPickerLevel = 'category' | 'widget';
-
-interface WidgetPickerState {
-    action: WidgetPickerAction;
-    level: WidgetPickerLevel;
-    selectedCategory: string | null;
-    categoryQuery: string;
-    widgetQuery: string;
-    selectedType: WidgetItemType | null;
-}
-
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    const [customEditorWidget, setCustomEditorWidget] = useState<{ widget: WidgetItem; impl: Widget; action?: string } | null>(null);
+    const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const separatorChars = ['|', '-', ',', ' '];
@@ -97,32 +94,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         setCustomEditorWidget(null);
     };
 
-    const getFilteredCategories = (query: string): string[] => {
-        void query;
-        return [...widgetCategories];
-    };
-
-    const normalizePickerState = (state: WidgetPickerState): WidgetPickerState => {
-        const filteredCategories = getFilteredCategories(state.categoryQuery);
-        const selectedCategory = state.selectedCategory && filteredCategories.includes(state.selectedCategory)
-            ? state.selectedCategory
-            : (filteredCategories[0] ?? null);
-
-        const hasTopLevelSearch = state.level === 'category' && state.categoryQuery.trim().length > 0;
-        const effectiveCategory = hasTopLevelSearch ? 'All' : (selectedCategory ?? 'All');
-        const effectiveQuery = hasTopLevelSearch ? state.categoryQuery : state.widgetQuery;
-        const filteredWidgets = filterWidgetCatalog(widgetCatalog, effectiveCategory, effectiveQuery);
-        const hasSelectedType = state.selectedType
-            ? filteredWidgets.some(entry => entry.type === state.selectedType)
-            : false;
-
-        return {
-            ...state,
-            selectedCategory,
-            selectedType: hasSelectedType ? state.selectedType : (filteredWidgets[0]?.type ?? null)
-        };
-    };
-
     const shouldShowCustomKeybind = (widget: WidgetItem, keybind: CustomKeybind): boolean => {
         if (keybind.action !== 'toggle-invert') {
             return true;
@@ -155,7 +126,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             categoryQuery: '',
             widgetQuery: '',
             selectedType
-        }));
+        }, widgetCatalog, widgetCategories));
     };
 
     const applyWidgetPickerSelection = (selectedType: WidgetItemType) => {
@@ -201,286 +172,45 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
 
         if (widgetPicker) {
-            const filteredCategories = getFilteredCategories(widgetPicker.categoryQuery);
-            const selectedCategory = widgetPicker.selectedCategory && filteredCategories.includes(widgetPicker.selectedCategory)
-                ? widgetPicker.selectedCategory
-                : (filteredCategories[0] ?? null);
-            const hasTopLevelSearch = widgetPicker.level === 'category' && widgetPicker.categoryQuery.trim().length > 0;
-            const topLevelSearchEntries = hasTopLevelSearch
-                ? filterWidgetCatalog(widgetCatalog, 'All', widgetPicker.categoryQuery)
-                : [];
-            const topLevelSelectedEntry = topLevelSearchEntries.find(entry => entry.type === widgetPicker.selectedType) ?? topLevelSearchEntries[0];
-            const filteredWidgets = filterWidgetCatalog(widgetCatalog, selectedCategory ?? 'All', widgetPicker.widgetQuery);
-            const selectedEntry = filteredWidgets.find(entry => entry.type === widgetPicker.selectedType) ?? filteredWidgets[0];
-
-            if (widgetPicker.level === 'category') {
-                if (key.escape) {
-                    if (widgetPicker.categoryQuery.length > 0) {
-                        setWidgetPicker(prev => prev ? normalizePickerState({
-                            ...prev,
-                            categoryQuery: ''
-                        }) : prev);
-                    } else {
-                        setWidgetPicker(null);
-                    }
-                } else if (key.return) {
-                    if (hasTopLevelSearch) {
-                        if (topLevelSelectedEntry) {
-                            applyWidgetPickerSelection(topLevelSelectedEntry.type);
-                        }
-                    } else if (selectedCategory) {
-                        setWidgetPicker(prev => prev ? normalizePickerState({
-                            ...prev,
-                            level: 'widget',
-                            selectedCategory
-                        }) : prev);
-                    }
-                } else if (key.upArrow || key.downArrow) {
-                    if (hasTopLevelSearch) {
-                        if (topLevelSearchEntries.length === 0) {
-                            return;
-                        }
-
-                        let currentIndex = topLevelSearchEntries.findIndex(entry => entry.type === widgetPicker.selectedType);
-                        if (currentIndex === -1) {
-                            currentIndex = 0;
-                        }
-
-                        const nextIndex = key.downArrow
-                            ? Math.min(topLevelSearchEntries.length - 1, currentIndex + 1)
-                            : Math.max(0, currentIndex - 1);
-                        const nextType = topLevelSearchEntries[nextIndex]?.type ?? null;
-                        setWidgetPicker(prev => prev ? normalizePickerState({
-                            ...prev,
-                            selectedType: nextType
-                        }) : prev);
-                    } else {
-                        if (filteredCategories.length === 0) {
-                            return;
-                        }
-
-                        let currentIndex = filteredCategories.findIndex(category => category === selectedCategory);
-                        if (currentIndex === -1) {
-                            currentIndex = 0;
-                        }
-
-                        const nextIndex = key.downArrow
-                            ? Math.min(filteredCategories.length - 1, currentIndex + 1)
-                            : Math.max(0, currentIndex - 1);
-                        const nextCategory = filteredCategories[nextIndex] ?? null;
-                        setWidgetPicker(prev => prev ? normalizePickerState({
-                            ...prev,
-                            selectedCategory: nextCategory
-                        }) : prev);
-                    }
-                } else if (key.backspace || key.delete) {
-                    setWidgetPicker(prev => prev ? normalizePickerState({
-                        ...prev,
-                        categoryQuery: prev.categoryQuery.slice(0, -1)
-                    }) : prev);
-                } else if (
-                    input
-                    && !key.ctrl
-                    && !key.meta
-                    && !key.tab
-                ) {
-                    setWidgetPicker(prev => prev ? normalizePickerState({
-                        ...prev,
-                        categoryQuery: prev.categoryQuery + input
-                    }) : prev);
-                }
-            } else {
-                if (key.escape) {
-                    if (widgetPicker.widgetQuery.length > 0) {
-                        setWidgetPicker(prev => prev ? normalizePickerState({
-                            ...prev,
-                            widgetQuery: ''
-                        }) : prev);
-                    } else {
-                        setWidgetPicker(prev => prev ? normalizePickerState({
-                            ...prev,
-                            level: 'category'
-                        }) : prev);
-                    }
-                } else if (key.return) {
-                    if (selectedEntry) {
-                        applyWidgetPickerSelection(selectedEntry.type);
-                    }
-                } else if (key.upArrow || key.downArrow) {
-                    if (filteredWidgets.length === 0) {
-                        return;
-                    }
-
-                    let currentIndex = filteredWidgets.findIndex(entry => entry.type === widgetPicker.selectedType);
-                    if (currentIndex === -1) {
-                        currentIndex = 0;
-                    }
-
-                    const nextIndex = key.downArrow
-                        ? Math.min(filteredWidgets.length - 1, currentIndex + 1)
-                        : Math.max(0, currentIndex - 1);
-                    const nextType = filteredWidgets[nextIndex]?.type ?? null;
-                    setWidgetPicker(prev => prev ? normalizePickerState({
-                        ...prev,
-                        selectedType: nextType
-                    }) : prev);
-                } else if (key.backspace || key.delete) {
-                    setWidgetPicker(prev => prev ? normalizePickerState({
-                        ...prev,
-                        widgetQuery: prev.widgetQuery.slice(0, -1)
-                    }) : prev);
-                } else if (
-                    input
-                    && !key.ctrl
-                    && !key.meta
-                    && !key.tab
-                ) {
-                    setWidgetPicker(prev => prev ? normalizePickerState({
-                        ...prev,
-                        widgetQuery: prev.widgetQuery + input
-                    }) : prev);
-                }
-            }
-
+            handlePickerInputMode({
+                input,
+                key,
+                widgetPicker,
+                widgetCatalog,
+                widgetCategories,
+                setWidgetPicker,
+                applyWidgetPickerSelection
+            });
             return;
         }
 
         if (moveMode) {
-            // In move mode, use up/down to move the selected item
-            if (key.upArrow && selectedIndex > 0) {
-                const newWidgets = [...widgets];
-                const temp = newWidgets[selectedIndex];
-                const prev = newWidgets[selectedIndex - 1];
-                if (temp && prev) {
-                    [newWidgets[selectedIndex], newWidgets[selectedIndex - 1]] = [prev, temp];
-                }
-                onUpdate(newWidgets);
-                setSelectedIndex(selectedIndex - 1);
-            } else if (key.downArrow && selectedIndex < widgets.length - 1) {
-                const newWidgets = [...widgets];
-                const temp = newWidgets[selectedIndex];
-                const next = newWidgets[selectedIndex + 1];
-                if (temp && next) {
-                    [newWidgets[selectedIndex], newWidgets[selectedIndex + 1]] = [next, temp];
-                }
-                onUpdate(newWidgets);
-                setSelectedIndex(selectedIndex + 1);
-            } else if (key.escape || key.return) {
-                // Exit move mode
-                setMoveMode(false);
-            }
-        } else {
-            // Normal mode
-            if (key.upArrow && widgets.length > 0) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
-            } else if (key.downArrow && widgets.length > 0) {
-                setSelectedIndex(Math.min(widgets.length - 1, selectedIndex + 1));
-            } else if (key.leftArrow && widgets.length > 0) {
-                openWidgetPicker('change');
-            } else if (key.rightArrow && widgets.length > 0) {
-                openWidgetPicker('change');
-            } else if (key.return && widgets.length > 0) {
-                // Enter move mode
-                setMoveMode(true);
-            } else if (input === 'a') {
-                openWidgetPicker('add');
-            } else if (input === 'i') {
-                openWidgetPicker('insert');
-            } else if (input === 'd' && widgets.length > 0) {
-                // Delete selected item
-                const newWidgets = widgets.filter((_, i) => i !== selectedIndex);
-                onUpdate(newWidgets);
-                if (selectedIndex >= newWidgets.length && selectedIndex > 0) {
-                    setSelectedIndex(selectedIndex - 1);
-                }
-            } else if (input === 'c') {
-                if (widgets.length > 0) {
-                    setShowClearConfirm(true);
-                }
-            } else if (input === ' ' && widgets.length > 0) {
-                // Space key - cycle separator character for separator types only (not flex)
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'separator') {
-                    const currentChar = currentWidget.character ?? '|';
-                    const currentCharIndex = separatorChars.indexOf(currentChar);
-                    const nextChar = separatorChars[(currentCharIndex + 1) % separatorChars.length];
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, character: nextChar };
-                    onUpdate(newWidgets);
-                }
-            } else if (input === 'r' && widgets.length > 0) {
-                // Toggle raw value for widgets that support it
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-                    const widgetImpl = getWidget(currentWidget.type);
-                    if (!widgetImpl?.supportsRawValue()) {
-                        return;
-                    }
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
-                    onUpdate(newWidgets);
-                }
-            } else if (input === 'm' && widgets.length > 0) {
-                // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
-                const currentWidget = widgets[selectedIndex];
-                // Don't allow merge on the last item or on separators
-                if (currentWidget && selectedIndex < widgets.length - 1
-                    && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-                    const newWidgets = [...widgets];
-                    let nextMergeState: boolean | 'no-padding' | undefined;
-
-                    if (currentWidget.merge === undefined) {
-                        nextMergeState = true;
-                    } else if (currentWidget.merge === true) {
-                        nextMergeState = 'no-padding';
-                    } else {
-                        nextMergeState = undefined;
-                    }
-
-                    if (nextMergeState === undefined) {
-                        const { merge, ...rest } = currentWidget;
-                        void merge; // Intentionally unused
-                        newWidgets[selectedIndex] = rest;
-                    } else {
-                        newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
-                    }
-                    onUpdate(newWidgets);
-                }
-            } else if (key.escape) {
-                onBack();
-            } else if (widgets.length > 0) {
-                // Check for custom widget keybinds
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-                    const widgetImpl = getWidget(currentWidget.type);
-                    if (widgetImpl) {
-                        if (widgetImpl.getCustomKeybinds) {
-                            const customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
-                            const matchedKeybind = customKeybinds.find(kb => kb.key === input);
-
-                            if (matchedKeybind && !key.ctrl) {
-                                // Check if widget handles the action directly
-                                if (widgetImpl.handleEditorAction) {
-                                    // Let the widget handle the action directly
-                                    const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
-                                    if (updatedWidget) {
-                                        const newWidgets = [...widgets];
-                                        newWidgets[selectedIndex] = updatedWidget;
-                                        onUpdate(newWidgets);
-                                    } else if (widgetImpl.renderEditor) {
-                                        // If handleEditorAction returned null, open the editor
-                                        setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
-                                    }
-                                } else if (widgetImpl.renderEditor) {
-                                    // Open the widget's custom editor with the action
-                                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            handleMoveInputMode({
+                key,
+                widgets,
+                selectedIndex,
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode
+            });
+            return;
         }
+
+        handleNormalInputMode({
+            input,
+            key,
+            widgets,
+            selectedIndex,
+            separatorChars,
+            onBack,
+            onUpdate,
+            setSelectedIndex,
+            setMoveMode,
+            setShowClearConfirm,
+            openWidgetPicker,
+            getVisibleCustomKeybinds,
+            setCustomEditorWidget
+        });
     });
 
     const getWidgetDisplay = (widget: WidgetItem) => {
@@ -508,7 +238,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
     const pickerCategories = widgetPicker
-        ? getFilteredCategories(widgetPicker.categoryQuery)
+        ? [...widgetCategories]
         : [];
     const selectedPickerCategory = widgetPicker
         ? (widgetPicker.selectedCategory && pickerCategories.includes(widgetPicker.selectedCategory)
