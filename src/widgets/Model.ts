@@ -10,6 +10,7 @@ export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Displays the Claude model name (e.g., Claude 3.5 Sonnet)'; }
     getDisplayName(): string { return 'Model'; }
+    getCategory(): string { return 'Core'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }

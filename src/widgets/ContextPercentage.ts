@@ -6,60 +6,63 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getContextConfig } from '../utils/model-context';
+import { getContextWindowMetrics } from '../utils/context-window';
+import {
+    getContextConfig,
+    getModelContextIdentifier
+} from '../utils/model-context';
+
+import {
+    getContextInverseModifierText,
+    handleContextInverseAction,
+    isContextInverse
+} from './shared/context-inverse';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class ContextPercentageWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows percentage of context window used or remaining'; }
     getDisplayName(): string { return 'Context %'; }
+    getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const isInverse = item.metadata?.inverse === 'true';
-        const modifiers: string[] = [];
-
-        if (isInverse) {
-            modifiers.push('remaining');
-        }
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
+            modifierText: getContextInverseModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-inverse') {
-            const currentState = item.metadata?.inverse === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    inverse: (!currentState).toString()
-                }
-            };
-        }
-        return null;
+        return handleContextInverseAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const isInverse = item.metadata?.inverse === 'true';
+        const isInverse = isContextInverse(item);
+        const contextWindowMetrics = getContextWindowMetrics(context.data);
 
         if (context.isPreview) {
             const previewValue = isInverse ? '90.7%' : '9.3%';
-            return item.rawValue ? previewValue : `Ctx: ${previewValue}`;
-        } else if (context.tokenMetrics) {
-            const model = context.data?.model;
-            const modelId = typeof model === 'string' ? model : model?.id;
-            const contextConfig = getContextConfig(modelId);
+            return formatRawOrLabeledValue(item, 'Ctx: ', previewValue);
+        }
+
+        if (contextWindowMetrics.usedPercentage !== null) {
+            const displayPercentage = isInverse ? (100 - contextWindowMetrics.usedPercentage) : contextWindowMetrics.usedPercentage;
+            return formatRawOrLabeledValue(item, 'Ctx: ', `${displayPercentage.toFixed(1)}%`);
+        }
+
+        if (context.tokenMetrics) {
+            const modelIdentifier = getModelContextIdentifier(context.data?.model);
+            const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return item.rawValue ? `${displayPercentage.toFixed(1)}%` : `Ctx: ${displayPercentage.toFixed(1)}%`;
+            return formatRawOrLabeledValue(item, 'Ctx: ', `${displayPercentage.toFixed(1)}%`);
         }
+
         return null;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'l', label: '(l)eft/remaining', action: 'toggle-inverse' }
+            { key: 'u', label: '(u)sed/remaining', action: 'toggle-inverse' }
         ];
     }
 
