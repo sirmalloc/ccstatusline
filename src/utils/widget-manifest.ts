@@ -1,0 +1,67 @@
+import type {
+    Widget,
+    WidgetItemType
+} from '../types/Widget';
+import * as widgets from '../widgets';
+
+export interface WidgetManifestEntry {
+    type: WidgetItemType;
+    create: () => Widget;
+}
+
+export interface LayoutWidgetManifestEntry {
+    type: WidgetItemType;
+    displayName: string;
+    description: string;
+    category: string;
+}
+
+export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
+    { type: 'model', create: () => new widgets.ModelWidget() },
+    { type: 'output-style', create: () => new widgets.OutputStyleWidget() },
+    { type: 'git-branch', create: () => new widgets.GitBranchWidget() },
+    { type: 'git-changes', create: () => new widgets.GitChangesWidget() },
+    { type: 'git-insertions', create: () => new widgets.GitInsertionsWidget() },
+    { type: 'git-deletions', create: () => new widgets.GitDeletionsWidget() },
+    { type: 'git-root-dir', create: () => new widgets.GitRootDirWidget() },
+    { type: 'git-worktree', create: () => new widgets.GitWorktreeWidget() },
+    { type: 'current-working-dir', create: () => new widgets.CurrentWorkingDirWidget() },
+    { type: 'tokens-input', create: () => new widgets.TokensInputWidget() },
+    { type: 'tokens-output', create: () => new widgets.TokensOutputWidget() },
+    { type: 'tokens-cached', create: () => new widgets.TokensCachedWidget() },
+    { type: 'tokens-total', create: () => new widgets.TokensTotalWidget() },
+    { type: 'context-length', create: () => new widgets.ContextLengthWidget() },
+    { type: 'context-percentage', create: () => new widgets.ContextPercentageWidget() },
+    { type: 'context-percentage-usable', create: () => new widgets.ContextPercentageUsableWidget() },
+    { type: 'session-clock', create: () => new widgets.SessionClockWidget() },
+    { type: 'session-cost', create: () => new widgets.SessionCostWidget() },
+    { type: 'block-timer', create: () => new widgets.BlockTimerWidget() },
+    { type: 'terminal-width', create: () => new widgets.TerminalWidthWidget() },
+    { type: 'version', create: () => new widgets.VersionWidget() },
+    { type: 'custom-text', create: () => new widgets.CustomTextWidget() },
+    { type: 'custom-command', create: () => new widgets.CustomCommandWidget() },
+    { type: 'link', create: () => new widgets.LinkWidget() },
+    { type: 'claude-session-id', create: () => new widgets.ClaudeSessionIdWidget() },
+    { type: 'session-name', create: () => new widgets.SessionNameWidget() },
+    { type: 'free-memory', create: () => new widgets.FreeMemoryWidget() },
+    { type: 'session-usage', create: () => new widgets.SessionUsageWidget() },
+    { type: 'weekly-usage', create: () => new widgets.WeeklyUsageWidget() },
+    { type: 'reset-timer', create: () => new widgets.BlockResetTimerWidget() },
+    { type: 'weekly-reset-timer', create: () => new widgets.WeeklyResetTimerWidget() },
+    { type: 'context-bar', create: () => new widgets.ContextBarWidget() }
+];
+
+export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
+    {
+        type: 'separator',
+        displayName: 'Separator',
+        description: 'A separator character between status line widgets',
+        category: 'Layout'
+    },
+    {
+        type: 'flex-separator',
+        displayName: 'Flex Separator',
+        description: 'Expands to fill available terminal width',
+        category: 'Layout'
+    }
+];

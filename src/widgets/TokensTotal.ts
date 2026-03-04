@@ -7,19 +7,24 @@ import type {
 } from '../types/Widget';
 import { formatTokens } from '../utils/renderer';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
 export class TokensTotalWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows total token count (input + output + cache) for the current session'; }
     getDisplayName(): string { return 'Tokens Total'; }
+    getCategory(): string { return 'Tokens'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? '30.6k' : 'Total: 30.6k';
-        } else if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.totalTokens) : `Total: ${formatTokens(context.tokenMetrics.totalTokens)}`;
+            return formatRawOrLabeledValue(item, 'Total: ', '30.6k');
+        }
+
+        if (context.tokenMetrics) {
+            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens));
         }
         return null;
     }
