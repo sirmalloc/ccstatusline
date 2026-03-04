@@ -15,11 +15,14 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { getVisibleText } from '../utils/ansi';
+import { shouldInsertInput } from '../utils/input-guards';
 
 export class CustomCommandWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
     getDescription(): string { return 'Executes a custom shell command and displays output'; }
     getDisplayName(): string { return 'Custom Command'; }
+    getCategory(): string { return 'Custom'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const cmd = item.commandPath ?? 'No command';
@@ -68,8 +71,8 @@ export class CustomCommandWidget implements Widget {
 
                 // Strip ANSI codes if preserveColors is false
                 if (!item.preserveColors) {
-                    // Strip all ANSI escape sequences
-                    output = output.replace(/\x1b\[[0-9;]*m/g, '');
+                    // Strip ANSI/OSC escape sequences and keep only visible text
+                    output = getVisibleText(output);
                 }
 
                 if (item.maxWidth && output.length > item.maxWidth) {
@@ -159,7 +162,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 if (commandCursorPos < commandInput.length) {
                     setCommandInput(commandInput.slice(0, commandCursorPos) + commandInput.slice(commandCursorPos + 1));
                 }
-            } else if (input) {
+            } else if (shouldInsertInput(input, key)) {
                 setCommandInput(commandInput.slice(0, commandCursorPos) + input + commandInput.slice(commandCursorPos));
                 setCommandCursorPos(commandCursorPos + input.length);
             }
@@ -177,7 +180,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 onCancel();
             } else if (key.backspace) {
                 setWidthInput(widthInput.slice(0, -1));
-            } else if (input && /\d/.test(input)) {
+            } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
                 setWidthInput(widthInput + input);
             }
         } else if (mode === 'timeout') {
@@ -194,7 +197,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 onCancel();
             } else if (key.backspace) {
                 setTimeoutInput(timeoutInput.slice(0, -1));
-            } else if (input && /\d/.test(input)) {
+            } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
                 setTimeoutInput(timeoutInput + input);
             }
         }

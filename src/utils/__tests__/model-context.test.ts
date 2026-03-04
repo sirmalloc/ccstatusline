@@ -4,12 +4,38 @@ import {
     it
 } from 'vitest';
 
-import { getContextConfig } from '../model-context';
+import {
+    getContextConfig,
+    getModelContextIdentifier
+} from '../model-context';
 
 describe('getContextConfig', () => {
-    describe('Sonnet 4.5 models with [1m] suffix', () => {
+    describe('Status JSON context window size override', () => {
+        it('should use context_window_size as max tokens when provided', () => {
+            const config = getContextConfig('claude-3-5-sonnet-20241022', 1000000);
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should prioritize context_window_size over [1m] model suffix', () => {
+            const config = getContextConfig('claude-sonnet-4-5-20250929[1m]', 200000);
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(160000);
+        });
+    });
+
+    describe('Models with [1m] suffix', () => {
         it('should return 1M context window for claude-sonnet-4-5 with [1m] suffix', () => {
             const config = getContextConfig('claude-sonnet-4-5-20250929[1m]');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should return 1M context window for claude-opus-4-6 with [1m] suffix', () => {
+            const config = getContextConfig('claude-opus-4-6[1m]');
 
             expect(config.maxTokens).toBe(1000000);
             expect(config.usableTokens).toBe(800000);
@@ -30,9 +56,37 @@ describe('getContextConfig', () => {
             expect(config.maxTokens).toBe(1000000);
             expect(config.usableTokens).toBe(800000);
         });
+
+        it('should return 1M context window for model IDs with 1M context label', () => {
+            const config = getContextConfig('Opus 4.6 (1M context)');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should return 1M context window for model IDs with 1M token context label', () => {
+            const config = getContextConfig('Claude Opus 4.6 - 1M token context');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should return 1M context window for model IDs with 1M in parentheses', () => {
+            const config = getContextConfig('Opus 4.6 (1M)');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should return 1M context window for model IDs with 1M in square brackets', () => {
+            const config = getContextConfig('Opus 4.5 [1M]');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
     });
 
-    describe('Sonnet 4.5 models without [1m] suffix', () => {
+    describe('Models without [1m] suffix', () => {
         it('should return 200k context window for claude-sonnet-4-5 without [1m] suffix', () => {
             const config = getContextConfig('claude-sonnet-4-5-20250929');
 
@@ -71,5 +125,27 @@ describe('getContextConfig', () => {
             expect(config.maxTokens).toBe(200000);
             expect(config.usableTokens).toBe(160000);
         });
+    });
+});
+
+describe('getModelContextIdentifier', () => {
+    it('returns string model identifier unchanged', () => {
+        expect(getModelContextIdentifier('claude-sonnet-4-5-20250929[1m]')).toBe('claude-sonnet-4-5-20250929[1m]');
+    });
+
+    it('prefers both id and display name when available', () => {
+        expect(getModelContextIdentifier({
+            id: 'claude-opus-4-6',
+            display_name: 'Opus 4.6 (1M context)'
+        })).toBe('claude-opus-4-6 Opus 4.6 (1M context)');
+    });
+
+    it('returns display name when id is missing', () => {
+        expect(getModelContextIdentifier({ display_name: 'Opus 4.6 (1M context)' })).toBe('Opus 4.6 (1M context)');
+    });
+
+    it('returns undefined when no model value exists', () => {
+        expect(getModelContextIdentifier(undefined)).toBeUndefined();
+        expect(getModelContextIdentifier({})).toBeUndefined();
     });
 });
