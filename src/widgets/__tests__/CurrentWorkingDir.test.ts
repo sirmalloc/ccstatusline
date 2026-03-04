@@ -13,24 +13,18 @@ import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { CurrentWorkingDirWidget } from '../CurrentWorkingDir';
 
-vi.mock('node:os', () => ({ homedir: vi.fn() }));
-
-const mockHomedir = os.homedir as unknown as {
-    mockReset: () => void;
-    mockReturnValue: (value: string) => void;
-};
-
 describe('CurrentWorkingDirWidget', () => {
     const widget = new CurrentWorkingDirWidget();
     const defaultHomeDir = '/Users/alice';
+    let mockHomedir: { mockReturnValue: (value: string) => void };
 
     beforeEach(() => {
-        mockHomedir.mockReset();
-        mockHomedir.mockReturnValue(defaultHomeDir);
+        vi.restoreAllMocks();
+        mockHomedir = vi.spyOn(os, 'homedir').mockReturnValue(defaultHomeDir);
     });
 
     afterEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
     });
 
     const createContext = (cwd?: string, isPreview = false): RenderContext => ({

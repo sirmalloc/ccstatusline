@@ -1,4 +1,6 @@
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -6,25 +8,32 @@ import {
 } from 'vitest';
 
 import type { WidgetItem } from '../../types/Widget';
-import { fetchUsageData } from '../usage';
+import * as usage from '../usage';
 import {
     hasUsageDependentWidgets,
     prefetchUsageDataIfNeeded
 } from '../usage-prefetch';
-
-vi.mock('../usage', () => ({ fetchUsageData: vi.fn() }));
-
-const mockFetchUsageData = fetchUsageData as unknown as {
-    mockClear: () => void;
-    mockResolvedValue: (value: unknown) => void;
-    mock: { calls: unknown[][] };
-};
+import type { UsageData } from '../usage-types';
 
 function makeLines(...lineItems: WidgetItem[][]): WidgetItem[][] {
     return lineItems;
 }
 
 describe('usage prefetch', () => {
+    let mockFetchUsageData: {
+        mock: { calls: unknown[][] };
+        mockResolvedValue: (value: UsageData) => void;
+    };
+
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        mockFetchUsageData = vi.spyOn(usage, 'fetchUsageData');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it.each([
         {
             expected: true,
@@ -47,7 +56,6 @@ describe('usage prefetch', () => {
     });
 
     it('fetches usage data once when at least one usage widget exists', async () => {
-        mockFetchUsageData.mockClear();
         mockFetchUsageData.mockResolvedValue({ sessionUsage: 12.3 });
 
         const lines = makeLines(
@@ -62,8 +70,6 @@ describe('usage prefetch', () => {
     });
 
     it('does not fetch usage data when no usage widgets exist', async () => {
-        mockFetchUsageData.mockClear();
-
         const lines = makeLines(
             [{ id: '1', type: 'model' }],
             [{ id: '2', type: 'git-branch' }]

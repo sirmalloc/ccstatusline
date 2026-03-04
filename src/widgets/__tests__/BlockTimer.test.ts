@@ -1,4 +1,5 @@
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -9,29 +10,28 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import {
-    formatUsageDuration,
-    resolveUsageWindowWithFallback
-} from '../../utils/usage';
+import * as usage from '../../utils/usage';
+import type { UsageWindowMetrics } from '../../utils/usage-types';
 import { BlockTimerWidget } from '../BlockTimer';
 
 import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
-
-vi.mock('../../utils/usage', () => ({
-    formatUsageDuration: vi.fn(),
-    resolveUsageWindowWithFallback: vi.fn()
-}));
-
-const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
-const mockResolveUsageWindowWithFallback = resolveUsageWindowWithFallback as unknown as { mockReturnValue: (value: unknown) => void };
 
 function render(widget: BlockTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
 describe('BlockTimerWidget', () => {
+    let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockResolveUsageWindowWithFallback: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
+
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
+        mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockResolveUsageWindowWithFallback = vi.spyOn(usage, 'resolveUsageWindowWithFallback');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('renders elapsed time in time mode', () => {

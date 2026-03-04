@@ -1,4 +1,5 @@
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -7,27 +8,32 @@ import {
 } from 'vitest';
 
 import type { BlockMetrics } from '../../types';
-import { getCachedBlockMetrics } from '../jsonl';
+import * as jsonl from '../jsonl';
 import {
     FIVE_HOUR_BLOCK_MS,
-    SEVEN_DAY_WINDOW_MS,
+    SEVEN_DAY_WINDOW_MS
+} from '../usage-types';
+import {
     formatUsageDuration,
     getUsageWindowFromResetAt,
     getWeeklyUsageWindowFromResetAt,
     resolveUsageWindowWithFallback,
     resolveWeeklyUsageWindow
-} from '../usage';
-
-vi.mock('../jsonl', () => ({ getCachedBlockMetrics: vi.fn() }));
-
-const mockGetCachedBlockMetrics = getCachedBlockMetrics as unknown as {
-    mock: { calls: unknown[][] };
-    mockReturnValue: (value: BlockMetrics | null) => void;
-};
+} from '../usage-windows';
 
 describe('usage window helpers', () => {
+    let mockGetCachedBlockMetrics: {
+        mock: { calls: unknown[][] };
+        mockReturnValue: (value: BlockMetrics | null) => void;
+    };
+
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
+        mockGetCachedBlockMetrics = vi.spyOn(jsonl, 'getCachedBlockMetrics');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('parses usage reset timestamp into elapsed and remaining metrics', () => {

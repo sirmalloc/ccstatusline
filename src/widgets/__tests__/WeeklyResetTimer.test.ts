@@ -1,4 +1,5 @@
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -9,32 +10,30 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import {
-    formatUsageDuration,
-    getUsageErrorMessage,
-    resolveWeeklyUsageWindow
-} from '../../utils/usage';
+import * as usage from '../../utils/usage';
+import type { UsageWindowMetrics } from '../../utils/usage-types';
 import { WeeklyResetTimerWidget } from '../WeeklyResetTimer';
 
 import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
-
-vi.mock('../../utils/usage', () => ({
-    formatUsageDuration: vi.fn(),
-    getUsageErrorMessage: vi.fn(),
-    resolveWeeklyUsageWindow: vi.fn()
-}));
-
-const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
-const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
-const mockResolveWeeklyUsageWindow = resolveWeeklyUsageWindow as unknown as { mockReturnValue: (value: unknown) => void };
 
 function render(widget: WeeklyResetTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
 describe('WeeklyResetTimerWidget', () => {
+    let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
+    let mockResolveWeeklyUsageWindow: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
+
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
+        mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
+        mockResolveWeeklyUsageWindow = vi.spyOn(usage, 'resolveWeeklyUsageWindow');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('renders preview using weekly reset format', () => {

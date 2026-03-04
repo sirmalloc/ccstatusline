@@ -1,4 +1,5 @@
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -9,32 +10,30 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import {
-    formatUsageDuration,
-    getUsageErrorMessage,
-    resolveUsageWindowWithFallback
-} from '../../utils/usage';
+import * as usage from '../../utils/usage';
+import type { UsageWindowMetrics } from '../../utils/usage-types';
 import { BlockResetTimerWidget } from '../BlockResetTimer';
 
 import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
-
-vi.mock('../../utils/usage', () => ({
-    formatUsageDuration: vi.fn(),
-    getUsageErrorMessage: vi.fn(),
-    resolveUsageWindowWithFallback: vi.fn()
-}));
-
-const mockFormatUsageDuration = formatUsageDuration as unknown as { mockReturnValue: (value: string) => void };
-const mockGetUsageErrorMessage = getUsageErrorMessage as unknown as { mockReturnValue: (value: string) => void };
-const mockResolveUsageWindowWithFallback = resolveUsageWindowWithFallback as unknown as { mockReturnValue: (value: unknown) => void };
 
 function render(widget: BlockResetTimerWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
 describe('BlockResetTimerWidget', () => {
+    let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
+    let mockResolveUsageWindowWithFallback: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
+
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
+        mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
+        mockResolveUsageWindowWithFallback = vi.spyOn(usage, 'resolveUsageWindowWithFallback');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('renders preview using block-style reset format', () => {

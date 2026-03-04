@@ -1,4 +1,6 @@
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -7,8 +9,7 @@ import {
 
 import type { RenderContext } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
-
-vi.mock('../../utils/renderer', () => ({ formatTokens: vi.fn((value: number) => `fmt:${value}`) }));
+import * as renderer from '../../utils/renderer';
 
 async function loadWidgets() {
     const [{ TokensInputWidget }, { TokensOutputWidget }, { TokensCachedWidget }, { TokensTotalWidget }] = await Promise.all([
@@ -27,6 +28,15 @@ async function loadWidgets() {
 }
 
 describe('Token widgets', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.spyOn(renderer, 'formatTokens').mockImplementation((value: number) => `fmt:${value}`);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('use context_window values for input/output and tokenMetrics totals for cached/total', async () => {
         const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
         const context: RenderContext = {

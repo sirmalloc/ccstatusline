@@ -1,4 +1,6 @@
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -7,11 +9,19 @@ import {
 
 import type { RenderContext } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import * as usage from '../../utils/usage';
 import { ContextBarWidget } from '../ContextBar';
 
-vi.mock('../../utils/usage', () => ({ makeUsageProgressBar: vi.fn((percent: number, width = 15) => `[bar:${percent.toFixed(1)}:${width}]`) }));
-
 describe('ContextBarWidget', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.spyOn(usage, 'makeUsageProgressBar').mockImplementation((percent: number, width = 15) => `[bar:${percent.toFixed(1)}:${width}]`);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('renders from context_window data when available', () => {
         const context: RenderContext = {
             data: {

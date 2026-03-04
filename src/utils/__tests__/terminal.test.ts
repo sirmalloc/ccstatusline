@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -14,15 +15,19 @@ import {
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
-    mock: { calls: unknown[][] };
-    mockImplementationOnce: (impl: () => never) => void;
-    mockReturnValueOnce: (value: string) => void;
-};
-
 describe('terminal utils', () => {
+    const mockExecSync = execSync as unknown as {
+        mock: { calls: unknown[][] };
+        mockImplementationOnce: (impl: () => never) => void;
+        mockReturnValueOnce: (value: string) => void;
+    };
+
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.restoreAllMocks();
+    });
+
+    afterEach(() => {
         vi.restoreAllMocks();
     });
 
