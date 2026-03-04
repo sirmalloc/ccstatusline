@@ -22,10 +22,13 @@ import {
     installStatusLine,
     isBunxAvailable,
     isInstalled,
+    isKnownCommand,
     uninstallStatusLine
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
 import {
+    getConfigPath,
+    isCustomConfigPath,
     loadSettings,
     saveSettings
 } from '../utils/config';
@@ -146,7 +149,7 @@ export const App: React.FC = () => {
 
     const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean) => {
         void getExistingStatusLine().then((existing) => {
-            const isAlreadyInstalled = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED].includes(existing ?? '');
+            const isAlreadyInstalled = isKnownCommand(existing ?? '');
             let message: string;
 
             if (existing && !isAlreadyInstalled) {
@@ -290,6 +293,9 @@ export const App: React.FC = () => {
                     </Text>
                 )}
             </Box>
+            {isCustomConfigPath() && (
+                <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
+            )}
 
             <StatusLinePreview
                 lines={settings.lines}

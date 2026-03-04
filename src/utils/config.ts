@@ -19,6 +19,22 @@ const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
 
+const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+
+let settingsPath = DEFAULT_SETTINGS_PATH;
+
+export function initConfigPath(filePath?: string): void {
+    settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+}
+
+export function getConfigPath(): string {
+    return settingsPath;
+}
+
+export function isCustomConfigPath(): boolean {
+    return settingsPath !== DEFAULT_SETTINGS_PATH;
+}
+
 interface SettingsPaths {
     configDir: string;
     settingsPath: string;
@@ -26,11 +42,16 @@ interface SettingsPaths {
 }
 
 function getSettingsPaths(): SettingsPaths {
-    const configDir = path.join(os.homedir(), '.config', 'ccstatusline');
+    const configDir = path.dirname(settingsPath);
+    const parsedPath = path.parse(settingsPath);
+    const backupBaseName = parsedPath.ext
+        ? `${parsedPath.name}.bak`
+        : `${parsedPath.base}.bak`;
+
     return {
         configDir,
-        settingsPath: path.join(configDir, 'settings.json'),
-        settingsBackupPath: path.join(configDir, 'settings.bak')
+        settingsPath,
+        settingsBackupPath: path.join(configDir, backupBaseName)
     };
 }
 

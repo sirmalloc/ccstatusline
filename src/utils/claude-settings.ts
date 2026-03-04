@@ -5,6 +5,11 @@ import * as path from 'path';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
 
+import {
+    getConfigPath,
+    isCustomConfigPath
+} from './config';
+
 // Re-export for backward compatibility
 export type { ClaudeSettings };
 
@@ -18,6 +23,32 @@ export const CCSTATUSLINE_COMMANDS = {
     BUNX: 'bunx -y ccstatusline@latest',
     SELF_MANAGED: 'ccstatusline'
 };
+
+export function isKnownCommand(command: string): boolean {
+    const prefixes = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED];
+    return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `));
+}
+
+function needsQuoting(filePath: string): boolean {
+    if (process.platform === 'win32') {
+        // cmd.exe-safe set of characters that require quoting.
+        return /[\s&()<>|^"]/.test(filePath);
+    }
+
+    return /[\s()[\];&#|'"\\$`]/.test(filePath);
+}
+
+function quotePathIfNeeded(filePath: string): string {
+    if (!needsQuoting(filePath)) {
+        return filePath;
+    }
+
+    if (process.platform === 'win32') {
+        return `"${filePath.replace(/"/g, '""')}"`;
+    }
+
+    return `'${filePath.replace(/'/g, '\'\\\'\'')}'`;
+}
 
 /**
  * Determines the Claude config directory, checking CLAUDE_CONFIG_DIR environment variable first,
@@ -82,17 +113,9 @@ export async function saveClaudeSettings(
 
 export async function isInstalled(): Promise<boolean> {
     const settings = await loadClaudeSettings();
-    // Check if command is either npx or bunx version AND padding is 0 (or undefined for new installs)
-    const validCommands = [
-        // Default autoinstalled npm command
-        CCSTATUSLINE_COMMANDS.NPM,
-        // Default autoinstalled bunx command
-        CCSTATUSLINE_COMMANDS.BUNX,
-        // Self managed installation command
-        CCSTATUSLINE_COMMANDS.SELF_MANAGED
-    ];
+    const command = settings.statusLine?.command ?? '';
     return (
-        validCommands.includes(settings.statusLine?.command ?? '')
+        isKnownCommand(command)
         && (settings.statusLine?.padding === 0
             || settings.statusLine?.padding === undefined)
     );
@@ -109,15 +132,24 @@ export function isBunxAvailable(): boolean {
     }
 }
 
+function buildCommand(baseCommand: string): string {
+    if (isCustomConfigPath()) {
+        return `${baseCommand} --config ${quotePathIfNeeded(getConfigPath())}`;
+    }
+    return baseCommand;
+}
+
 export async function installStatusLine(useBunx = false): Promise<void> {
     const settings = await loadClaudeSettings();
+
+    const baseCommand = useBunx
+        ? CCSTATUSLINE_COMMANDS.BUNX
+        : CCSTATUSLINE_COMMANDS.NPM;
 
     // Update settings with our status line (confirmation already handled in TUI)
     settings.statusLine = {
         type: 'command',
-        command: useBunx
-            ? CCSTATUSLINE_COMMANDS.BUNX
-            : CCSTATUSLINE_COMMANDS.NPM,
+        command: buildCommand(baseCommand),
         padding: 0
     };
 
