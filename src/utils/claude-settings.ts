@@ -89,16 +89,44 @@ export function getClaudeSettingsPath(): string {
     return path.join(getClaudeConfigDir(), 'settings.json');
 }
 
-export async function loadClaudeSettings(): Promise<ClaudeSettings> {
+/**
+ * Creates a backup of the current Claude settings file.
+ */
+async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
+    const settingsPath = getClaudeSettingsPath();
+    const backupPath = settingsPath + suffix;
     try {
-        const settingsPath = getClaudeSettingsPath();
-        if (!fs.existsSync(settingsPath)) {
-            return {};
+        if (fs.existsSync(settingsPath)) {
+            const content = await readFile(settingsPath, 'utf-8');
+            await writeFile(backupPath, content, 'utf-8');
+            return backupPath;
         }
+    } catch (error) {
+        console.error('Failed to backup Claude settings:', error);
+    }
+
+    return null;
+}
+
+interface LoadClaudeSettingsOptions { logErrors?: boolean }
+
+export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}): Promise<ClaudeSettings> {
+    const { logErrors = true } = options;
+    const settingsPath = getClaudeSettingsPath();
+
+    // File doesn't exist - return empty object
+    if (!fs.existsSync(settingsPath)) {
+        return {};
+    }
+
+    try {
         const content = await readFile(settingsPath, 'utf-8');
         return JSON.parse(content) as ClaudeSettings;
-    } catch {
-        return {};
+    } catch (error) {
+        if (logErrors) {
+            console.error('Failed to load Claude settings:', error);
+        }
+        throw error;
     }
 }
 
@@ -107,13 +135,24 @@ export async function saveClaudeSettings(
 ): Promise<void> {
     const settingsPath = getClaudeSettingsPath();
     const dir = path.dirname(settingsPath);
+
+    // Backup settings before overwriting
+    await backupClaudeSettings();
+
     await mkdir(dir, { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
 export async function isInstalled(): Promise<boolean> {
-    const settings = await loadClaudeSettings();
+    let settings: ClaudeSettings;
+
+    try {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        return false; // Can't determine if installed, assume not
+    }
     const command = settings.statusLine?.command ?? '';
+
     return (
         isKnownCommand(command)
         && (settings.statusLine?.padding === 0
@@ -140,7 +179,16 @@ function buildCommand(baseCommand: string): string {
 }
 
 export async function installStatusLine(useBunx = false): Promise<void> {
-    const settings = await loadClaudeSettings();
+    let settings: ClaudeSettings;
+
+    const backupPath = await backupClaudeSettings('.orig');
+    try {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
+        console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
+        settings = {};
+    }
 
     const baseCommand = useBunx
         ? CCSTATUSLINE_COMMANDS.BUNX
@@ -157,7 +205,14 @@ export async function installStatusLine(useBunx = false): Promise<void> {
 }
 
 export async function uninstallStatusLine(): Promise<void> {
-    const settings = await loadClaudeSettings();
+    let settings: ClaudeSettings;
+
+    try {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        console.error('Warning: Could not read existing Claude settings.');
+        return; // if we can't read, return... what are we uninstalling?
+    }
 
     if (settings.statusLine) {
         delete settings.statusLine;
@@ -166,6 +221,10 @@ export async function uninstallStatusLine(): Promise<void> {
 }
 
 export async function getExistingStatusLine(): Promise<string | null> {
-    const settings = await loadClaudeSettings();
-    return settings.statusLine?.command ?? null;
+    try {
+        const settings = await loadClaudeSettings({ logErrors: false });
+        return settings.statusLine?.command ?? null;
+    } catch {
+        return null; // Can't read settings, return null
+    }
 }

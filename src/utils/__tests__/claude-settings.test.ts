@@ -7,14 +7,20 @@ import {
     beforeEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import {
     CCSTATUSLINE_COMMANDS,
     getClaudeSettingsPath,
+    getExistingStatusLine,
     installStatusLine,
-    isKnownCommand
+    isInstalled,
+    isKnownCommand,
+    loadClaudeSettings,
+    saveClaudeSettings,
+    uninstallStatusLine
 } from '../claude-settings';
 import { initConfigPath } from '../config';
 
@@ -26,6 +32,12 @@ function readInstalledCommand(): string {
     const content = fs.readFileSync(settingsPath, 'utf-8');
     const data = JSON.parse(content) as { statusLine?: { command?: string } };
     return data.statusLine?.command ?? '';
+}
+
+function writeRawClaudeSettings(content: string): void {
+    const settingsPath = getClaudeSettingsPath();
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, content, 'utf-8');
 }
 
 beforeEach(() => {
@@ -130,5 +142,140 @@ describe('buildCommand via installStatusLine', () => {
         initConfigPath('/my path/settings.json');
         await installStatusLine(true);
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
+    });
+});
+
+describe('backup and error handling behavior', () => {
+    it('saveClaudeSettings should create .bak backup before overwrite', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: 'preexisting-command',
+                padding: 1
+            }
+        }));
+
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0
+            }
+        });
+
+        const settingsPath = getClaudeSettingsPath();
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(saved.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
+        expect(fs.existsSync(`${settingsPath}.bak`)).toBe(true);
+
+        const backup = JSON.parse(fs.readFileSync(`${settingsPath}.bak`, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(backup.statusLine?.command).toBe('preexisting-command');
+    });
+
+    it('installStatusLine should create .orig backup before updating settings', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: 'old-command',
+                padding: 1
+            }
+        }));
+
+        await installStatusLine(false);
+
+        const settingsPath = getClaudeSettingsPath();
+        expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
+
+        const orig = JSON.parse(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(orig.statusLine?.command).toBe('old-command');
+    });
+
+    it('loadClaudeSettings should return empty object when settings file is missing', async () => {
+        await expect(loadClaudeSettings()).resolves.toEqual({});
+    });
+
+    it('loadClaudeSettings should log and throw when settings file is invalid JSON', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            await expect(loadClaudeSettings()).rejects.toThrow();
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'Failed to load Claude settings:',
+                expect.anything()
+            );
+        } finally {
+            consoleErrorSpy.mockRestore();
+        }
+    });
+
+    it('isInstalled should return false when settings cannot be loaded', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            await expect(isInstalled()).resolves.toBe(false);
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+        } finally {
+            consoleErrorSpy.mockRestore();
+        }
+    });
+
+    it('installStatusLine should warn and recover when existing settings are invalid', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            await installStatusLine(false);
+
+            const settingsPath = getClaudeSettingsPath();
+            const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string; padding?: number } };
+            expect(installed.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
+            expect(installed.statusLine?.padding).toBe(0);
+            expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
+            expect(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')).toBe('{ invalid json');
+
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                `Warning: Could not read existing Claude settings. A backup exists at ${settingsPath}.orig.`
+            );
+        } finally {
+            consoleErrorSpy.mockRestore();
+        }
+    });
+
+    it('uninstallStatusLine should warn and return without modifying invalid settings', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            await uninstallStatusLine();
+
+            const settingsPath = getClaudeSettingsPath();
+            expect(fs.readFileSync(settingsPath, 'utf-8')).toBe('{ invalid json');
+            expect(fs.existsSync(`${settingsPath}.bak`)).toBe(false);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                'Warning: Could not read existing Claude settings.'
+            );
+        } finally {
+            consoleErrorSpy.mockRestore();
+        }
+    });
+
+    it('getExistingStatusLine should return null when settings cannot be loaded', async () => {
+        writeRawClaudeSettings('{ invalid json');
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            await expect(getExistingStatusLine()).resolves.toBeNull();
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+        } finally {
+            consoleErrorSpy.mockRestore();
+        }
+    });
+
+    it('isInstalled should accept known commands with --config and undefined padding', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: `${CCSTATUSLINE_COMMANDS.NPM} --config /tmp/settings.json`
+            }
+        });
+
+        await expect(isInstalled()).resolves.toBe(true);
     });
 });
