@@ -27,7 +27,7 @@ jobs:
         with:
           cache: true
       - run: bun install
-      - run: bun vitest --run
+      - run: bun test
 
   build:
     name: Build
