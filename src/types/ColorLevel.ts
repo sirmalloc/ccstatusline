@@ -17,13 +17,13 @@ export type ColorLevelString = 'ansi16' | 'ansi256' | 'truecolor';
 // Helper to get color level as string for chalk
 export function getColorLevelString(level: ColorLevel | undefined): ColorLevelString {
     switch (level) {
-    case 0:
-    case 1:
-        return 'ansi16';
-    case 3:
-        return 'truecolor';
-    case 2:
-    default:
-        return 'ansi256';
+        case 0:
+        case 1:
+            return 'ansi16';
+        case 3:
+            return 'truecolor';
+        case 2:
+        default:
+            return 'ansi256';
     }
 }

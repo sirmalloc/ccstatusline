@@ -33,7 +33,7 @@
     "eslint-plugin-import-newlines": "^1.4.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "ink": "^6.2.0",
+    "ink": "6.2.0",
     "ink-gradient": "^3.0.0",
     "ink-select-input": "^6.2.0",
     "pluralize": "^8.0.0",

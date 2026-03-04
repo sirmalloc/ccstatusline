@@ -382,21 +382,21 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                     let displayValue = '';
 
                                     switch (item.value) {
-                                    case 'separator':
-                                        displayValue = getSeparatorDisplay();
-                                        break;
-                                    case 'startCap':
-                                        displayValue = getCapDisplay('start');
-                                        break;
-                                    case 'endCap':
-                                        displayValue = getCapDisplay('end');
-                                        break;
-                                    case 'themes':
-                                        displayValue = getThemeDisplay();
-                                        break;
-                                    case 'back':
-                                        displayValue = '';
-                                        break;
+                                        case 'separator':
+                                            displayValue = getSeparatorDisplay();
+                                            break;
+                                        case 'startCap':
+                                            displayValue = getCapDisplay('start');
+                                            break;
+                                        case 'endCap':
+                                            displayValue = getCapDisplay('end');
+                                            break;
+                                        case 'themes':
+                                            displayValue = getThemeDisplay();
+                                            break;
+                                        case 'back':
+                                            displayValue = '';
+                                            break;
                                     }
 
                                     if (item.value === 'back') {
