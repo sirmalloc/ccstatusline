@@ -46,7 +46,7 @@
 
 ## 🆕 Recent Updates
 
-### v2.1.0 - v2.1.8 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
+### v2.1.0 - v2.1.9 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
 
 - **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Block Reset Timer**, and **Context Bar** widgets.
 - **📊 More accurate counts (v2.1.0)** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
@@ -57,6 +57,7 @@
 - **🧠 Context format fallback fix (v2.1.6)** - When `context_window_size` is missing, context widgets now infer 1M models from long-context labels such as `[1m]` and `1M context` in model identifiers.
 - **⏳ Weekly reset timer split (v2.1.7)** - Added a separate `Weekly Reset Timer` widget.
 - **⚙️ Custom config file flag (v2.1.8)** - Added `--config <path>` support so ccstatusline can load/save settings from a custom file location.
+- **🔣 Unicode separator hex input upgrade (v2.1.9)** - Powerline separator hex input now supports 4-6 digits (full Unicode code points up to `U+10FFFF`).
 
 ### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
