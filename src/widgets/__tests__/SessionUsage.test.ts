@@ -1,8 +1,5 @@
 import {
-    beforeEach,
     describe,
-    expect,
-    it,
     vi
 } from 'vitest';
 
@@ -11,6 +8,8 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { getUsageErrorMessage } from '../../utils/usage';
 import { SessionUsageWidget } from '../SessionUsage';
+
+import { runUsagePercentWidgetSuite } from './helpers/usage-widget-suites';
 
 vi.mock('../../utils/usage', () => ({
     getUsageErrorMessage: vi.fn(),
@@ -24,106 +23,38 @@ function render(widget: SessionUsageWidget, item: WidgetItem, context: RenderCon
 }
 
 describe('SessionUsageWidget', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it('exposes progress and invert keybinds', () => {
-        const widget = new SessionUsageWidget();
-
-        expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ]);
-    });
-
-    it('renders percentage text in time mode', () => {
-        const widget = new SessionUsageWidget();
-        expect(render(widget, { id: 'session', type: 'session-usage' }, { usageData: { sessionUsage: 23.45 } })).toBe('Session: 23.4%');
-    });
-
-    it('renders short inverted progress mode', () => {
-        const widget = new SessionUsageWidget();
-        const item: WidgetItem = {
+    runUsagePercentWidgetSuite({
+        baseItem: { id: 'session', type: 'session-usage' },
+        createWidget: () => new SessionUsageWidget(),
+        errorMessageMock: mockGetUsageErrorMessage,
+        expectedModifierText: '(short bar, inverted)',
+        expectedProgress: 'Session: [bar:76.5:16] 76.5%',
+        expectedRawProgress: '[bar:23.4:32] 23.4%',
+        expectedRawTime: '23.4%',
+        expectedTime: 'Session: 23.4%',
+        modifierItem: {
             id: 'session',
             type: 'session-usage',
-            metadata: {
-                display: 'progress-short',
-                invert: 'true'
-            }
-        };
-
-        expect(render(widget, item, { usageData: { sessionUsage: 23.45 } })).toBe('Session: [bar:76.5:16] 76.5%');
-    });
-
-    it('renders raw text mode without label', () => {
-        const widget = new SessionUsageWidget();
-
-        expect(render(widget, { id: 'session', type: 'session-usage', rawValue: true }, { usageData: { sessionUsage: 23.45 } })).toBe('23.4%');
-    });
-
-    it('renders raw progress mode without label', () => {
-        const widget = new SessionUsageWidget();
-        const item: WidgetItem = {
+            metadata: { display: 'progress-short', invert: 'true' }
+        },
+        progressItem: {
+            id: 'session',
+            type: 'session-usage',
+            metadata: { display: 'progress-short', invert: 'true' }
+        },
+        rawProgressItem: {
             id: 'session',
             type: 'session-usage',
             rawValue: true,
             metadata: { display: 'progress' }
-        };
-
-        expect(render(widget, item, { usageData: { sessionUsage: 23.45 } })).toBe('[bar:23.4:32] 23.4%');
-    });
-
-    it('shows usage error text when API call fails', () => {
-        const widget = new SessionUsageWidget();
-
-        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
-
-        expect(render(widget, { id: 'session', type: 'session-usage' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
-    });
-
-    it('clears invert metadata when cycling back to time mode', () => {
-        const widget = new SessionUsageWidget();
-        const updated = widget.handleEditorAction('toggle-progress', {
+        },
+        rawTimeItem: {
             id: 'session',
             type: 'session-usage',
-            metadata: {
-                display: 'progress-short',
-                invert: 'true'
-            }
-        });
-
-        expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
-    });
-
-    it('cycles display modes in the expected order', () => {
-        const widget = new SessionUsageWidget();
-        const base: WidgetItem = { id: 'session', type: 'session-usage' };
-
-        const first = widget.handleEditorAction('toggle-progress', base);
-        const second = widget.handleEditorAction('toggle-progress', first ?? base);
-        const third = widget.handleEditorAction('toggle-progress', second ?? base);
-
-        expect(first?.metadata?.display).toBe('progress');
-        expect(second?.metadata?.display).toBe('progress-short');
-        expect(third?.metadata?.display).toBe('time');
-    });
-
-    it('toggles invert metadata and shows editor modifiers', () => {
-        const widget = new SessionUsageWidget();
-        const base: WidgetItem = { id: 'session', type: 'session-usage' };
-
-        const inverted = widget.handleEditorAction('toggle-invert', base);
-        const cleared = widget.handleEditorAction('toggle-invert', inverted ?? base);
-
-        expect(inverted?.metadata?.invert).toBe('true');
-        expect(cleared?.metadata?.invert).toBe('false');
-        expect(widget.getEditorDisplay(base).modifierText).toBeUndefined();
-        expect(widget.getEditorDisplay({
-            ...base,
-            metadata: { display: 'progress-short', invert: 'true' }
-        }).modifierText).toBe('(short bar, inverted)');
+            rawValue: true
+        },
+        render,
+        usageField: 'sessionUsage',
+        usageValue: 23.45
     });
 });

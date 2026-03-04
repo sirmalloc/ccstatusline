@@ -15,6 +15,8 @@ import {
 } from '../../utils/usage';
 import { BlockTimerWidget } from '../BlockTimer';
 
+import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
+
 vi.mock('../../utils/usage', () => ({
     formatUsageDuration: vi.fn(),
     resolveUsageWindowWithFallback: vi.fn()
@@ -30,16 +32,6 @@ function render(widget: BlockTimerWidget, item: WidgetItem, context: RenderConte
 describe('BlockTimerWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-    });
-
-    it('supports raw value and exposes progress/invert keybinds', () => {
-        const widget = new BlockTimerWidget();
-
-        expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ]);
     });
 
     it('renders elapsed time in time mode', () => {
@@ -108,47 +100,15 @@ describe('BlockTimerWidget', () => {
         expect(render(widget, { id: 'block', type: 'block-timer', rawValue: true }, { usageData: {} })).toBe('2hr');
     });
 
-    it('clears invert metadata when cycling back to time mode', () => {
-        const widget = new BlockTimerWidget();
-        const updated = widget.handleEditorAction('toggle-progress', {
+    runUsageTimerEditorSuite({
+        baseItem: { id: 'block', type: 'block-timer' },
+        createWidget: () => new BlockTimerWidget(),
+        expectedDisplayName: 'Block Timer',
+        expectedModifierText: '(progress bar, inverted)',
+        modifierItem: {
             id: 'block',
             type: 'block-timer',
-            metadata: {
-                display: 'progress-short',
-                invert: 'true'
-            }
-        });
-
-        expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
-    });
-
-    it('cycles display modes in the expected order', () => {
-        const widget = new BlockTimerWidget();
-        const base: WidgetItem = { id: 'block', type: 'block-timer' };
-
-        const first = widget.handleEditorAction('toggle-progress', base);
-        const second = widget.handleEditorAction('toggle-progress', first ?? base);
-        const third = widget.handleEditorAction('toggle-progress', second ?? base);
-
-        expect(first?.metadata?.display).toBe('progress');
-        expect(second?.metadata?.display).toBe('progress-short');
-        expect(third?.metadata?.display).toBe('time');
-    });
-
-    it('toggles invert metadata and shows editor modifiers', () => {
-        const widget = new BlockTimerWidget();
-        const base: WidgetItem = { id: 'block', type: 'block-timer' };
-
-        const inverted = widget.handleEditorAction('toggle-invert', base);
-        const cleared = widget.handleEditorAction('toggle-invert', inverted ?? base);
-
-        expect(inverted?.metadata?.invert).toBe('true');
-        expect(cleared?.metadata?.invert).toBe('false');
-        expect(widget.getEditorDisplay(base).modifierText).toBeUndefined();
-        expect(widget.getEditorDisplay({
-            ...base,
             metadata: { display: 'progress', invert: 'true' }
-        }).modifierText).toBe('(progress bar, inverted)');
+        }
     });
 });

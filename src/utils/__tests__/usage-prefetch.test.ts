@@ -25,22 +25,25 @@ function makeLines(...lineItems: WidgetItem[][]): WidgetItem[][] {
 }
 
 describe('usage prefetch', () => {
-    it('detects when usage widgets are present', () => {
-        const lines = makeLines(
-            [{ id: '1', type: 'model' }],
-            [{ id: '2', type: 'block-timer' }]
-        );
-
-        expect(hasUsageDependentWidgets(lines)).toBe(true);
-    });
-
-    it('does not detect usage requirement for non-usage widgets', () => {
-        const lines = makeLines(
-            [{ id: '1', type: 'model' }],
-            [{ id: '2', type: 'git-branch' }]
-        );
-
-        expect(hasUsageDependentWidgets(lines)).toBe(false);
+    it.each([
+        {
+            expected: true,
+            lines: makeLines(
+                [{ id: '1', type: 'model' }],
+                [{ id: '2', type: 'block-timer' }]
+            ),
+            name: 'detects when usage widgets are present'
+        },
+        {
+            expected: false,
+            lines: makeLines(
+                [{ id: '1', type: 'model' }],
+                [{ id: '2', type: 'git-branch' }]
+            ),
+            name: 'does not detect usage requirement for non-usage widgets'
+        }
+    ])('$name', ({ expected, lines }) => {
+        expect(hasUsageDependentWidgets(lines)).toBe(expected);
     });
 
     it('fetches usage data once when at least one usage widget exists', async () => {

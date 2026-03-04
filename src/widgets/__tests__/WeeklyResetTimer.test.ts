@@ -16,6 +16,8 @@ import {
 } from '../../utils/usage';
 import { WeeklyResetTimerWidget } from '../WeeklyResetTimer';
 
+import { runUsageTimerEditorSuite } from './helpers/usage-widget-suites';
+
 vi.mock('../../utils/usage', () => ({
     formatUsageDuration: vi.fn(),
     getUsageErrorMessage: vi.fn(),
@@ -33,17 +35,6 @@ function render(widget: WeeklyResetTimerWidget, item: WidgetItem, context: Rende
 describe('WeeklyResetTimerWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-    });
-
-    it('supports raw value and exposes progress/invert keybinds', () => {
-        const widget = new WeeklyResetTimerWidget();
-
-        expect(widget.getDisplayName()).toBe('Weekly Reset Timer');
-        expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ]);
     });
 
     it('renders preview using weekly reset format', () => {
@@ -121,47 +112,15 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('120hr 15m');
     });
 
-    it('clears invert metadata when cycling back to time mode', () => {
-        const widget = new WeeklyResetTimerWidget();
-        const updated = widget.handleEditorAction('toggle-progress', {
+    runUsageTimerEditorSuite({
+        baseItem: { id: 'weekly-reset', type: 'weekly-reset-timer' },
+        createWidget: () => new WeeklyResetTimerWidget(),
+        expectedDisplayName: 'Weekly Reset Timer',
+        expectedModifierText: '(short bar, inverted)',
+        modifierItem: {
             id: 'weekly-reset',
             type: 'weekly-reset-timer',
-            metadata: {
-                display: 'progress-short',
-                invert: 'true'
-            }
-        });
-
-        expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
-    });
-
-    it('cycles display modes in the expected order', () => {
-        const widget = new WeeklyResetTimerWidget();
-        const base: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer' };
-
-        const first = widget.handleEditorAction('toggle-progress', base);
-        const second = widget.handleEditorAction('toggle-progress', first ?? base);
-        const third = widget.handleEditorAction('toggle-progress', second ?? base);
-
-        expect(first?.metadata?.display).toBe('progress');
-        expect(second?.metadata?.display).toBe('progress-short');
-        expect(third?.metadata?.display).toBe('time');
-    });
-
-    it('toggles invert metadata and shows editor modifiers', () => {
-        const widget = new WeeklyResetTimerWidget();
-        const base: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer' };
-
-        const inverted = widget.handleEditorAction('toggle-invert', base);
-        const cleared = widget.handleEditorAction('toggle-invert', inverted ?? base);
-
-        expect(inverted?.metadata?.invert).toBe('true');
-        expect(cleared?.metadata?.invert).toBe('false');
-        expect(widget.getEditorDisplay(base).modifierText).toBeUndefined();
-        expect(widget.getEditorDisplay({
-            ...base,
             metadata: { display: 'progress-short', invert: 'true' }
-        }).modifierText).toBe('(short bar, inverted)');
+        }
     });
 });

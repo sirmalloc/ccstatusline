@@ -16,7 +16,7 @@
     "postbuild": "bun run scripts/replace-version.ts",
     "example": "cat scripts/payload.example.json | bun start",
     "prepublishOnly": "bun run build",
-    "lint": "bun tsc --noEmit; eslint . --config eslint.config.js --max-warnings=999999 --fix",
+    "lint": "bun tsc --noEmit && eslint . --config eslint.config.js --max-warnings=999999 --fix",
     "docs": "typedoc",
     "docs:clean": "rm -rf docs"
   },
