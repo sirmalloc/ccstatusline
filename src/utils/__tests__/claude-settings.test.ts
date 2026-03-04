@@ -1,4 +1,5 @@
 import {
+    afterEach,
     afterAll,
     beforeAll,
     beforeEach,
@@ -21,6 +22,14 @@ vi.mock('../config', () => ({
 
 const mockIsCustomConfigPath = isCustomConfigPath as Mock;
 const mockGetConfigPath = getConfigPath as Mock;
+const ORIGINAL_PLATFORM = process.platform;
+
+function setProcessPlatform(platform: NodeJS.Platform): void {
+    Object.defineProperty(process, 'platform', {
+        value: platform,
+        configurable: true
+    });
+}
 
 // Safety net: point CLAUDE_CONFIG_DIR at a temp path so even if the fs mock
 // leaks, writes will never land in the user's real ~/.claude directory.
@@ -82,6 +91,10 @@ describe('isKnownCommand', () => {
         expect(isKnownCommand(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my(path)/settings.json'`)).toBe(true);
     });
 
+    it('should match command with --config and double-quoted Windows path', () => {
+        expect(isKnownCommand(`${CCSTATUSLINE_COMMANDS.NPM} --config "C:\\Users\\Alice\\My Settings\\settings.json"`)).toBe(true);
+    });
+
     it('should not match unknown commands', () => {
         expect(isKnownCommand('some-other-command')).toBe(false);
     });
@@ -102,8 +115,13 @@ describe('isKnownCommand', () => {
 describe('buildCommand via installStatusLine', () => {
     beforeEach(() => {
         savedSettings = {};
+        setProcessPlatform(ORIGINAL_PLATFORM);
         mockIsCustomConfigPath.mockReturnValue(false);
         mockGetConfigPath.mockReturnValue('/default/settings.json');
+    });
+
+    afterEach(() => {
+        setProcessPlatform(ORIGINAL_PLATFORM);
     });
 
     it('should use base command when no custom config path', async () => {
@@ -157,5 +175,15 @@ describe('buildCommand via installStatusLine', () => {
 
         const statusLine = savedSettings.statusLine as { command: string };
         expect(statusLine.command).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
+    });
+
+    it('should use Windows-safe double quoting for custom config paths', async () => {
+        setProcessPlatform('win32');
+        mockIsCustomConfigPath.mockReturnValue(true);
+        mockGetConfigPath.mockReturnValue('C:\\Users\\Alice\\My Settings\\settings.json');
+        await installStatusLine(false);
+
+        const statusLine = savedSettings.statusLine as { command: string };
+        expect(statusLine.command).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config \"C:\\Users\\Alice\\My Settings\\settings.json\"`);
     });
 });

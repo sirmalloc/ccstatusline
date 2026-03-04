@@ -30,6 +30,11 @@ export function isKnownCommand(command: string): boolean {
 }
 
 function needsQuoting(filePath: string): boolean {
+    if (process.platform === 'win32') {
+        // cmd.exe-safe set of characters that require quoting.
+        return /[\s&()<>|^"]/.test(filePath);
+    }
+
     return /[\s()[\];&#|'"\\$`]/.test(filePath);
 }
 
@@ -37,6 +42,11 @@ function quotePathIfNeeded(filePath: string): string {
     if (!needsQuoting(filePath)) {
         return filePath;
     }
+
+    if (process.platform === 'win32') {
+        return `"${filePath.replace(/"/g, '""')}"`;
+    }
+
     return `'${filePath.replace(/'/g, '\'\\\'\'')}'`;
 }
 
