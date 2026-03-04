@@ -32,7 +32,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
 
     // Build menu structure with visual gaps
-    const menuItems: { label: string; value: MainMenuOption | '_gap1' | '_gap2' | '_gap3'; selectable: boolean }[] = [
+    const menuItems = [
         { label: '📝 Edit Lines', value: 'lines', selectable: true },
         { label: '🎨 Edit Colors', value: 'colors', selectable: true },
         { label: '⚡ Powerline Setup', value: 'powerline', selectable: true },
@@ -76,8 +76,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
     });
 
     // Get description for selected item
-    const getDescription = (value: MainMenuOption): string => {
-        const descriptions: Record<MainMenuOption, string> = {
+    const getDescription = (value: string): string => {
+        const descriptions: Record<string, string> = {
             lines: 'Configure any number of status lines with various widgets like model info, git status, and token usage',
             colors: 'Customize colors for each widget including foreground, background, and bold styling',
             powerline: 'Install Powerline fonts for enhanced visual separators and symbols in your status line',
@@ -92,11 +92,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onSelect, isClaudeInstalled,
                 ? 'Exit without saving your changes'
                 : 'Exit the configuration tool'
         };
-        return descriptions[value];
+        return descriptions[value] ?? '';
     };
 
     const selectedItem = selectableItems[selectedIndex];
-    const description = selectedItem ? getDescription(selectedItem.value as MainMenuOption) : '';
+    const description = selectedItem ? getDescription(selectedItem.value) : '';
 
     // Check if we should show the truncation warning
     const showTruncationWarning = previewIsTruncated && settings?.flexMode === 'full-minus-40';
