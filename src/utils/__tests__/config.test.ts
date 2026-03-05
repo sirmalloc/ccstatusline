@@ -19,6 +19,7 @@ import {
 } from '../../types/Settings';
 
 const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
+const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
@@ -34,6 +35,10 @@ function getSettingsPaths(): { configDir: string; settingsPath: string; backupPa
     };
 }
 
+function getClaudeConfigDir(): string {
+    return path.join(MOCK_HOME_DIR, '.claude');
+}
+
 describe('config utilities', () => {
     beforeAll(async () => {
         const configModule = await import('../config');
@@ -44,6 +49,7 @@ describe('config utilities', () => {
 
     beforeEach(() => {
         fs.rmSync(MOCK_HOME_DIR, { recursive: true, force: true });
+        process.env.CLAUDE_CONFIG_DIR = getClaudeConfigDir();
         const { settingsPath } = getSettingsPaths();
         initConfigPath(settingsPath);
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -55,6 +61,11 @@ describe('config utilities', () => {
 
     afterAll(() => {
         fs.rmSync(MOCK_HOME_DIR, { recursive: true, force: true });
+        if (ORIGINAL_CLAUDE_CONFIG_DIR === undefined) {
+            delete process.env.CLAUDE_CONFIG_DIR;
+        } else {
+            process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+        }
         initConfigPath();
     });
 
