@@ -274,6 +274,10 @@ describe('jsonl transcript metrics', () => {
                 type: 'assistant',
                 input: 10,
                 output: 20
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: '1' }
             })
         ].join('\n'));
 
@@ -320,6 +324,14 @@ describe('jsonl transcript metrics', () => {
                 type: 'assistant',
                 input: 50,
                 output: 100
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'a' }
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'b' }
             })
         ].join('\n'));
 
@@ -364,6 +376,121 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('includes only referenced subagent transcripts from the parent transcript', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-referenced-subagents.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                input: 20,
+                output: 30
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'referenced-agent' }
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-referenced-agent.jsonl'), [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:06.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:08.000Z',
+                type: 'assistant',
+                input: 10,
+                output: 20,
+                isSidechain: true
+            })
+        ].join('\n'));
+        fs.writeFileSync(path.join(subagentsDir, 'agent-unrelated-agent.jsonl'), [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:06.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:18.000Z',
+                type: 'assistant',
+                input: 500,
+                output: 900,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 7000,
+            inputTokens: 30,
+            outputTokens: 50,
+            totalTokens: 80,
+            requestCount: 2
+        });
+    });
+
+    it('finds subagents in session-directory layout used by Claude transcripts', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const sessionId = 'session-123';
+        const transcriptPath = path.join(root, `${sessionId}.jsonl`);
+        const subagentsDir = path.join(root, sessionId, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                input: 10,
+                output: 20
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'layout-agent' }
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-layout-agent.jsonl'), [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:08.000Z',
+                type: 'assistant',
+                input: 15,
+                output: 25,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 7000,
+            inputTokens: 25,
+            outputTokens: 45,
+            totalTokens: 70,
+            requestCount: 2
+        });
+    });
+
     it('falls back to main transcript metrics when subagent folder cannot be listed', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
@@ -380,6 +507,10 @@ describe('jsonl transcript metrics', () => {
                 type: 'assistant',
                 input: 30,
                 output: 60
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'unreadable' }
             })
         ].join('\n'));
 
@@ -413,6 +544,10 @@ describe('jsonl transcript metrics', () => {
                 type: 'assistant',
                 input: 10,
                 output: 20
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'malformed' }
             })
         ].join('\n'));
 
@@ -459,6 +594,10 @@ describe('jsonl transcript metrics', () => {
                 type: 'assistant',
                 input: 30,
                 output: 60
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'unreadable' }
             })
         ].join('\n'));
 

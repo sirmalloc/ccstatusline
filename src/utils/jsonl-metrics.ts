@@ -26,6 +26,43 @@ interface CollectedSpeedMetrics {
     intervals: SpeedInterval[];
 }
 
+function collectAgentIds(value: unknown, agentIds: Set<string>) {
+    if (!value || typeof value !== 'object') {
+        return;
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            collectAgentIds(item, agentIds);
+        }
+        return;
+    }
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+        if (key === 'agentId' && typeof nestedValue === 'string' && nestedValue.trim() !== '') {
+            agentIds.add(nestedValue);
+            continue;
+        }
+
+        collectAgentIds(nestedValue, agentIds);
+    }
+}
+
+function getReferencedSubagentIds(lines: string[]): Set<string> {
+    const agentIds = new Set<string>();
+
+    for (const line of lines) {
+        const data = parseJsonlLine(line);
+        if (!data) {
+            continue;
+        }
+
+        collectAgentIds(data, agentIds);
+    }
+
+    return agentIds;
+}
+
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
     try {
         if (!fs.existsSync(transcriptPath)) {
@@ -252,20 +289,55 @@ function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean)
     };
 }
 
-function getSubagentTranscriptPaths(transcriptPath: string): string[] {
-    const subagentsDir = path.join(path.dirname(transcriptPath), 'subagents');
-    if (!fs.existsSync(subagentsDir)) {
+function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: Set<string>): string[] {
+    if (referencedAgentIds.size === 0) {
         return [];
     }
 
-    try {
-        const dirEntries = fs.readdirSync(subagentsDir, { withFileTypes: true });
-        return dirEntries
-            .filter(entry => entry.isFile() && entry.name.endsWith('.jsonl'))
-            .map(entry => path.join(subagentsDir, entry.name));
-    } catch {
-        return [];
+    const transcriptDir = path.dirname(transcriptPath);
+    const transcriptStem = path.parse(transcriptPath).name;
+    const candidateDirs = [
+        path.join(transcriptDir, 'subagents'),
+        path.join(transcriptDir, transcriptStem, 'subagents')
+    ];
+    const seenPaths = new Set<string>();
+    const matchedPaths: string[] = [];
+
+    for (const subagentsDir of candidateDirs) {
+        if (!fs.existsSync(subagentsDir)) {
+            continue;
+        }
+
+        try {
+            const dirEntries = fs.readdirSync(subagentsDir, { withFileTypes: true });
+            for (const entry of dirEntries) {
+                if (!entry.isFile()) {
+                    continue;
+                }
+
+                const match = /^agent-(.+)\.jsonl$/.exec(entry.name);
+                if (!match?.[1]) {
+                    continue;
+                }
+
+                if (!referencedAgentIds.has(match[1])) {
+                    continue;
+                }
+
+                const fullPath = path.join(subagentsDir, entry.name);
+                if (seenPaths.has(fullPath)) {
+                    continue;
+                }
+
+                seenPaths.add(fullPath);
+                matchedPaths.push(fullPath);
+            }
+        } catch {
+            continue;
+        }
     }
+
+    return matchedPaths;
 }
 
 export async function getSpeedMetrics(
@@ -287,6 +359,7 @@ export async function getSpeedMetrics(
 
         const mainLines = await readJsonlLines(transcriptPath);
         const mainMetrics = collectSpeedMetricsFromLines(mainLines, true);
+        const referencedSubagentIds = getReferencedSubagentIds(mainLines);
 
         let inputTokens = mainMetrics.inputTokens;
         let outputTokens = mainMetrics.outputTokens;
@@ -294,7 +367,7 @@ export async function getSpeedMetrics(
         const allIntervals: SpeedInterval[] = [...mainMetrics.intervals];
 
         if (options.includeSubagents === true) {
-            const subagentPaths = getSubagentTranscriptPaths(transcriptPath);
+            const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedSubagentIds);
             const subagentMetricsResults = await Promise.all(subagentPaths.map(async (subagentPath) => {
                 try {
                     const subagentLines = await readJsonlLines(subagentPath);
