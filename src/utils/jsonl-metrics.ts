@@ -12,18 +12,36 @@ import {
     readJsonlLines
 } from './jsonl-lines';
 
-interface SpeedMetricsOptions { includeSubagents?: boolean }
+export interface SpeedMetricsOptions {
+    includeSubagents?: boolean;
+    windowSeconds?: number;
+}
+
+interface SpeedMetricsCollectionOptions {
+    includeSubagents?: boolean;
+    windowSeconds?: number[];
+}
+
+export interface SpeedMetricsCollection {
+    sessionAverage: SpeedMetrics;
+    windowed: Record<string, SpeedMetrics>;
+}
 
 interface SpeedInterval {
     startMs: number;
     endMs: number;
 }
 
-interface CollectedSpeedMetrics {
+interface SpeedRequest {
     inputTokens: number;
     outputTokens: number;
-    requestCount: number;
-    intervals: SpeedInterval[];
+    assistantTimestampMs: number | null;
+    interval: SpeedInterval | null;
+}
+
+interface CollectedSpeedMetrics {
+    requests: SpeedRequest[];
+    latestTimestampMs: number | null;
 }
 
 function collectAgentIds(value: unknown, agentIds: Set<string>) {
@@ -193,18 +211,6 @@ function parseTimestamp(value: string | undefined): Date | null {
     return Number.isNaN(timestamp.getTime()) ? null : timestamp;
 }
 
-function addInterval(intervals: SpeedInterval[], start: Date | null, end: Date | null) {
-    if (!start || !end) {
-        return;
-    }
-
-    const startMs = start.getTime();
-    const endMs = end.getTime();
-    if (endMs > startMs) {
-        intervals.push({ startMs, endMs });
-    }
-}
-
 function mergeIntervals(intervals: SpeedInterval[]): SpeedInterval[] {
     if (intervals.length === 0) {
         return [];
@@ -240,14 +246,30 @@ function getIntervalsDurationMs(intervals: SpeedInterval[]): number {
     return intervals.reduce((total, interval) => total + (interval.endMs - interval.startMs), 0);
 }
 
+function createEmptySpeedMetrics(): SpeedMetrics {
+    return {
+        totalDurationMs: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        requestCount: 0
+    };
+}
+
+function normalizeWindowSeconds(value: number | undefined): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null;
+    }
+
+    const normalized = Math.trunc(value);
+    return normalized > 0 ? normalized : null;
+}
+
 function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean): CollectedSpeedMetrics {
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let requestCount = 0;
-    const intervals: SpeedInterval[] = [];
+    const requests: SpeedRequest[] = [];
 
     let lastUserTimestamp: Date | null = null;
-    let lastAssistantTimestamp: Date | null = null;
+    let latestTimestampMs: number | null = null;
 
     for (const line of lines) {
         const data = parseJsonlLine(line) as TranscriptLine | null;
@@ -260,33 +282,131 @@ function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean)
         }
 
         const entryTimestamp = parseTimestamp(data.timestamp);
+        if (entryTimestamp) {
+            const entryTimestampMs = entryTimestamp.getTime();
+            if (latestTimestampMs === null || entryTimestampMs > latestTimestampMs) {
+                latestTimestampMs = entryTimestampMs;
+            }
+        }
 
         if (data.type === 'user' && entryTimestamp) {
-            addInterval(intervals, lastUserTimestamp, lastAssistantTimestamp);
             lastUserTimestamp = entryTimestamp;
-            lastAssistantTimestamp = null;
             continue;
         }
 
         if (data.type === 'assistant' && data.message?.usage) {
-            inputTokens += data.message.usage.input_tokens || 0;
-            outputTokens += data.message.usage.output_tokens || 0;
-            requestCount++;
-
-            if (entryTimestamp) {
-                lastAssistantTimestamp = entryTimestamp;
+            const inputTokens = data.message.usage.input_tokens || 0;
+            const outputTokens = data.message.usage.output_tokens || 0;
+            let interval: SpeedInterval | null = null;
+            if (entryTimestamp && lastUserTimestamp) {
+                const startMs = lastUserTimestamp.getTime();
+                const endMs = entryTimestamp.getTime();
+                if (endMs > startMs) {
+                    interval = { startMs, endMs };
+                }
             }
+
+            requests.push({
+                inputTokens,
+                outputTokens,
+                assistantTimestampMs: entryTimestamp ? entryTimestamp.getTime() : null,
+                interval
+            });
         }
     }
 
-    addInterval(intervals, lastUserTimestamp, lastAssistantTimestamp);
+    return {
+        requests,
+        latestTimestampMs
+    };
+}
+
+function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSpeedMetrics {
+    const requests: SpeedRequest[] = [];
+    let latestTimestampMs: number | null = null;
+
+    for (const part of parts) {
+        requests.push(...part.requests);
+
+        if (part.latestTimestampMs !== null && (latestTimestampMs === null || part.latestTimestampMs > latestTimestampMs)) {
+            latestTimestampMs = part.latestTimestampMs;
+        }
+    }
 
     return {
+        requests,
+        latestTimestampMs
+    };
+}
+
+function buildSpeedMetrics(
+    collected: CollectedSpeedMetrics,
+    windowSeconds?: number
+): SpeedMetrics {
+    const normalizedWindowSeconds = normalizeWindowSeconds(windowSeconds);
+    if (normalizedWindowSeconds !== null && collected.latestTimestampMs === null) {
+        return createEmptySpeedMetrics();
+    }
+
+    const windowEndMs = normalizedWindowSeconds !== null && collected.latestTimestampMs !== null
+        ? collected.latestTimestampMs
+        : null;
+    const windowStartMs = normalizedWindowSeconds !== null && windowEndMs !== null
+        ? windowEndMs - (normalizedWindowSeconds * 1000)
+        : null;
+
+    const selectedRequests = normalizedWindowSeconds !== null && windowStartMs !== null && windowEndMs !== null
+        ? collected.requests.filter(request => request.assistantTimestampMs !== null
+            && request.assistantTimestampMs >= windowStartMs
+            && request.assistantTimestampMs <= windowEndMs
+        )
+        : collected.requests;
+
+    let inputTokens = 0;
+    let outputTokens = 0;
+    const intervals: SpeedInterval[] = [];
+
+    for (const request of selectedRequests) {
+        inputTokens += request.inputTokens;
+        outputTokens += request.outputTokens;
+
+        if (!request.interval) {
+            continue;
+        }
+
+        if (windowStartMs === null || windowEndMs === null) {
+            intervals.push(request.interval);
+            continue;
+        }
+
+        const clippedStartMs = Math.max(request.interval.startMs, windowStartMs);
+        const clippedEndMs = Math.min(request.interval.endMs, windowEndMs);
+        if (clippedEndMs > clippedStartMs) {
+            intervals.push({
+                startMs: clippedStartMs,
+                endMs: clippedEndMs
+            });
+        }
+    }
+
+    const mergedIntervals = mergeIntervals(intervals);
+    const totalDurationMs = getIntervalsDurationMs(mergedIntervals);
+
+    return {
+        totalDurationMs,
         inputTokens,
         outputTokens,
-        requestCount,
-        intervals
+        totalTokens: inputTokens + outputTokens,
+        requestCount: selectedRequests.length
     };
+}
+
+function buildEmptyWindowedMetrics(windowSeconds: number[]): Record<string, SpeedMetrics> {
+    const windowed: Record<string, SpeedMetrics> = {};
+    for (const window of windowSeconds) {
+        windowed[window.toString()] = createEmptySpeedMetrics();
+    }
+    return windowed;
 }
 
 function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: Set<string>): string[] {
@@ -340,33 +460,34 @@ function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: 
     return matchedPaths;
 }
 
-export async function getSpeedMetrics(
+export async function getSpeedMetricsCollection(
     transcriptPath: string,
-    options: SpeedMetricsOptions = {}
-): Promise<SpeedMetrics> {
-    const emptyMetrics: SpeedMetrics = {
-        totalDurationMs: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        requestCount: 0
-    };
+    options: SpeedMetricsCollectionOptions = {}
+): Promise<SpeedMetricsCollection> {
+    const normalizedWindows = Array.from(
+        new Set(
+            (options.windowSeconds ?? [])
+                .map(window => normalizeWindowSeconds(window))
+                .filter((window): window is number => window !== null)
+        )
+    );
+    const emptyWindowedMetrics = buildEmptyWindowedMetrics(normalizedWindows);
 
     try {
         if (!fs.existsSync(transcriptPath)) {
-            return emptyMetrics;
+            return {
+                sessionAverage: createEmptySpeedMetrics(),
+                windowed: emptyWindowedMetrics
+            };
         }
 
         const mainLines = await readJsonlLines(transcriptPath);
-        const mainMetrics = collectSpeedMetricsFromLines(mainLines, true);
-        const referencedSubagentIds = getReferencedSubagentIds(mainLines);
-
-        let inputTokens = mainMetrics.inputTokens;
-        let outputTokens = mainMetrics.outputTokens;
-        let requestCount = mainMetrics.requestCount;
-        const allIntervals: SpeedInterval[] = [...mainMetrics.intervals];
+        const allCollected: CollectedSpeedMetrics[] = [
+            collectSpeedMetricsFromLines(mainLines, true)
+        ];
 
         if (options.includeSubagents === true) {
+            const referencedSubagentIds = getReferencedSubagentIds(mainLines);
             const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedSubagentIds);
             const subagentMetricsResults = await Promise.all(subagentPaths.map(async (subagentPath) => {
                 try {
@@ -382,24 +503,41 @@ export async function getSpeedMetrics(
                     continue;
                 }
 
-                inputTokens += subagentMetrics.inputTokens;
-                outputTokens += subagentMetrics.outputTokens;
-                requestCount += subagentMetrics.requestCount;
-                allIntervals.push(...subagentMetrics.intervals);
+                allCollected.push(subagentMetrics);
             }
         }
 
-        const mergedIntervals = mergeIntervals(allIntervals);
-        const activeDurationMs = getIntervalsDurationMs(mergedIntervals);
+        const combined = mergeCollectedSpeedMetrics(allCollected);
+        const windowed: Record<string, SpeedMetrics> = {};
+        for (const window of normalizedWindows) {
+            windowed[window.toString()] = buildSpeedMetrics(combined, window);
+        }
 
         return {
-            totalDurationMs: activeDurationMs,
-            inputTokens,
-            outputTokens,
-            totalTokens: inputTokens + outputTokens,
-            requestCount
+            sessionAverage: buildSpeedMetrics(combined),
+            windowed
         };
     } catch {
-        return emptyMetrics;
+        return {
+            sessionAverage: createEmptySpeedMetrics(),
+            windowed: emptyWindowedMetrics
+        };
     }
+}
+
+export async function getSpeedMetrics(
+    transcriptPath: string,
+    options: SpeedMetricsOptions = {}
+): Promise<SpeedMetrics> {
+    const requestedWindow = normalizeWindowSeconds(options.windowSeconds);
+    const metricsCollection = await getSpeedMetricsCollection(transcriptPath, {
+        includeSubagents: options.includeSubagents,
+        windowSeconds: requestedWindow ? [requestedWindow] : []
+    });
+
+    if (requestedWindow === null) {
+        return metricsCollection.sessionAverage;
+    }
+
+    return metricsCollection.windowed[requestedWindow.toString()] ?? createEmptySpeedMetrics();
 }

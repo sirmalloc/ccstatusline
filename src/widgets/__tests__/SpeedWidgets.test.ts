@@ -25,11 +25,18 @@ function createSpeedMetrics(overrides: Partial<SpeedMetrics> = {}): SpeedMetrics
     };
 }
 
-function createItem(type: string, rawValue = false): WidgetItem {
+function createItem(
+    type: string,
+    options: {
+        rawValue?: boolean;
+        metadata?: Record<string, string>;
+    } = {}
+): WidgetItem {
     return {
         id: type,
         type,
-        rawValue
+        rawValue: options.rawValue,
+        metadata: options.metadata
     };
 }
 
@@ -40,34 +47,42 @@ describe('OutputSpeedWidget', () => {
         expect(widget.getCategory()).toBe('Token Speed');
     });
 
-    it('should return preview value in preview mode', () => {
+    it('should describe session-average behavior and window override', () => {
+        expect(widget.getDescription()).toContain('session-average');
+        expect(widget.getDescription()).toContain('0-120');
+    });
+
+    it('should expose a window editor keybind', () => {
+        expect(widget.getCustomKeybinds()).toEqual([
+            { key: 'w', label: '(w)indow', action: 'edit-window' }
+        ]);
+    });
+
+    it('should show session average as the default editor modifier', () => {
+        expect(widget.getEditorDisplay(createItem('output-speed')).modifierText).toBe('(session avg)');
+    });
+
+    it('should render session preview value by default', () => {
         const context: RenderContext = { isPreview: true };
         expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: 42.5 t/s');
     });
 
-    it('should return raw preview value when rawValue is true', () => {
+    it('should render window preview when window metadata is enabled', () => {
         const context: RenderContext = { isPreview: true };
-        expect(widget.render(createItem('output-speed', true), context, DEFAULT_SETTINGS)).toBe('42.5 t/s');
+        const item = createItem('output-speed', { metadata: { windowSeconds: '45' } });
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Out: 26.8 t/s');
     });
 
-    it('should calculate output speed from speedMetrics', () => {
+    it('should calculate output speed from session speedMetrics when window is disabled', () => {
         const context: RenderContext = { speedMetrics: createSpeedMetrics({ outputTokens: 500, totalDurationMs: 10000 }) };
         expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: 50.0 t/s');
     });
 
-    it('should return raw value when rawValue is true', () => {
-        const context: RenderContext = { speedMetrics: createSpeedMetrics({ outputTokens: 500, totalDurationMs: 10000 }) };
-        expect(widget.render(createItem('output-speed', true), context, DEFAULT_SETTINGS)).toBe('50.0 t/s');
-    });
+    it('should calculate output speed from windowed metrics when window is enabled', () => {
+        const context: RenderContext = { windowedSpeedMetrics: { 90: createSpeedMetrics({ outputTokens: 720, totalDurationMs: 6000 }) } };
+        const item = createItem('output-speed', { metadata: { windowSeconds: '90' } });
 
-    it('should return null when speedMetrics is undefined', () => {
-        const context: RenderContext = {};
-        expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBeNull();
-    });
-
-    it('should use k suffix for high speeds', () => {
-        const context: RenderContext = { speedMetrics: createSpeedMetrics({ outputTokens: 10000, totalDurationMs: 1000 }) };
-        expect(widget.render(createItem('output-speed', true), context, DEFAULT_SETTINGS)).toBe('10.0k t/s');
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Out: 120.0 t/s');
     });
 });
 
@@ -78,29 +93,29 @@ describe('InputSpeedWidget', () => {
         expect(widget.getCategory()).toBe('Token Speed');
     });
 
-    it('should return preview value in preview mode', () => {
+    it('should show configured window modifier in editor display', () => {
+        const item = createItem('input-speed', { metadata: { windowSeconds: '75' } });
+        expect(widget.getEditorDisplay(item).modifierText).toBe('(75s window)');
+    });
+
+    it('should render session preview by default and raw variant', () => {
         const context: RenderContext = { isPreview: true };
         expect(widget.render(createItem('input-speed'), context, DEFAULT_SETTINGS)).toBe('In: 85.2 t/s');
+        expect(widget.render(createItem('input-speed', { rawValue: true }), context, DEFAULT_SETTINGS)).toBe('85.2 t/s');
     });
 
-    it('should return raw preview value when rawValue is true', () => {
-        const context: RenderContext = { isPreview: true };
-        expect(widget.render(createItem('input-speed', true), context, DEFAULT_SETTINGS)).toBe('85.2 t/s');
+    it('should use windowed speed metrics for render output when configured', () => {
+        const context: RenderContext = { windowedSpeedMetrics: { 45: createSpeedMetrics({ inputTokens: 450, totalDurationMs: 3000 }) } };
+        const item = createItem('input-speed', { metadata: { windowSeconds: '45' } });
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('In: 150.0 t/s');
     });
 
-    it('should calculate input speed from speedMetrics', () => {
-        const context: RenderContext = { speedMetrics: createSpeedMetrics({ inputTokens: 1000, totalDurationMs: 10000 }) };
-        expect(widget.render(createItem('input-speed'), context, DEFAULT_SETTINGS)).toBe('In: 100.0 t/s');
-    });
+    it('should treat 0 as disabled window and use session metrics', () => {
+        const context: RenderContext = { speedMetrics: createSpeedMetrics({ inputTokens: 200, totalDurationMs: 2000 }) };
+        const item = createItem('input-speed', { metadata: { windowSeconds: '0' } });
 
-    it('should return raw value when rawValue is true', () => {
-        const context: RenderContext = { speedMetrics: createSpeedMetrics({ inputTokens: 1000, totalDurationMs: 10000 }) };
-        expect(widget.render(createItem('input-speed', true), context, DEFAULT_SETTINGS)).toBe('100.0 t/s');
-    });
-
-    it('should return null when speedMetrics is undefined', () => {
-        const context: RenderContext = {};
-        expect(widget.render(createItem('input-speed'), context, DEFAULT_SETTINGS)).toBeNull();
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('In: 100.0 t/s');
     });
 });
 
@@ -111,28 +126,28 @@ describe('TotalSpeedWidget', () => {
         expect(widget.getCategory()).toBe('Token Speed');
     });
 
-    it('should return preview value in preview mode', () => {
+    it('should clamp invalid editor metadata to supported range', () => {
+        const item = createItem('total-speed', { metadata: { windowSeconds: '999' } });
+        expect(widget.getEditorDisplay(item).modifierText).toBe('(120s window)');
+    });
+
+    it('should render preview values', () => {
         const context: RenderContext = { isPreview: true };
         expect(widget.render(createItem('total-speed'), context, DEFAULT_SETTINGS)).toBe('Total: 127.7 t/s');
+        expect(widget.render(createItem('total-speed', { rawValue: true }), context, DEFAULT_SETTINGS)).toBe('127.7 t/s');
     });
 
-    it('should return raw preview value when rawValue is true', () => {
-        const context: RenderContext = { isPreview: true };
-        expect(widget.render(createItem('total-speed', true), context, DEFAULT_SETTINGS)).toBe('127.7 t/s');
+    it('should compute total speed from selected window metrics', () => {
+        const context: RenderContext = { windowedSpeedMetrics: { 30: createSpeedMetrics({ totalTokens: 300, totalDurationMs: 2000 }) } };
+        const item = createItem('total-speed', { metadata: { windowSeconds: '30' } });
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Total: 150.0 t/s');
     });
 
-    it('should calculate total speed from speedMetrics', () => {
-        const context: RenderContext = { speedMetrics: createSpeedMetrics({ totalTokens: 1500, totalDurationMs: 10000 }) };
-        expect(widget.render(createItem('total-speed'), context, DEFAULT_SETTINGS)).toBe('Total: 150.0 t/s');
-    });
-
-    it('should return raw value when rawValue is true', () => {
-        const context: RenderContext = { speedMetrics: createSpeedMetrics({ totalTokens: 1500, totalDurationMs: 10000 }) };
-        expect(widget.render(createItem('total-speed', true), context, DEFAULT_SETTINGS)).toBe('150.0 t/s');
-    });
-
-    it('should return null when speedMetrics is undefined', () => {
+    it('should return null when windowed metrics are missing for enabled window', () => {
         const context: RenderContext = {};
-        expect(widget.render(createItem('total-speed'), context, DEFAULT_SETTINGS)).toBeNull();
+        const item = createItem('total-speed', { metadata: { windowSeconds: '15' } });
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBeNull();
     });
 });

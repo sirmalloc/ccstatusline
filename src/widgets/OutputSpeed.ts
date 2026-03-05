@@ -1,37 +1,42 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    calculateOutputSpeed,
-    formatSpeed
-} from '../utils/speed-metrics';
 
-import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import {
+    getSpeedWidgetCustomKeybinds,
+    getSpeedWidgetDescription,
+    getSpeedWidgetDisplayName,
+    getSpeedWidgetEditorDisplay,
+    renderSpeedWidgetEditor,
+    renderSpeedWidgetValue
+} from './shared/speed-widget';
 
 export class OutputSpeedWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
-    getDescription(): string { return 'Shows output token generation speed (tokens/sec)'; }
-    getDisplayName(): string { return 'Output Speed'; }
+    getDescription(): string { return getSpeedWidgetDescription('output'); }
+    getDisplayName(): string { return getSpeedWidgetDisplayName('output'); }
     getCategory(): string { return 'Token Speed'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+        return getSpeedWidgetEditorDisplay('output', item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Out: ', '42.5 t/s');
-        }
+        void settings;
+        return renderSpeedWidgetValue('output', item, context);
+    }
 
-        if (context.speedMetrics) {
-            const speed = calculateOutputSpeed(context.speedMetrics);
-            const formatted = formatSpeed(speed);
-            return formatRawOrLabeledValue(item, 'Out: ', formatted);
-        }
-        return null;
+    getCustomKeybinds(): CustomKeybind[] {
+        return getSpeedWidgetCustomKeybinds();
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSpeedWidgetEditor(props);
     }
 
     supportsRawValue(): boolean { return true; }

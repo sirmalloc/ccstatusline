@@ -11,6 +11,7 @@ import {
 import {
     getSessionDuration,
     getSpeedMetrics,
+    getSpeedMetricsCollection,
     getTokenMetrics
 } from '../jsonl';
 
@@ -214,6 +215,108 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('calculates windowed speed metrics from recent requests only', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-window.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:10.000Z',
+                type: 'assistant',
+                input: 200,
+                output: 100
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:02:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:02:10.000Z',
+                type: 'assistant',
+                input: 300,
+                output: 150
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { windowSeconds: 70 });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 20000,
+            inputTokens: 500,
+            outputTokens: 250,
+            totalTokens: 750,
+            requestCount: 2
+        });
+    });
+
+    it('returns session and windowed speed metrics in one collection call', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-window-collection.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:40.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:50.000Z',
+                type: 'assistant',
+                input: 200,
+                output: 100
+            })
+        ].join('\n'));
+
+        const metricsCollection = await getSpeedMetricsCollection(transcriptPath, { windowSeconds: [30, 90] });
+
+        expect(metricsCollection.sessionAverage).toEqual({
+            totalDurationMs: 20000,
+            inputTokens: 300,
+            outputTokens: 150,
+            totalTokens: 450,
+            requestCount: 2
+        });
+        expect(metricsCollection.windowed['30']).toEqual({
+            totalDurationMs: 10000,
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            requestCount: 1
+        });
+        expect(metricsCollection.windowed['90']).toEqual({
+            totalDurationMs: 20000,
+            inputTokens: 300,
+            outputTokens: 150,
+            totalTokens: 450,
+            requestCount: 2
+        });
+    });
+
     it('ignores sidechain and API error entries in speed metrics', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
@@ -373,6 +476,59 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 450,
             totalTokens: 675,
             requestCount: 3
+        });
+    });
+
+    it('applies window filtering to aggregated subagent speed metrics', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-subagent-windowed.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                input: 10,
+                output: 20
+            }),
+            JSON.stringify({
+                type: 'progress',
+                data: { agentId: 'a' }
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-a.jsonl'), [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                input: 30,
+                output: 60,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, {
+            includeSubagents: true,
+            windowSeconds: 4
+        });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 4000,
+            inputTokens: 30,
+            outputTokens: 60,
+            totalTokens: 90,
+            requestCount: 1
         });
     });
 
