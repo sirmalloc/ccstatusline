@@ -424,39 +424,42 @@ bun run example
 
 ### 📊 Available Widgets
 
-- **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
-- **Git Branch** - Displays current git branch name
-- **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
-- **Git Insertions** - Shows uncommitted insertions only (e.g., "+42")
-- **Git Deletions** - Shows uncommitted deletions only (e.g., "-10")
+- **Model** - Displays the Claude model name (e.g., "Claude 3.5 Sonnet")
+- **Output Style** - Shows the current Claude Code output style
+- **Git Branch** - Shows the current git branch name
+- **Git Changes** - Shows git changes count (`+insertions`, `-deletions`)
+- **Git Insertions** - Shows git insertions count
+- **Git Deletions** - Shows git deletions count
 - **Git Root Dir** - Shows the git repository root directory name
-- **Git Worktree** - Shows the name of the current git worktree
-- **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
-- **Session Usage** - Shows current 5-hour/session API usage percentage
-- **Weekly Usage** - Shows rolling 7-day API usage percentage
-- **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
-- **Session Name** - Shows the session name set via `/rename` command in Claude Code
+- **Git Worktree** - Shows the current git worktree name
+- **Current Working Dir** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
+- **Tokens Input** - Shows input token count for the current session
+- **Tokens Output** - Shows output token count for the current session
+- **Tokens Cached** - Shows cached token count for the current session
+- **Tokens Total** - Shows total token count (`input + output + cache`) for the current session
+- **Input Speed** - Shows session-average input token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
+- **Output Speed** - Shows session-average output token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
+- **Total Speed** - Shows session-average total token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
+- **Context Length** - Shows the current context window size in tokens
+- **Context %** - Shows percentage of context window used or remaining
+- **Context % (usable)** - Shows percentage of usable context used or remaining (80% of max before auto-compact)
+- **Session Clock** - Shows elapsed time since current session started
+- **Session Cost** - Shows the total session cost in USD
+- **Block Timer** - Shows current 5-hour block elapsed time or progress
+- **Terminal Width** - Shows current terminal width in columns
+- **Version** - Shows Claude Code CLI version number
+- **Custom Text** - Displays user-defined custom text
+- **Custom Command** - Executes a custom shell command and displays output (refreshes whenever Claude Code updates the status line)
+- **Link** - Displays a clickable terminal hyperlink using OSC 8
 - **Claude Session ID** - Shows the current Claude Code session ID from status JSON
-- **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
-- **Block Reset Timer** - Shows time remaining until the current 5-hour block resets
-- **Weekly Reset Timer** - Shows time remaining until the weekly usage window resets
-- **Current Working Directory** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
-- **Version** - Shows Claude Code version
-- **Output Style** - Shows the currently set output style in Claude Code
-- **Tokens Input** - Shows input tokens used
-- **Tokens Output** - Shows output tokens used
-- **Tokens Cached** - Shows cached tokens used
-- **Tokens Total** - Shows total tokens used
-- **Context Length** - Shows current context length in tokens
-- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with long-context labels like `[1m]` or `1M context`, 200k otherwise)
-- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with long-context labels like `[1m]` or `1M context`, 160k otherwise, accounting for auto-compact at 80%)
+- **Session Name** - Shows the session name set via `/rename` in Claude Code
+- **Memory Usage** - Shows system memory usage (used/total)
+- **Session Usage** - Shows daily/session API usage percentage
+- **Weekly Usage** - Shows weekly API usage percentage
+- **Block Reset Timer** - Shows time remaining until current 5-hour block reset window
+- **Weekly Reset Timer** - Shows time remaining until weekly usage reset
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
-- **Terminal Width** - Shows detected terminal width (for debugging)
-- **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
-- **Custom Text** - Add your own custom text to the status line
-- **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
-- **Link** - Add clickable terminal hyperlinks (OSC 8) with configurable URL and display text
-- **Separator** - Visual divider between widgets (customizable: |, -, comma, space; available when Powerline mode is off and no default separator is configured)
+- **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
 - **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 
 ---
