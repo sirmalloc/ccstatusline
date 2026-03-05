@@ -46,12 +46,13 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.0 - New Token Speed widgets with optional windows
+### v2.2.0 - v2.2.1 - Token Speed + Skills widget updates
 
 - **🚀 New Token Speed widgets** - Added three widgets: **Input Speed**, **Output Speed**, and **Total Speed**.
   - Each speed widget supports a configurable window of `0-120` seconds in the widget editor (`w` key).
   - `0` disables window mode and uses a full-session average speed.
   - `1-120` calculates recent speed over the selected rolling window.
+- **🧩 New Skills widget controls (v2.2.1)** - Added configurable Skills modes (last/count/list), optional hide-when-empty behavior, and list-size limiting with most-recent-first ordering.
 - **🤝 Better subagent-aware speed reporting** - Token speed calculations continue to include referenced subagent activity so displayed speeds better reflect actual concurrent work.
 
 ### v2.1.0 - v2.1.10 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
@@ -459,6 +460,7 @@ bun run example
 - **Block Reset Timer** - Shows time remaining until current 5-hour block reset window
 - **Weekly Reset Timer** - Shows time remaining until weekly usage reset
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
+- **Skills** - Shows skill activity as last used, total count, or unique list (with optional list limit and hide-when-empty toggle)
 - **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
 - **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 

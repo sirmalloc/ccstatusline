@@ -3,6 +3,7 @@ import chalk from 'chalk';
 
 import { runTUI } from './tui';
 import type {
+    SkillsMetrics,
     SpeedMetrics,
     TokenMetrics
 } from './types';
@@ -27,6 +28,10 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import {
+    getSkillsFilePath,
+    getSkillsMetrics
+} from './utils/skills';
 import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
@@ -130,6 +135,11 @@ async function renderMultipleLines(data: StatusJSON) {
         windowedSpeedMetrics = speedMetricsCollection.windowed;
     }
 
+    let skillsMetrics: SkillsMetrics | null = null;
+    if (data.session_id) {
+        skillsMetrics = getSkillsMetrics(data.session_id);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -138,6 +148,7 @@ async function renderMultipleLines(data: StatusJSON) {
         windowedSpeedMetrics,
         usageData,
         sessionDuration,
+        skillsMetrics,
         isPreview: false
     };
 
@@ -213,9 +224,66 @@ function parseConfigArg(): string | undefined {
     return configPath;
 }
 
+interface HookInput {
+    session_id?: string;
+    hook_event_name?: string;
+    tool_name?: string;
+    tool_input?: { skill?: string };
+    prompt?: string;
+}
+
+async function handleHook(): Promise<void> {
+    const input = await readStdin();
+    if (!input) {
+        console.log('{}');
+        return;
+    }
+    try {
+        const data = JSON.parse(input) as HookInput;
+        const sessionId = data.session_id;
+        if (!sessionId) {
+            console.log('{}');
+            return;
+        }
+
+        let skillName = '';
+        if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
+            skillName = data.tool_input?.skill ?? '';
+        } else if (data.hook_event_name === 'UserPromptSubmit') {
+            const match = /^\/([a-zA-Z0-9_:-]+)/.exec(data.prompt ?? '');
+            if (match) {
+                skillName = match[1] ?? '';
+            }
+        }
+        if (!skillName) {
+            console.log('{}');
+            return;
+        }
+
+        const filePath = getSkillsFilePath(sessionId);
+        const fs = await import('fs');
+        const path = await import('path');
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        const entry = JSON.stringify({
+            timestamp: new Date().toISOString(),
+            session_id: sessionId,
+            skill: skillName,
+            source: data.hook_event_name
+        });
+        fs.appendFileSync(filePath, entry + '\n');
+    } catch { /* ignore parse errors */ }
+    console.log('{}');
+}
+
 async function main() {
     // Parse --config before anything else
     initConfigPath(parseConfigArg());
+
+    // Handle --hook mode (cross-platform hook handler for widgets)
+    if (process.argv.includes('--hook')) {
+        await handleHook();
+        return;
+    }
 
     // Check if we're in a piped/non-TTY environment first
     if (!process.stdin.isTTY) {
