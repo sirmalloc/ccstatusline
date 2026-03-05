@@ -21,6 +21,16 @@ interface HookEntry {
     hooks?: { type: string; command: string }[];
 }
 
+function stripManagedHooks(hooks: Record<string, HookEntry[]>): void {
+    for (const event of Object.keys(hooks)) {
+        hooks[event] = (hooks[event] ?? []).filter(entry => entry._tag !== HOOK_TAG);
+        if (hooks[event].length === 0) {
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+            delete hooks[event];
+        }
+    }
+}
+
 function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
     const seen = new Set<string>();
     const defs: WidgetHookDef[] = [];
@@ -45,23 +55,18 @@ function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
 export async function syncWidgetHooks(settings: Settings): Promise<void> {
     const needed = getActiveHookDefs(settings);
     const claudeSettings = await loadClaudeSettings({ logErrors: false });
-
-    const statusCommand = await getExistingStatusLine();
-    if (!statusCommand) {
-        return;
-    }
-    const hookCommand = `${statusCommand} --hook`;
-
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
 
     // Remove all ccstatusline-managed hooks
-    for (const event of Object.keys(hooks)) {
-        hooks[event] = (hooks[event] ?? []).filter(entry => entry._tag !== HOOK_TAG);
-        if (hooks[event].length === 0) {
-            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-            delete hooks[event];
-        }
+    stripManagedHooks(hooks);
+
+    const statusCommand = await getExistingStatusLine();
+    if (!statusCommand) {
+        claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
+        await saveClaudeSettings(claudeSettings);
+        return;
     }
+    const hookCommand = `${statusCommand} --hook`;
 
     // Add needed hooks
     for (const def of needed) {
@@ -75,6 +80,16 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
         const list = hooks[def.event] ??= [];
         list.push(entry);
     }
+
+    claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
+    await saveClaudeSettings(claudeSettings);
+}
+
+export async function removeManagedHooks(): Promise<void> {
+    const claudeSettings = await loadClaudeSettings({ logErrors: false });
+    const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
+
+    stripManagedHooks(hooks);
 
     claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
     await saveClaudeSettings(claudeSettings);

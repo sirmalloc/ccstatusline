@@ -4,6 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
+import {
+    SettingsSchema,
+    type Settings
+} from '../types/Settings';
 
 import {
     getConfigPath,
@@ -178,6 +182,25 @@ function buildCommand(baseCommand: string): string {
     return baseCommand;
 }
 
+async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
+    const configPath = getConfigPath();
+    if (!fs.existsSync(configPath)) {
+        return null;
+    }
+
+    try {
+        const content = await readFile(configPath, 'utf-8');
+        const parsed = JSON.parse(content) as unknown;
+        const result = SettingsSchema.safeParse(parsed);
+        if (!result.success) {
+            return null;
+        }
+        return result.data;
+    } catch {
+        return null;
+    }
+}
+
 export async function installStatusLine(useBunx = false): Promise<void> {
     let settings: ClaudeSettings;
 
@@ -202,6 +225,12 @@ export async function installStatusLine(useBunx = false): Promise<void> {
     };
 
     await saveClaudeSettings(settings);
+
+    const savedSettings = await loadSavedSettingsForHookSync();
+    if (savedSettings) {
+        const { syncWidgetHooks } = await import('./hooks');
+        await syncWidgetHooks(savedSettings);
+    }
 }
 
 export async function uninstallStatusLine(): Promise<void> {
@@ -217,6 +246,13 @@ export async function uninstallStatusLine(): Promise<void> {
     if (settings.statusLine) {
         delete settings.statusLine;
         await saveClaudeSettings(settings);
+    }
+
+    try {
+        const { removeManagedHooks } = await import('./hooks');
+        await removeManagedHooks();
+    } catch {
+        // Ignore hook cleanup failures during uninstall
     }
 }
 

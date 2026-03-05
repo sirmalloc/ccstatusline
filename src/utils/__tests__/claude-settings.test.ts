@@ -11,6 +11,7 @@ import {
     vi
 } from 'vitest';
 
+import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
     getClaudeSettingsPath,
@@ -143,6 +144,36 @@ describe('buildCommand via installStatusLine', () => {
         await installStatusLine(true);
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
     });
+
+    it('should sync hooks on install when settings include hook-enabled widgets', async () => {
+        const configPath = path.join(testClaudeConfigDir, 'ccstatusline-settings.json');
+        initConfigPath(configPath);
+        const settingsWithSkills = {
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        };
+        fs.writeFileSync(configPath, JSON.stringify(settingsWithSkills, null, 2), 'utf-8');
+
+        await installStatusLine(false);
+
+        const installedCommand = `${CCSTATUSLINE_COMMANDS.NPM} --config ${configPath}`;
+        const claudeSettings = await loadClaudeSettings();
+        expect(claudeSettings.statusLine?.command).toBe(installedCommand);
+        const hooks = (claudeSettings.hooks ?? {}) as Record<string, unknown[]>;
+        expect(hooks.PreToolUse).toEqual([
+            {
+                _tag: 'ccstatusline-managed',
+                matcher: 'Skill',
+                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+            }
+        ]);
+        expect(hooks.UserPromptSubmit).toEqual([
+            {
+                _tag: 'ccstatusline-managed',
+                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+            }
+        ]);
+    });
 });
 
 describe('backup and error handling behavior', () => {
@@ -255,6 +286,52 @@ describe('backup and error handling behavior', () => {
         } finally {
             consoleErrorSpy.mockRestore();
         }
+    });
+
+    it('uninstallStatusLine should remove all managed hooks', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0
+            },
+            hooks: {
+                PreToolUse: [
+                    {
+                        _tag: 'ccstatusline-managed',
+                        matcher: 'Skill',
+                        hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.NPM} --hook` }]
+                    },
+                    {
+                        matcher: 'Other',
+                        hooks: [{ type: 'command', command: 'keep-me' }]
+                    }
+                ],
+                UserPromptSubmit: [
+                    {
+                        _tag: 'ccstatusline-managed',
+                        hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.NPM} --hook` }]
+                    }
+                ]
+            }
+        }));
+
+        await uninstallStatusLine();
+
+        const settingsPath = getClaudeSettingsPath();
+        const updated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
+            statusLine?: unknown;
+            hooks?: Record<string, unknown[]>;
+        };
+        expect(updated.statusLine).toBeUndefined();
+        expect(updated.hooks).toEqual({
+            PreToolUse: [
+                {
+                    matcher: 'Other',
+                    hooks: [{ type: 'command', command: 'keep-me' }]
+                }
+            ]
+        });
     });
 
     it('getExistingStatusLine should return null when settings cannot be loaded', async () => {
