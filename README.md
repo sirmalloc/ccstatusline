@@ -46,13 +46,14 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.0 - v2.2.1 - Token Speed + Skills widget updates
+### v2.2.0 - v2.2.2 - Token Speed + Skills widget updates
 
 - **🚀 New Token Speed widgets** - Added three widgets: **Input Speed**, **Output Speed**, and **Total Speed**.
   - Each speed widget supports a configurable window of `0-120` seconds in the widget editor (`w` key).
   - `0` disables window mode and uses a full-session average speed.
   - `1-120` calculates recent speed over the selected rolling window.
 - **🧩 New Skills widget controls (v2.2.1)** - Added configurable Skills modes (last/count/list), optional hide-when-empty behavior, and list-size limiting with most-recent-first ordering.
+- **🌐 Usage API proxy support (v2.2.2)** - Usage widgets honor the uppercase `HTTPS_PROXY` environment variable for their direct API call to Anthropic.
 - **🤝 Better subagent-aware speed reporting** - Token speed calculations continue to include referenced subagent activity so displayed speeds better reflect actual concurrent work.
 
 ### v2.1.0 - v2.1.10 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
@@ -202,6 +203,8 @@ The interactive configuration tool provides a terminal UI where you can:
 > # Windows PowerShell
 > $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
 > ```
+
+> 🌐 **Usage API proxy:** Usage widgets honor the uppercase `HTTPS_PROXY` environment variable for their direct API call to Anthropic.
 
 ### Claude Code settings.json format
 

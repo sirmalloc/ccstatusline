@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as https from 'https';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
@@ -174,6 +175,36 @@ function readStaleUsageCache(): UsageData | null {
 
 const USAGE_API_HOST = 'api.anthropic.com';
 const USAGE_API_PATH = '/api/oauth/usage';
+const USAGE_API_TIMEOUT_MS = 5000;
+
+function getUsageApiProxyUrl(): string | null {
+    const proxyUrl = process.env.HTTPS_PROXY?.trim();
+    if (proxyUrl === '') {
+        return null;
+    }
+
+    return proxyUrl ?? null;
+}
+
+function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
+    const proxyUrl = getUsageApiProxyUrl();
+
+    try {
+        return {
+            hostname: USAGE_API_HOST,
+            path: USAGE_API_PATH,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'anthropic-beta': 'oauth-2025-04-20'
+            },
+            timeout: USAGE_API_TIMEOUT_MS,
+            ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
+        };
+    } catch {
+        return null;
+    }
+}
 
 async function fetchFromUsageApi(token: string): Promise<string | null> {
     return new Promise((resolve) => {
@@ -187,16 +218,13 @@ async function fetchFromUsageApi(token: string): Promise<string | null> {
             resolve(value);
         };
 
-        const request = https.request({
-            hostname: USAGE_API_HOST,
-            path: USAGE_API_PATH,
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'anthropic-beta': 'oauth-2025-04-20'
-            },
-            timeout: 5000
-        }, (response) => {
+        const requestOptions = getUsageApiRequestOptions(token);
+        if (!requestOptions) {
+            finish(null);
+            return;
+        }
+
+        const request = https.request(requestOptions, (response) => {
             let data = '';
             response.setEncoding('utf8');
 

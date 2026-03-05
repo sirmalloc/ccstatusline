@@ -15,6 +15,8 @@ interface UsageProbeResult {
     lockExists: boolean;
     cacheExists: boolean;
     requestCount: number;
+    proxyAgentConfigured: boolean;
+    requestHost: string | null;
 }
 
 describe('fetchUsageData error handling', () => {
@@ -27,6 +29,7 @@ describe('fetchUsageData error handling', () => {
         const apiErrorHome = path.join(tempRoot, 'home-api-error');
         const apiErrorBin = path.join(tempRoot, 'bin-api-error');
         const apiErrorClaudeConfig = path.join(tempRoot, 'claude-api-error');
+        const invalidProxyHome = path.join(tempRoot, 'home-invalid-proxy');
         const successHome = path.join(tempRoot, 'home-success');
         const successBin = path.join(tempRoot, 'bin-success');
         const successClaudeConfig = path.join(tempRoot, 'claude-success');
@@ -49,6 +52,7 @@ describe('fetchUsageData error handling', () => {
         fs.mkdirSync(apiErrorHome, { recursive: true });
         fs.mkdirSync(apiErrorBin, { recursive: true });
         fs.mkdirSync(apiErrorClaudeConfig, { recursive: true });
+        fs.mkdirSync(invalidProxyHome, { recursive: true });
         fs.mkdirSync(successHome, { recursive: true });
         fs.mkdirSync(successBin, { recursive: true });
         fs.mkdirSync(successClaudeConfig, { recursive: true });
@@ -71,10 +75,15 @@ const https = require('https');
 const mode = process.env.TEST_REQUEST_MODE || 'success';
 const responseBody = process.env.TEST_RESPONSE_BODY || '';
 let requestCount = 0;
+let proxyAgentConfigured = false;
+let requestHost = null;
 
 https.request = (...args) => {
     requestCount += 1;
     const callback = args.find(value => typeof value === 'function');
+    const options = args.find(value => value && typeof value === 'object' && !Buffer.isBuffer(value));
+    proxyAgentConfigured = Boolean(options?.agent);
+    requestHost = options?.hostname ?? null;
     const requestHandlers = new Map();
     const responseHandlers = new Map();
 
@@ -145,7 +154,9 @@ process.stdout.write(JSON.stringify({
     second,
     lockExists: fs.existsSync(lockFile),
     cacheExists: fs.existsSync(cacheFile),
-    requestCount
+    requestCount,
+    proxyAgentConfigured,
+    requestHost
 }));
 `;
 
@@ -169,6 +180,7 @@ process.stdout.write(JSON.stringify({
             expect(noCredentialsResult.lockExists).toBe(false);
             expect(noCredentialsResult.cacheExists).toBe(false);
             expect(noCredentialsResult.requestCount).toBe(0);
+            expect(noCredentialsResult.proxyAgentConfigured).toBe(false);
 
             const apiErrorOutput = execFileSync(process.execPath, [probeScriptPath], {
                 encoding: 'utf8',
@@ -187,6 +199,8 @@ process.stdout.write(JSON.stringify({
             expect(apiErrorResult.second).toEqual({ error: 'api-error' });
             expect(apiErrorResult.cacheExists).toBe(false);
             expect(apiErrorResult.requestCount).toBe(1);
+            expect(apiErrorResult.proxyAgentConfigured).toBe(false);
+            expect(apiErrorResult.requestHost).toBe('api.anthropic.com');
 
             const successOutput = execFileSync(process.execPath, [probeScriptPath], {
                 encoding: 'utf8',
@@ -211,6 +225,109 @@ process.stdout.write(JSON.stringify({
             expect(successResult.second).toEqual(successResult.first);
             expect(successResult.cacheExists).toBe(true);
             expect(successResult.requestCount).toBe(1);
+            expect(successResult.proxyAgentConfigured).toBe(false);
+            expect(successResult.requestHost).toBe('api.anthropic.com');
+
+            const httpsProxyOutput = execFileSync(process.execPath, [probeScriptPath], {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    HOME: apiErrorHome,
+                    PATH: apiErrorBin,
+                    CLAUDE_CONFIG_DIR: apiErrorClaudeConfig,
+                    HTTPS_PROXY: 'http://proxy.local:8080',
+                    TEST_REQUEST_MODE: 'success',
+                    TEST_RESPONSE_BODY: successResponseBody,
+                    TEST_NOW_MS: '2200000000000'
+                }
+            });
+
+            const httpsProxyResult = JSON.parse(httpsProxyOutput) as UsageProbeResult;
+            expect(httpsProxyResult.first).toEqual(successResult.first);
+            expect(httpsProxyResult.second).toEqual(successResult.first);
+            expect(httpsProxyResult.requestCount).toBe(1);
+            expect(httpsProxyResult.proxyAgentConfigured).toBe(true);
+            expect(httpsProxyResult.requestHost).toBe('api.anthropic.com');
+
+            const lowercaseProxyOutput = execFileSync(process.execPath, [probeScriptPath], {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    HOME: apiErrorHome,
+                    PATH: apiErrorBin,
+                    CLAUDE_CONFIG_DIR: apiErrorClaudeConfig,
+                    https_proxy: 'http://proxy.local:8080',
+                    TEST_REQUEST_MODE: 'success',
+                    TEST_RESPONSE_BODY: successResponseBody,
+                    TEST_NOW_MS: '2200000000000'
+                }
+            });
+
+            const lowercaseProxyResult = JSON.parse(lowercaseProxyOutput) as UsageProbeResult;
+            expect(lowercaseProxyResult.first).toEqual(successResult.first);
+            expect(lowercaseProxyResult.second).toEqual(successResult.first);
+            expect(lowercaseProxyResult.requestCount).toBe(1);
+            expect(lowercaseProxyResult.proxyAgentConfigured).toBe(false);
+
+            const blankProxyOutput = execFileSync(process.execPath, [probeScriptPath], {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    HOME: apiErrorHome,
+                    PATH: apiErrorBin,
+                    CLAUDE_CONFIG_DIR: apiErrorClaudeConfig,
+                    HTTPS_PROXY: '   ',
+                    TEST_REQUEST_MODE: 'success',
+                    TEST_RESPONSE_BODY: successResponseBody,
+                    TEST_NOW_MS: '2200000000000'
+                }
+            });
+
+            const blankProxyResult = JSON.parse(blankProxyOutput) as UsageProbeResult;
+            expect(blankProxyResult.first).toEqual(successResult.first);
+            expect(blankProxyResult.second).toEqual(successResult.first);
+            expect(blankProxyResult.requestCount).toBe(1);
+            expect(blankProxyResult.proxyAgentConfigured).toBe(false);
+
+            const invalidProxyOutput = execFileSync(process.execPath, [probeScriptPath], {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    HOME: invalidProxyHome,
+                    PATH: apiErrorBin,
+                    CLAUDE_CONFIG_DIR: apiErrorClaudeConfig,
+                    HTTPS_PROXY: '://bad-proxy',
+                    TEST_REQUEST_MODE: 'success',
+                    TEST_RESPONSE_BODY: successResponseBody,
+                    TEST_NOW_MS: '2200000000000'
+                }
+            });
+
+            const invalidProxyResult = JSON.parse(invalidProxyOutput) as UsageProbeResult;
+            expect(invalidProxyResult.first).toEqual({ error: 'api-error' });
+            expect(invalidProxyResult.second).toEqual({ error: 'api-error' });
+            expect(invalidProxyResult.requestCount).toBe(0);
+            expect(invalidProxyResult.proxyAgentConfigured).toBe(false);
+
+            const staleProxyOutput = execFileSync(process.execPath, [probeScriptPath], {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    HOME: successHome,
+                    PATH: successBin,
+                    CLAUDE_CONFIG_DIR: successClaudeConfig,
+                    HTTPS_PROXY: '://bad-proxy',
+                    TEST_REQUEST_MODE: 'success',
+                    TEST_RESPONSE_BODY: successResponseBody,
+                    TEST_NOW_MS: '2200000181000'
+                }
+            });
+
+            const staleProxyResult = JSON.parse(staleProxyOutput) as UsageProbeResult;
+            expect(staleProxyResult.first).toEqual(successResult.first);
+            expect(staleProxyResult.second).toEqual(successResult.first);
+            expect(staleProxyResult.requestCount).toBe(0);
+            expect(staleProxyResult.proxyAgentConfigured).toBe(false);
 
             const cachedSuccessOutput = execFileSync(process.execPath, [probeScriptPath], {
                 encoding: 'utf8',
