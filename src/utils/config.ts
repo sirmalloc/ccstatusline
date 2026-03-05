@@ -158,4 +158,10 @@ export async function saveSettings(settings: Settings): Promise<void> {
     };
 
     await writeSettingsJson(settingsWithVersion, paths);
+
+    // Sync widget hooks to Claude settings
+    try {
+        const { syncWidgetHooks } = await import('./hooks');
+        await syncWidgetHooks(settings);
+    } catch { /* ignore hook sync failures */ }
 }

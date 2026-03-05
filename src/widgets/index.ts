@@ -33,3 +33,4 @@ export { BlockResetTimerWidget } from './BlockResetTimer';
 export { WeeklyResetTimerWidget } from './WeeklyResetTimer';
 export { ContextBarWidget } from './ContextBar';
 export { LinkWidget } from './Link';
+export { SkillsWidget } from './Skills';

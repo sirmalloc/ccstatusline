@@ -51,7 +51,8 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'weekly-usage', create: () => new widgets.WeeklyUsageWidget() },
     { type: 'reset-timer', create: () => new widgets.BlockResetTimerWidget() },
     { type: 'weekly-reset-timer', create: () => new widgets.WeeklyResetTimerWidget() },
-    { type: 'context-bar', create: () => new widgets.ContextBarWidget() }
+    { type: 'context-bar', create: () => new widgets.ContextBarWidget() },
+    { type: 'skills', create: () => new widgets.SkillsWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
