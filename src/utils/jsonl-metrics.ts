@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import path from 'node:path';
 
 import type {
     SpeedMetrics,
@@ -10,6 +11,20 @@ import {
     parseJsonlLine,
     readJsonlLines
 } from './jsonl-lines';
+
+interface SpeedMetricsOptions { includeSubagents?: boolean }
+
+interface SpeedInterval {
+    startMs: number;
+    endMs: number;
+}
+
+interface CollectedSpeedMetrics {
+    inputTokens: number;
+    outputTokens: number;
+    requestCount: number;
+    intervals: SpeedInterval[];
+}
 
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
     try {
@@ -141,7 +156,122 @@ function parseTimestamp(value: string | undefined): Date | null {
     return Number.isNaN(timestamp.getTime()) ? null : timestamp;
 }
 
-export async function getSpeedMetrics(transcriptPath: string): Promise<SpeedMetrics> {
+function addInterval(intervals: SpeedInterval[], start: Date | null, end: Date | null) {
+    if (!start || !end) {
+        return;
+    }
+
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    if (endMs > startMs) {
+        intervals.push({ startMs, endMs });
+    }
+}
+
+function mergeIntervals(intervals: SpeedInterval[]): SpeedInterval[] {
+    if (intervals.length === 0) {
+        return [];
+    }
+
+    const sorted = intervals
+        .slice()
+        .sort((a, b) => a.startMs - b.startMs);
+    const first = sorted[0];
+    if (!first) {
+        return [];
+    }
+    const merged: SpeedInterval[] = [{ ...first }];
+
+    for (let i = 1; i < sorted.length; i++) {
+        const current = sorted[i];
+        const last = merged[merged.length - 1];
+        if (!current || !last) {
+            continue;
+        }
+
+        if (current.startMs <= last.endMs) {
+            last.endMs = Math.max(last.endMs, current.endMs);
+        } else {
+            merged.push({ ...current });
+        }
+    }
+
+    return merged;
+}
+
+function getIntervalsDurationMs(intervals: SpeedInterval[]): number {
+    return intervals.reduce((total, interval) => total + (interval.endMs - interval.startMs), 0);
+}
+
+function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean): CollectedSpeedMetrics {
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let requestCount = 0;
+    const intervals: SpeedInterval[] = [];
+
+    let lastUserTimestamp: Date | null = null;
+    let lastAssistantTimestamp: Date | null = null;
+
+    for (const line of lines) {
+        const data = parseJsonlLine(line) as TranscriptLine | null;
+        if (!data || data.isApiErrorMessage) {
+            continue;
+        }
+
+        if (ignoreSidechain && data.isSidechain === true) {
+            continue;
+        }
+
+        const entryTimestamp = parseTimestamp(data.timestamp);
+
+        if (data.type === 'user' && entryTimestamp) {
+            addInterval(intervals, lastUserTimestamp, lastAssistantTimestamp);
+            lastUserTimestamp = entryTimestamp;
+            lastAssistantTimestamp = null;
+            continue;
+        }
+
+        if (data.type === 'assistant' && data.message?.usage) {
+            inputTokens += data.message.usage.input_tokens || 0;
+            outputTokens += data.message.usage.output_tokens || 0;
+            requestCount++;
+
+            if (entryTimestamp) {
+                lastAssistantTimestamp = entryTimestamp;
+            }
+        }
+    }
+
+    addInterval(intervals, lastUserTimestamp, lastAssistantTimestamp);
+
+    return {
+        inputTokens,
+        outputTokens,
+        requestCount,
+        intervals
+    };
+}
+
+function getSubagentTranscriptPaths(transcriptPath: string): string[] {
+    const subagentsDir = path.join(path.dirname(transcriptPath), 'subagents');
+    if (!fs.existsSync(subagentsDir)) {
+        return [];
+    }
+
+    try {
+        const dirEntries = fs.readdirSync(subagentsDir, { withFileTypes: true });
+        return dirEntries
+            .filter(entry => entry.isFile() && entry.name.endsWith('.jsonl'))
+            .map(entry => path.join(subagentsDir, entry.name));
+    } catch {
+        return [];
+    }
+}
+
+export async function getSpeedMetrics(
+    transcriptPath: string,
+    options: SpeedMetricsOptions = {}
+): Promise<SpeedMetrics> {
     const emptyMetrics: SpeedMetrics = {
         totalDurationMs: 0,
         inputTokens: 0,
@@ -155,54 +285,39 @@ export async function getSpeedMetrics(transcriptPath: string): Promise<SpeedMetr
             return emptyMetrics;
         }
 
-        const lines = await readJsonlLines(transcriptPath);
+        const mainLines = await readJsonlLines(transcriptPath);
+        const mainMetrics = collectSpeedMetricsFromLines(mainLines, true);
 
-        let inputTokens = 0;
-        let outputTokens = 0;
-        let requestCount = 0;
-        let activeDurationMs = 0;
+        let inputTokens = mainMetrics.inputTokens;
+        let outputTokens = mainMetrics.outputTokens;
+        let requestCount = mainMetrics.requestCount;
+        const allIntervals: SpeedInterval[] = [...mainMetrics.intervals];
 
-        let lastUserTimestamp: Date | null = null;
-        let lastAssistantTimestamp: Date | null = null;
+        if (options.includeSubagents === true) {
+            const subagentPaths = getSubagentTranscriptPaths(transcriptPath);
+            const subagentMetricsResults = await Promise.all(subagentPaths.map(async (subagentPath) => {
+                try {
+                    const subagentLines = await readJsonlLines(subagentPath);
+                    return collectSpeedMetricsFromLines(subagentLines, false);
+                } catch {
+                    return null;
+                }
+            }));
 
-        for (const line of lines) {
-            const data = parseJsonlLine(line) as TranscriptLine | null;
-            if (!data || data.isSidechain === true || data.isApiErrorMessage) {
-                continue;
-            }
-
-            const entryTimestamp = parseTimestamp(data.timestamp);
-
-            if (data.type === 'user' && entryTimestamp) {
-                if (lastUserTimestamp && lastAssistantTimestamp) {
-                    const processingTime = lastAssistantTimestamp.getTime() - lastUserTimestamp.getTime();
-                    if (processingTime > 0) {
-                        activeDurationMs += processingTime;
-                    }
+            for (const subagentMetrics of subagentMetricsResults) {
+                if (!subagentMetrics) {
+                    continue;
                 }
 
-                lastUserTimestamp = entryTimestamp;
-                lastAssistantTimestamp = null;
-                continue;
-            }
-
-            if (data.type === 'assistant' && data.message?.usage) {
-                inputTokens += data.message.usage.input_tokens || 0;
-                outputTokens += data.message.usage.output_tokens || 0;
-                requestCount++;
-
-                if (entryTimestamp) {
-                    lastAssistantTimestamp = entryTimestamp;
-                }
+                inputTokens += subagentMetrics.inputTokens;
+                outputTokens += subagentMetrics.outputTokens;
+                requestCount += subagentMetrics.requestCount;
+                allIntervals.push(...subagentMetrics.intervals);
             }
         }
 
-        if (lastUserTimestamp && lastAssistantTimestamp) {
-            const processingTime = lastAssistantTimestamp.getTime() - lastUserTimestamp.getTime();
-            if (processingTime > 0) {
-                activeDurationMs += processingTime;
-            }
-        }
+        const mergedIntervals = mergeIntervals(allIntervals);
+        const activeDurationMs = getIntervalsDurationMs(mergedIntervals);
 
         return {
             totalDurationMs: activeDurationMs,

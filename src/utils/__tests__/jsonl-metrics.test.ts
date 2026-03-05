@@ -257,6 +257,327 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('does not parse subagent transcripts unless includeSubagents is enabled', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+        const subagentTranscriptPath = path.join(subagentsDir, 'agent-1.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                input: 10,
+                output: 20
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(subagentTranscriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:11.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 200,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 4000,
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
+            requestCount: 1
+        });
+    });
+
+    it('aggregates subagent speed metrics with merged active windows when enabled', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-with-subagents.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                input: 50,
+                output: 100
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-a.jsonl'), [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:15.000Z',
+                type: 'assistant',
+                input: 150,
+                output: 300,
+                isSidechain: true
+            })
+        ].join('\n'));
+        fs.writeFileSync(path.join(subagentsDir, 'agent-b.jsonl'), [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:20.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:25.000Z',
+                type: 'assistant',
+                input: 25,
+                output: 50,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 20000,
+            inputTokens: 225,
+            outputTokens: 450,
+            totalTokens: 675,
+            requestCount: 3
+        });
+    });
+
+    it('falls back to main transcript metrics when subagent folder cannot be listed', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-discovery-failure.jsonl');
+        const subagentsPath = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'assistant',
+                input: 30,
+                output: 60
+            })
+        ].join('\n'));
+
+        // Create a regular file where the subagents directory is expected.
+        fs.writeFileSync(subagentsPath, 'not-a-directory');
+
+        const metrics = await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 3000,
+            inputTokens: 30,
+            outputTokens: 60,
+            totalTokens: 90,
+            requestCount: 1
+        });
+    });
+
+    it('ignores malformed subagent lines without failing', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-malformed-subagent.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                type: 'assistant',
+                input: 10,
+                output: 20
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-malformed.jsonl'), [
+            'not-json',
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:07.000Z',
+                type: 'assistant',
+                input: 5,
+                output: 15,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 6000,
+            inputTokens: 15,
+            outputTokens: 35,
+            totalTokens: 50,
+            requestCount: 2
+        });
+    });
+
+    it('falls back to main transcript metrics when subagents directory is missing', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-no-subagents.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'assistant',
+                input: 30,
+                output: 60
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 3000,
+            inputTokens: 30,
+            outputTokens: 60,
+            totalTokens: 90,
+            requestCount: 1
+        });
+    });
+
+    it('ignores unreadable subagent transcript files without failing', async () => {
+        if (process.platform === 'win32') {
+            expect(true).toBe(true);
+            return;
+        }
+
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-main-unreadable-subagent.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+        const unreadableSubagentPath = path.join(subagentsDir, 'agent-unreadable.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'assistant',
+                input: 30,
+                output: 60
+            })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(unreadableSubagentPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'user',
+                isSidechain: true
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:06.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 200,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        fs.chmodSync(unreadableSubagentPath, 0o000);
+        const metrics = await (async () => {
+            try {
+                return await getSpeedMetrics(transcriptPath, { includeSubagents: true });
+            } finally {
+                fs.chmodSync(unreadableSubagentPath, 0o600);
+            }
+        })();
+
+        expect(metrics).toEqual({
+            totalDurationMs: 3000,
+            inputTokens: 30,
+            outputTokens: 60,
+            totalTokens: 90,
+            requestCount: 1
+        });
+    });
+
+    it('returns empty speed metrics when transcript path points to an unreadable directory', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'not-a-jsonl-file');
+
+        fs.mkdirSync(transcriptPath);
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            requestCount: 0
+        });
+    });
+
+    it('counts assistant tokens without timestamps while keeping active duration at zero', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-missing-timestamps.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            JSON.stringify({
+                type: 'assistant',
+                message: {
+                    usage: {
+                        input_tokens: 7,
+                        output_tokens: 9
+                    }
+                }
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 0,
+            inputTokens: 7,
+            outputTokens: 9,
+            totalTokens: 16,
+            requestCount: 1
+        });
+    });
+
     it('returns empty speed metrics when transcript is missing', async () => {
         const metrics = await getSpeedMetrics('/tmp/ccstatusline-jsonl-speed-missing.jsonl');
         expect(metrics).toEqual({

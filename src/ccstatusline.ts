@@ -107,7 +107,7 @@ async function renderMultipleLines(data: StatusJSON) {
 
     let speedMetrics: SpeedMetrics | null = null;
     if (hasSpeedItems && data.transcript_path) {
-        speedMetrics = await getSpeedMetrics(data.transcript_path);
+        speedMetrics = await getSpeedMetrics(data.transcript_path, { includeSubagents: true });
     }
 
     // Create render context
