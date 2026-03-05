@@ -673,8 +673,11 @@ bun run example
 # Run tests
 bun test
 
-# Run typecheck + eslint autofix
+# Run typecheck + eslint checks without modifying files
 bun run lint
+
+# Apply ESLint auto-fixes intentionally
+bun run lint:fix
 
 # Build for distribution
 bun run build

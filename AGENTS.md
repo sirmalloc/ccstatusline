@@ -33,7 +33,10 @@ bun test
 bun test --watch
 
 # Lint and type check
-bun run lint   # Runs TypeScript type checking and ESLint with auto-fix
+bun run lint      # Runs TypeScript type checking and ESLint without modifying files
+
+# Apply ESLint auto-fixes intentionally
+bun run lint:fix
 ```
 
 ## Architecture
@@ -136,7 +139,7 @@ Default to using Bun instead of Node.js:
   2. `postbuild`: Runs scripts/replace-version.ts to replace `__PACKAGE_VERSION__` placeholder with actual version from package.json
 - **ESLint configuration**: Uses flat config format (eslint.config.js) with TypeScript and React plugins
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
-- **Type checking and linting**: Only run via `bun run lint` command, never using `npx eslint` or `eslint` directly. Never run `tsx`, `bun tsc` or any other variation
+- **Type checking and linting**: Run checks via `bun run lint` and use `bun run lint:fix` only when you intentionally want ESLint auto-fixes. Never use `npx eslint`, `eslint`, `tsx`, `bun tsc`, or any other variation directly
 - **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
 - **Testing**: Uses Vitest (via Bun) with 6 test files and ~40 test cases covering:
   - Model context detection and token calculation (src/utils/__tests__/model-context.test.ts)
