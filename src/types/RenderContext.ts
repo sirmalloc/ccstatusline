@@ -1,5 +1,6 @@
 import type { BlockMetrics } from '../types';
 
+import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
 
@@ -18,6 +19,8 @@ export interface RenderUsageData {
 export interface RenderContext {
     data?: StatusJSON;
     tokenMetrics?: TokenMetrics | null;
+    speedMetrics?: SpeedMetrics | null;
+    windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
     sessionDuration?: string | null;
     blockMetrics?: BlockMetrics | null;

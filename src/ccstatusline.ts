@@ -2,7 +2,10 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
-import type { TokenMetrics } from './types';
+import type {
+    SpeedMetrics,
+    TokenMetrics
+} from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
@@ -15,6 +18,7 @@ import {
 } from './utils/config';
 import {
     getSessionDuration,
+    getSpeedMetricsCollection,
     getTokenMetrics
 } from './utils/jsonl';
 import {
@@ -23,6 +27,10 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import {
+    getWidgetSpeedWindowSeconds,
+    isWidgetSpeedWindowEnabled
+} from './utils/speed-window';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -87,6 +95,17 @@ async function renderMultipleLines(data: StatusJSON) {
     // Check if session clock is needed
     const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
+    const speedWidgetTypes = new Set(['output-speed', 'input-speed', 'total-speed']);
+    const hasSpeedItems = lines.some(line => line.some(item => speedWidgetTypes.has(item.type)));
+    const requestedSpeedWindows = new Set<number>();
+    for (const line of lines) {
+        for (const item of line) {
+            if (speedWidgetTypes.has(item.type) && isWidgetSpeedWindowEnabled(item)) {
+                requestedSpeedWindows.add(getWidgetSpeedWindowSeconds(item));
+            }
+        }
+    }
+
     let tokenMetrics: TokenMetrics | null = null;
     if (data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
@@ -99,10 +118,24 @@ async function renderMultipleLines(data: StatusJSON) {
 
     const usageData = await prefetchUsageDataIfNeeded(lines);
 
+    let speedMetrics: SpeedMetrics | null = null;
+    let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
+    if (hasSpeedItems && data.transcript_path) {
+        const speedMetricsCollection = await getSpeedMetricsCollection(data.transcript_path, {
+            includeSubagents: true,
+            windowSeconds: Array.from(requestedSpeedWindows)
+        });
+
+        speedMetrics = speedMetricsCollection.sessionAverage;
+        windowedSpeedMetrics = speedMetricsCollection.windowed;
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
+        speedMetrics,
+        windowedSpeedMetrics,
         usageData,
         sessionDuration,
         isPreview: false

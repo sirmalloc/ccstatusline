@@ -10,6 +10,7 @@ export interface TranscriptLine {
     isSidechain?: boolean;
     timestamp?: string;
     isApiErrorMessage?: boolean;
+    type?: 'user' | 'assistant' | 'system' | 'progress' | 'file-history-snapshot';
 }
 
 export interface TokenMetrics {

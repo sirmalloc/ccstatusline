@@ -33,6 +33,9 @@ describe('widget catalog', () => {
         const link = catalog.find(entry => entry.type === 'link');
         const gitInsertions = catalog.find(entry => entry.type === 'git-insertions');
         const gitDeletions = catalog.find(entry => entry.type === 'git-deletions');
+        const inputSpeed = catalog.find(entry => entry.type === 'input-speed');
+        const outputSpeed = catalog.find(entry => entry.type === 'output-speed');
+        const totalSpeed = catalog.find(entry => entry.type === 'total-speed');
         const resetTimer = catalog.find(entry => entry.type === 'reset-timer');
         const weeklyResetTimer = catalog.find(entry => entry.type === 'weekly-reset-timer');
 
@@ -46,6 +49,12 @@ describe('widget catalog', () => {
         expect(gitInsertions?.category).toBe('Git');
         expect(gitDeletions?.displayName).toBe('Git Deletions');
         expect(gitDeletions?.category).toBe('Git');
+        expect(inputSpeed?.displayName).toBe('Input Speed');
+        expect(inputSpeed?.category).toBe('Token Speed');
+        expect(outputSpeed?.displayName).toBe('Output Speed');
+        expect(outputSpeed?.category).toBe('Token Speed');
+        expect(totalSpeed?.displayName).toBe('Total Speed');
+        expect(totalSpeed?.category).toBe('Token Speed');
         expect(resetTimer?.displayName).toBe('Block Reset Timer');
         expect(resetTimer?.category).toBe('Usage');
         expect(weeklyResetTimer?.displayName).toBe('Weekly Reset Timer');
@@ -84,6 +93,7 @@ describe('widget catalog', () => {
         expect(categories).toContain('Git');
         expect(categories).toContain('Context');
         expect(categories).toContain('Tokens');
+        expect(categories).toContain('Token Speed');
         expect(categories).toContain('Session');
         expect(categories).toContain('Usage');
         expect(categories).toContain('Environment');
