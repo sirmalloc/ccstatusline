@@ -6,13 +6,138 @@ import {
 import * as os from 'os';
 import React, { useState } from 'react';
 
+import type { PowerlineConfig } from '../../types/PowerlineConfig';
 import type { Settings } from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 import { buildEnabledPowerlineSettings } from '../../utils/powerline-settings';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    List,
+    type ListEntry
+} from './List';
 import { PowerlineSeparatorEditor } from './PowerlineSeparatorEditor';
 import { PowerlineThemeSelector } from './PowerlineThemeSelector';
+
+type PowerlineMenuValue = 'separator' | 'startCap' | 'endCap' | 'themes';
+type Screen = 'menu' | PowerlineMenuValue;
+const POWERLINE_MENU_LABEL_WIDTH = 11;
+
+function formatPowerlineMenuLabel(label: string): string {
+    return label.padEnd(POWERLINE_MENU_LABEL_WIDTH, ' ');
+}
+
+export function getSeparatorDisplay(powerlineConfig: PowerlineConfig): string {
+    const seps = powerlineConfig.separators;
+
+    if (seps.length > 1) {
+        return 'multiple';
+    }
+
+    const sep = seps[0] ?? '\uE0B0';
+    const presets = [
+        { char: '\uE0B0', name: 'Triangle Right' },
+        { char: '\uE0B2', name: 'Triangle Left' },
+        { char: '\uE0B4', name: 'Round Right' },
+        { char: '\uE0B6', name: 'Round Left' }
+    ];
+    const preset = presets.find(item => item.char === sep);
+
+    if (preset) {
+        return `${preset.char} - ${preset.name}`;
+    }
+
+    return `${sep} - Custom`;
+}
+
+export function getCapDisplay(
+    powerlineConfig: PowerlineConfig,
+    type: 'start' | 'end'
+): string {
+    const caps = type === 'start'
+        ? powerlineConfig.startCaps
+        : powerlineConfig.endCaps;
+
+    if (caps.length === 0) {
+        return 'none';
+    }
+
+    if (caps.length > 1) {
+        return 'multiple';
+    }
+
+    const cap = caps[0];
+
+    if (!cap) {
+        return 'none';
+    }
+
+    const presets = type === 'start' ? [
+        { char: '\uE0B2', name: 'Triangle' },
+        { char: '\uE0B6', name: 'Round' },
+        { char: '\uE0BA', name: 'Lower Triangle' },
+        { char: '\uE0BE', name: 'Diagonal' }
+    ] : [
+        { char: '\uE0B0', name: 'Triangle' },
+        { char: '\uE0B4', name: 'Round' },
+        { char: '\uE0B8', name: 'Lower Triangle' },
+        { char: '\uE0BC', name: 'Diagonal' }
+    ];
+    const preset = presets.find(item => item.char === cap);
+
+    if (preset) {
+        return `${preset.char} - ${preset.name}`;
+    }
+
+    return `${cap} - Custom`;
+}
+
+export function getThemeDisplay(powerlineConfig: PowerlineConfig): string {
+    const theme = powerlineConfig.theme;
+
+    if (!theme || theme === 'custom') {
+        return 'Custom';
+    }
+
+    return theme.charAt(0).toUpperCase() + theme.slice(1);
+}
+
+export function buildPowerlineSetupMenuItems(
+    powerlineConfig: PowerlineConfig
+): ListEntry<PowerlineMenuValue>[] {
+    const disabled = !powerlineConfig.enabled;
+
+    return [
+        {
+            label: formatPowerlineMenuLabel('Separator'),
+            sublabel: `(${getSeparatorDisplay(powerlineConfig)})`,
+            value: 'separator',
+            disabled,
+            description: 'Choose the glyph used between powerline segments.'
+        },
+        {
+            label: formatPowerlineMenuLabel('Start Cap'),
+            sublabel: `(${getCapDisplay(powerlineConfig, 'start')})`,
+            value: 'startCap',
+            disabled,
+            description: 'Configure the cap glyph that appears at the start of each powerline line.'
+        },
+        {
+            label: formatPowerlineMenuLabel('End Cap'),
+            sublabel: `(${getCapDisplay(powerlineConfig, 'end')})`,
+            value: 'endCap',
+            disabled,
+            description: 'Configure the cap glyph that appears at the end of each powerline line.'
+        },
+        {
+            label: formatPowerlineMenuLabel('Themes'),
+            sublabel: `(${getThemeDisplay(powerlineConfig)})`,
+            value: 'themes',
+            disabled,
+            description: 'Preview built-in powerline themes or copy a theme into custom widget colors.'
+        }
+    ];
+}
 
 export interface PowerlineSetupProps {
     settings: Settings;
@@ -24,8 +149,6 @@ export interface PowerlineSetupProps {
     fontInstallMessage: string | null;
     onClearMessage: () => void;
 }
-
-type Screen = 'menu' | 'separator' | 'startCap' | 'endCap' | 'themes';
 
 export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     settings,
@@ -43,138 +166,55 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     const [confirmingEnable, setConfirmingEnable] = useState(false);
     const [confirmingFontInstall, setConfirmingFontInstall] = useState(false);
 
-    // Check if there are any separators or flex-separators in the current configuration
-    const hasSeparatorItems = settings.lines.some(line => line.some(item => item.type === 'separator' || item.type === 'flex-separator'));
-
-    // Menu items for navigation
-    const menuItems = [
-        { label: 'Separator', value: 'separator' },
-        { label: 'Start Cap', value: 'startCap' },
-        { label: 'End Cap', value: 'endCap' },
-        { label: 'Themes', value: 'themes' },
-        { label: '← Back', value: 'back' }
-    ];
-
-    // Helper functions for display
-    const getSeparatorDisplay = (): string => {
-        const seps = powerlineConfig.separators;
-        if (seps.length > 1) {
-            return 'multiple';
-        }
-        const sep = seps[0] ?? '\uE0B0';
-        const presets = [
-            { char: '\uE0B0', name: 'Triangle Right' },
-            { char: '\uE0B2', name: 'Triangle Left' },
-            { char: '\uE0B4', name: 'Round Right' },
-            { char: '\uE0B6', name: 'Round Left' }
-        ];
-        const preset = presets.find(p => p.char === sep);
-        if (preset) {
-            return `${preset.char} - ${preset.name}`;
-        }
-        return `${sep} - Custom`;
-    };
-
-    const getCapDisplay = (type: 'start' | 'end'): string => {
-        const caps = type === 'start'
-            ? powerlineConfig.startCaps
-            : powerlineConfig.endCaps;
-
-        if (caps.length === 0)
-            return 'none';
-        if (caps.length > 1)
-            return 'multiple';
-
-        const cap = caps[0];
-        if (!cap)
-            return 'none';
-
-        const presets = type === 'start' ? [
-            { char: '\uE0B2', name: 'Triangle' },
-            { char: '\uE0B6', name: 'Round' },
-            { char: '\uE0BA', name: 'Lower Triangle' },
-            { char: '\uE0BE', name: 'Diagonal' }
-        ] : [
-            { char: '\uE0B0', name: 'Triangle' },
-            { char: '\uE0B4', name: 'Round' },
-            { char: '\uE0B8', name: 'Lower Triangle' },
-            { char: '\uE0BC', name: 'Diagonal' }
-        ];
-
-        const preset = presets.find(c => c.char === cap);
-        if (preset) {
-            return `${preset.char} - ${preset.name}`;
-        }
-        return `${cap} - Custom`;
-    };
-
-    const getThemeDisplay = (): string => {
-        const theme = powerlineConfig.theme;
-        if (!theme || theme === 'custom')
-            return 'Custom';
-        return theme.charAt(0).toUpperCase() + theme.slice(1);
-    };
+    const hasSeparatorItems = settings.lines.some(line => line.some(
+        item => item.type === 'separator' || item.type === 'flex-separator'
+    ));
 
     useInput((input, key) => {
-        // Block all input handling when font installation message is shown or installing
         if (fontInstallMessage || installingFonts) {
-            // Only clear message on non-escape keys when message is shown
             if (fontInstallMessage && !key.escape) {
                 onClearMessage();
             }
-            // Always return early to prevent any other input handling
             return;
         }
 
-        // Skip input handling when confirmations are active - let ConfirmDialog handle it
         if (confirmingFontInstall || confirmingEnable) {
             return;
         }
 
         if (screen === 'menu') {
-            // Menu navigation mode
             if (key.escape) {
                 onBack();
-            } else if (key.upArrow) {
-                setSelectedMenuItem(Math.max(0, selectedMenuItem - 1));
-            } else if (key.downArrow) {
-                setSelectedMenuItem(Math.min(menuItems.length - 1, selectedMenuItem + 1));
-            } else if (key.return) {
-                const selected = menuItems[selectedMenuItem];
-                if (selected) {
-                    if (selected.value === 'back') {
-                        onBack();
-                    } else if (powerlineConfig.enabled) {
-                        setScreen(selected.value as Screen);
-                    }
-                }
             } else if (input === 't' || input === 'T') {
-                // Toggle powerline mode
                 if (!powerlineConfig.enabled) {
-                    // Only show confirmation when enabling if there are separators to remove
                     if (hasSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
-                        // Enable directly without confirmation since there are no separators.
                         onUpdate(buildEnabledPowerlineSettings(settings, false));
                     }
                 } else {
-                    // Disable without confirmation
-                    const newConfig = { ...powerlineConfig, enabled: false };
-                    onUpdate({ ...settings, powerline: newConfig });
+                    onUpdate({
+                        ...settings,
+                        powerline: {
+                            ...powerlineConfig,
+                            enabled: false
+                        }
+                    });
                 }
             } else if (input === 'i' || input === 'I') {
-                // Show font installation consent prompt
                 setConfirmingFontInstall(true);
             } else if ((input === 'a' || input === 'A') && powerlineConfig.enabled) {
-                // Toggle autoAlign when powerline is enabled
-                const newConfig = { ...powerlineConfig, autoAlign: !powerlineConfig.autoAlign };
-                onUpdate({ ...settings, powerline: newConfig });
+                onUpdate({
+                    ...settings,
+                    powerline: {
+                        ...powerlineConfig,
+                        autoAlign: !powerlineConfig.autoAlign
+                    }
+                });
             }
         }
     });
 
-    // Render sub-screens
     if (screen === 'separator') {
         return (
             <PowerlineSeparatorEditor
@@ -218,7 +258,6 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         );
     }
 
-    // Main menu screen
     return (
         <Box flexDirection='column'>
             {!confirmingFontInstall && !installingFonts && !fontInstallMessage && (
@@ -374,62 +413,29 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         </>
                     )}
 
-                    <Box marginTop={1} flexDirection='column'>
-                        {powerlineConfig.enabled ? (
-                            <>
-                                {menuItems.map((item, index) => {
-                                    const isSelected = index === selectedMenuItem;
-                                    let displayValue = '';
+                    {!powerlineConfig.enabled && (
+                        <Box marginTop={1}>
+                            <Text dimColor>Enable Powerline mode to configure separators, caps, and themes.</Text>
+                        </Box>
+                    )}
 
-                                    switch (item.value) {
-                                        case 'separator':
-                                            displayValue = getSeparatorDisplay();
-                                            break;
-                                        case 'startCap':
-                                            displayValue = getCapDisplay('start');
-                                            break;
-                                        case 'endCap':
-                                            displayValue = getCapDisplay('end');
-                                            break;
-                                        case 'themes':
-                                            displayValue = getThemeDisplay();
-                                            break;
-                                        case 'back':
-                                            displayValue = '';
-                                            break;
-                                    }
+                    <List
+                        marginTop={1}
+                        items={buildPowerlineSetupMenuItems(powerlineConfig)}
+                        onSelect={(value) => {
+                            if (value === 'back') {
+                                onBack();
+                                return;
+                            }
 
-                                    if (item.value === 'back') {
-                                        return (
-                                            <Box key={item.value} marginTop={1}>
-                                                <Text color={isSelected ? 'green' : undefined}>
-                                                    {isSelected ? '▶  ' : '   '}
-                                                    {item.label}
-                                                </Text>
-                                            </Box>
-                                        );
-                                    }
-
-                                    return (
-                                        <Box key={item.value}>
-                                            <Text color={isSelected ? 'green' : undefined}>
-                                                {isSelected ? '▶  ' : '   '}
-                                                {item.label.padEnd(11, ' ')}
-                                                <Text dimColor>
-                                                    {displayValue && `(${displayValue})`}
-                                                </Text>
-                                            </Text>
-                                        </Box>
-                                    );
-                                })}
-                            </>
-                        ) : (
-                            // When powerline is disabled, show ESC to go back message
-                            <Box marginTop={1}>
-                                <Text dimColor>Press ESC to go back</Text>
-                            </Box>
-                        )}
-                    </Box>
+                            setScreen(value);
+                        }}
+                        onSelectionChange={(_, index) => {
+                            setSelectedMenuItem(index);
+                        }}
+                        initialSelection={selectedMenuItem}
+                        showBackButton={true}
+                    />
                 </>
             )}
         </Box>

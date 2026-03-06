@@ -14,6 +14,7 @@ import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import { List } from './List';
 
 interface LineSelectorProps {
     lines: WidgetItem[][];
@@ -47,6 +48,10 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         setLocalLines(lines);
     }, [lines]);
 
+    useEffect(() => {
+        setSelectedIndex(initialSelection);
+    }, [initialSelection]);
+
     const selectedLine = useMemo(
         () => localLines[selectedIndex],
         [localLines, selectedIndex]
@@ -60,7 +65,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     };
 
     const deleteLine = (lineIndex: number) => {
-        // Don't allow deleting the last remaining line
+    // Don't allow deleting the last remaining line
         if (localLines.length <= 1) {
             return;
         }
@@ -125,7 +130,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                 }
                 return;
             case 'd':
-                if (allowEditing && localLines.length > 1) {
+                if (allowEditing && localLines.length > 1 && selectedIndex < localLines.length) {
                     setShowDeleteDialog(true);
                 }
                 return;
@@ -138,16 +143,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
         if (key.escape) {
             onBack();
-        } else if (key.upArrow) {
-            setSelectedIndex(Math.max(0, selectedIndex - 1));
-        } else if (key.downArrow) {
-            setSelectedIndex(Math.min(localLines.length, selectedIndex + 1));
-        } else if (key.return) {
-            if (selectedIndex === localLines.length) {
-                onBack();
-            } else {
-                onSelect(selectedIndex);
-            }
         }
     });
 
@@ -197,7 +192,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         <Text>
                             <Text>
                                 ☰ Line
-                                {' '}
                                 {selectedIndex + 1}
                             </Text>
                             {' '}
@@ -228,6 +222,12 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         );
     }
 
+    const lineItems = localLines.map((line, index) => ({
+        label: `☰ Line ${index + 1}`,
+        sublabel: `(${line.length > 0 ? pluralize('widget', line.length, true) : 'empty'})`,
+        value: index
+    }));
+
     return (
         <>
             <Box flexDirection='column'>
@@ -253,44 +253,55 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     </Text>
                 )}
 
-                <Box marginTop={1} flexDirection='column'>
-                    {localLines.map((line, index) => {
-                        const isSelected = selectedIndex === index;
-                        const suffix = line.length
-                            ? pluralize('widget', line.length, true)
-                            : 'empty';
+                {moveMode ? (
+                    <Box marginTop={1} flexDirection='column'>
+                        {localLines.map((line, index) => {
+                            const isSelected = selectedIndex === index;
+                            const suffix = line.length
+                                ? pluralize('widget', line.length, true)
+                                : 'empty';
 
-                        return (
-                            <Box key={index}>
-                                <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                    <Text>{isSelected ? (moveMode ? '◆  ' : '▶  ') : '   '}</Text>
-                                    <Text>
+                            return (
+                                <Box key={index}>
+                                    <Text color={isSelected ? 'blue' : undefined}>
+                                        <Text>{isSelected ? '◆  ' : '   '}</Text>
                                         <Text>
-                                            ☰ Line
+                                            <Text>
+                                                ☰ Line
+                                                {' '}
+                                                {index + 1}
+                                            </Text>
                                             {' '}
-                                            {index + 1}
-                                        </Text>
-                                        {' '}
-                                        <Text dimColor={!isSelected}>
-                                            (
-                                            {suffix}
-                                            )
+                                            <Text dimColor={!isSelected}>
+                                                (
+                                                {suffix}
+                                                )
+                                            </Text>
                                         </Text>
                                     </Text>
-                                </Text>
-                            </Box>
-                        );
-                    })}
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                ) : (
+                    <List
+                        marginTop={1}
+                        items={lineItems}
+                        onSelect={(line) => {
+                            if (line === 'back') {
+                                onBack();
+                                return;
+                            }
 
-                    {!moveMode && (
-                        <Box marginTop={1}>
-                            <Text color={selectedIndex === localLines.length ? 'green' : undefined}>
-                                {selectedIndex === localLines.length ? '▶  ' : '   '}
-                                ← Back
-                            </Text>
-                        </Box>
-                    )}
-                </Box>
+                            onSelect(line);
+                        }}
+                        onSelectionChange={(_, index) => {
+                            setSelectedIndex(index);
+                        }}
+                        initialSelection={selectedIndex}
+                        showBackButton={true}
+                    />
+                )}
             </Box>
         </>
     );

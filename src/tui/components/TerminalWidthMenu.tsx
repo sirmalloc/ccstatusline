@@ -9,38 +9,89 @@ import type { FlexMode } from '../../types/FlexMode';
 import type { Settings } from '../../types/Settings';
 import { shouldInsertInput } from '../../utils/input-guards';
 
+import {
+    List,
+    type ListEntry
+} from './List';
+
+export const TERMINAL_WIDTH_OPTIONS: FlexMode[] = ['full', 'full-minus-40', 'full-until-compact'];
+
+export function getTerminalWidthSelectionIndex(selectedOption: FlexMode): number {
+    const selectedIndex = TERMINAL_WIDTH_OPTIONS.indexOf(selectedOption);
+
+    return selectedIndex >= 0 ? selectedIndex : 0;
+}
+
+export function validateCompactThresholdInput(value: string): string | null {
+    const parsedValue = parseInt(value, 10);
+
+    if (isNaN(parsedValue)) {
+        return 'Please enter a valid number';
+    }
+
+    if (parsedValue < 1 || parsedValue > 99) {
+        return `Value must be between 1 and 99 (you entered ${parsedValue})`;
+    }
+
+    return null;
+}
+
+export function buildTerminalWidthItems(
+    selectedOption: FlexMode,
+    compactThreshold: number
+): ListEntry<FlexMode>[] {
+    return [
+        {
+            value: 'full',
+            label: 'Full width always',
+            sublabel: selectedOption === 'full' ? '(active)' : undefined,
+            description: 'Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it is not recommended to use this mode.'
+        },
+        {
+            value: 'full-minus-40',
+            label: 'Full width minus 40',
+            sublabel: selectedOption === 'full-minus-40' ? '(active)' : '(default)',
+            description: 'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
+        },
+        {
+            value: 'full-until-compact',
+            label: 'Full width until compact',
+            sublabel: selectedOption === 'full-until-compact'
+                ? `(threshold ${compactThreshold}%, active)`
+                : `(threshold ${compactThreshold}%)`,
+            description: `Dynamically adjusts width based on context usage. When context reaches ${compactThreshold}%, it switches to leaving space for the auto-compact message.\n\nNOTE: If /ide integration is enabled, it is not recommended to use this mode.`
+        }
+    ];
+}
+
 export interface TerminalWidthMenuProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
     onBack: () => void;
 }
 
-export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, onUpdate, onBack }) => {
+export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({
+    settings,
+    onUpdate,
+    onBack
+}) => {
     const [selectedOption, setSelectedOption] = useState<FlexMode>(settings.flexMode);
     const [compactThreshold, setCompactThreshold] = useState(settings.compactThreshold);
     const [editingThreshold, setEditingThreshold] = useState(false);
     const [thresholdInput, setThresholdInput] = useState(String(settings.compactThreshold));
     const [validationError, setValidationError] = useState<string | null>(null);
 
-    // For manual navigation: 0-2 for options, 3 for back
-    const [selectedIndex, setSelectedIndex] = useState(() => {
-        const options: FlexMode[] = ['full', 'full-minus-40', 'full-until-compact'];
-        return options.indexOf(settings.flexMode);
-    });
-
-    const options: FlexMode[] = ['full', 'full-minus-40', 'full-until-compact'];
-
     useInput((input, key) => {
         if (editingThreshold) {
             if (key.return) {
-                const value = parseInt(thresholdInput, 10);
-                if (isNaN(value)) {
-                    setValidationError('Please enter a valid number');
-                } else if (value < 1 || value > 99) {
-                    setValidationError(`Value must be between 1 and 99 (you entered ${value})`);
+                const error = validateCompactThresholdInput(thresholdInput);
+
+                if (error) {
+                    setValidationError(error);
                 } else {
+                    const value = parseInt(thresholdInput, 10);
                     setCompactThreshold(value);
-                    // Update settings with both flexMode and the new threshold
+
                     const updatedSettings = {
                         ...settings,
                         flexMode: selectedOption,
@@ -66,58 +117,13 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
                     setValidationError(null);
                 }
             }
-        } else {
-            if (key.escape) {
-                onBack();
-            } else if (key.upArrow) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
-            } else if (key.downArrow) {
-                setSelectedIndex(Math.min(3, selectedIndex + 1)); // 0-2 for options, 3 for back
-            } else if (key.return) {
-                if (selectedIndex === 3) {
-                    onBack();
-                } else if (selectedIndex >= 0 && selectedIndex < options.length) {
-                    const mode = options[selectedIndex];
-                    if (mode) {
-                        setSelectedOption(mode);
+            return;
+        }
 
-                        // Update settings
-                        const updatedSettings = {
-                            ...settings,
-                            flexMode: mode,
-                            compactThreshold: compactThreshold
-                        };
-                        onUpdate(updatedSettings);
-
-                        if (mode === 'full-until-compact') {
-                            // Prompt for threshold editing
-                            setEditingThreshold(true);
-                        }
-                    }
-                }
-            }
+        if (key.escape) {
+            onBack();
         }
     });
-
-    const optionDetails = [
-        {
-            value: 'full' as FlexMode,
-            label: 'Full width always',
-            description: 'Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it\'s not recommended to use this mode.'
-        },
-        {
-            value: 'full-minus-40' as FlexMode,
-            label: 'Full width minus 40 (default)',
-            description: 'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
-        },
-        {
-            value: 'full-until-compact' as FlexMode,
-            label: 'Full width until compact',
-            description: `Dynamically adjusts width based on context usage. When context reaches ${compactThreshold}%, it switches to leaving space for the auto-compact message.\n\nNOTE: If /ide integration is enabled, it's not recommended to use this mode.`
-        }
-    ];
-
-    const currentOption = selectedIndex < 3 ? optionDetails[selectedIndex] : null;
 
     return (
         <Box flexDirection='column'>
@@ -140,38 +146,31 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({ settings, 
                     )}
                 </Box>
             ) : (
-                <>
-                    <Box marginTop={1} flexDirection='column'>
-                        {optionDetails.map((opt, index) => (
-                            <Box key={opt.value}>
-                                <Text color={selectedIndex === index ? 'green' : undefined}>
-                                    {selectedIndex === index ? '▶  ' : '   '}
-                                    {opt.label}
-                                    {opt.value === selectedOption ? ' ✓' : ''}
-                                </Text>
-                            </Box>
-                        ))}
+                <List
+                    marginTop={1}
+                    items={buildTerminalWidthItems(selectedOption, compactThreshold)}
+                    initialSelection={getTerminalWidthSelectionIndex(selectedOption)}
+                    onSelect={(value) => {
+                        if (value === 'back') {
+                            onBack();
+                            return;
+                        }
 
-                        <Box marginTop={1}>
-                            <Text color={selectedIndex === 3 ? 'green' : undefined}>
-                                {selectedIndex === 3 ? '▶  ' : '   '}
-                                ← Back
-                            </Text>
-                        </Box>
-                    </Box>
+                        setSelectedOption(value);
 
-                    {currentOption && (
-                        <Box marginTop={1} marginBottom={1} borderStyle='round' borderColor='dim' paddingX={1}>
-                            <Box flexDirection='column'>
-                                <Text>
-                                    <Text color='yellow'>{currentOption.label}</Text>
-                                    {currentOption.value === 'full-until-compact' && ` | Current threshold: ${compactThreshold}%`}
-                                </Text>
-                                <Text dimColor wrap='wrap'>{currentOption.description}</Text>
-                            </Box>
-                        </Box>
-                    )}
-                </>
+                        const updatedSettings = {
+                            ...settings,
+                            flexMode: value,
+                            compactThreshold
+                        };
+                        onUpdate(updatedSettings);
+
+                        if (value === 'full-until-compact') {
+                            setEditingThreshold(true);
+                        }
+                    }}
+                    showBackButton={true}
+                />
             )}
         </Box>
     );
