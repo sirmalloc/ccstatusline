@@ -3,20 +3,23 @@ import chalk from 'chalk';
 
 import { runTUI } from './tui';
 import type {
-    BlockMetrics,
+    SkillsMetrics,
+    SpeedMetrics,
     TokenMetrics
 } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
+import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
+    initConfigPath,
     loadSettings,
     saveSettings
 } from './utils/config';
 import {
-    getBlockMetrics,
     getSessionDuration,
+    getSpeedMetricsCollection,
     getTokenMetrics
 } from './utils/jsonl';
 import {
@@ -24,6 +27,21 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
+import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import {
+    getSkillsFilePath,
+    getSkillsMetrics
+} from './utils/skills';
+import {
+    getWidgetSpeedWindowSeconds,
+    isWidgetSpeedWindowEnabled
+} from './utils/speed-window';
+import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
+
+function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
+    const durationMs = data.cost?.total_duration_ms;
+    return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
+}
 
 async function readStdin(): Promise<string | null> {
     // Check if stdin is a TTY (terminal) - if it is, there's no piped data
@@ -54,44 +72,83 @@ async function readStdin(): Promise<string | null> {
     }
 }
 
+async function ensureWindowsUtf8CodePage() {
+    if (process.platform !== 'win32') {
+        return;
+    }
+
+    try {
+        const { execFileSync } = await import('child_process');
+        execFileSync('chcp.com', ['65001'], { stdio: 'ignore' });
+    } catch {
+        // Ignore failures to preserve statusline output even in restricted shells.
+    }
+}
+
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
 
     // Set global chalk level based on settings
     chalk.level = settings.colorLevel;
+
     // Update color map after setting chalk level
     updateColorMap();
 
     // Get all lines to render
     const lines = settings.lines;
 
-    // Get token metrics if needed (check all lines)
-    const hasTokenItems = lines.some(line => line.some(item => ['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total', 'context-length', 'context-percentage', 'context-percentage-usable'].includes(item.type)));
-
     // Check if session clock is needed
     const hasSessionClock = lines.some(line => line.some(item => item.type === 'session-clock'));
 
-    // Check if block timer is needed
-    const hasBlockTimer = lines.some(line => line.some(item => item.type === 'block-timer'));
+    const speedWidgetTypes = new Set(['output-speed', 'input-speed', 'total-speed']);
+    const hasSpeedItems = lines.some(line => line.some(item => speedWidgetTypes.has(item.type)));
+    const requestedSpeedWindows = new Set<number>();
+    for (const line of lines) {
+        for (const item of line) {
+            if (speedWidgetTypes.has(item.type) && isWidgetSpeedWindowEnabled(item)) {
+                requestedSpeedWindows.add(getWidgetSpeedWindowSeconds(item));
+            }
+        }
+    }
 
     let tokenMetrics: TokenMetrics | null = null;
-    if (hasTokenItems && data.transcript_path)
+    if (data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
+    }
 
     let sessionDuration: string | null = null;
-    if (hasSessionClock && data.transcript_path)
+    if (hasSessionClock && !hasSessionDurationInStatusJson(data) && data.transcript_path) {
         sessionDuration = await getSessionDuration(data.transcript_path);
+    }
 
-    let blockMetrics: BlockMetrics | null = null;
-    if (hasBlockTimer && data.transcript_path)
-        blockMetrics = getBlockMetrics(data.transcript_path);
+    const usageData = await prefetchUsageDataIfNeeded(lines);
+
+    let speedMetrics: SpeedMetrics | null = null;
+    let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
+    if (hasSpeedItems && data.transcript_path) {
+        const speedMetricsCollection = await getSpeedMetricsCollection(data.transcript_path, {
+            includeSubagents: true,
+            windowSeconds: Array.from(requestedSpeedWindows)
+        });
+
+        speedMetrics = speedMetricsCollection.sessionAverage;
+        windowedSpeedMetrics = speedMetricsCollection.windowed;
+    }
+
+    let skillsMetrics: SkillsMetrics | null = null;
+    if (data.session_id) {
+        skillsMetrics = getSkillsMetrics(data.session_id);
+    }
 
     // Create render context
     const context: RenderContext = {
         data,
         tokenMetrics,
+        speedMetrics,
+        windowedSpeedMetrics,
+        usageData,
         sessionDuration,
-        blockMetrics,
+        skillsMetrics,
         isPreview: false
     };
 
@@ -110,19 +167,16 @@ async function renderMultipleLines(data: StatusJSON) {
 
             // Only output the line if it has content (not just ANSI codes)
             // Strip ANSI codes to check if there's actual text
-            const strippedLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+            const strippedLine = getVisibleText(line).trim();
             if (strippedLine.length > 0) {
-                // Count separators used in this line (widgets - 1, excluding merged widgets)
-                const nonMergedWidgets = lineItems.filter((_, idx) => idx === lineItems.length - 1 || !lineItems[idx]?.merge);
-                if (nonMergedWidgets.length > 1)
-                    globalSeparatorIndex += nonMergedWidgets.length - 1;
-
                 // Replace all spaces with non-breaking spaces to prevent VSCode trimming
                 let outputLine = line.replace(/ /g, '\u00A0');
 
                 // Add reset code at the beginning to override Claude Code's dim setting
                 outputLine = '\x1b[0m' + outputLine;
                 console.log(outputLine);
+
+                globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
             }
         }
     }
@@ -157,9 +211,84 @@ async function renderMultipleLines(data: StatusJSON) {
     }
 }
 
+function parseConfigArg(): string | undefined {
+    const idx = process.argv.indexOf('--config');
+    if (idx === -1)
+        return undefined;
+    const configPath = process.argv[idx + 1];
+    if (!configPath || configPath.startsWith('--')) {
+        console.error('--config requires a file path argument');
+        process.exit(1);
+    }
+    process.argv.splice(idx, 2);
+    return configPath;
+}
+
+interface HookInput {
+    session_id?: string;
+    hook_event_name?: string;
+    tool_name?: string;
+    tool_input?: { skill?: string };
+    prompt?: string;
+}
+
+async function handleHook(): Promise<void> {
+    const input = await readStdin();
+    if (!input) {
+        console.log('{}');
+        return;
+    }
+    try {
+        const data = JSON.parse(input) as HookInput;
+        const sessionId = data.session_id;
+        if (!sessionId) {
+            console.log('{}');
+            return;
+        }
+
+        let skillName = '';
+        if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
+            skillName = data.tool_input?.skill ?? '';
+        } else if (data.hook_event_name === 'UserPromptSubmit') {
+            const match = /^\/([a-zA-Z0-9_:-]+)/.exec(data.prompt ?? '');
+            if (match) {
+                skillName = match[1] ?? '';
+            }
+        }
+        if (!skillName) {
+            console.log('{}');
+            return;
+        }
+
+        const filePath = getSkillsFilePath(sessionId);
+        const fs = await import('fs');
+        const path = await import('path');
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        const entry = JSON.stringify({
+            timestamp: new Date().toISOString(),
+            session_id: sessionId,
+            skill: skillName,
+            source: data.hook_event_name
+        });
+        fs.appendFileSync(filePath, entry + '\n');
+    } catch { /* ignore parse errors */ }
+    console.log('{}');
+}
+
 async function main() {
+    // Parse --config before anything else
+    initConfigPath(parseConfigArg());
+
+    // Handle --hook mode (cross-platform hook handler for widgets)
+    if (process.argv.includes('--hook')) {
+        await handleHook();
+        return;
+    }
+
     // Check if we're in a piped/non-TTY environment first
     if (!process.stdin.isTTY) {
+        await ensureWindowsUtf8CodePage();
+
         // We're receiving piped input
         const input = await readStdin();
         if (input && input.trim() !== '') {

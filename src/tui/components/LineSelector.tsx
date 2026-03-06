@@ -41,11 +41,16 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [moveMode, setMoveMode] = useState(false);
     const [localLines, setLocalLines] = useState(lines);
 
     useEffect(() => {
         setLocalLines(lines);
     }, [lines]);
+
+    useEffect(() => {
+        setSelectedIndex(initialSelection);
+    }, [initialSelection]);
 
     const selectedLine = useMemo(
         () => localLines[selectedIndex],
@@ -74,10 +79,10 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     const powerlineEnabled = settings ? settings.powerline.enabled : false;
     const powerlineTheme = settings ? settings.powerline.theme : undefined;
     const isThemeManaged
-    = blockIfPowerlineActive
-        && powerlineEnabled
-        && powerlineTheme
-        && powerlineTheme !== 'custom';
+        = blockIfPowerlineActive
+            && powerlineEnabled
+            && powerlineTheme
+            && powerlineTheme !== 'custom';
 
     // Handle keyboard input
     useInput((input, key) => {
@@ -91,17 +96,49 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             return;
         }
 
+        if (moveMode) {
+            if (key.upArrow && selectedIndex > 0) {
+                const newLines = [...localLines];
+                const temp = newLines[selectedIndex];
+                const prev = newLines[selectedIndex - 1];
+                if (temp && prev) {
+                    [newLines[selectedIndex], newLines[selectedIndex - 1]] = [prev, temp];
+                }
+                setLocalLines(newLines);
+                onLinesUpdate(newLines);
+                setSelectedIndex(selectedIndex - 1);
+            } else if (key.downArrow && selectedIndex < localLines.length - 1) {
+                const newLines = [...localLines];
+                const temp = newLines[selectedIndex];
+                const next = newLines[selectedIndex + 1];
+                if (temp && next) {
+                    [newLines[selectedIndex], newLines[selectedIndex + 1]] = [next, temp];
+                }
+                setLocalLines(newLines);
+                onLinesUpdate(newLines);
+                setSelectedIndex(selectedIndex + 1);
+            } else if (key.escape || key.return) {
+                setMoveMode(false);
+            }
+            return;
+        }
+
         switch (input) {
-        case 'a':
-            if (allowEditing) {
-                appendLine();
-            }
-            return;
-        case 'd':
-            if (allowEditing && localLines.length > 1) {
-                setShowDeleteDialog(true);
-            }
-            return;
+            case 'a':
+                if (allowEditing) {
+                    appendLine();
+                }
+                return;
+            case 'd':
+                if (allowEditing && localLines.length > 1 && selectedIndex < localLines.length) {
+                    setShowDeleteDialog(true);
+                }
+                return;
+            case 'm':
+                if (allowEditing && localLines.length > 1 && selectedIndex < localLines.length) {
+                    setMoveMode(true);
+                }
+                return;
         }
 
         if (key.escape) {
@@ -144,9 +181,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
     if (showDeleteDialog && selectedLine) {
         const suffix
-      = selectedLine.length > 0
-          ? pluralize('widget', selectedLine.length, true)
-          : 'empty';
+            = selectedLine.length > 0
+                ? pluralize('widget', selectedLine.length, true)
+                : 'empty';
 
         return (
             <Box flexDirection='column'>
@@ -194,29 +231,77 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     return (
         <>
             <Box flexDirection='column'>
-                <Text bold>{title ?? 'Select Line to Edit'}</Text>
-                <Text dimColor>Choose which status line to configure</Text>
+                <Box>
+                    <Text bold>
+                        {title ?? 'Select Line to Edit'}
+                        {' '}
+                    </Text>
+                    {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                </Box>
                 <Text dimColor>
-                    {allowEditing
-                        ? localLines.length > 1
-                            ? '(a) to append new line, (d) to delete line, ESC to go back'
-                            : '(a) to append new line, ESC to go back'
-                        : 'ESC to go back'}
+                    Choose which status line to configure
                 </Text>
+                {moveMode ? (
+                    <Text dimColor>↑↓ to move line, ESC or Enter to exit move mode</Text>
+                ) : (
+                    <Text dimColor>
+                        {allowEditing ? (
+                            localLines.length > 1
+                                ? '(a) to append new line, (d) to delete line, (m) to move line, ESC to go back'
+                                : '(a) to append new line, ESC to go back'
+                        ) : 'ESC to go back'}
+                    </Text>
+                )}
 
-                <List
-                    marginTop={1}
-                    items={lineItems}
-                    onSelect={(line) => {
-                        if (line === 'back') {
-                            onBack();
-                            return;
-                        }
-                        onSelect(line);
-                    }}
-                    initialSelection={initialSelection}
-                    showBackButton={true}
-                />
+                {moveMode ? (
+                    <Box marginTop={1} flexDirection='column'>
+                        {localLines.map((line, index) => {
+                            const isSelected = selectedIndex === index;
+                            const suffix = line.length
+                                ? pluralize('widget', line.length, true)
+                                : 'empty';
+
+                            return (
+                                <Box key={index}>
+                                    <Text color={isSelected ? 'blue' : undefined}>
+                                        <Text>{isSelected ? '◆  ' : '   '}</Text>
+                                        <Text>
+                                            <Text>
+                                                ☰ Line
+                                                {' '}
+                                                {index + 1}
+                                            </Text>
+                                            {' '}
+                                            <Text dimColor={!isSelected}>
+                                                (
+                                                {suffix}
+                                                )
+                                            </Text>
+                                        </Text>
+                                    </Text>
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                ) : (
+                    <List
+                        marginTop={1}
+                        items={lineItems}
+                        onSelect={(line) => {
+                            if (line === 'back') {
+                                onBack();
+                                return;
+                            }
+
+                            onSelect(line);
+                        }}
+                        onSelectionChange={(_, index) => {
+                            setSelectedIndex(index);
+                        }}
+                        initialSelection={selectedIndex}
+                        showBackButton={true}
+                    />
+                )}
             </Box>
         </>
     );

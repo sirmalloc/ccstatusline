@@ -1,8 +1,4 @@
 import chalk from 'chalk';
-import stringWidth from 'string-width';
-
-// ANSI escape sequence for stripping color codes
-const ANSI_REGEX = new RegExp(`\\x1b\\[[0-9;]*m`, 'g');
 
 import type {
     RenderContext,
@@ -12,11 +8,17 @@ import { getColorLevelString } from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
 import {
+    getVisibleWidth,
+    stripSgrCodes,
+    truncateStyledText
+} from './ansi';
+import {
     applyColors,
     bgToFg,
     getColorAnsiCode,
     getPowerlineTheme
 } from './colors';
+import { calculateContextPercentage } from './context-percentage';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -27,6 +29,47 @@ export function formatTokens(count: number): string {
     if (count >= 1000)
         return `${(count / 1000).toFixed(1)}k`;
     return count.toString();
+}
+
+function resolveEffectiveTerminalWidth(
+    detectedWidth: number | null,
+    settings: Settings,
+    context: RenderContext
+): number | null {
+    if (!detectedWidth) {
+        return null;
+    }
+
+    const flexMode = settings.flexMode as string;
+
+    if (context.isPreview) {
+        if (flexMode === 'full') {
+            return detectedWidth - 6;
+        }
+        if (flexMode === 'full-minus-40') {
+            return detectedWidth - 40;
+        }
+        if (flexMode === 'full-until-compact') {
+            return detectedWidth - 6;
+        }
+        return null;
+    }
+
+    if (flexMode === 'full') {
+        return detectedWidth - 6;
+    }
+    if (flexMode === 'full-minus-40') {
+        return detectedWidth - 40;
+    }
+    if (flexMode === 'full-until-compact') {
+        const threshold = settings.compactThreshold;
+        const contextPercentage = calculateContextPercentage(context);
+        return contextPercentage >= threshold
+            ? detectedWidth - 40
+            : detectedWidth - 6;
+    }
+
+    return null;
 }
 
 function renderPowerlineStatusLine(
@@ -80,38 +123,7 @@ function renderPowerlineStatusLine(
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
 
     // Calculate terminal width based on flex mode settings
-    let terminalWidth: number | null = null;
-    if (detectedWidth) {
-        const flexMode = settings.flexMode as string;
-
-        if (context.isPreview) {
-            // In preview mode, account for box borders and padding (6 chars total)
-            if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 6;
-            } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 40;
-            } else if (flexMode === 'full-until-compact') {
-                terminalWidth = detectedWidth - 6;
-            }
-        } else {
-            // In actual rendering mode
-            if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 6;
-            } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 40;
-            } else if (flexMode === 'full-until-compact') {
-                const threshold = settings.compactThreshold;
-                const contextPercentage = context.tokenMetrics
-                    ? Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
-
-                if (contextPercentage >= threshold) {
-                    terminalWidth = detectedWidth - 40;
-                } else {
-                    terminalWidth = detectedWidth - 6;
-                }
-            }
-        }
-    }
+    const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
     // Build widget elements (similar to regular mode but without separators)
     const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
@@ -161,7 +173,7 @@ function renderPowerlineStatusLine(
             if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
                 && widget.type === 'custom-command' && widget.preserveColors) {
                 // Strip ANSI color codes when override is active
-                widgetText = widgetText.replace(ANSI_REGEX, '');
+                widgetText = stripSgrCodes(widgetText);
             }
 
             // Check if padding should be omitted due to no-padding merge
@@ -216,17 +228,44 @@ function renderPowerlineStatusLine(
     const autoAlign = config.autoAlign as boolean | undefined;
     if (autoAlign) {
         // Apply padding to current line's widgets based on pre-calculated max widths
+        let alignmentPos = 0;
         for (let i = 0; i < widgetElements.length; i++) {
             const element = widgetElements[i];
-            const maxWidth = preCalculatedMaxWidths[i];
-            if (element && maxWidth !== undefined) {
-                // Use stringWidth to properly calculate Unicode character display width
-                const currentLength = stringWidth(element.content.replace(ANSI_REGEX, ''));
-                const paddingNeeded = maxWidth - currentLength;
-                if (paddingNeeded > 0) {
-                    // Add spaces to the right of the content
-                    element.content += ' '.repeat(paddingNeeded);
+            if (!element)
+                continue;
+
+            // Check if previous widget was merged with this one
+            const prevWidget = i > 0 ? widgetElements[i - 1] : null;
+            const isPreviousMerged = prevWidget?.widget.merge;
+
+            // Only apply alignment to non-merged widgets (widgets that follow a merge are excluded)
+            if (!isPreviousMerged) {
+                const maxWidth = preCalculatedMaxWidths[alignmentPos];
+                if (maxWidth !== undefined) {
+                    // Calculate combined width if this widget merges with following ones
+                    let combinedLength = getVisibleWidth(element.content);
+                    let j = i;
+                    while (j < widgetElements.length - 1 && widgetElements[j]?.widget.merge) {
+                        j++;
+                        const nextElement = widgetElements[j];
+                        if (nextElement) {
+                            combinedLength += getVisibleWidth(nextElement.content);
+                        }
+                    }
+
+                    const paddingNeeded = maxWidth - combinedLength;
+                    if (paddingNeeded > 0) {
+                        // Add padding to the last widget in the merge group
+                        const lastElement = widgetElements[j];
+                        if (lastElement) {
+                            lastElement.content += ' '.repeat(paddingNeeded);
+                        }
+                    }
+
+                    // Skip over merged widgets
+                    i = j;
                 }
+                alignmentPos++;
             }
         }
     }
@@ -411,33 +450,9 @@ function renderPowerlineStatusLine(
 
     // Handle truncation if terminal width is known
     if (terminalWidth && terminalWidth > 0) {
-        const plainLength = result.replace(ANSI_REGEX, '').length;
+        const plainLength = getVisibleWidth(result);
         if (plainLength > terminalWidth) {
-            // Truncate to terminal width
-            let truncated = '';
-            let currentLength = 0;
-            let inAnsiCode = false;
-
-            for (const char of result) {
-                if (char === '\x1b') {
-                    inAnsiCode = true;
-                    truncated += char;
-                } else if (inAnsiCode) {
-                    truncated += char;
-                    if (char === 'm') {
-                        inAnsiCode = false;
-                    }
-                } else {
-                    if (currentLength < terminalWidth - 3) {
-                        truncated += char;
-                        currentLength++;
-                    } else {
-                        truncated += '...';
-                        break;
-                    }
-                }
-            }
-            result = truncated;
+            result = truncateStyledText(result, terminalWidth, { ellipsis: true });
         }
     }
 
@@ -502,7 +517,7 @@ export function preRenderAllWidgets(
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
-            const plainLength = stringWidth(widgetText.replace(ANSI_REGEX, ''));
+            const plainLength = getVisibleWidth(widgetText);
             preRenderedLine.push({
                 content: widgetText,
                 plainLength,
@@ -530,19 +545,42 @@ export function calculateMaxWidthsFromPreRendered(
             w => w.widget.type !== 'separator' && w.widget.type !== 'flex-separator' && w.content
         );
 
-        for (let pos = 0; pos < filteredWidgets.length; pos++) {
-            const widget = filteredWidgets[pos];
+        let alignmentPos = 0;
+        for (let i = 0; i < filteredWidgets.length; i++) {
+            const widget = filteredWidgets[i];
             if (!widget)
                 continue;
-            // Width includes padding on both sides
-            const totalWidth = widget.plainLength + (paddingLength * 2);
 
-            const currentMax = maxWidths[pos];
-            if (currentMax === undefined) {
-                maxWidths[pos] = totalWidth;
-            } else {
-                maxWidths[pos] = Math.max(currentMax, totalWidth);
+            // Calculate the total width for this alignment position
+            // If this widget is merged with the next, accumulate their widths
+            let totalWidth = widget.plainLength + (paddingLength * 2);
+
+            // Check if this widget merges with the next one(s)
+            let j = i;
+            while (j < filteredWidgets.length - 1 && filteredWidgets[j]?.widget.merge) {
+                j++;
+                const nextWidget = filteredWidgets[j];
+                if (nextWidget) {
+                    // For merged widgets, add width but account for padding adjustments
+                    // When merging with 'no-padding', don't count padding between widgets
+                    if (filteredWidgets[j - 1]?.widget.merge === 'no-padding') {
+                        totalWidth += nextWidget.plainLength;
+                    } else {
+                        totalWidth += nextWidget.plainLength + (paddingLength * 2);
+                    }
+                }
             }
+
+            const currentMax = maxWidths[alignmentPos];
+            if (currentMax === undefined) {
+                maxWidths[alignmentPos] = totalWidth;
+            } else {
+                maxWidths[alignmentPos] = Math.max(currentMax, totalWidth);
+            }
+
+            // Skip over merged widgets since we've already processed them
+            i = j;
+            alignmentPos++;
         }
     }
 
@@ -605,44 +643,7 @@ export function renderStatusLine(
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
 
     // Calculate terminal width based on flex mode settings
-    let terminalWidth: number | null = null;
-    if (detectedWidth) {
-        const flexMode = settings.flexMode as string;
-
-        if (context.isPreview) {
-            // In preview mode, account for box borders and padding (6 chars total)
-            if (flexMode === 'full') {
-                terminalWidth = detectedWidth - 6; // Subtract 6 for box borders and padding in preview
-            } else if (flexMode === 'full-minus-40') {
-                terminalWidth = detectedWidth - 40; // -40 for auto-compact + 3 for preview
-            } else if (flexMode === 'full-until-compact') {
-                // For preview, always show full width minus preview padding
-                terminalWidth = detectedWidth - 6;
-            }
-        } else {
-            // In actual rendering mode
-            if (flexMode === 'full') {
-                // Use full width minus 4 for terminal padding
-                terminalWidth = detectedWidth - 6;
-            } else if (flexMode === 'full-minus-40') {
-                // Always subtract 41 for auto-compact message
-                terminalWidth = detectedWidth - 40;
-            } else if (flexMode === 'full-until-compact') {
-                // Check context percentage to decide
-                const threshold = settings.compactThreshold;
-                const contextPercentage = context.tokenMetrics
-                    ? Math.min(100, (context.tokenMetrics.contextLength / 200000) * 100) : 0;
-
-                if (contextPercentage >= threshold) {
-                    // Context is high, leave space for auto-compact
-                    terminalWidth = detectedWidth - 40;
-                } else {
-                    // Context is low, use full width minus 4 for padding
-                    terminalWidth = detectedWidth - 6;
-                }
-            }
-        }
-    }
+    const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
     const elements: { content: string; type: string; widget?: WidgetItem }[] = [];
     let hasFlexSeparator = false;
@@ -655,7 +656,20 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
-            if (i > 0 && !preRenderedWidgets[i - 1]?.content)
+            // Check if there's any widget before this separator that actually rendered content
+            // Look backwards to find ANY widget that produced content
+            let hasContentBefore = false;
+            for (let j = i - 1; j >= 0; j--) {
+                const prevWidget = widgets[j];
+                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
+                    if (preRenderedWidgets[j]?.content) {
+                        hasContentBefore = true;
+                        break;
+                    }
+                    // Continue looking backwards even if this widget didn't render content
+                }
+            }
+            if (!hasContentBefore)
                 continue;
 
             const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
@@ -714,35 +728,9 @@ export function renderStatusLine(
                     // Handle max width truncation for commands with ANSI codes
                     let finalOutput = widgetText;
                     if (widget.maxWidth && widget.maxWidth > 0) {
-                        const plainLength = widgetText.replace(ANSI_REGEX, '').length;
+                        const plainLength = getVisibleWidth(widgetText);
                         if (plainLength > widget.maxWidth) {
-                            // Truncate while preserving ANSI codes
-                            let truncated = '';
-                            let currentLength = 0;
-                            let inAnsiCode = false;
-                            let ansiBuffer = '';
-
-                            for (const char of widgetText) {
-                                if (char === '\x1b') {
-                                    inAnsiCode = true;
-                                    ansiBuffer = char;
-                                } else if (inAnsiCode) {
-                                    ansiBuffer += char;
-                                    if (char === 'm') {
-                                        truncated += ansiBuffer;
-                                        inAnsiCode = false;
-                                        ansiBuffer = '';
-                                    }
-                                } else {
-                                    if (currentLength < widget.maxWidth) {
-                                        truncated += char;
-                                        currentLength++;
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-                            finalOutput = truncated;
+                            finalOutput = truncateStyledText(widgetText, widget.maxWidth, { ellipsis: false });
                         }
                     }
                     // Preserve original colors from command output
@@ -863,7 +851,7 @@ export function renderStatusLine(
         // Calculate total length of all non-flex content
         const partLengths = parts.map((part) => {
             const joined = part.join('');
-            return joined.replace(ANSI_REGEX, '').length;
+            return getVisibleWidth(joined);
         });
         const totalContentLength = partLengths.reduce((sum, len) => sum + len, 0);
 
@@ -902,38 +890,10 @@ export function renderStatusLine(
     const maxWidth = terminalWidth ?? detectedWidth;
     if (maxWidth && maxWidth > 0) {
         // Remove ANSI escape codes to get actual length
-        const plainLength = statusLine.replace(ANSI_REGEX, '').length;
+        const plainLength = getVisibleWidth(statusLine);
 
         if (plainLength > maxWidth) {
-            // Need to truncate - preserve ANSI codes while truncating
-            let truncated = '';
-            let currentLength = 0;
-            let inAnsiCode = false;
-            let ansiBuffer = '';
-            const targetLength = context.isPreview ? maxWidth - 3 : maxWidth - 3; // Reserve 3 chars for ellipsis
-
-            for (const char of statusLine) {
-                if (char === '\x1b') {
-                    inAnsiCode = true;
-                    ansiBuffer = char;
-                } else if (inAnsiCode) {
-                    ansiBuffer += char;
-                    if (char === 'm') {
-                        truncated += ansiBuffer;
-                        inAnsiCode = false;
-                        ansiBuffer = '';
-                    }
-                } else {
-                    if (currentLength < targetLength) {
-                        truncated += char;
-                        currentLength++;
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            statusLine = truncated + '...';
+            statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
         }
     }
 

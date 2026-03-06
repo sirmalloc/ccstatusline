@@ -9,8 +9,18 @@ import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { List } from './List';
 
+export type MainMenuOption = 'lines'
+    | 'colors'
+    | 'powerline'
+    | 'terminalConfig'
+    | 'globalOverrides'
+    | 'install'
+    | 'starGithub'
+    | 'save'
+    | 'exit';
+
 export interface MainMenuProps {
-    onSelect: (value: string, index: number) => void;
+    onSelect: (value: MainMenuOption, index: number) => void;
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
@@ -29,41 +39,40 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     previewIsTruncated
 }) => {
     // Build menu structure with visual gaps
-    const menuItems = [
+    const menuItems: ({
+        label: string;
+        value: MainMenuOption;
+        description: string;
+    } | '-')[] = [
         {
             label: '📝 Edit Lines',
             value: 'lines',
-            selectable: true,
             description:
-        'Configure up to 3 status lines with various widgets like model info, git status, and token usage'
+                'Configure any number of status lines with various widgets like model info, git status, and token usage'
         },
         {
             label: '🎨 Edit Colors',
             value: 'colors',
-            selectable: true,
             description:
-        'Customize colors for each widget including foreground, background, and bold styling'
+                'Customize colors for each widget including foreground, background, and bold styling'
         },
         {
             label: '⚡ Powerline Setup',
             value: 'powerline',
-            selectable: true,
             description:
-        'Install Powerline fonts for enhanced visual separators and symbols in your status line'
+                'Install Powerline fonts for enhanced visual separators and symbols in your status line'
         },
         '-' as const,
         {
             label: '💻 Terminal Options',
             value: 'terminalConfig',
-            selectable: true,
             description: 'Configure terminal-specific settings for optimal display'
         },
         {
             label: '🌐 Global Overrides',
             value: 'globalOverrides',
-            selectable: true,
             description:
-        'Set global padding, separators, and color overrides that apply to all widgets'
+                'Set global padding, separators, and color overrides that apply to all widgets'
         },
         '-' as const,
         {
@@ -71,7 +80,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 ? '🔌 Uninstall from Claude Code'
                 : '📦 Install to Claude Code',
             value: 'install',
-            selectable: true,
             description: isClaudeInstalled
                 ? 'Remove ccstatusline from your Claude Code settings'
                 : 'Add ccstatusline to your Claude Code settings for automatic status line rendering'
@@ -83,28 +91,39 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             {
                 label: '💾 Save & Exit',
                 value: 'save',
-                selectable: true,
                 description: 'Save all changes and exit the configuration tool'
             },
             {
                 label: '❌ Exit without saving',
                 value: 'exit',
-                selectable: true,
                 description: 'Exit without saving your changes'
+            },
+            '-' as const,
+            {
+                label: '⭐ Like ccstatusline? Star us on GitHub',
+                value: 'starGithub',
+                description: 'Open the ccstatusline GitHub repository in your browser so you can star the project'
             }
         );
     } else {
-        menuItems.push({
-            label: '🚪 Exit',
-            value: 'exit',
-            selectable: true,
-            description: 'Exit the configuration tool'
-        });
+        menuItems.push(
+            {
+                label: '🚪 Exit',
+                value: 'exit',
+                description: 'Exit the configuration tool'
+            },
+            '-' as const,
+            {
+                label: '⭐ Like ccstatusline? Star us on GitHub',
+                value: 'starGithub',
+                description: 'Open the ccstatusline GitHub repository in your browser so you can star the project'
+            }
+        );
     }
 
     // Check if we should show the truncation warning
     const showTruncationWarning
-    = previewIsTruncated && settings?.flexMode === 'full-minus-40';
+        = previewIsTruncated && settings?.flexMode === 'full-minus-40';
 
     return (
         <Box flexDirection='column'>
@@ -122,7 +141,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <List
                 items={menuItems}
                 marginTop={1}
-                onSelect={onSelect}
+                onSelect={(value, index) => {
+                    if (value === 'back') {
+                        return;
+                    }
+
+                    onSelect(value, index);
+                }}
                 initialSelection={initialSelection}
             />
         </Box>

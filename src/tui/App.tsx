@@ -8,6 +8,7 @@ import {
 } from 'ink';
 import Gradient from 'ink-gradient';
 import React, {
+    useCallback,
     useEffect,
     useState
 } from 'react';
@@ -15,16 +16,23 @@ import React, {
 import type { Settings } from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
 import {
+    CCSTATUSLINE_COMMANDS,
+    getClaudeSettingsPath,
     getExistingStatusLine,
     installStatusLine,
     isBunxAvailable,
     isInstalled,
+    isKnownCommand,
     uninstallStatusLine
 } from '../utils/claude-settings';
+import { cloneSettings } from '../utils/clone-settings';
 import {
+    getConfigPath,
+    isCustomConfigPath,
     loadSettings,
     saveSettings
 } from '../utils/config';
+import { openExternalUrl } from '../utils/open-url';
 import {
     checkPowerlineFonts,
     checkPowerlineFontsAsync,
@@ -44,8 +52,16 @@ import {
     PowerlineSetup,
     StatusLinePreview,
     TerminalOptionsMenu,
-    TerminalWidthMenu
+    TerminalWidthMenu,
+    type MainMenuOption
 } from './components';
+
+const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
+
+interface FlashMessage {
+    text: string;
+    color: 'green' | 'red';
+}
 
 export const App: React.FC = () => {
     const { exit } = useApp();
@@ -62,7 +78,7 @@ export const App: React.FC = () => {
     const [installingFonts, setInstallingFonts] = useState(false);
     const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
     const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
-    const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
     const [previewIsTruncated, setPreviewIsTruncated] = useState(false);
 
     useEffect(() => {
@@ -73,7 +89,7 @@ export const App: React.FC = () => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
             setSettings(loadedSettings);
-            setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings)) as Settings); // Deep copy
+            setOriginalSettings(cloneSettings(loadedSettings));
         });
         void isInstalled().then(setIsClaudeInstalled);
 
@@ -104,15 +120,15 @@ export const App: React.FC = () => {
         }
     }, [settings, originalSettings]);
 
-    // Clear save message after 2 seconds
+    // Clear header message after 2 seconds
     useEffect(() => {
-        if (saveMessage) {
+        if (flashMessage) {
             const timer = setTimeout(() => {
-                setSaveMessage(null);
+                setFlashMessage(null);
             }, 2000);
             return () => { clearTimeout(timer); };
         }
-    }, [saveMessage]);
+    }, [flashMessage]);
 
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
@@ -122,12 +138,50 @@ export const App: React.FC = () => {
         if (key.ctrl && input === 's' && settings) {
             void (async () => {
                 await saveSettings(settings);
-                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings);
+                setOriginalSettings(cloneSettings(settings));
                 setHasChanges(false);
-                setSaveMessage('✓ Configuration saved');
+                setFlashMessage({
+                    text: '✓ Configuration saved',
+                    color: 'green'
+                });
             })();
         }
     });
+
+    const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean) => {
+        void getExistingStatusLine().then((existing) => {
+            const isAlreadyInstalled = isKnownCommand(existing ?? '');
+            let message: string;
+
+            if (existing && !isAlreadyInstalled) {
+                message = `This will modify ${getClaudeSettingsPath()}\n\nA status line is already configured: "${existing}"\nReplace it with ${command}?`;
+            } else if (isAlreadyInstalled) {
+                message = `ccstatusline is already installed in ${getClaudeSettingsPath()}\nUpdate it with ${command}?`;
+            } else {
+                message = `This will modify ${getClaudeSettingsPath()} to add ccstatusline with ${displayName}.\nContinue?`;
+            }
+
+            setConfirmDialog({
+                message,
+                action: async () => {
+                    await installStatusLine(useBunx);
+                    setIsClaudeInstalled(true);
+                    setExistingStatusLine(command);
+                    setScreen('main');
+                    setConfirmDialog(null);
+                }
+            });
+            setScreen('confirm');
+        });
+    }, []);
+
+    const handleNpxInstall = useCallback(() => {
+        handleInstallSelection(CCSTATUSLINE_COMMANDS.NPM, 'npx', false);
+    }, [handleInstallSelection]);
+
+    const handleBunxInstall = useCallback(() => {
+        handleInstallSelection(CCSTATUSLINE_COMMANDS.BUNX, 'bunx', true);
+    }, [handleInstallSelection]);
 
     if (!settings) {
         return <Text>Loading settings...</Text>;
@@ -137,7 +191,7 @@ export const App: React.FC = () => {
         if (isClaudeInstalled) {
             // Uninstall
             setConfirmDialog({
-                message: 'This will remove ccstatusline from ~/.claude/settings.json. Continue?',
+                message: `This will remove ccstatusline from ${getClaudeSettingsPath()}. Continue?`,
                 action: async () => {
                     await uninstallStatusLine();
                     setIsClaudeInstalled(false);
@@ -153,35 +207,58 @@ export const App: React.FC = () => {
         }
     };
 
-    const handleMainMenuSelect = async (value: string) => {
+    const handleMainMenuSelect = async (value: MainMenuOption) => {
         switch (value) {
-        case 'lines':
-            setScreen('lines');
-            break;
-        case 'colors':
-            setScreen('colorLines');
-            break;
-        case 'terminalConfig':
-            setScreen('terminalConfig');
-            break;
-        case 'globalOverrides':
-            setScreen('globalOverrides');
-            break;
-        case 'powerline':
-            setScreen('powerline');
-            break;
-        case 'install':
-            handleInstallUninstall();
-            break;
-        case 'save':
-            await saveSettings(settings);
-            setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
-            setHasChanges(false);
-            exit();
-            break;
-        case 'exit':
-            exit();
-            break;
+            case 'lines':
+                setScreen('lines');
+                break;
+            case 'colors':
+                setScreen('colorLines');
+                break;
+            case 'terminalConfig':
+                setScreen('terminalConfig');
+                break;
+            case 'globalOverrides':
+                setScreen('globalOverrides');
+                break;
+            case 'powerline':
+                setScreen('powerline');
+                break;
+            case 'install':
+                handleInstallUninstall();
+                break;
+            case 'starGithub':
+                setConfirmDialog({
+                    message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
+                    action: () => {
+                        const result = openExternalUrl(GITHUB_REPO_URL);
+                        if (result.success) {
+                            setFlashMessage({
+                                text: '✓ Opened GitHub repository in browser',
+                                color: 'green'
+                            });
+                        } else {
+                            setFlashMessage({
+                                text: `✗ Could not open browser. Visit: ${GITHUB_REPO_URL}`,
+                                color: 'red'
+                            });
+                        }
+                        setScreen('main');
+                        setConfirmDialog(null);
+                        return Promise.resolve();
+                    }
+                });
+                setScreen('confirm');
+                break;
+            case 'save':
+                await saveSettings(settings);
+                setOriginalSettings(cloneSettings(settings)); // Update original after save
+                setHasChanges(false);
+                exit();
+                break;
+            case 'exit':
+                exit();
+                break;
         }
     };
 
@@ -211,12 +288,15 @@ export const App: React.FC = () => {
                 <Text bold>
                     {` | ${getPackageVersion() && `v${getPackageVersion()}`}`}
                 </Text>
-                {saveMessage && (
-                    <Text color='green' bold>
-                        {`  ${saveMessage}`}
+                {flashMessage && (
+                    <Text color={flashMessage.color} bold>
+                        {`  ${flashMessage.text}`}
                     </Text>
                 )}
             </Box>
+            {isCustomConfigPath() && (
+                <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
+            )}
 
             <StatusLinePreview
                 lines={settings.lines}
@@ -231,7 +311,7 @@ export const App: React.FC = () => {
                         onSelect={(value, index) => {
                             // Only persist menu selection if not exiting
                             if (value !== 'save' && value !== 'exit') {
-                                setMenuSelections({ ...menuSelections, main: index });
+                                setMenuSelections(prev => ({ ...prev, main: index }));
                             }
 
                             void handleMainMenuSelect(value);
@@ -248,14 +328,14 @@ export const App: React.FC = () => {
                     <LineSelector
                         lines={settings.lines}
                         onSelect={(line) => {
-                            setMenuSelections({ ...menuSelections, lines: line });
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
                             handleLineSelect(line);
                         }}
                         onLinesUpdate={updateLines}
                         onBack={() => {
                             // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
-                            setMenuSelections({ ...menuSelections, main: 0 });
+                            setMenuSelections(prev => ({ ...prev, main: 0 }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -269,7 +349,7 @@ export const App: React.FC = () => {
                         onUpdate={(widgets) => { updateLine(selectedLine, widgets); }}
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
-                            setMenuSelections({ ...menuSelections, lines: selectedLine });
+                            setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
                             setScreen('lines');
                         }}
                         lineNumber={selectedLine + 1}
@@ -281,13 +361,13 @@ export const App: React.FC = () => {
                         lines={settings.lines}
                         onLinesUpdate={updateLines}
                         onSelect={(line) => {
-                            setMenuSelections({ ...menuSelections, lines: line });
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
                             setSelectedLine(line);
                             setScreen('colors');
                         }}
                         onBack={() => {
                             // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections({ ...menuSelections, main: 1 });
+                            setMenuSelections(prev => ({ ...prev, main: 1 }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -325,7 +405,7 @@ export const App: React.FC = () => {
                                 setScreen('terminalWidth');
                             } else {
                                 // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections({ ...menuSelections, main: 3 });
+                                setMenuSelections(prev => ({ ...prev, main: 3 }));
                                 setScreen('main');
                             }
                         }}
@@ -350,7 +430,7 @@ export const App: React.FC = () => {
                         }}
                         onBack={() => {
                             // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections({ ...menuSelections, main: 4 });
+                            setMenuSelections(prev => ({ ...prev, main: 4 }));
                             setScreen('main');
                         }}
                     />
@@ -369,58 +449,8 @@ export const App: React.FC = () => {
                     <InstallMenu
                         bunxAvailable={isBunxAvailable()}
                         existingStatusLine={existingStatusLine}
-                        onSelectNpx={() => {
-                            void getExistingStatusLine().then((existing) => {
-                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
-                                let message: string;
-
-                                if (existing && !isAlreadyInstalled) {
-                                    message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with npx -y ccstatusline@latest?`;
-                                } else if (isAlreadyInstalled) {
-                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with npx -y ccstatusline@latest?';
-                                } else {
-                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with npx.\nContinue?';
-                                }
-
-                                setConfirmDialog({
-                                    message,
-                                    action: async () => {
-                                        await installStatusLine(false);
-                                        setIsClaudeInstalled(true);
-                                        setExistingStatusLine('npx -y ccstatusline@latest');
-                                        setScreen('main');
-                                        setConfirmDialog(null);
-                                    }
-                                });
-                                setScreen('confirm');
-                            });
-                        }}
-                        onSelectBunx={() => {
-                            void getExistingStatusLine().then((existing) => {
-                                const isAlreadyInstalled = ['npx -y ccstatusline@latest', 'bunx -y ccstatusline@latest'].includes(existing ?? '');
-                                let message: string;
-
-                                if (existing && !isAlreadyInstalled) {
-                                    message = `This will modify ~/.claude/settings.json\n\nA status line is already configured: "${existing}"\nReplace it with bunx -y ccstatusline@latest?`;
-                                } else if (isAlreadyInstalled) {
-                                    message = 'ccstatusline is already installed in ~/.claude/settings.json\nUpdate it with bunx -y ccstatusline@latest?';
-                                } else {
-                                    message = 'This will modify ~/.claude/settings.json to add ccstatusline with bunx.\nContinue?';
-                                }
-
-                                setConfirmDialog({
-                                    message,
-                                    action: async () => {
-                                        await installStatusLine(true);
-                                        setIsClaudeInstalled(true);
-                                        setExistingStatusLine('bunx -y ccstatusline@latest');
-                                        setScreen('main');
-                                        setConfirmDialog(null);
-                                    }
-                                });
-                                setScreen('confirm');
-                            });
-                        }}
+                        onSelectNpx={handleNpxInstall}
+                        onSelectBunx={handleBunxInstall}
                         onCancel={() => {
                             setScreen('main');
                         }}

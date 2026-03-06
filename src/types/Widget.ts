@@ -34,6 +34,7 @@ export interface Widget {
     getDefaultColor(): string;
     getDescription(): string;
     getDisplayName(): string;
+    getCategory(): string;
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay;
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
     getCustomKeybinds?(): CustomKeybind[];

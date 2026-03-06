@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetItem,
     WidgetItemType
@@ -15,9 +16,22 @@ import { getBackgroundColorsForPowerline } from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
-    getAllWidgetTypes,
-    getWidget
+    filterWidgetCatalog,
+    getWidget,
+    getWidgetCatalog,
+    getWidgetCatalogCategories
 } from '../../utils/widgets';
+
+import { ConfirmDialog } from './ConfirmDialog';
+import {
+    handleMoveInputMode,
+    handleNormalInputMode,
+    handlePickerInputMode,
+    normalizePickerState,
+    type CustomEditorWidgetState,
+    type WidgetPickerAction,
+    type WidgetPickerState
+} from './items-editor/input-handlers';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -30,31 +44,13 @@ export interface ItemsEditorProps {
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
-    const [customEditorWidget, setCustomEditorWidget] = useState<{ widget: WidgetItem; impl: Widget; action?: string } | null>(null);
+    const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
+    const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
     const separatorChars = ['|', '-', ',', ' '];
 
-    // Determine which item types are allowed based on settings
-    const getAllowedTypes = (): WidgetItemType[] => {
-        let allowedTypes = getAllWidgetTypes(settings);
-
-        // Remove separator if default separator is set
-        if (settings.defaultSeparator) {
-            allowedTypes = allowedTypes.filter(t => t !== 'separator');
-        }
-
-        // Remove both separator and flex-separator if powerline mode is enabled
-        if (settings.powerline.enabled) {
-            allowedTypes = allowedTypes.filter(t => t !== 'separator' && t !== 'flex-separator');
-        }
-
-        return allowedTypes;
-    };
-
-    // Get the default type for new widgets (first non-separator type)
-    const getDefaultItemType = (): WidgetItemType => {
-        const allowedTypes = getAllowedTypes();
-        return allowedTypes.includes('model') ? 'model' : (allowedTypes[0] ?? 'model');
-    };
+    const widgetCatalog = getWidgetCatalog(settings);
+    const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
 
     // Get a unique background color for powerline mode
     const getUniqueBackgroundColor = (insertIndex: number): string | undefined => {
@@ -98,200 +94,126 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         setCustomEditorWidget(null);
     };
 
+    const shouldShowCustomKeybind = (widget: WidgetItem, keybind: CustomKeybind): boolean => {
+        if (keybind.action !== 'toggle-invert') {
+            if (keybind.action === 'edit-list-limit') {
+                return widget.type === 'skills' && widget.metadata?.mode === 'list';
+            }
+            return true;
+        }
+
+        const mode = widget.metadata?.display;
+        return mode === 'progress' || mode === 'progress-short';
+    };
+
+    const getVisibleCustomKeybinds = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
+        if (!widgetImpl.getCustomKeybinds) {
+            return [];
+        }
+
+        return widgetImpl.getCustomKeybinds().filter(keybind => shouldShowCustomKeybind(widget, keybind));
+    };
+
+    const openWidgetPicker = (action: WidgetPickerAction) => {
+        if (widgetCatalog.length === 0) {
+            return;
+        }
+
+        const currentType = widgets[selectedIndex]?.type;
+        const selectedType = action === 'change' ? currentType ?? null : null;
+
+        setWidgetPicker(normalizePickerState({
+            action,
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType
+        }, widgetCatalog, widgetCategories));
+    };
+
+    const applyWidgetPickerSelection = (selectedType: WidgetItemType) => {
+        if (!widgetPicker) {
+            return;
+        }
+
+        if (widgetPicker.action === 'change') {
+            const currentWidget = widgets[selectedIndex];
+            if (currentWidget) {
+                const newWidgets = [...widgets];
+                newWidgets[selectedIndex] = { ...currentWidget, type: selectedType };
+                onUpdate(newWidgets);
+            }
+        } else {
+            const insertIndex = widgetPicker.action === 'add'
+                ? (widgets.length > 0 ? selectedIndex + 1 : 0)
+                : selectedIndex;
+            const backgroundColor = getUniqueBackgroundColor(insertIndex);
+            const newWidget: WidgetItem = {
+                id: generateGuid(),
+                type: selectedType,
+                ...(backgroundColor && { backgroundColor })
+            };
+            const newWidgets = [...widgets];
+            newWidgets.splice(insertIndex, 0, newWidget);
+            onUpdate(newWidgets);
+            setSelectedIndex(insertIndex);
+        }
+
+        setWidgetPicker(null);
+    };
+
     useInput((input, key) => {
         // Skip input if custom editor is active
         if (customEditorWidget) {
             return;
         }
 
-        if (moveMode) {
-            // In move mode, use up/down to move the selected item
-            if (key.upArrow && selectedIndex > 0) {
-                const newWidgets = [...widgets];
-                const temp = newWidgets[selectedIndex];
-                const prev = newWidgets[selectedIndex - 1];
-                if (temp && prev) {
-                    [newWidgets[selectedIndex], newWidgets[selectedIndex - 1]] = [prev, temp];
-                }
-                onUpdate(newWidgets);
-                setSelectedIndex(selectedIndex - 1);
-            } else if (key.downArrow && selectedIndex < widgets.length - 1) {
-                const newWidgets = [...widgets];
-                const temp = newWidgets[selectedIndex];
-                const next = newWidgets[selectedIndex + 1];
-                if (temp && next) {
-                    [newWidgets[selectedIndex], newWidgets[selectedIndex + 1]] = [next, temp];
-                }
-                onUpdate(newWidgets);
-                setSelectedIndex(selectedIndex + 1);
-            } else if (key.escape || key.return) {
-                // Exit move mode
-                setMoveMode(false);
-            }
-        } else {
-            // Normal mode
-            if (key.upArrow) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
-            } else if (key.downArrow) {
-                setSelectedIndex(Math.min(widgets.length - 1, selectedIndex + 1));
-            } else if (key.leftArrow && widgets.length > 0) {
-                // Toggle item type backwards
-                const types = getAllowedTypes();
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget) {
-                    const currentType = currentWidget.type;
-                    let currentIndex = types.indexOf(currentType);
-                    // If current type is not in allowed types (e.g., separator when disabled), find a valid type
-                    if (currentIndex === -1) {
-                        currentIndex = 0;
-                    }
-                    const prevIndex = currentIndex === 0 ? types.length - 1 : currentIndex - 1;
-                    const newWidgets = [...widgets];
-                    const prevType = types[prevIndex];
-                    if (prevType) {
-                        newWidgets[selectedIndex] = { ...currentWidget, type: prevType };
-                        onUpdate(newWidgets);
-                    }
-                }
-            } else if (key.rightArrow && widgets.length > 0) {
-                // Toggle item type forwards
-                const types = getAllowedTypes();
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget) {
-                    const currentType = currentWidget.type;
-                    let currentIndex = types.indexOf(currentType);
-                    // If current type is not in allowed types (e.g., separator when disabled), find a valid type
-                    if (currentIndex === -1) {
-                        currentIndex = 0;
-                    }
-                    const nextIndex = (currentIndex + 1) % types.length;
-                    const newWidgets = [...widgets];
-                    const nextType = types[nextIndex];
-                    if (nextType) {
-                        newWidgets[selectedIndex] = { ...currentWidget, type: nextType };
-                        onUpdate(newWidgets);
-                    }
-                }
-            } else if (key.return && widgets.length > 0) {
-                // Enter move mode
-                setMoveMode(true);
-            } else if (input === 'a') {
-                // Add widget after selected
-                const insertIndex = widgets.length > 0 ? selectedIndex + 1 : 0;
-                const backgroundColor = getUniqueBackgroundColor(insertIndex);
-                const newWidget: WidgetItem = {
-                    id: generateGuid(),
-                    type: getDefaultItemType(),
-                    ...(backgroundColor && { backgroundColor })
-                };
-                const newWidgets = [...widgets];
-                newWidgets.splice(insertIndex, 0, newWidget);
-                onUpdate(newWidgets);
-                setSelectedIndex(insertIndex); // Move selection to new widget
-            } else if (input === 'i') {
-                // Insert item before selected
-                const insertIndex = selectedIndex;
-                const backgroundColor = getUniqueBackgroundColor(insertIndex);
-                const newWidget: WidgetItem = {
-                    id: generateGuid(),
-                    type: getDefaultItemType(),
-                    ...(backgroundColor && { backgroundColor })
-                };
-                const newWidgets = [...widgets];
-                newWidgets.splice(insertIndex, 0, newWidget);
-                onUpdate(newWidgets);
-                // Keep selection on the new widget (which is now at selectedIndex)
-            } else if (input === 'd' && widgets.length > 0) {
-                // Delete selected item
-                const newWidgets = widgets.filter((_, i) => i !== selectedIndex);
-                onUpdate(newWidgets);
-                if (selectedIndex >= newWidgets.length && selectedIndex > 0) {
-                    setSelectedIndex(selectedIndex - 1);
-                }
-            } else if (input === 'c') {
-                // Clear entire line
-                onUpdate([]);
-                setSelectedIndex(0);
-            } else if (input === ' ' && widgets.length > 0) {
-                // Space key - cycle separator character for separator types only (not flex)
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type === 'separator') {
-                    const currentChar = currentWidget.character ?? '|';
-                    const currentCharIndex = separatorChars.indexOf(currentChar);
-                    const nextChar = separatorChars[(currentCharIndex + 1) % separatorChars.length];
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, character: nextChar };
-                    onUpdate(newWidgets);
-                }
-            } else if (input === 'r' && widgets.length > 0) {
-                // Toggle raw value for non-separator items
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator' && currentWidget.type !== 'custom-text') {
-                    const newWidgets = [...widgets];
-                    newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
-                    onUpdate(newWidgets);
-                }
-            } else if (input === 'm' && widgets.length > 0) {
-                // Cycle through merge states: undefined -> true -> 'no-padding' -> undefined
-                const currentWidget = widgets[selectedIndex];
-                // Don't allow merge on the last item or on separators
-                if (currentWidget && selectedIndex < widgets.length - 1
-                    && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-                    const newWidgets = [...widgets];
-                    let nextMergeState: boolean | 'no-padding' | undefined;
-
-                    if (currentWidget.merge === undefined) {
-                        nextMergeState = true;
-                    } else if (currentWidget.merge === true) {
-                        nextMergeState = 'no-padding';
-                    } else {
-                        nextMergeState = undefined;
-                    }
-
-                    if (nextMergeState === undefined) {
-                        const { merge, ...rest } = currentWidget;
-                        void merge; // Intentionally unused
-                        newWidgets[selectedIndex] = rest;
-                    } else {
-                        newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
-                    }
-                    onUpdate(newWidgets);
-                }
-            } else if (key.escape) {
-                onBack();
-            } else if (widgets.length > 0) {
-                // Check for custom widget keybinds
-                const currentWidget = widgets[selectedIndex];
-                if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-                    const widgetImpl = getWidget(currentWidget.type);
-                    if (widgetImpl) {
-                        if (widgetImpl.getCustomKeybinds) {
-                            const customKeybinds = widgetImpl.getCustomKeybinds();
-                            const matchedKeybind = customKeybinds.find(kb => kb.key === input);
-
-                            if (matchedKeybind && !key.ctrl) {
-                                // Check if widget handles the action directly
-                                if (widgetImpl.handleEditorAction) {
-                                    // Let the widget handle the action directly
-                                    const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
-                                    if (updatedWidget) {
-                                        const newWidgets = [...widgets];
-                                        newWidgets[selectedIndex] = updatedWidget;
-                                        onUpdate(newWidgets);
-                                    } else if (widgetImpl.renderEditor) {
-                                        // If handleEditorAction returned null, open the editor
-                                        setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
-                                    }
-                                } else if (widgetImpl.renderEditor) {
-                                    // Open the widget's custom editor with the action
-                                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        // Skip input handling when clear confirmation is active - let ConfirmDialog handle it
+        if (showClearConfirm) {
+            return;
         }
+
+        if (widgetPicker) {
+            handlePickerInputMode({
+                input,
+                key,
+                widgetPicker,
+                widgetCatalog,
+                widgetCategories,
+                setWidgetPicker,
+                applyWidgetPickerSelection
+            });
+            return;
+        }
+
+        if (moveMode) {
+            handleMoveInputMode({
+                key,
+                widgets,
+                selectedIndex,
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode
+            });
+            return;
+        }
+
+        handleNormalInputMode({
+            input,
+            key,
+            widgets,
+            selectedIndex,
+            separatorChars,
+            onBack,
+            onUpdate,
+            setSelectedIndex,
+            setMoveMode,
+            setShowClearConfirm,
+            openWidgetPicker,
+            getVisibleCustomKeybinds,
+            setCustomEditorWidget
+        });
     });
 
     const getWidgetDisplay = (widget: WidgetItem) => {
@@ -318,6 +240,26 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
+    const pickerCategories = widgetPicker
+        ? [...widgetCategories]
+        : [];
+    const selectedPickerCategory = widgetPicker
+        ? (widgetPicker.selectedCategory && pickerCategories.includes(widgetPicker.selectedCategory)
+            ? widgetPicker.selectedCategory
+            : (pickerCategories[0] ?? null))
+        : null;
+    const topLevelSearchEntries = widgetPicker?.level === 'category' && widgetPicker.categoryQuery.trim().length > 0
+        ? filterWidgetCatalog(widgetCatalog, 'All', widgetPicker.categoryQuery)
+        : [];
+    const selectedTopLevelSearchEntry = widgetPicker
+        ? (topLevelSearchEntries.find(entry => entry.type === widgetPicker.selectedType) ?? topLevelSearchEntries[0])
+        : null;
+    const pickerEntries = widgetPicker
+        ? filterWidgetCatalog(widgetCatalog, selectedPickerCategory ?? 'All', widgetPicker.widgetQuery)
+        : [];
+    const selectedPickerEntry = widgetPicker
+        ? (pickerEntries.find(entry => entry.type === widgetPicker.selectedType) ?? pickerEntries[0])
+        : null;
 
     // Build dynamic help text based on selected item
     const currentWidget = widgets[selectedIndex];
@@ -326,28 +268,31 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Check if widget supports raw value using registry
     let canToggleRaw = false;
-    let customKeybinds: { key: string; label: string; action: string }[] = [];
+    let customKeybinds: CustomKeybind[] = [];
     if (currentWidget && !isSeparator && !isFlexSeparator) {
         const widgetImpl = getWidget(currentWidget.type);
         if (widgetImpl) {
             canToggleRaw = widgetImpl.supportsRawValue();
             // Get custom keybinds from the widget
-            if (widgetImpl.getCustomKeybinds) {
-                customKeybinds = widgetImpl.getCustomKeybinds();
-            }
+            customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
         } else {
             canToggleRaw = false;
         }
     }
 
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
+    const hasWidgets = widgets.length > 0;
 
     // Build main help text (without custom keybinds)
-    let helpText = '↑↓ select, ←→ change type';
+    let helpText = hasWidgets
+        ? '↑↓ select, ←→ open type picker'
+        : '(a)dd via picker, (i)nsert via picker';
     if (isSeparator) {
         helpText += ', Space edit separator';
     }
-    helpText += ', Enter to move, (a)dd, (i)nsert, (d)elete, (c)lear line';
+    if (hasWidgets) {
+        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
+    }
     if (canToggleRaw) {
         helpText += ', (r)aw value';
     }
@@ -358,6 +303,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
+    const pickerActionLabel = widgetPicker?.action === 'add'
+        ? 'Add Widget'
+        : widgetPicker?.action === 'insert'
+            ? 'Insert Widget'
+            : 'Change Widget Type';
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
@@ -367,6 +317,39 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             onCancel: handleEditorCancel,
             action: customEditorWidget.action
         });
+    }
+
+    if (showClearConfirm) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold color='yellow'>⚠ Confirm Clear Line</Text>
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>
+                        This will remove all widgets from Line
+                        {' '}
+                        {lineNumber}
+                        .
+                    </Text>
+                    <Text color='red'>This action cannot be undone!</Text>
+                </Box>
+                <Box marginTop={2}>
+                    <Text>Continue?</Text>
+                </Box>
+                <Box marginTop={1}>
+                    <ConfirmDialog
+                        inline={true}
+                        onConfirm={() => {
+                            onUpdate([]);
+                            setSelectedIndex(0);
+                            setShowClearConfirm(false);
+                        }}
+                        onCancel={() => {
+                            setShowClearConfirm(false);
+                        }}
+                    />
+                </Box>
+            </Box>
+        );
     }
 
     return (
@@ -379,6 +362,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {' '}
                 </Text>
                 {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                {widgetPicker && <Text color='cyan'>{`[${pickerActionLabel.toUpperCase()}]`}</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
                         <Text color='yellow'>
@@ -395,6 +379,37 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 <Box flexDirection='column' marginBottom={1}>
                     <Text dimColor>↑↓ to move widget, ESC or Enter to exit move mode</Text>
                 </Box>
+            ) : widgetPicker ? (
+                <Box flexDirection='column'>
+                    {widgetPicker.level === 'category' ? (
+                        <>
+                            {widgetPicker.categoryQuery.trim().length > 0 ? (
+                                <Text dimColor>↑↓ select widget match, Enter apply, ESC clear/cancel</Text>
+                            ) : (
+                                <Text dimColor>↑↓ select category, type to search all widgets, Enter continue, ESC cancel</Text>
+                            )}
+                            <Box>
+                                <Text dimColor>Search: </Text>
+                                <Text color='cyan'>{widgetPicker.categoryQuery || '(none)'}</Text>
+                            </Box>
+                        </>
+                    ) : (
+                        <>
+                            <Text dimColor>↑↓ select widget, type to search widgets, Enter apply, ESC back</Text>
+                            <Box>
+                                <Text dimColor>
+                                    Category:
+                                    {' '}
+                                    {selectedPickerCategory ?? '(none)'}
+                                    {' '}
+                                    | Search:
+                                    {' '}
+                                </Text>
+                                <Text color='cyan'>{widgetPicker.widgetQuery || '(none)'}</Text>
+                            </Box>
+                        </>
+                    )}
+                </Box>
             ) : (
                 <Box flexDirection='column'>
                     <Text dimColor>{helpText}</Text>
@@ -407,58 +422,149 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
                 </Box>
             )}
-            <Box marginTop={1} flexDirection='column'>
-                {widgets.length === 0 ? (
-                    <Text dimColor>No widgets. Press 'a' to add one.</Text>
-                ) : (
-                    <>
-                        {widgets.map((widget, index) => {
-                            const isSelected = index === selectedIndex;
-                            const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
-                            const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
-
-                            return (
-                                <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
-                                    <Box width={3}>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                        </Text>
-                                    </Box>
-                                    <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                        {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                    </Text>
-                                    {modifierText && (
-                                        <Text dimColor>
-                                            {' '}
-                                            {modifierText}
-                                        </Text>
+            {widgetPicker && (
+                <Box marginTop={1} flexDirection='column'>
+                    {widgetPicker.level === 'category' ? (
+                        widgetPicker.categoryQuery.trim().length > 0 ? (
+                            topLevelSearchEntries.length === 0 ? (
+                                <Text dimColor>No widgets match the search.</Text>
+                            ) : (
+                                <>
+                                    {topLevelSearchEntries.map((entry, index) => {
+                                        const isSelected = entry.type === selectedTopLevelSearchEntry?.type;
+                                        return (
+                                            <Box key={entry.type} flexDirection='row' flexWrap='nowrap'>
+                                                <Box width={3}>
+                                                    <Text color={isSelected ? 'green' : undefined}>
+                                                        {isSelected ? '▶ ' : '  '}
+                                                    </Text>
+                                                </Box>
+                                                <Text color={isSelected ? 'green' : undefined}>
+                                                    {`${index + 1}. ${entry.displayName}`}
+                                                </Text>
+                                            </Box>
+                                        );
+                                    })}
+                                    {selectedTopLevelSearchEntry && (
+                                        <Box marginTop={1} paddingLeft={2}>
+                                            <Text dimColor>{selectedTopLevelSearchEntry.description}</Text>
+                                        </Box>
                                     )}
-                                    {widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                    {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                    {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                </>
+                            )
+                        ) : (
+                            pickerCategories.length === 0 ? (
+                                <Text dimColor>No categories available.</Text>
+                            ) : (
+                                <>
+                                    {pickerCategories.map((category, index) => {
+                                        const isSelected = category === selectedPickerCategory;
+                                        return (
+                                            <Box key={category} flexDirection='row' flexWrap='nowrap'>
+                                                <Box width={3}>
+                                                    <Text color={isSelected ? 'green' : undefined}>
+                                                        {isSelected ? '▶ ' : '  '}
+                                                    </Text>
+                                                </Box>
+                                                <Text color={isSelected ? 'green' : undefined}>
+                                                    {`${index + 1}. ${category}`}
+                                                </Text>
+                                            </Box>
+                                        );
+                                    })}
+                                    {selectedPickerCategory === 'All' && (
+                                        <Box marginTop={1} paddingLeft={2}>
+                                            <Text dimColor>Search across all widget categories.</Text>
+                                        </Box>
+                                    )}
+                                </>
+                            )
+                        )
+                    ) : (
+                        pickerEntries.length === 0 ? (
+                            <Text dimColor>No widgets match the current category/search.</Text>
+                        ) : (
+                            <>
+                                {pickerEntries.map((entry, index) => {
+                                    const isSelected = entry.type === selectedPickerEntry?.type;
+                                    return (
+                                        <Box key={entry.type} flexDirection='row' flexWrap='nowrap'>
+                                            <Box width={3}>
+                                                <Text color={isSelected ? 'green' : undefined}>
+                                                    {isSelected ? '▶ ' : '  '}
+                                                </Text>
+                                            </Box>
+                                            <Text color={isSelected ? 'green' : undefined}>
+                                                {`${index + 1}. ${entry.displayName}`}
+                                            </Text>
+                                        </Box>
+                                    );
+                                })}
+                                {selectedPickerEntry && (
+                                    <Box marginTop={1} paddingLeft={2}>
+                                        <Text dimColor>{selectedPickerEntry.description}</Text>
+                                    </Box>
+                                )}
+                            </>
+                        )
+                    )}
+                </Box>
+            )}
+            {!widgetPicker && (
+                <Box marginTop={1} flexDirection='column'>
+                    {widgets.length === 0 ? (
+                        <Text dimColor>No widgets. Press 'a' to add one.</Text>
+                    ) : (
+                        <>
+                            {widgets.map((widget, index) => {
+                                const isSelected = index === selectedIndex;
+                                const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
+                                const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
+                                const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+
+                                return (
+                                    <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
+                                        <Box width={3}>
+                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                                {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
+                                            </Text>
+                                        </Box>
+                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                        </Text>
+                                        {modifierText && (
+                                            <Text dimColor>
+                                                {' '}
+                                                {modifierText}
+                                            </Text>
+                                        )}
+                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
+                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                    </Box>
+                                );
+                            })}
+                            {/* Display description for selected widget */}
+                            {currentWidget && (
+                                <Box marginTop={1} paddingLeft={2}>
+                                    <Text dimColor>
+                                        {(() => {
+                                            if (currentWidget.type === 'separator') {
+                                                return 'A separator character between status line widgets';
+                                            } else if (currentWidget.type === 'flex-separator') {
+                                                return 'Expands to fill available terminal width';
+                                            } else {
+                                                const widgetImpl = getWidget(currentWidget.type);
+                                                return widgetImpl ? widgetImpl.getDescription() : 'Unknown widget type';
+                                            }
+                                        })()}
+                                    </Text>
                                 </Box>
-                            );
-                        })}
-                        {/* Display description for selected widget */}
-                        {currentWidget && (
-                            <Box marginTop={1} paddingLeft={2}>
-                                <Text dimColor>
-                                    {(() => {
-                                        if (currentWidget.type === 'separator') {
-                                            return 'A separator character between status line widgets';
-                                        } else if (currentWidget.type === 'flex-separator') {
-                                            return 'Expands to fill available terminal width';
-                                        } else {
-                                            const widgetImpl = getWidget(currentWidget.type);
-                                            return widgetImpl ? widgetImpl.getDescription() : 'Unknown widget type';
-                                        }
-                                    })()}
-                                </Text>
-                            </Box>
-                        )}
-                    </>
-                )}
-            </Box>
+                            )}
+                        </>
+                    )}
+                </Box>
+            )}
         </Box>
     );
 };

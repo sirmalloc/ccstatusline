@@ -6,6 +6,7 @@ import {
     type BoxProps
 } from 'ink';
 import {
+    useEffect,
     useMemo,
     useState,
     type PropsWithChildren
@@ -23,17 +24,21 @@ interface ListItemType<V = string | number> {
 interface ListProps<V = string | number> extends BoxProps {
     items: (ListItemType<V> | '-')[];
     onSelect: (value: V | 'back', index: number) => void;
+    onSelectionChange?: (value: V | 'back', index: number) => void;
     initialSelection?: number;
     showBackButton?: boolean;
     color?: ForegroundColorName;
+    wrapNavigation?: boolean;
 }
 
 export function List<V = string | number>({
     items,
     onSelect,
+    onSelectionChange,
     initialSelection = 0,
     showBackButton,
     color,
+    wrapNavigation = false,
     ...boxProps
 }: ListProps<V>) {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
@@ -49,10 +54,23 @@ export function List<V = string | number>({
     const selectedItem = selectableItems[selectedIndex];
     const actualIndex = _items.findIndex(item => item === selectedItem);
 
+    useEffect(() => {
+        const maxIndex = Math.max(selectableItems.length - 1, 0);
+        setSelectedIndex(Math.min(initialSelection, maxIndex));
+    }, [initialSelection, selectableItems.length]);
+
+    useEffect(() => {
+        if (selectedItem) {
+            onSelectionChange?.(selectedItem.value, selectedIndex);
+        }
+    }, [onSelectionChange, selectedIndex, selectedItem]);
+
     useInput((_, key) => {
         if (key.upArrow) {
             const prev = selectedIndex - 1;
-            const prevIndex = prev < 0 ? selectableItems.length - 1 : prev; // wrap around
+            const prevIndex = prev < 0
+                ? (wrapNavigation ? selectableItems.length - 1 : 0)
+                : prev;
 
             setSelectedIndex(prevIndex);
             return;
@@ -60,7 +78,9 @@ export function List<V = string | number>({
 
         if (key.downArrow) {
             const next = selectedIndex + 1;
-            const nextIndex = next > selectableItems.length - 1 ? 0 : next; // wrap around
+            const nextIndex = next > selectableItems.length - 1
+                ? (wrapNavigation ? 0 : selectableItems.length - 1)
+                : next;
 
             setSelectedIndex(nextIndex);
             return;

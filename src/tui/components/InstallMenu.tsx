@@ -4,6 +4,8 @@ import {
 } from 'ink';
 import React from 'react';
 
+import { getClaudeSettingsPath } from '../../utils/claude-settings';
+
 import { List } from './List';
 
 export interface InstallMenuProps {
@@ -23,17 +25,17 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
 }) => {
     function onSelect(value: string) {
         switch (value) {
-        case 'npx':
-            onSelectNpx();
-            break;
-        case 'bunx':
-            if (bunxAvailable) {
-                onSelectBunx();
-            }
-            break;
-        case 'back':
-            onCancel();
-            break;
+            case 'npx':
+                onSelectNpx();
+                break;
+            case 'bunx':
+                if (bunxAvailable) {
+                    onSelectBunx();
+                }
+                break;
+            case 'back':
+                onCancel();
+                break;
         }
     }
 
@@ -85,7 +87,9 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
 
             <Box marginTop={2}>
                 <Text dimColor>
-                    The selected command will be written to ~/.claude/settings.json
+                    The selected command will be written to
+                    {' '}
+                    {getClaudeSettingsPath()}
                 </Text>
             </Box>
 
