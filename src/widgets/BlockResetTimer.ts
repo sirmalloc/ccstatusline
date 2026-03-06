@@ -18,8 +18,10 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    isUsageCompact,
     isUsageInverted,
     isUsageProgressMode,
+    toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -39,7 +41,7 @@ export class BlockResetTimerWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item)
+            modifierText: getUsageDisplayModifierText(item, { includeCompact: true })
         };
     }
 
@@ -52,12 +54,17 @@ export class BlockResetTimerWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
+        if (action === 'toggle-compact') {
+            return toggleUsageCompact(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const compact = isUsageCompact(item);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -68,7 +75,7 @@ export class BlockResetTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
-            return formatRawOrLabeledValue(item, 'Reset: ', '4hr 30m');
+            return formatRawOrLabeledValue(item, 'Reset: ', compact ? '4h30m' : '4hr 30m');
         }
 
         const usageData = context.usageData ?? {};
@@ -90,14 +97,15 @@ export class BlockResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${percentage}%`);
         }
 
-        const remainingTime = formatUsageDuration(window.remainingMs);
+        const remainingTime = formatUsageDuration(window.remainingMs, compact);
         return formatRawOrLabeledValue(item, 'Reset: ', remainingTime);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
         ];
     }
 

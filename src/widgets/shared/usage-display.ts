@@ -28,7 +28,20 @@ export function isUsageInverted(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'invert');
 }
 
-export function getUsageDisplayModifierText(item: WidgetItem): string | undefined {
+export function isUsageCompact(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'compact');
+}
+
+export function toggleUsageCompact(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'compact');
+}
+
+interface UsageDisplayModifierOptions { includeCompact?: boolean }
+
+export function getUsageDisplayModifierText(
+    item: WidgetItem,
+    options: UsageDisplayModifierOptions = {}
+): string | undefined {
     const mode = getUsageDisplayMode(item);
     const modifiers: string[] = [];
 
@@ -40,6 +53,10 @@ export function getUsageDisplayModifierText(item: WidgetItem): string | undefine
 
     if (isUsageInverted(item)) {
         modifiers.push('inverted');
+    }
+
+    if (options.includeCompact && isUsageCompact(item)) {
+        modifiers.push('compact');
     }
 
     return makeModifierText(modifiers);

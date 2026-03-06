@@ -50,6 +50,12 @@ const EXPECTED_USAGE_KEYBINDS: CustomKeybind[] = [
     { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
 ];
 
+const EXPECTED_TIMER_KEYBINDS: CustomKeybind[] = [
+    { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+    { key: 's', label: '(s)hort time', action: 'toggle-compact' }
+];
+
 function getUsageContext(field: 'sessionUsage' | 'weeklyUsage', value: number): RenderContext {
     return field === 'sessionUsage'
         ? { usageData: { sessionUsage: value } }
@@ -140,6 +146,23 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(widget.getEditorDisplay(config.baseItem).modifierText).toBeUndefined();
         expect(widget.getEditorDisplay(config.modifierItem).modifierText).toBe(config.expectedModifierText);
     });
+
+    it('ignores stale compact metadata in editor modifiers', () => {
+        const widget = config.createWidget();
+        const modifierItemWithCompact: WidgetItem = {
+            ...config.modifierItem,
+            metadata: {
+                ...(config.modifierItem.metadata ?? {}),
+                compact: 'true'
+            }
+        };
+
+        expect(widget.getEditorDisplay({
+            ...config.baseItem,
+            metadata: { compact: 'true' }
+        }).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay(modifierItemWithCompact).modifierText).toBe(config.expectedModifierText);
+    });
 }
 
 export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { getDisplayName(): string }>(config: UsageTimerEditorSuiteConfig<TWidget>): void {
@@ -147,12 +170,12 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
         vi.clearAllMocks();
     });
 
-    it('supports raw value and exposes progress/invert keybinds', () => {
+    it('supports raw value and exposes progress/invert/compact keybinds', () => {
         const widget = config.createWidget();
 
         expect(widget.getDisplayName()).toBe(config.expectedDisplayName);
         expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual(EXPECTED_USAGE_KEYBINDS);
+        expect(widget.getCustomKeybinds()).toEqual(EXPECTED_TIMER_KEYBINDS);
     });
 
     it('clears invert metadata when cycling back to time mode', () => {
@@ -191,5 +214,16 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
         expect(cleared?.metadata?.invert).toBe('false');
         expect(widget.getEditorDisplay(config.baseItem).modifierText).toBeUndefined();
         expect(widget.getEditorDisplay(config.modifierItem).modifierText).toBe(config.expectedModifierText);
+    });
+
+    it('toggles compact metadata and shows compact modifier text', () => {
+        const widget = config.createWidget();
+
+        const compact = widget.handleEditorAction('toggle-compact', config.baseItem);
+        const cleared = widget.handleEditorAction('toggle-compact', compact ?? config.baseItem);
+
+        expect(compact?.metadata?.compact).toBe('true');
+        expect(cleared?.metadata?.compact).toBe('false');
+        expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { compact: 'true' } }).modifierText).toBe('(compact)');
     });
 }
