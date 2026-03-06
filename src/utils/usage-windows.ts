@@ -89,10 +89,14 @@ export function resolveWeeklyUsageWindow(usageData: UsageData, nowMs = Date.now(
     return getWeeklyUsageWindowFromResetAt(usageData.weeklyResetAt, nowMs);
 }
 
-export function formatUsageDuration(durationMs: number): string {
+export function formatUsageDuration(durationMs: number, compact = false): string {
     const clampedMs = Math.max(0, durationMs);
     const elapsedHours = Math.floor(clampedMs / (1000 * 60 * 60));
     const elapsedMinutes = Math.floor((clampedMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (compact) {
+        return elapsedMinutes === 0 ? `${elapsedHours}h` : `${elapsedHours}h${elapsedMinutes}m`;
+    }
 
     if (elapsedMinutes === 0) {
         return `${elapsedHours}hr`;

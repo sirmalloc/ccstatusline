@@ -18,8 +18,10 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    isUsageCompact,
     isUsageInverted,
     isUsageProgressMode,
+    toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -52,12 +54,17 @@ export class WeeklyResetTimerWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
+        if (action === 'toggle-compact') {
+            return toggleUsageCompact(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const compact = isUsageCompact(item);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -68,7 +75,7 @@ export class WeeklyResetTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly Reset: ', '36hr 30m');
+            return formatRawOrLabeledValue(item, 'Weekly Reset: ', compact ? '36h30m' : '36hr 30m');
         }
 
         const usageData = context.usageData ?? {};
@@ -90,14 +97,15 @@ export class WeeklyResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${percentage}%`);
         }
 
-        const remainingTime = formatUsageDuration(window.remainingMs);
+        const remainingTime = formatUsageDuration(window.remainingMs, compact);
         return formatRawOrLabeledValue(item, 'Weekly Reset: ', remainingTime);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
         ];
     }
 

@@ -17,8 +17,10 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    isUsageCompact,
     isUsageInverted,
     isUsageProgressMode,
+    toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -51,12 +53,17 @@ export class BlockTimerWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
+        if (action === 'toggle-compact') {
+            return toggleUsageCompact(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const compact = isUsageCompact(item);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 26.1 : 73.9;
@@ -67,7 +74,7 @@ export class BlockTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
-            return formatRawOrLabeledValue(item, 'Block: ', '3hr 45m');
+            return formatRawOrLabeledValue(item, 'Block: ', compact ? '3h45m' : '3hr 45m');
         }
 
         const usageData = context.usageData ?? {};
@@ -80,7 +87,7 @@ export class BlockTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] 0.0%`);
             }
 
-            return formatRawOrLabeledValue(item, 'Block: ', '0hr 0m');
+            return formatRawOrLabeledValue(item, 'Block: ', compact ? '0h' : '0hr 0m');
         }
 
         if (isUsageProgressMode(displayMode)) {
@@ -91,14 +98,15 @@ export class BlockTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${percentage}%`);
         }
 
-        const elapsedTime = formatUsageDuration(window.elapsedMs);
+        const elapsedTime = formatUsageDuration(window.elapsedMs, compact);
         return formatRawOrLabeledValue(item, 'Block: ', elapsedTime);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
         ];
     }
 
