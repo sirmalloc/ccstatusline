@@ -13,6 +13,50 @@ import {
 } from '../../utils/color-sanitize';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    List,
+    type ListEntry
+} from './List';
+
+type TerminalOptionsValue = 'width' | 'colorLevel';
+
+export function getNextColorLevel(level: 0 | 1 | 2 | 3): 0 | 1 | 2 | 3 {
+    return ((level + 1) % 4) as 0 | 1 | 2 | 3;
+}
+
+export function shouldWarnOnColorLevelChange(
+    currentLevel: 0 | 1 | 2 | 3,
+    nextLevel: 0 | 1 | 2 | 3,
+    hasCustomColors: boolean
+): boolean {
+    return hasCustomColors
+        && ((currentLevel === 2 && nextLevel !== 2)
+            || (currentLevel === 3 && nextLevel !== 3));
+}
+
+export function buildTerminalOptionsItems(
+    colorLevel: 0 | 1 | 2 | 3
+): ListEntry<TerminalOptionsValue>[] {
+    return [
+        {
+            label: '◱ Terminal Width',
+            value: 'width',
+            description: 'Configure how the status line uses available terminal width and when it should compact.'
+        },
+        {
+            label: '▓ Color Level',
+            sublabel: `(${getColorLevelLabel(colorLevel)})`,
+            value: 'colorLevel',
+            description: [
+                'Color level affects how colors are rendered:',
+                '• Truecolor: Full 24-bit RGB colors (16.7M colors)',
+                '• 256 Color: Extended color palette (256 colors)',
+                '• Basic: Standard 16-color terminal palette',
+                '• No Color: Disables all color output'
+            ].join('\n')
+        }
+    ];
+}
 
 export interface TerminalOptionsMenuProps {
     settings: Settings;
@@ -20,49 +64,47 @@ export interface TerminalOptionsMenuProps {
     onBack: (target?: string) => void;
 }
 
-export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settings, onUpdate, onBack }) => {
+export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
+    settings,
+    onUpdate,
+    onBack
+}) => {
     const [showColorWarning, setShowColorWarning] = useState(false);
     const [pendingColorLevel, setPendingColorLevel] = useState<0 | 1 | 2 | 3 | null>(null);
-    const [selectedIndex, setSelectedIndex] = useState(0);
 
-    const handleSelect = () => {
-        if (selectedIndex === 2) {
-            // Back button
+    const handleSelect = (value: TerminalOptionsValue | 'back') => {
+        if (value === 'back') {
             onBack();
-        } else if (selectedIndex === 0) {
-            // Terminal Width Options
-            onBack('width');
-        } else if (selectedIndex === 1) {
-            // Color Level
-            // Check if there are any custom colors that would be lost
-            const hasCustomColors = hasCustomWidgetColors(settings.lines);
-
-            const currentLevel = settings.colorLevel;
-            const nextLevel = ((currentLevel + 1) % 4) as 0 | 1 | 2 | 3;
-
-            // Warn if switching away from mode that supports custom colors
-            if (hasCustomColors
-                && ((currentLevel === 2 && nextLevel !== 2) // Switching from 256 color mode
-                    || (currentLevel === 3 && nextLevel !== 3))) { // Switching from truecolor mode
-                setShowColorWarning(true);
-                setPendingColorLevel(nextLevel);
-            } else {
-                // Update chalk level immediately
-                chalk.level = nextLevel;
-
-                const cleanedLines = sanitizeLinesForColorLevel(settings.lines, nextLevel);
-
-                onUpdate({
-                    ...settings,
-                    lines: cleanedLines,
-                    colorLevel: nextLevel
-                });
-            }
+            return;
         }
+
+        if (value === 'width') {
+            onBack('width');
+            return;
+        }
+
+        const hasCustomColors = hasCustomWidgetColors(settings.lines);
+        const currentLevel = settings.colorLevel;
+        const nextLevel = getNextColorLevel(currentLevel);
+
+        if (shouldWarnOnColorLevelChange(currentLevel, nextLevel, hasCustomColors)) {
+            setShowColorWarning(true);
+            setPendingColorLevel(nextLevel);
+            return;
+        }
+
+        chalk.level = nextLevel;
+
+        const cleanedLines = sanitizeLinesForColorLevel(settings.lines, nextLevel);
+
+        onUpdate({
+            ...settings,
+            lines: cleanedLines,
+            colorLevel: nextLevel
+        });
     };
 
     const handleColorConfirm = () => {
-        // Proceed with color level change and clean up custom colors
         if (pendingColorLevel !== null) {
             chalk.level = pendingColorLevel;
 
@@ -83,19 +125,9 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
         setPendingColorLevel(null);
     };
 
-    useInput((input, key) => {
-        if (key.escape) {
-            if (!showColorWarning) {
-                onBack();
-            }
-        } else if (!showColorWarning) {
-            if (key.upArrow) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
-            } else if (key.downArrow) {
-                setSelectedIndex(Math.min(2, selectedIndex + 1));
-            } else if (key.return) {
-                handleSelect();
-            }
+    useInput((_, key) => {
+        if (key.escape && !showColorWarning) {
+            onBack();
         }
     });
 
@@ -118,39 +150,12 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({ settin
             ) : (
                 <>
                     <Text color='white'>Configure terminal-specific settings for optimal display</Text>
-                    <Box marginTop={1} flexDirection='column'>
-                        <Box>
-                            <Text color={selectedIndex === 0 ? 'green' : undefined}>
-                                {selectedIndex === 0 ? '▶  ' : '   '}
-                                ◱ Terminal Width
-                            </Text>
-                        </Box>
-                        <Box>
-                            <Text color={selectedIndex === 1 ? 'green' : undefined}>
-                                {selectedIndex === 1 ? '▶  ' : '   '}
-                                ▓ Color Level:
-                                {' '}
-                                {getColorLevelLabel(settings.colorLevel)}
-                            </Text>
-                        </Box>
-
-                        <Box marginTop={1}>
-                            <Text color={selectedIndex === 2 ? 'green' : undefined}>
-                                {selectedIndex === 2 ? '▶  ' : '   '}
-                                ← Back
-                            </Text>
-                        </Box>
-                    </Box>
-
-                    {selectedIndex === 1 && (
-                        <Box marginTop={1} flexDirection='column'>
-                            <Text dimColor>Color level affects how colors are rendered:</Text>
-                            <Text dimColor>• Truecolor: Full 24-bit RGB colors (16.7M colors)</Text>
-                            <Text dimColor>• 256 Color: Extended color palette (256 colors)</Text>
-                            <Text dimColor>• Basic: Standard 16-color terminal palette</Text>
-                            <Text dimColor>• No Color: Disables all color output</Text>
-                        </Box>
-                    )}
+                    <List
+                        marginTop={1}
+                        items={buildTerminalOptionsItems(settings.colorLevel)}
+                        onSelect={handleSelect}
+                        showBackButton={true}
+                    />
                 </>
             )}
         </Box>

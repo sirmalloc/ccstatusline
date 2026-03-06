@@ -8,11 +8,12 @@ import {
 import {
     useEffect,
     useMemo,
+    useRef,
     useState,
     type PropsWithChildren
 } from 'react';
 
-interface ListItemType<V = string | number> {
+export interface ListEntry<V = string | number> {
     label: string;
     sublabel?: string;
     disabled?: boolean;
@@ -22,7 +23,7 @@ interface ListItemType<V = string | number> {
 }
 
 interface ListProps<V = string | number> extends BoxProps {
-    items: (ListItemType<V> | '-')[];
+    items: (ListEntry<V> | '-')[];
     onSelect: (value: V | 'back', index: number) => void;
     onSelectionChange?: (value: V | 'back', index: number) => void;
     initialSelection?: number;
@@ -42,6 +43,7 @@ export function List<V = string | number>({
     ...boxProps
 }: ListProps<V>) {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
+    const latestOnSelectionChangeRef = useRef(onSelectionChange);
 
     const _items = useMemo(() => {
         if (showBackButton) {
@@ -50,9 +52,14 @@ export function List<V = string | number>({
         return items;
     }, [items, showBackButton]);
 
-    const selectableItems = _items.filter(item => item !== '-' && !item.disabled) as ListItemType<V>[];
+    const selectableItems = _items.filter(item => item !== '-' && !item.disabled) as ListEntry<V>[];
     const selectedItem = selectableItems[selectedIndex];
+    const selectedValue = selectedItem?.value;
     const actualIndex = _items.findIndex(item => item === selectedItem);
+
+    useEffect(() => {
+        latestOnSelectionChangeRef.current = onSelectionChange;
+    }, [onSelectionChange]);
 
     useEffect(() => {
         const maxIndex = Math.max(selectableItems.length - 1, 0);
@@ -60,10 +67,10 @@ export function List<V = string | number>({
     }, [initialSelection, selectableItems.length]);
 
     useEffect(() => {
-        if (selectedItem) {
-            onSelectionChange?.(selectedItem.value, selectedIndex);
+        if (selectedValue !== undefined) {
+            latestOnSelectionChangeRef.current?.(selectedValue, selectedIndex);
         }
-    }, [onSelectionChange, selectedIndex, selectedItem]);
+    }, [selectedIndex, selectedValue]);
 
     useInput((_, key) => {
         if (key.upArrow) {
