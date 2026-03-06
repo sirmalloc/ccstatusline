@@ -63,15 +63,47 @@ interface FlashMessage {
     color: 'green' | 'red';
 }
 
+type AppScreen = 'main'
+    | 'lines'
+    | 'items'
+    | 'colorLines'
+    | 'colors'
+    | 'terminalWidth'
+    | 'terminalConfig'
+    | 'globalOverrides'
+    | 'confirm'
+    | 'powerline'
+    | 'install';
+
+interface ConfirmDialogState {
+    message: string;
+    action: () => Promise<void>;
+    cancelScreen?: Exclude<AppScreen, 'confirm'>;
+}
+
+export function getConfirmCancelScreen(confirmDialog: ConfirmDialogState | null): Exclude<AppScreen, 'confirm'> {
+    return confirmDialog?.cancelScreen ?? 'main';
+}
+
+export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
+    if (menuSelections.install === undefined) {
+        return menuSelections;
+    }
+
+    const next = { ...menuSelections };
+    delete next.install;
+    return next;
+}
+
 export const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colorLines' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline' | 'install'>('main');
+    const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
-    const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
+    const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
     const [powerlineFontStatus, setPowerlineFontStatus] = useState<PowerlineFontStatus>({ installed: false });
@@ -163,6 +195,7 @@ export const App: React.FC = () => {
 
             setConfirmDialog({
                 message,
+                cancelScreen: 'install',
                 action: async () => {
                     await installStatusLine(useBunx);
                     setIsClaudeInstalled(true);
@@ -176,12 +209,19 @@ export const App: React.FC = () => {
     }, []);
 
     const handleNpxInstall = useCallback(() => {
+        setMenuSelections(prev => ({ ...prev, install: 0 }));
         handleInstallSelection(CCSTATUSLINE_COMMANDS.NPM, 'npx', false);
     }, [handleInstallSelection]);
 
     const handleBunxInstall = useCallback(() => {
+        setMenuSelections(prev => ({ ...prev, install: 1 }));
         handleInstallSelection(CCSTATUSLINE_COMMANDS.BUNX, 'bunx', true);
     }, [handleInstallSelection]);
+
+    const handleInstallMenuCancel = useCallback(() => {
+        setMenuSelections(clearInstallMenuSelection);
+        setScreen('main');
+    }, []);
 
     if (!settings) {
         return <Text>Loading settings...</Text>;
@@ -440,7 +480,7 @@ export const App: React.FC = () => {
                         message={confirmDialog.message}
                         onConfirm={() => void confirmDialog.action()}
                         onCancel={() => {
-                            setScreen('main');
+                            setScreen(getConfirmCancelScreen(confirmDialog));
                             setConfirmDialog(null);
                         }}
                     />
@@ -451,9 +491,8 @@ export const App: React.FC = () => {
                         existingStatusLine={existingStatusLine}
                         onSelectNpx={handleNpxInstall}
                         onSelectBunx={handleBunxInstall}
-                        onCancel={() => {
-                            setScreen('main');
-                        }}
+                        onCancel={handleInstallMenuCancel}
+                        initialSelection={menuSelections.install}
                     />
                 )}
                 {screen === 'powerline' && (

@@ -1,6 +1,7 @@
 import {
     Box,
-    Text
+    Text,
+    useInput
 } from 'ink';
 import React from 'react';
 
@@ -14,6 +15,7 @@ export interface InstallMenuProps {
     onSelectNpx: () => void;
     onSelectBunx: () => void;
     onCancel: () => void;
+    initialSelection?: number;
 }
 
 export const InstallMenu: React.FC<InstallMenuProps> = ({
@@ -21,8 +23,15 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
     existingStatusLine,
     onSelectNpx,
     onSelectBunx,
-    onCancel
+    onCancel,
+    initialSelection = 0
 }) => {
+    useInput((_, key) => {
+        if (key.escape) {
+            onCancel();
+        }
+    });
+
     function onSelect(value: string) {
         switch (value) {
             case 'npx':
@@ -82,6 +91,7 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
 
                     onSelect(line);
                 }}
+                initialSelection={initialSelection}
                 showBackButton={true}
             />
 
