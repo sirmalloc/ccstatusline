@@ -36,7 +36,12 @@ export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
 
-export function getUsageDisplayModifierText(item: WidgetItem): string | undefined {
+interface UsageDisplayModifierOptions { includeCompact?: boolean }
+
+export function getUsageDisplayModifierText(
+    item: WidgetItem,
+    options: UsageDisplayModifierOptions = {}
+): string | undefined {
     const mode = getUsageDisplayMode(item);
     const modifiers: string[] = [];
 
@@ -50,7 +55,7 @@ export function getUsageDisplayModifierText(item: WidgetItem): string | undefine
         modifiers.push('inverted');
     }
 
-    if (isUsageCompact(item)) {
+    if (options.includeCompact && isUsageCompact(item)) {
         modifiers.push('compact');
     }
 

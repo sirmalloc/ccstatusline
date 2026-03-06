@@ -32,6 +32,7 @@ import {
     type WidgetPickerAction,
     type WidgetPickerState
 } from './items-editor/input-handlers';
+import { shouldShowCustomKeybind } from './items-editor/keybind-visibility';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -92,18 +93,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     const handleEditorCancel = () => {
         setCustomEditorWidget(null);
-    };
-
-    const shouldShowCustomKeybind = (widget: WidgetItem, keybind: CustomKeybind): boolean => {
-        if (keybind.action !== 'toggle-invert') {
-            if (keybind.action === 'edit-list-limit') {
-                return widget.type === 'skills' && widget.metadata?.mode === 'list';
-            }
-            return true;
-        }
-
-        const mode = widget.metadata?.display;
-        return mode === 'progress' || mode === 'progress-short';
     };
 
     const getVisibleCustomKeybinds = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {

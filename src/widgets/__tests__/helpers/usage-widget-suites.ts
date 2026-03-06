@@ -146,6 +146,23 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(widget.getEditorDisplay(config.baseItem).modifierText).toBeUndefined();
         expect(widget.getEditorDisplay(config.modifierItem).modifierText).toBe(config.expectedModifierText);
     });
+
+    it('ignores stale compact metadata in editor modifiers', () => {
+        const widget = config.createWidget();
+        const modifierItemWithCompact: WidgetItem = {
+            ...config.modifierItem,
+            metadata: {
+                ...(config.modifierItem.metadata ?? {}),
+                compact: 'true'
+            }
+        };
+
+        expect(widget.getEditorDisplay({
+            ...config.baseItem,
+            metadata: { compact: 'true' }
+        }).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay(modifierItemWithCompact).modifierText).toBe(config.expectedModifierText);
+    });
 }
 
 export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { getDisplayName(): string }>(config: UsageTimerEditorSuiteConfig<TWidget>): void {
