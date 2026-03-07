@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import {
     getJjChangeCounts,
+    getJjCurrentWorkspace,
     isInsideJjWorkspace,
     resolveJjCwd,
     runJj
@@ -134,6 +135,32 @@ describe('jj utils', () => {
             mockExecSync.mockImplementation(() => { throw new Error('jj failed'); });
 
             expect(isInsideJjWorkspace({})).toBe(false);
+        });
+    });
+
+    describe('getJjCurrentWorkspace', () => {
+        it('returns the workspace name from the first line', () => {
+            mockExecSync.mockReturnValue('default: kpqxywon 2f73e05c (no description set)\nfeature-work: spzqtmlo abc12345 (no description set)');
+
+            expect(getJjCurrentWorkspace({})).toBe('default');
+        });
+
+        it('returns non-default workspace name', () => {
+            mockExecSync.mockReturnValue('feature-work: spzqtmlo abc12345 (no description set)');
+
+            expect(getJjCurrentWorkspace({})).toBe('feature-work');
+        });
+
+        it('returns null when command fails', () => {
+            mockExecSync.mockImplementation(() => { throw new Error('jj failed'); });
+
+            expect(getJjCurrentWorkspace({})).toBeNull();
+        });
+
+        it('returns null when output is empty', () => {
+            mockExecSync.mockReturnValue('  \n');
+
+            expect(getJjCurrentWorkspace({})).toBeNull();
         });
     });
 

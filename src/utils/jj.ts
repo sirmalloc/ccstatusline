@@ -67,6 +67,21 @@ function parseDiffStat(stat: string): JjChangeCounts {
     };
 }
 
+export function getJjCurrentWorkspace(context: RenderContext): string | null {
+    const output = runJj('workspace list', context);
+    if (!output)
+        return null;
+
+    const firstLine = output.split('\n')[0] ?? '';
+    const colonIndex = firstLine.indexOf(':');
+    if (colonIndex === -1)
+        return null;
+
+    const name = firstLine.slice(0, colonIndex).trim();
+
+    return name.length > 0 ? name : null;
+}
+
 export function getJjChangeCounts(context: RenderContext): JjChangeCounts {
     const stat = runJj('diff --stat', context) ?? '';
 
