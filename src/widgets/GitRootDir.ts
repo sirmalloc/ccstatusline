@@ -10,13 +10,21 @@ import {
     isInsideGitWorkTree,
     runGit
 } from '../utils/git';
+import { isInsideJjWorkspace } from '../utils/jj';
 
+import { makeModifierText } from './shared/editor-display';
 import {
     getHideNoGitKeybinds,
-    getHideNoGitModifierText,
+    getHideNoGitModifiers,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    getHideWhenJjKeybinds,
+    getHideWhenJjModifierText,
+    handleToggleHideWhenJjAction,
+    isHideWhenJjEnabled
+} from './shared/git-hide-when-jj';
 
 export class GitRootDirWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -26,12 +34,12 @@ export class GitRootDirWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
+            modifierText: makeModifierText([...getHideNoGitModifiers(item), ...getHideWhenJjModifierText(item)])
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+        return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
@@ -39,6 +47,10 @@ export class GitRootDirWidget implements Widget {
 
         if (context.isPreview) {
             return 'my-repo';
+        }
+
+        if (isHideWhenJjEnabled(item) && isInsideJjWorkspace(context)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -66,7 +78,7 @@ export class GitRootDirWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
+        return [...getHideNoGitKeybinds(), ...getHideWhenJjKeybinds()];
     }
 
     supportsRawValue(): boolean { return false; }
