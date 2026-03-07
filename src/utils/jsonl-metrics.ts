@@ -201,7 +201,11 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         if (mostRecentMainChainEntry?.message?.model) {
             let lastEntryIsUser = false;
             for (let i = lines.length - 1; i >= 0; i--) {
-                const last = parseJsonlLine(lines[i]!) as TranscriptLine | null;
+                const line = lines[i];
+                if (!line) {
+                    continue;
+                }
+                const last = parseJsonlLine(line) as TranscriptLine | null;
                 if (last?.type === 'assistant' || last?.type === 'user') {
                     lastEntryIsUser = last.type === 'user';
                     break;
