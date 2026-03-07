@@ -38,6 +38,21 @@ export function runJj(command: string, context: RenderContext): string | null {
     }
 }
 
+export function runJjRaw(command: string, context: RenderContext): string | null {
+    try {
+        const cwd = resolveJjCwd(context);
+        const output = execSync(`jj ${command}`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            ...(cwd ? { cwd } : {})
+        }).trim();
+
+        return output;
+    } catch {
+        return null;
+    }
+}
+
 export function isInsideJjWorkspace(context: RenderContext): boolean {
     return runJj('workspace root', context) !== null;
 }
