@@ -122,6 +122,24 @@ describe('jj utils', () => {
 
             expect(runJj('status', {})).toBeNull();
         });
+
+        it('returns empty string when allowEmpty is true and output is empty', () => {
+            mockExecSync.mockReturnValue('  \n');
+
+            expect(runJj('workspace root', {}, true)).toBe('');
+        });
+
+        it('returns non-empty string when allowEmpty is true and output has content', () => {
+            mockExecSync.mockReturnValue(' some-output \n');
+
+            expect(runJj('log', {}, true)).toBe('some-output');
+        });
+
+        it('returns null when allowEmpty is true and command fails', () => {
+            mockExecSync.mockImplementation(() => { throw new Error('jj failed'); });
+
+            expect(runJj('status', {}, true)).toBeNull();
+        });
     });
 
     describe('isInsideJjWorkspace', () => {

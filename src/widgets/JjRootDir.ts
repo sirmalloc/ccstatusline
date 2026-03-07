@@ -6,10 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import {
-    isInsideJjWorkspace,
-    runJj
-} from '../utils/jj';
+import { runJj } from '../utils/jj';
 
 import {
     getHideNoJjKeybinds,
@@ -17,6 +14,14 @@ import {
     handleToggleNoJjAction,
     isHideNoJjEnabled
 } from './shared/jj-no-jj';
+
+function getRootDirName(rootDir: string): string {
+    const trimmedRootDir = rootDir.replace(/[\\/]+$/, '');
+    const normalizedRootDir = trimmedRootDir.length > 0 ? trimmedRootDir : rootDir;
+    const parts = normalizedRootDir.split(/[\\/]/).filter(Boolean);
+    const lastPart = parts[parts.length - 1];
+    return lastPart && lastPart.length > 0 ? lastPart : normalizedRootDir;
+}
 
 export class JjRootDirWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -41,24 +46,12 @@ export class JjRootDirWidget implements Widget {
             return 'my-repo';
         }
 
-        if (!isInsideJjWorkspace(context)) {
+        const rootDir = runJj('workspace root', context);
+        if (!rootDir) {
             return hideNoJj ? null : 'no jj';
         }
 
-        const rootDir = runJj('workspace root', context);
-        if (rootDir) {
-            return this.getRootDirName(rootDir);
-        }
-
-        return hideNoJj ? null : 'no jj';
-    }
-
-    private getRootDirName(rootDir: string): string {
-        const trimmedRootDir = rootDir.replace(/[\\/]+$/, '');
-        const normalizedRootDir = trimmedRootDir.length > 0 ? trimmedRootDir : rootDir;
-        const parts = normalizedRootDir.split(/[\\/]/).filter(Boolean);
-        const lastPart = parts[parts.length - 1];
-        return lastPart && lastPart.length > 0 ? lastPart : normalizedRootDir;
+        return getRootDirName(rootDir);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
