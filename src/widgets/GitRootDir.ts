@@ -16,15 +16,22 @@ import {
     buildIdeFileUrl,
     renderOsc8Link
 } from '../utils/hyperlink';
+import { isInsideJjWorkspace } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
 import {
     getHideNoGitKeybinds,
-    getHideNoGitModifierText,
+    getHideNoGitModifiers,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
 import { isMetadataFlagEnabled } from './shared/metadata';
+import {
+    getHideWhenJjKeybinds,
+    getHideWhenJjModifierText,
+    handleToggleHideWhenJjAction,
+    isHideWhenJjEnabled
+} from './shared/git-hide-when-jj';
 
 const IDE_LINK_KEY = 'linkToIDE';
 const LEGACY_CURSOR_LINK_KEY = 'linkToCursor';
@@ -49,7 +56,7 @@ export class GitRootDirWidget implements Widget {
             modifiers.push(IDE_LINK_LABELS[ideLinkMode]);
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText(modifiers)
+            modifierText: makeModifierText([...modifiers, ...getHideWhenJjModifierText(item)])
         };
     }
 
@@ -57,7 +64,7 @@ export class GitRootDirWidget implements Widget {
         if (action === TOGGLE_LINK_ACTION) {
             return this.cycleIdeLinkMode(item);
         }
-        return handleToggleNoGitAction(action, item);
+        return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
@@ -67,6 +74,10 @@ export class GitRootDirWidget implements Widget {
         if (context.isPreview) {
             const name = 'my-repo';
             return ideLinkMode ? renderOsc8Link(buildIdeFileUrl('/Users/example/my-repo', ideLinkMode), name) : name;
+        }
+
+        if (isHideWhenJjEnabled(item) && isInsideJjWorkspace(context)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -102,6 +113,7 @@ export class GitRootDirWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
+            ...getHideWhenJjKeybinds(),
             { key: 'l', label: '(l)ink to IDE', action: TOGGLE_LINK_ACTION }
         ];
     }

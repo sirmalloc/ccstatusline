@@ -15,11 +15,12 @@ import {
     parseGitHubBaseUrl,
     renderOsc8Link
 } from '../utils/hyperlink';
+import { isInsideJjWorkspace } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
 import {
     getHideNoGitKeybinds,
-    getHideNoGitModifierText,
+    getHideNoGitModifiers,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
@@ -27,6 +28,12 @@ import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
 } from './shared/metadata';
+import {
+    getHideWhenJjKeybinds,
+    getHideWhenJjModifierText,
+    handleToggleHideWhenJjAction,
+    isHideWhenJjEnabled
+} from './shared/git-hide-when-jj';
 
 const LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
@@ -46,7 +53,7 @@ export class GitBranchWidget implements Widget {
             modifiers.push('GitHub link');
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText(modifiers)
+            modifierText: makeModifierText([...modifiers, ...getHideWhenJjModifierText(item)])
         };
     }
 
@@ -54,7 +61,7 @@ export class GitBranchWidget implements Widget {
         if (action === TOGGLE_LINK_ACTION) {
             return toggleMetadataFlag(item, LINK_KEY);
         }
-        return handleToggleNoGitAction(action, item);
+        return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -65,6 +72,10 @@ export class GitBranchWidget implements Widget {
         if (context.isPreview) {
             const text = item.rawValue ? 'main' : '⎇ main';
             return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
+        }
+
+        if (isHideWhenJjEnabled(item) && isInsideJjWorkspace(context)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -96,6 +107,7 @@ export class GitBranchWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
+            ...getHideWhenJjKeybinds(),
             { key: 'l', label: '(l)ink to GitHub', action: TOGGLE_LINK_ACTION }
         ];
     }

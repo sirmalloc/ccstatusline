@@ -22,8 +22,12 @@ export function isHideNoGitEnabled(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, HIDE_NO_GIT_KEY);
 }
 
+export function getHideNoGitModifiers(item: WidgetItem): string[] {
+    return isHideNoGitEnabled(item) ? ['hide \'no git\''] : [];
+}
+
 export function getHideNoGitModifierText(item: WidgetItem): string | undefined {
-    return makeModifierText(isHideNoGitEnabled(item) ? ['hide \'no git\''] : []);
+    return makeModifierText(getHideNoGitModifiers(item));
 }
 
 export function handleToggleNoGitAction(action: string, item: WidgetItem): WidgetItem | null {
