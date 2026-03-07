@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjWorkspace,
-    runJjRaw
+    runJj
 } from '../utils/jj';
 
 import {
@@ -45,7 +45,7 @@ export class JjBookmarkWidget implements Widget {
             return hideNoJj ? null : '@ no jj';
         }
 
-        const bookmarks = runJjRaw('log --no-graph -r @ -T \'bookmarks.join(",")\'', context);
+        const bookmarks = runJj('log --no-graph -r @ -T \'bookmarks.join(",")\'', context, true);
         if (bookmarks === null) {
             return hideNoJj ? null : '@ no jj';
         }

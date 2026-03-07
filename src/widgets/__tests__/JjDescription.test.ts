@@ -46,7 +46,7 @@ describe('JjDescriptionWidget', () => {
     });
 
     it('should render preview', () => {
-        expect(render({ isPreview: true })).toBe('(no description set)');
+        expect(render({ isPreview: true })).toBe('(no description)');
     });
 
     it('should render description', () => {
@@ -75,10 +75,17 @@ describe('JjDescriptionWidget', () => {
         expect(render({ cwd: '/my/project' })).toBe('(no description)');
     });
 
-    it('should render no description when command returns null', () => {
+    it('should render no description when command fails', () => {
         mockExecSync.mockReturnValueOnce('/my/project\n');
         mockExecSync.mockImplementation(() => { throw new Error('Failed'); });
 
-        expect(render({ cwd: '/my/project' })).toBe('(no description)');
+        expect(render({ cwd: '/my/project' })).toBe('no jj');
+    });
+
+    it('should hide when command fails and hideNoJj enabled', () => {
+        mockExecSync.mockReturnValueOnce('/my/project\n');
+        mockExecSync.mockImplementation(() => { throw new Error('Failed'); });
+
+        expect(render({ cwd: '/my/project', hideNoJj: true })).toBeNull();
     });
 });

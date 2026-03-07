@@ -23,7 +23,9 @@ export function resolveJjCwd(context: RenderContext): string | undefined {
     return undefined;
 }
 
-export function runJj(command: string, context: RenderContext): string | null {
+// Returns trimmed stdout, or null if empty or on error.
+// Pass allowEmpty=true when an empty result is semantically distinct from failure.
+export function runJj(command: string, context: RenderContext, allowEmpty = false): string | null {
     try {
         const cwd = resolveJjCwd(context);
         const output = execSync(`jj ${command}`, {
@@ -32,22 +34,7 @@ export function runJj(command: string, context: RenderContext): string | null {
             ...(cwd ? { cwd } : {})
         }).trim();
 
-        return output.length > 0 ? output : null;
-    } catch {
-        return null;
-    }
-}
-
-export function runJjRaw(command: string, context: RenderContext): string | null {
-    try {
-        const cwd = resolveJjCwd(context);
-        const output = execSync(`jj ${command}`, {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            ...(cwd ? { cwd } : {})
-        }).trim();
-
-        return output;
+        return (allowEmpty || output.length > 0) ? output : null;
     } catch {
         return null;
     }

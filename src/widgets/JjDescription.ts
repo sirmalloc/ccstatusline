@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjWorkspace,
-    runJjRaw
+    runJj
 } from '../utils/jj';
 
 import {
@@ -38,19 +38,19 @@ export class JjDescriptionWidget implements Widget {
         const hideNoJj = isHideNoJjEnabled(item);
 
         if (context.isPreview) {
-            return '(no description set)';
+            return '(no description)';
         }
 
         if (!isInsideJjWorkspace(context)) {
             return hideNoJj ? null : 'no jj';
         }
 
-        const description = runJjRaw('log --no-graph -r @ -T \'description.first_line()\'', context);
-        if (description === null || description.length === 0) {
-            return '(no description)';
+        const description = runJj('log --no-graph -r @ -T \'description.first_line()\'', context, true);
+        if (description === null) {
+            return hideNoJj ? null : 'no jj';
         }
 
-        return description;
+        return description.length > 0 ? description : '(no description)';
     }
 
     getCustomKeybinds(): CustomKeybind[] {

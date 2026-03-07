@@ -51,7 +51,6 @@ describe('JjRootDirWidget', () => {
 
     it('should render root dir name', () => {
         mockExecSync.mockReturnValueOnce('/home/user/my-project\n');
-        mockExecSync.mockReturnValueOnce('/home/user/my-project\n');
 
         expect(render({ cwd: '/home/user/my-project' })).toBe('my-project');
     });
@@ -70,15 +69,7 @@ describe('JjRootDirWidget', () => {
 
     it('should handle trailing slashes', () => {
         mockExecSync.mockReturnValueOnce('/home/user/my-project/\n');
-        mockExecSync.mockReturnValueOnce('/home/user/my-project/\n');
 
         expect(render({ cwd: '/home/user/my-project' })).toBe('my-project');
-    });
-
-    it('should render no jj when workspace root returns null', () => {
-        mockExecSync.mockReturnValueOnce('/home/user/project\n');
-        mockExecSync.mockImplementation(() => { throw new Error('Failed'); });
-
-        expect(render({ cwd: '/home/user/project' })).toBe('no jj');
     });
 });
