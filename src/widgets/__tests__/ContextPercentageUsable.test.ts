@@ -20,7 +20,8 @@ function render(modelId: string | undefined, contextLength: number, rawValue = f
             outputTokens: 0,
             cachedTokens: 0,
             totalTokens: 0,
-            contextLength
+            contextLength,
+            model: null
         }
     };
     const item: WidgetItem = {
@@ -76,7 +77,8 @@ describe('ContextPercentageUsableWidget', () => {
                 outputTokens: 0,
                 cachedTokens: 0,
                 totalTokens: 0,
-                contextLength: 200000
+                contextLength: 200000,
+                model: null
             }
         };
 
@@ -99,7 +101,8 @@ describe('ContextPercentageUsableWidget', () => {
                 outputTokens: 0,
                 cachedTokens: 0,
                 totalTokens: 0,
-                contextLength: 42000
+                contextLength: 42000,
+                model: null
             }
         };
 

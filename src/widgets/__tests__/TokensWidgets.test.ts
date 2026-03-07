@@ -57,7 +57,8 @@ describe('Token widgets', () => {
                 outputTokens: 9999,
                 cachedTokens: 9999,
                 totalTokens: 9999,
-                contextLength: 9999
+                contextLength: 9999,
+                model: null
             }
         };
 
@@ -75,7 +76,8 @@ describe('Token widgets', () => {
                 outputTokens: 3400,
                 cachedTokens: 560,
                 totalTokens: 5160,
-                contextLength: 0
+                contextLength: 0,
+                model: null
             }
         };
 
@@ -105,7 +107,8 @@ describe('Token widgets', () => {
                 outputTokens: 3400,
                 cachedTokens: 560,
                 totalTokens: 5160,
-                contextLength: 20000
+                contextLength: 20000,
+                model: null
             }
         };
 
