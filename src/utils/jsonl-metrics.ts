@@ -152,7 +152,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
     try {
         // Use Node.js-compatible file reading
         if (!fs.existsSync(transcriptPath)) {
-            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0, model: null };
         }
 
         const lines = await readJsonlLines(transcriptPath);
@@ -194,11 +194,33 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                 + (usage.cache_creation_input_tokens ?? 0);
         }
 
+        // Check if last entry is a user message (API call may be in progress).
+        // In that case, don't report the model — it may be stale if the user
+        // just changed models. After the response, the transcript catches up.
+        let model: string | null = null;
+        if (mostRecentMainChainEntry?.message?.model) {
+            let lastEntryIsUser = false;
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i];
+                if (!line) {
+                    continue;
+                }
+                const last = parseJsonlLine(line) as TranscriptLine | null;
+                if (last?.type === 'assistant' || last?.type === 'user') {
+                    lastEntryIsUser = last.type === 'user';
+                    break;
+                }
+            }
+            if (!lastEntryIsUser) {
+                model = mostRecentMainChainEntry.message.model;
+            }
+        }
+
         const totalTokens = inputTokens + outputTokens + cachedTokens;
 
-        return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength };
+        return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength, model };
     } catch {
-        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0, model: null };
     }
 }
 

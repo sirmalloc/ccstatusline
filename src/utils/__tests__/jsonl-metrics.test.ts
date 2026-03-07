@@ -46,6 +46,7 @@ function makeTranscriptLine(params: {
     output?: number;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    model?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
@@ -57,7 +58,8 @@ function makeTranscriptLine(params: {
                 usage: {
                     input_tokens: params.input ?? 0,
                     output_tokens: params.output ?? 0
-                }
+                },
+                model: params.model
             }
             : undefined
     });
@@ -155,7 +157,8 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 141,
             cachedTokens: 92,
             totalTokens: 2032,
-            contextLength: 250
+            contextLength: 250,
+            model: null
         });
     });
 
@@ -166,8 +169,78 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 0,
             cachedTokens: 0,
             totalTokens: 0,
-            contextLength: 0
+            contextLength: 0,
+            model: null
         });
+    });
+
+    it('returns the model from the most recent assistant entry', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'model.jsonl');
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50,
+                model: 'claude-sonnet-4-5-20250929'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+        expect(metrics.model).toBe('claude-sonnet-4-5-20250929');
+    });
+
+    it('returns null model when the last entry is a user message (API in progress)', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'model-pending.jsonl');
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50,
+                model: 'claude-sonnet-4-5-20250929'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                type: 'user'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+        expect(metrics.model).toBeNull();
+    });
+
+    it('returns null model when transcript has no model field', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'no-model.jsonl');
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+        expect(metrics.model).toBeNull();
     });
 
     it('calculates speed metrics from user-to-assistant processing windows', async () => {

@@ -38,6 +38,14 @@ import {
 } from './utils/speed-window';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
+function formatModelDisplayName(modelId: string): string {
+    return modelId
+        .replace(/^claude-/, '')
+        .replace(/-(\d{8})$/, '')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
@@ -114,6 +122,18 @@ async function renderMultipleLines(data: StatusJSON) {
     let tokenMetrics: TokenMetrics | null = null;
     if (data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
+
+        if (tokenMetrics.model) {
+            const stdinModelId = typeof data.model === 'string'
+                ? data.model
+                : data.model?.id;
+            if (stdinModelId !== tokenMetrics.model) {
+                data.model = {
+                    id: tokenMetrics.model,
+                    display_name: formatModelDisplayName(tokenMetrics.model)
+                };
+            }
+        }
     }
 
     let sessionDuration: string | null = null;

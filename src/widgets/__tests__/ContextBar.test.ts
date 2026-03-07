@@ -49,7 +49,8 @@ describe('ContextBarWidget', () => {
                 outputTokens: 0,
                 cachedTokens: 0,
                 totalTokens: 0,
-                contextLength: 50000
+                contextLength: 50000,
+                model: null
             }
         };
         const widget = new ContextBarWidget();
@@ -65,7 +66,8 @@ describe('ContextBarWidget', () => {
                 outputTokens: 0,
                 cachedTokens: 0,
                 totalTokens: 0,
-                contextLength: 50000
+                contextLength: 50000,
+                model: null
             }
         };
         const widget = new ContextBarWidget();
@@ -81,7 +83,8 @@ describe('ContextBarWidget', () => {
                 outputTokens: 0,
                 cachedTokens: 0,
                 totalTokens: 0,
-                contextLength: 50000
+                contextLength: 50000,
+                model: null
             }
         };
         const widget = new ContextBarWidget();
