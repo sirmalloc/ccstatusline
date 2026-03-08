@@ -7,6 +7,12 @@ export interface GitChangeCounts {
     deletions: number;
 }
 
+export interface GitFileStatusCounts {
+    staged: number;
+    unstaged: number;
+    untracked: number;
+}
+
 export function resolveGitCwd(context: RenderContext): string | undefined {
     const candidates = [
         context.data?.cwd,
@@ -61,5 +67,25 @@ export function getGitChangeCounts(context: RenderContext): GitChangeCounts {
     return {
         insertions: unstagedCounts.insertions + stagedCounts.insertions,
         deletions: unstagedCounts.deletions + stagedCounts.deletions
+    };
+}
+
+function countOutputLines(output: string | null): number {
+    if (!output) {
+        return 0;
+    }
+
+    return output.split('\n').filter(line => line.length > 0).length;
+}
+
+export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCounts {
+    const staged = countOutputLines(runGit('diff --cached --name-only', context));
+    const unstaged = countOutputLines(runGit('diff --name-only', context));
+    const untracked = countOutputLines(runGit('ls-files --others --exclude-standard', context));
+
+    return {
+        staged,
+        unstaged,
+        untracked
     };
 }

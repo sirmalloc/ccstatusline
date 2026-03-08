@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import {
     getGitChangeCounts,
+    getGitFileStatusCounts,
     isInsideGitWorkTree,
     resolveGitCwd,
     runGit
@@ -164,6 +165,42 @@ describe('git utils', () => {
             expect(getGitChangeCounts({})).toEqual({
                 insertions: 0,
                 deletions: 0
+            });
+        });
+    });
+
+    describe('getGitFileStatusCounts', () => {
+        it('counts staged, unstaged, and untracked files', () => {
+            mockExecSync.mockReturnValueOnce('staged-a\nstaged-b\n');
+            mockExecSync.mockReturnValueOnce('unstaged-a');
+            mockExecSync.mockReturnValueOnce('new-a\nnew-b\nnew-c\n');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 2,
+                unstaged: 1,
+                untracked: 3
+            });
+        });
+
+        it('returns zero counts when there are no matching files', () => {
+            mockExecSync.mockReturnValueOnce('');
+            mockExecSync.mockReturnValueOnce('');
+            mockExecSync.mockReturnValueOnce('');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 0,
+                untracked: 0
+            });
+        });
+
+        it('returns zero counts when git commands fail', () => {
+            mockExecSync.mockImplementation(() => { throw new Error('git failed'); });
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 0,
+                untracked: 0
             });
         });
     });
