@@ -4,6 +4,8 @@ import {
     useInput
 } from 'ink';
 import React, {
+    useEffect,
+    useMemo,
     useRef,
     useState
 } from 'react';
@@ -16,6 +18,74 @@ import {
 } from '../../utils/colors';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    List,
+    type ListEntry
+} from './List';
+
+export function buildPowerlineThemeItems(
+    themes: string[],
+    originalTheme: string
+): ListEntry<string>[] {
+    return themes.map((themeName) => {
+        const theme = getPowerlineTheme(themeName);
+
+        return {
+            label: theme?.name ?? themeName,
+            sublabel: themeName === originalTheme ? '(original)' : undefined,
+            value: themeName,
+            description: theme?.description ?? ''
+        };
+    });
+}
+
+export function applyCustomPowerlineTheme(
+    settings: Settings,
+    themeName: string
+): Settings | null {
+    const theme = getPowerlineTheme(themeName);
+
+    if (!theme || themeName === 'custom') {
+        return null;
+    }
+
+    const colorLevel = getColorLevelString(settings.colorLevel);
+    const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
+    const themeColors = theme[colorLevelKey];
+
+    if (!themeColors) {
+        return null;
+    }
+
+    const lines = settings.lines.map((line) => {
+        let widgetColorIndex = 0;
+
+        return line.map((widget) => {
+            if (widget.type === 'separator' || widget.type === 'flex-separator') {
+                return widget;
+            }
+
+            const fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length];
+            const bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length];
+            widgetColorIndex++;
+
+            return {
+                ...widget,
+                color: fgColor,
+                backgroundColor: bgColor
+            };
+        });
+    });
+
+    return {
+        ...settings,
+        powerline: {
+            ...settings.powerline,
+            theme: 'custom'
+        },
+        lines
+    };
+}
 
 export interface PowerlineThemeSelectorProps {
     settings: Settings;
@@ -28,120 +98,63 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     onUpdate,
     onBack
 }) => {
-    const themes = getPowerlineThemes();
+    const themes = useMemo(() => getPowerlineThemes(), []);
     const currentTheme = settings.powerline.theme ?? 'custom';
     const [selectedIndex, setSelectedIndex] = useState(Math.max(0, themes.indexOf(currentTheme)));
     const [showCustomizeConfirm, setShowCustomizeConfirm] = useState(false);
     const originalThemeRef = useRef(currentTheme);
     const originalSettingsRef = useRef(settings);
+    const latestSettingsRef = useRef(settings);
+    const latestOnUpdateRef = useRef(onUpdate);
+    const didHandleInitialSelectionRef = useRef(false);
 
-    const applyTheme = (themeName: string) => {
-        // Simply change the theme setting, don't modify widget colors
-        const updatedSettings = {
-            ...settings,
+    useEffect(() => {
+        latestSettingsRef.current = settings;
+        latestOnUpdateRef.current = onUpdate;
+    }, [settings, onUpdate]);
+
+    useEffect(() => {
+        const themeName = themes[selectedIndex];
+
+        if (!themeName) {
+            return;
+        }
+
+        if (!didHandleInitialSelectionRef.current) {
+            didHandleInitialSelectionRef.current = true;
+            return;
+        }
+
+        latestOnUpdateRef.current({
+            ...latestSettingsRef.current,
             powerline: {
-                ...settings.powerline,
+                ...latestSettingsRef.current.powerline,
                 theme: themeName
             }
-        };
-        onUpdate(updatedSettings);
-    };
-
-    const customizeTheme = () => {
-        // Copy current theme's colors to widgets and switch to custom theme
-        const currentThemeName = themes[selectedIndex];
-        if (!currentThemeName) {
-            return;
-        }
-        const theme = getPowerlineTheme(currentThemeName);
-
-        if (!theme || currentThemeName === 'custom') {
-            // If already on custom, just go back
-            onBack();
-            return;
-        }
-
-        const colorLevel = getColorLevelString(settings.colorLevel);
-        const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
-        const themeColors = theme[colorLevelKey];
-
-        if (themeColors) {
-            // Apply theme colors to widgets
-            const newLines = settings.lines.map((line) => {
-                let widgetColorIndex = 0;
-                return line.map((widget) => {
-                    // Skip separators
-                    if (widget.type === 'separator' || widget.type === 'flex-separator') {
-                        return widget;
-                    }
-
-                    const fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length];
-                    const bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length];
-                    widgetColorIndex++;
-
-                    return {
-                        ...widget,
-                        color: fgColor,
-                        backgroundColor: bgColor
-                    };
-                });
-            });
-
-            const updatedSettings = {
-                ...settings,
-                powerline: {
-                    ...settings.powerline,
-                    theme: 'custom'
-                },
-                lines: newLines
-            };
-
-            onUpdate(updatedSettings);
-        }
-
-        onBack();
-    };
+        });
+    }, [selectedIndex, themes]);
 
     useInput((input, key) => {
-        // Skip input handling when confirmation is active - let ConfirmDialog handle it
         if (showCustomizeConfirm) {
             return;
         }
-        {
-            // Normal input handling
-            if (key.escape) {
-                // Restore original settings completely when canceling
-                onUpdate(originalSettingsRef.current);
-                onBack();
-            } else if (key.upArrow) {
-                const newIndex = Math.max(0, selectedIndex - 1);
-                setSelectedIndex(newIndex);
-                const newTheme = themes[newIndex];
-                if (newTheme) {
-                    applyTheme(newTheme);
-                }
-            } else if (key.downArrow) {
-                const newIndex = Math.min(themes.length - 1, selectedIndex + 1);
-                setSelectedIndex(newIndex);
-                const newTheme = themes[newIndex];
-                if (newTheme) {
-                    applyTheme(newTheme);
-                }
-            } else if (key.return) {
-                // User confirmed their selection, so we keep the current theme
-                onBack();
-            } else if (input === 'c' || input === 'C') {
-                // Customize theme - copy theme colors to widgets
-                const currentThemeName = themes[selectedIndex];
-                if (currentThemeName && currentThemeName !== 'custom') {
-                    setShowCustomizeConfirm(true);
-                }
+
+        if (key.escape) {
+            onUpdate(originalSettingsRef.current);
+            onBack();
+        } else if (input === 'c' || input === 'C') {
+            const currentThemeName = themes[selectedIndex];
+            if (currentThemeName && currentThemeName !== 'custom') {
+                setShowCustomizeConfirm(true);
             }
         }
     });
 
     const selectedThemeName = themes[selectedIndex];
-    const selectedTheme = selectedThemeName ? getPowerlineTheme(selectedThemeName) : undefined;
+    const themeItems = useMemo(
+        () => buildPowerlineThemeItems(themes, originalThemeRef.current),
+        [themes]
+    );
 
     if (showCustomizeConfirm) {
         return (
@@ -159,8 +172,14 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                     <ConfirmDialog
                         inline={true}
                         onConfirm={() => {
-                            customizeTheme();
+                            if (selectedThemeName) {
+                                const updatedSettings = applyCustomPowerlineTheme(settings, selectedThemeName);
+                                if (updatedSettings) {
+                                    onUpdate(updatedSettings);
+                                }
+                            }
                             setShowCustomizeConfirm(false);
+                            onBack();
                         }}
                         onCancel={() => {
                             setShowCustomizeConfirm(false);
@@ -185,40 +204,30 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 </Text>
             </Box>
 
-            <Box marginTop={1} flexDirection='column'>
-                {themes.map((themeName, index) => {
-                    const theme = getPowerlineTheme(themeName);
-                    const isSelected = index === selectedIndex;
-                    const isOriginal = themeName === originalThemeRef.current;
+            <List
+                marginTop={1}
+                items={themeItems}
+                onSelect={() => {
+                    onBack();
+                }}
+                onSelectionChange={(themeName, index) => {
+                    if (themeName === 'back') {
+                        return;
+                    }
 
-                    return (
-                        <Box key={themeName}>
-                            <Text color={isSelected ? 'green' : undefined}>
-                                {isSelected ? '▶ ' : '  '}
-                                {theme?.name ?? themeName}
-                                {isOriginal && <Text dimColor> (original)</Text>}
-                            </Text>
-                        </Box>
-                    );
-                })}
-            </Box>
+                    setSelectedIndex(index);
+                }}
+                initialSelection={selectedIndex}
+            />
 
-            {selectedTheme && (
-                <Box marginTop={2} flexDirection='column'>
-                    <Text dimColor>Description:</Text>
-                    <Box marginLeft={2}>
-                        <Text>{selectedTheme.description}</Text>
-                    </Box>
-                    {selectedThemeName && selectedThemeName !== 'custom' && (
-                        <Box marginTop={1}>
-                            <Text dimColor>Press (c) to customize this theme - copies colors to widgets</Text>
-                        </Box>
-                    )}
-                    {settings.colorLevel === 1 && (
-                        <Box>
-                            <Text color='yellow'>⚠ 16 color mode themes have a very limited palette, we recommend switching color level in Terminal Options</Text>
-                        </Box>
-                    )}
+            {selectedThemeName && selectedThemeName !== 'custom' && (
+                <Box marginTop={1}>
+                    <Text dimColor>Press (c) to customize this theme - copies colors to widgets</Text>
+                </Box>
+            )}
+            {settings.colorLevel === 1 && (
+                <Box marginTop={1}>
+                    <Text color='yellow'>⚠ 16 color mode themes have a very limited palette, we recommend switching color level in Terminal Options</Text>
                 </Box>
             )}
         </Box>

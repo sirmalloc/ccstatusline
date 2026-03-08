@@ -3,9 +3,11 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React from 'react';
 
 import { getClaudeSettingsPath } from '../../utils/claude-settings';
+
+import { List } from './List';
 
 export interface InstallMenuProps {
     bunxAvailable: boolean;
@@ -13,6 +15,7 @@ export interface InstallMenuProps {
     onSelectNpx: () => void;
     onSelectBunx: () => void;
     onCancel: () => void;
+    initialSelection?: number;
 }
 
 export const InstallMenu: React.FC<InstallMenuProps> = ({
@@ -20,38 +23,43 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
     existingStatusLine,
     onSelectNpx,
     onSelectBunx,
-    onCancel
+    onCancel,
+    initialSelection = 0
 }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
-    const maxIndex = 2; // npx, bunx (if available), and back
-
-    useInput((input, key) => {
+    useInput((_, key) => {
         if (key.escape) {
             onCancel();
-        } else if (key.upArrow) {
-            if (selectedIndex === 2) {
-                setSelectedIndex(bunxAvailable ? 1 : 0); // Skip bunx if not available
-            } else {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
-            }
-        } else if (key.downArrow) {
-            if (selectedIndex === 0) {
-                setSelectedIndex(bunxAvailable ? 1 : 2); // Skip bunx if not available
-            } else if (selectedIndex === 1 && bunxAvailable) {
-                setSelectedIndex(2);
-            } else {
-                setSelectedIndex(Math.min(maxIndex, selectedIndex + 1));
-            }
-        } else if (key.return) {
-            if (selectedIndex === 0) {
-                onSelectNpx();
-            } else if (selectedIndex === 1 && bunxAvailable) {
-                onSelectBunx();
-            } else if (selectedIndex === 2) {
-                onCancel();
-            }
         }
     });
+
+    function onSelect(value: string) {
+        switch (value) {
+            case 'npx':
+                onSelectNpx();
+                break;
+            case 'bunx':
+                if (bunxAvailable) {
+                    onSelectBunx();
+                }
+                break;
+            case 'back':
+                onCancel();
+                break;
+        }
+    }
+
+    const listItems = [
+        {
+            label: 'npx - Node Package Execute',
+            value: 'npx'
+        },
+        {
+            label: 'bunx - Bun Package Execute',
+            sublabel: bunxAvailable ? undefined : '(not installed)',
+            value: 'bunx',
+            disabled: !bunxAvailable
+        }
+    ];
 
     return (
         <Box flexDirection='column'>
@@ -71,29 +79,21 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                 <Text dimColor>Select package manager to use:</Text>
             </Box>
 
-            <Box marginTop={1} flexDirection='column'>
-                <Box>
-                    <Text color={selectedIndex === 0 ? 'blue' : undefined}>
-                        {selectedIndex === 0 ? '▶  ' : '   '}
-                        npx - Node Package Execute
-                    </Text>
-                </Box>
+            <List
+                color='blue'
+                marginTop={1}
+                items={listItems}
+                onSelect={(line) => {
+                    if (line === 'back') {
+                        onCancel();
+                        return;
+                    }
 
-                <Box>
-                    <Text color={selectedIndex === 1 && bunxAvailable ? 'blue' : undefined} dimColor={!bunxAvailable}>
-                        {selectedIndex === 1 && bunxAvailable ? '▶  ' : '   '}
-                        bunx - Bun Package Execute
-                        {!bunxAvailable && ' (not installed)'}
-                    </Text>
-                </Box>
-
-                <Box marginTop={1}>
-                    <Text color={selectedIndex === 2 ? 'blue' : undefined}>
-                        {selectedIndex === 2 ? '▶  ' : '   '}
-                        ← Back
-                    </Text>
-                </Box>
-            </Box>
+                    onSelect(line);
+                }}
+                initialSelection={initialSelection}
+                showBackButton={true}
+            />
 
             <Box marginTop={2}>
                 <Text dimColor>

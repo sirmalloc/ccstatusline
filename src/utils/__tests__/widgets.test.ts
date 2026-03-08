@@ -11,8 +11,11 @@ import {
 import type { WidgetItemType } from '../../types/Widget';
 import {
     filterWidgetCatalog,
+    getAllWidgetTypes,
+    getWidget,
     getWidgetCatalog,
     getWidgetCatalogCategories,
+    isKnownWidgetType,
     type WidgetCatalogEntry
 } from '../widgets';
 
@@ -30,6 +33,11 @@ describe('widget catalog', () => {
         const link = catalog.find(entry => entry.type === 'link');
         const gitInsertions = catalog.find(entry => entry.type === 'git-insertions');
         const gitDeletions = catalog.find(entry => entry.type === 'git-deletions');
+        const inputSpeed = catalog.find(entry => entry.type === 'input-speed');
+        const outputSpeed = catalog.find(entry => entry.type === 'output-speed');
+        const totalSpeed = catalog.find(entry => entry.type === 'total-speed');
+        const resetTimer = catalog.find(entry => entry.type === 'reset-timer');
+        const weeklyResetTimer = catalog.find(entry => entry.type === 'weekly-reset-timer');
 
         expect(model?.displayName).toBe('Model');
         expect(model?.category).toBe('Core');
@@ -41,6 +49,16 @@ describe('widget catalog', () => {
         expect(gitInsertions?.category).toBe('Git');
         expect(gitDeletions?.displayName).toBe('Git Deletions');
         expect(gitDeletions?.category).toBe('Git');
+        expect(inputSpeed?.displayName).toBe('Input Speed');
+        expect(inputSpeed?.category).toBe('Token Speed');
+        expect(outputSpeed?.displayName).toBe('Output Speed');
+        expect(outputSpeed?.category).toBe('Token Speed');
+        expect(totalSpeed?.displayName).toBe('Total Speed');
+        expect(totalSpeed?.category).toBe('Token Speed');
+        expect(resetTimer?.displayName).toBe('Block Reset Timer');
+        expect(resetTimer?.category).toBe('Usage');
+        expect(weeklyResetTimer?.displayName).toBe('Weekly Reset Timer');
+        expect(weeklyResetTimer?.category).toBe('Usage');
     });
 
     it('hides manual separator when default separator is configured', () => {
@@ -76,11 +94,31 @@ describe('widget catalog', () => {
         expect(categories).toContain('Jujutsu');
         expect(categories).toContain('Context');
         expect(categories).toContain('Tokens');
+        expect(categories).toContain('Token Speed');
         expect(categories).toContain('Session');
         expect(categories).toContain('Usage');
         expect(categories).toContain('Environment');
         expect(categories).toContain('Custom');
         expect(categories).toContain('Layout');
+    });
+
+    it('returns runtime widget instances for non-layout widget types', () => {
+        const runtimeTypes = getAllWidgetTypes(baseSettings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            expect(widget).not.toBeNull();
+            expect(widget?.getDisplayName().length).toBeGreaterThan(0);
+        }
+    });
+
+    it('recognizes known widget and layout types', () => {
+        expect(isKnownWidgetType('model')).toBe(true);
+        expect(isKnownWidgetType('separator')).toBe(true);
+        expect(isKnownWidgetType('flex-separator')).toBe(true);
+        expect(isKnownWidgetType('unknown-widget-type')).toBe(false);
     });
 });
 

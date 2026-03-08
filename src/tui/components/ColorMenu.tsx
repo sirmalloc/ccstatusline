@@ -19,6 +19,13 @@ import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    clearAllWidgetStyling,
+    cycleWidgetColor,
+    resetWidgetStyling,
+    setWidgetColor,
+    toggleWidgetBold
+} from './color-menu/mutations';
 
 export interface ColorMenuProps {
     widgets: WidgetItem[];
@@ -80,17 +87,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const hexColor = `hex:${hexInput}`;
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                     if (selectedWidget) {
-                        // IMPORTANT: Update ALL items (not just colorableWidgets) to maintain proper indexing
-                        const newItems = widgets.map((widget) => {
-                            if (widget.id === highlightedItemId) {
-                                if (editingBackground) {
-                                    return { ...widget, backgroundColor: hexColor };
-                                } else {
-                                    return { ...widget, color: hexColor };
-                                }
-                            }
-                            return widget;
-                        });
+                        const newItems = setWidgetColor(widgets, selectedWidget.id, hexColor, editingBackground);
                         onUpdate(newItems);
                     }
                     setHexInputMode(false);
@@ -126,17 +123,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
 
                     if (selectedWidget) {
-                        // IMPORTANT: Update ALL items (not just colorableWidgets) to maintain proper indexing
-                        const newItems = widgets.map((widget) => {
-                            if (widget.id === highlightedItemId) {
-                                if (editingBackground) {
-                                    return { ...widget, backgroundColor: ansiColor };
-                                } else {
-                                    return { ...widget, color: ansiColor };
-                                }
-                            }
-                            return widget;
-                        });
+                        const newItems = setWidgetColor(widgets, selectedWidget.id, ansiColor, editingBackground);
 
                         onUpdate(newItems);
                         setAnsi256InputMode(false);
@@ -199,12 +186,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Toggle bold for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = widgets.map((widget) => {
-                        if (widget.id === selectedWidget.id) {
-                            return { ...widget, bold: !widget.bold };
-                        }
-                        return widget;
-                    });
+                    const newItems = toggleWidgetBold(widgets, selectedWidget.id);
                     onUpdate(newItems);
                 }
             }
@@ -213,17 +195,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Reset all styling (color, background, and bold) for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = widgets.map((widget) => {
-                        if (widget.id === selectedWidget.id) {
-                            // Remove color, backgroundColor, and bold properties
-                            const { color, backgroundColor, bold, ...restWidget } = widget;
-                            void color; // Intentionally unused
-                            void backgroundColor; // Intentionally unused
-                            void bold; // Intentionally unused
-                            return restWidget;
-                        }
-                        return widget;
-                    });
+                    const newItems = resetWidgetStyling(widgets, selectedWidget.id);
                     onUpdate(newItems);
                 }
             }
@@ -235,52 +207,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             if (highlightedItemId && highlightedItemId !== 'back') {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = widgets.map((widget) => {
-                        if (widget.id === selectedWidget.id) {
-                            if (editingBackground) {
-                                const currentBgColor = widget.backgroundColor ?? '';  // Empty string for 'none'
-                                let currentBgColorIndex = bgColors.indexOf(currentBgColor);
-                                // If color not found, start from beginning
-                                if (currentBgColorIndex === -1)
-                                    currentBgColorIndex = 0;
-
-                                let nextBgColorIndex;
-                                if (key.rightArrow) {
-                                    nextBgColorIndex = (currentBgColorIndex + 1) % bgColors.length;
-                                } else {
-                                    nextBgColorIndex = currentBgColorIndex === 0 ? bgColors.length - 1 : currentBgColorIndex - 1;
-                                }
-                                const nextBgColor = bgColors[nextBgColorIndex];
-                                return { ...widget, backgroundColor: nextBgColor === '' ? undefined : nextBgColor };
-                            } else {
-                                let defaultColor = 'white';
-                                if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-                                    const widgetImpl = getWidget(widget.type);
-                                    if (widgetImpl) {
-                                        defaultColor = widgetImpl.getDefaultColor();
-                                    }
-                                }
-                                let currentColor = widget.color ?? defaultColor;
-                                // If color is 'dim', treat as if no color was set
-                                if (currentColor === 'dim') {
-                                    currentColor = defaultColor;
-                                }
-                                let currentColorIndex = colors.indexOf(currentColor);
-                                // If color not found, start from beginning
-                                if (currentColorIndex === -1)
-                                    currentColorIndex = 0;
-
-                                let nextColorIndex;
-                                if (key.rightArrow) {
-                                    nextColorIndex = (currentColorIndex + 1) % colors.length;
-                                } else {
-                                    nextColorIndex = currentColorIndex === 0 ? colors.length - 1 : currentColorIndex - 1;
-                                }
-                                const nextColor = colors[nextColorIndex];
-                                return { ...widget, color: nextColor };
-                            }
-                        }
-                        return widget;
+                    const newItems = cycleWidgetColor({
+                        widgets,
+                        widgetId: selectedWidget.id,
+                        direction: key.rightArrow ? 'right' : 'left',
+                        editingBackground,
+                        colors,
+                        backgroundColors: bgColors
                     });
                     onUpdate(newItems);
                 }
@@ -430,15 +363,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     <ConfirmDialog
                         inline={true}
                         onConfirm={() => {
-                            // Clear all colors from all widgets
-                            const newItems = widgets.map((widget) => {
-                                // Remove color, backgroundColor, and bold properties
-                                const { color, backgroundColor, bold, ...restWidget } = widget;
-                                void color; // Intentionally unused
-                                void backgroundColor; // Intentionally unused
-                                void bold; // Intentionally unused
-                                return restWidget;
-                            });
+                            const newItems = clearAllWidgetStyling(widgets);
                             onUpdate(newItems);
                             setShowClearConfirm(false);
                         }}

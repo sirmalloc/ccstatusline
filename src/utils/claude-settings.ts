@@ -4,6 +4,15 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
+import {
+    SettingsSchema,
+    type Settings
+} from '../types/Settings';
+
+import {
+    getConfigPath,
+    isCustomConfigPath
+} from './config';
 
 // Re-export for backward compatibility
 export type { ClaudeSettings };
@@ -18,6 +27,32 @@ export const CCSTATUSLINE_COMMANDS = {
     BUNX: 'bunx -y ccstatusline@latest',
     SELF_MANAGED: 'ccstatusline'
 };
+
+export function isKnownCommand(command: string): boolean {
+    const prefixes = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED];
+    return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `));
+}
+
+function needsQuoting(filePath: string): boolean {
+    if (process.platform === 'win32') {
+        // cmd.exe-safe set of characters that require quoting.
+        return /[\s&()<>|^"]/.test(filePath);
+    }
+
+    return /[\s()[\];&#|'"\\$`]/.test(filePath);
+}
+
+function quotePathIfNeeded(filePath: string): string {
+    if (!needsQuoting(filePath)) {
+        return filePath;
+    }
+
+    if (process.platform === 'win32') {
+        return `"${filePath.replace(/"/g, '""')}"`;
+    }
+
+    return `'${filePath.replace(/'/g, '\'\\\'\'')}'`;
+}
 
 /**
  * Determines the Claude config directory, checking CLAUDE_CONFIG_DIR environment variable first,
@@ -58,16 +93,44 @@ export function getClaudeSettingsPath(): string {
     return path.join(getClaudeConfigDir(), 'settings.json');
 }
 
-export async function loadClaudeSettings(): Promise<ClaudeSettings> {
+/**
+ * Creates a backup of the current Claude settings file.
+ */
+async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
+    const settingsPath = getClaudeSettingsPath();
+    const backupPath = settingsPath + suffix;
     try {
-        const settingsPath = getClaudeSettingsPath();
-        if (!fs.existsSync(settingsPath)) {
-            return {};
+        if (fs.existsSync(settingsPath)) {
+            const content = await readFile(settingsPath, 'utf-8');
+            await writeFile(backupPath, content, 'utf-8');
+            return backupPath;
         }
+    } catch (error) {
+        console.error('Failed to backup Claude settings:', error);
+    }
+
+    return null;
+}
+
+interface LoadClaudeSettingsOptions { logErrors?: boolean }
+
+export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}): Promise<ClaudeSettings> {
+    const { logErrors = true } = options;
+    const settingsPath = getClaudeSettingsPath();
+
+    // File doesn't exist - return empty object
+    if (!fs.existsSync(settingsPath)) {
+        return {};
+    }
+
+    try {
         const content = await readFile(settingsPath, 'utf-8');
         return JSON.parse(content) as ClaudeSettings;
-    } catch {
-        return {};
+    } catch (error) {
+        if (logErrors) {
+            console.error('Failed to load Claude settings:', error);
+        }
+        throw error;
     }
 }
 
@@ -76,23 +139,26 @@ export async function saveClaudeSettings(
 ): Promise<void> {
     const settingsPath = getClaudeSettingsPath();
     const dir = path.dirname(settingsPath);
+
+    // Backup settings before overwriting
+    await backupClaudeSettings();
+
     await mkdir(dir, { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
 export async function isInstalled(): Promise<boolean> {
-    const settings = await loadClaudeSettings();
-    // Check if command is either npx or bunx version AND padding is 0 (or undefined for new installs)
-    const validCommands = [
-        // Default autoinstalled npm command
-        CCSTATUSLINE_COMMANDS.NPM,
-        // Default autoinstalled bunx command
-        CCSTATUSLINE_COMMANDS.BUNX,
-        // Self managed installation command
-        CCSTATUSLINE_COMMANDS.SELF_MANAGED
-    ];
+    let settings: ClaudeSettings;
+
+    try {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        return false; // Can't determine if installed, assume not
+    }
+    const command = settings.statusLine?.command ?? '';
+
     return (
-        validCommands.includes(settings.statusLine?.command ?? '')
+        isKnownCommand(command)
         && (settings.statusLine?.padding === 0
             || settings.statusLine?.padding === undefined)
     );
@@ -109,31 +175,92 @@ export function isBunxAvailable(): boolean {
     }
 }
 
+function buildCommand(baseCommand: string): string {
+    if (isCustomConfigPath()) {
+        return `${baseCommand} --config ${quotePathIfNeeded(getConfigPath())}`;
+    }
+    return baseCommand;
+}
+
+async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
+    const configPath = getConfigPath();
+    if (!fs.existsSync(configPath)) {
+        return null;
+    }
+
+    try {
+        const content = await readFile(configPath, 'utf-8');
+        const parsed = JSON.parse(content) as unknown;
+        const result = SettingsSchema.safeParse(parsed);
+        if (!result.success) {
+            return null;
+        }
+        return result.data;
+    } catch {
+        return null;
+    }
+}
+
 export async function installStatusLine(useBunx = false): Promise<void> {
-    const settings = await loadClaudeSettings();
+    let settings: ClaudeSettings;
+
+    const backupPath = await backupClaudeSettings('.orig');
+    try {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
+        console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
+        settings = {};
+    }
+
+    const baseCommand = useBunx
+        ? CCSTATUSLINE_COMMANDS.BUNX
+        : CCSTATUSLINE_COMMANDS.NPM;
 
     // Update settings with our status line (confirmation already handled in TUI)
     settings.statusLine = {
         type: 'command',
-        command: useBunx
-            ? CCSTATUSLINE_COMMANDS.BUNX
-            : CCSTATUSLINE_COMMANDS.NPM,
+        command: buildCommand(baseCommand),
         padding: 0
     };
 
     await saveClaudeSettings(settings);
+
+    const savedSettings = await loadSavedSettingsForHookSync();
+    if (savedSettings) {
+        const { syncWidgetHooks } = await import('./hooks');
+        await syncWidgetHooks(savedSettings);
+    }
 }
 
 export async function uninstallStatusLine(): Promise<void> {
-    const settings = await loadClaudeSettings();
+    let settings: ClaudeSettings;
+
+    try {
+        settings = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        console.error('Warning: Could not read existing Claude settings.');
+        return; // if we can't read, return... what are we uninstalling?
+    }
 
     if (settings.statusLine) {
         delete settings.statusLine;
         await saveClaudeSettings(settings);
     }
+
+    try {
+        const { removeManagedHooks } = await import('./hooks');
+        await removeManagedHooks();
+    } catch {
+        // Ignore hook cleanup failures during uninstall
+    }
 }
 
 export async function getExistingStatusLine(): Promise<string | null> {
-    const settings = await loadClaudeSettings();
-    return settings.statusLine?.command ?? null;
+    try {
+        const settings = await loadClaudeSettings({ logErrors: false });
+        return settings.statusLine?.command ?? null;
+    } catch {
+        return null; // Can't read settings, return null
+    }
 }

@@ -7,7 +7,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextWindowMetrics } from '../utils/context-window';
-import { getContextConfig } from '../utils/model-context';
+import {
+    getContextConfig,
+    getModelContextIdentifier
+} from '../utils/model-context';
 import { makeUsageProgressBar } from '../utils/usage';
 
 type DisplayMode = 'progress' | 'progress-short';
@@ -72,9 +75,8 @@ export class ContextBarWidget implements Widget {
         }
 
         if (total === null && context.tokenMetrics) {
-            const model = context.data?.model;
-            const modelId = typeof model === 'string' ? model : model?.id;
-            total = getContextConfig(modelId).maxTokens;
+            const modelIdentifier = getModelContextIdentifier(context.data?.model);
+            total = getContextConfig(modelIdentifier).maxTokens;
         }
 
         if (used === null || total === null || total <= 0) {

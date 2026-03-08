@@ -118,4 +118,25 @@ describe('GitWorktreeWidget', () => {
 
         expect(render()).toBe('𖠰 no git');
     });
+
+    it('should render with bare repo worktree', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('/some/path/worktrees/some-worktree');
+
+        expect(render()).toBe('𖠰 some-worktree');
+    });
+
+    it('should render with nested bare repo worktree', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('/some/path/worktrees/some-dir/some-worktree');
+
+        expect(render()).toBe('𖠰 some-dir/some-worktree');
+    });
+
+    it('should handle windows bare repo git-dir paths', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('C:\\repo\\worktrees\\some-worktree');
+
+        expect(render()).toBe('𖠰 some-worktree');
+    });
 });

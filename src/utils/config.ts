@@ -19,23 +19,60 @@ const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
 
-const CONFIG_DIR = path.join(os.homedir(), '.config', 'ccstatusline');
-const SETTINGS_PATH = path.join(CONFIG_DIR, 'settings.json');
-const SETTINGS_BACKUP_PATH = path.join(CONFIG_DIR, 'settings.bak');
+const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
 
-async function backupBadSettings(): Promise<void> {
+let settingsPath = DEFAULT_SETTINGS_PATH;
+
+export function initConfigPath(filePath?: string): void {
+    settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+}
+
+export function getConfigPath(): string {
+    return settingsPath;
+}
+
+export function isCustomConfigPath(): boolean {
+    return settingsPath !== DEFAULT_SETTINGS_PATH;
+}
+
+interface SettingsPaths {
+    configDir: string;
+    settingsPath: string;
+    settingsBackupPath: string;
+}
+
+function getSettingsPaths(): SettingsPaths {
+    const configDir = path.dirname(settingsPath);
+    const parsedPath = path.parse(settingsPath);
+    const backupBaseName = parsedPath.ext
+        ? `${parsedPath.name}.bak`
+        : `${parsedPath.base}.bak`;
+
+    return {
+        configDir,
+        settingsPath,
+        settingsBackupPath: path.join(configDir, backupBaseName)
+    };
+}
+
+async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
+    await mkdir(paths.configDir, { recursive: true });
+    await writeFile(paths.settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+async function backupBadSettings(paths: SettingsPaths): Promise<void> {
     try {
-        if (fs.existsSync(SETTINGS_PATH)) {
-            const content = await readFile(SETTINGS_PATH, 'utf-8');
-            await writeFile(SETTINGS_BACKUP_PATH, content, 'utf-8');
-            console.error(`Bad settings backed up to ${SETTINGS_BACKUP_PATH}`);
+        if (fs.existsSync(paths.settingsPath)) {
+            const content = await readFile(paths.settingsPath, 'utf-8');
+            await writeFile(paths.settingsBackupPath, content, 'utf-8');
+            console.error(`Bad settings backed up to ${paths.settingsBackupPath}`);
         }
     } catch (error) {
         console.error('Failed to backup bad settings:', error);
     }
 }
 
-async function writeDefaultSettings(): Promise<Settings> {
+async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
     const defaults = SettingsSchema.parse({});
     const settingsWithVersion = {
         ...defaults,
@@ -43,9 +80,8 @@ async function writeDefaultSettings(): Promise<Settings> {
     };
 
     try {
-        await mkdir(CONFIG_DIR, { recursive: true });
-        await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
-        console.error(`Default settings written to ${SETTINGS_PATH}`);
+        await writeSettingsJson(settingsWithVersion, paths);
+        console.error(`Default settings written to ${paths.settingsPath}`);
     } catch (error) {
         console.error('Failed to write default settings:', error);
     }
@@ -53,13 +89,20 @@ async function writeDefaultSettings(): Promise<Settings> {
     return defaults;
 }
 
+async function recoverWithDefaults(paths: SettingsPaths): Promise<Settings> {
+    await backupBadSettings(paths);
+    return await writeDefaultSettings(paths);
+}
+
 export async function loadSettings(): Promise<Settings> {
+    const paths = getSettingsPaths();
+
     try {
         // Check if settings file exists
-        if (!fs.existsSync(SETTINGS_PATH))
-            return await writeDefaultSettings();
+        if (!fs.existsSync(paths.settingsPath))
+            return await writeDefaultSettings(paths);
 
-        const content = await readFile(SETTINGS_PATH, 'utf-8');
+        const content = await readFile(paths.settingsPath, 'utf-8');
         let rawData: unknown;
 
         try {
@@ -67,8 +110,7 @@ export async function loadSettings(): Promise<Settings> {
         } catch {
             // If we can't parse the JSON, backup and write defaults
             console.error('Failed to parse settings.json, backing up and using defaults');
-            await backupBadSettings();
-            return await writeDefaultSettings();
+            return await recoverWithDefaults(paths);
         }
 
         // Check if this is a v1 config (no version field)
@@ -78,17 +120,16 @@ export async function loadSettings(): Promise<Settings> {
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
                 console.error('Invalid v1 settings format:', v1Result.error);
-                await backupBadSettings();
-                return await writeDefaultSettings();
+                return await recoverWithDefaults(paths);
             }
 
             // Migrate v1 to current version and save the migrated settings back to disk
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            await writeFile(SETTINGS_PATH, JSON.stringify(rawData, null, 2), 'utf-8');
+            await writeSettingsJson(rawData, paths);
         } else if (needsMigration(rawData, CURRENT_VERSION)) {
             // Handle migrations for versioned configs (v2+) and save the migrated settings back to disk
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            await writeFile(SETTINGS_PATH, JSON.stringify(rawData, null, 2), 'utf-8');
+            await writeSettingsJson(rawData, paths);
         }
 
         // At this point, data should be in current format with version field
@@ -96,22 +137,19 @@ export async function loadSettings(): Promise<Settings> {
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
             console.error('Failed to parse settings:', result.error);
-            await backupBadSettings();
-            return await writeDefaultSettings();
+            return await recoverWithDefaults(paths);
         }
 
         return result.data;
     } catch (error) {
         // Any other error, backup and write defaults
         console.error('Error loading settings:', error);
-        await backupBadSettings();
-        return await writeDefaultSettings();
+        return await recoverWithDefaults(paths);
     }
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-    // Ensure config directory exists
-    await mkdir(CONFIG_DIR, { recursive: true });
+    const paths = getSettingsPaths();
 
     // Always include version when saving
     const settingsWithVersion = {
@@ -119,6 +157,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
         version: CURRENT_VERSION
     };
 
-    // Write settings using Node.js-compatible API
-    await writeFile(SETTINGS_PATH, JSON.stringify(settingsWithVersion, null, 2), 'utf-8');
+    await writeSettingsJson(settingsWithVersion, paths);
+
+    // Sync widget hooks to Claude settings
+    try {
+        const { syncWidgetHooks } = await import('./hooks');
+        await syncWidgetHooks(settings);
+    } catch { /* ignore hook sync failures */ }
 }

@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import * as childProcess from 'child_process';
 import os from 'os';
 import {
     afterEach,
@@ -16,47 +16,22 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { FreeMemoryWidget } from '../FreeMemory';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
-vi.mock('os', () => {
-    const mockOs = {
-        totalmem: vi.fn(),
-        freemem: vi.fn(),
-        platform: vi.fn()
-    };
-
-    return {
-        default: mockOs,
-        ...mockOs
-    };
-});
-
-const mockTotalmem = os.totalmem as unknown as {
-    mockReturnValue: (value: number) => void;
-    mockReset: () => void;
-};
-const mockFreemem = os.freemem as unknown as {
-    mockReturnValue: (value: number) => void;
-    mockReset: () => void;
-};
-const mockPlatform = os.platform as unknown as {
-    mockReturnValue: (value: NodeJS.Platform) => void;
-    mockReset: () => void;
-};
-const mockExecSync = execSync as unknown as {
-    mockReturnValue: (value: string) => void;
-    mockImplementation: (impl: () => never) => void;
-    mockReset: () => void;
-};
-
 describe('FreeMemoryWidget', () => {
     const widget = new FreeMemoryWidget();
+    let mockTotalmem: { mockReturnValue: (value: number) => void };
+    let mockFreemem: { mockReturnValue: (value: number) => void };
+    let mockPlatform: { mockReturnValue: (value: NodeJS.Platform) => void };
+    let mockExecSync: {
+        mockImplementation: (fn: () => never) => void;
+        mockReturnValue: (value: string) => void;
+    };
 
     beforeEach(() => {
-        vi.clearAllMocks();
-        mockTotalmem.mockReset();
-        mockFreemem.mockReset();
-        mockPlatform.mockReset();
-        mockExecSync.mockReset();
+        vi.restoreAllMocks();
+        mockTotalmem = vi.spyOn(os, 'totalmem');
+        mockFreemem = vi.spyOn(os, 'freemem');
+        mockPlatform = vi.spyOn(os, 'platform');
+        mockExecSync = vi.spyOn(childProcess, 'execSync');
     });
 
     afterEach(() => {

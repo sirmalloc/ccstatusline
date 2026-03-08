@@ -22,9 +22,13 @@ import {
     installStatusLine,
     isBunxAvailable,
     isInstalled,
+    isKnownCommand,
     uninstallStatusLine
 } from '../utils/claude-settings';
+import { cloneSettings } from '../utils/clone-settings';
 import {
+    getConfigPath,
+    isCustomConfigPath,
     loadSettings,
     saveSettings
 } from '../utils/config';
@@ -48,7 +52,8 @@ import {
     PowerlineSetup,
     StatusLinePreview,
     TerminalOptionsMenu,
-    TerminalWidthMenu
+    TerminalWidthMenu,
+    type MainMenuOption
 } from './components';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
@@ -58,15 +63,47 @@ interface FlashMessage {
     color: 'green' | 'red';
 }
 
+type AppScreen = 'main'
+    | 'lines'
+    | 'items'
+    | 'colorLines'
+    | 'colors'
+    | 'terminalWidth'
+    | 'terminalConfig'
+    | 'globalOverrides'
+    | 'confirm'
+    | 'powerline'
+    | 'install';
+
+interface ConfirmDialogState {
+    message: string;
+    action: () => Promise<void>;
+    cancelScreen?: Exclude<AppScreen, 'confirm'>;
+}
+
+export function getConfirmCancelScreen(confirmDialog: ConfirmDialogState | null): Exclude<AppScreen, 'confirm'> {
+    return confirmDialog?.cancelScreen ?? 'main';
+}
+
+export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
+    if (menuSelections.install === undefined) {
+        return menuSelections;
+    }
+
+    const next = { ...menuSelections };
+    delete next.install;
+    return next;
+}
+
 export const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
-    const [screen, setScreen] = useState<'main' | 'lines' | 'items' | 'colorLines' | 'colors' | 'terminalWidth' | 'terminalConfig' | 'globalOverrides' | 'confirm' | 'powerline' | 'install'>('main');
+    const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
-    const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => Promise<void> } | null>(null);
+    const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
     const [powerlineFontStatus, setPowerlineFontStatus] = useState<PowerlineFontStatus>({ installed: false });
@@ -84,7 +121,7 @@ export const App: React.FC = () => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
             setSettings(loadedSettings);
-            setOriginalSettings(JSON.parse(JSON.stringify(loadedSettings)) as Settings); // Deep copy
+            setOriginalSettings(cloneSettings(loadedSettings));
         });
         void isInstalled().then(setIsClaudeInstalled);
 
@@ -133,7 +170,7 @@ export const App: React.FC = () => {
         if (key.ctrl && input === 's' && settings) {
             void (async () => {
                 await saveSettings(settings);
-                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings);
+                setOriginalSettings(cloneSettings(settings));
                 setHasChanges(false);
                 setFlashMessage({
                     text: '✓ Configuration saved',
@@ -145,7 +182,7 @@ export const App: React.FC = () => {
 
     const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean) => {
         void getExistingStatusLine().then((existing) => {
-            const isAlreadyInstalled = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED].includes(existing ?? '');
+            const isAlreadyInstalled = isKnownCommand(existing ?? '');
             let message: string;
 
             if (existing && !isAlreadyInstalled) {
@@ -158,6 +195,7 @@ export const App: React.FC = () => {
 
             setConfirmDialog({
                 message,
+                cancelScreen: 'install',
                 action: async () => {
                     await installStatusLine(useBunx);
                     setIsClaudeInstalled(true);
@@ -171,12 +209,19 @@ export const App: React.FC = () => {
     }, []);
 
     const handleNpxInstall = useCallback(() => {
+        setMenuSelections(prev => ({ ...prev, install: 0 }));
         handleInstallSelection(CCSTATUSLINE_COMMANDS.NPM, 'npx', false);
     }, [handleInstallSelection]);
 
     const handleBunxInstall = useCallback(() => {
+        setMenuSelections(prev => ({ ...prev, install: 1 }));
         handleInstallSelection(CCSTATUSLINE_COMMANDS.BUNX, 'bunx', true);
     }, [handleInstallSelection]);
+
+    const handleInstallMenuCancel = useCallback(() => {
+        setMenuSelections(clearInstallMenuSelection);
+        setScreen('main');
+    }, []);
 
     if (!settings) {
         return <Text>Loading settings...</Text>;
@@ -202,58 +247,58 @@ export const App: React.FC = () => {
         }
     };
 
-    const handleMainMenuSelect = async (value: string) => {
+    const handleMainMenuSelect = async (value: MainMenuOption) => {
         switch (value) {
-        case 'lines':
-            setScreen('lines');
-            break;
-        case 'colors':
-            setScreen('colorLines');
-            break;
-        case 'terminalConfig':
-            setScreen('terminalConfig');
-            break;
-        case 'globalOverrides':
-            setScreen('globalOverrides');
-            break;
-        case 'powerline':
-            setScreen('powerline');
-            break;
-        case 'install':
-            handleInstallUninstall();
-            break;
-        case 'starGithub':
-            setConfirmDialog({
-                message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
-                action: () => {
-                    const result = openExternalUrl(GITHUB_REPO_URL);
-                    if (result.success) {
-                        setFlashMessage({
-                            text: '✓ Opened GitHub repository in browser',
-                            color: 'green'
-                        });
-                    } else {
-                        setFlashMessage({
-                            text: `✗ Could not open browser. Visit: ${GITHUB_REPO_URL}`,
-                            color: 'red'
-                        });
+            case 'lines':
+                setScreen('lines');
+                break;
+            case 'colors':
+                setScreen('colorLines');
+                break;
+            case 'terminalConfig':
+                setScreen('terminalConfig');
+                break;
+            case 'globalOverrides':
+                setScreen('globalOverrides');
+                break;
+            case 'powerline':
+                setScreen('powerline');
+                break;
+            case 'install':
+                handleInstallUninstall();
+                break;
+            case 'starGithub':
+                setConfirmDialog({
+                    message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
+                    action: () => {
+                        const result = openExternalUrl(GITHUB_REPO_URL);
+                        if (result.success) {
+                            setFlashMessage({
+                                text: '✓ Opened GitHub repository in browser',
+                                color: 'green'
+                            });
+                        } else {
+                            setFlashMessage({
+                                text: `✗ Could not open browser. Visit: ${GITHUB_REPO_URL}`,
+                                color: 'red'
+                            });
+                        }
+                        setScreen('main');
+                        setConfirmDialog(null);
+                        return Promise.resolve();
                     }
-                    setScreen('main');
-                    setConfirmDialog(null);
-                    return Promise.resolve();
-                }
-            });
-            setScreen('confirm');
-            break;
-        case 'save':
-            await saveSettings(settings);
-            setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
-            setHasChanges(false);
-            exit();
-            break;
-        case 'exit':
-            exit();
-            break;
+                });
+                setScreen('confirm');
+                break;
+            case 'save':
+                await saveSettings(settings);
+                setOriginalSettings(cloneSettings(settings)); // Update original after save
+                setHasChanges(false);
+                exit();
+                break;
+            case 'exit':
+                exit();
+                break;
         }
     };
 
@@ -289,6 +334,9 @@ export const App: React.FC = () => {
                     </Text>
                 )}
             </Box>
+            {isCustomConfigPath() && (
+                <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
+            )}
 
             <StatusLinePreview
                 lines={settings.lines}
@@ -300,20 +348,12 @@ export const App: React.FC = () => {
             <Box marginTop={1}>
                 {screen === 'main' && (
                     <MainMenu
-                        onSelect={(value) => {
+                        onSelect={(value, index) => {
                             // Only persist menu selection if not exiting
                             if (value !== 'save' && value !== 'exit') {
-                                const menuMap: Record<string, number> = {
-                                    lines: 0,
-                                    colors: 1,
-                                    powerline: 2,
-                                    terminalConfig: 3,
-                                    globalOverrides: 4,
-                                    install: 5,
-                                    starGithub: hasChanges ? 8 : 7
-                                };
-                                setMenuSelections({ ...menuSelections, main: menuMap[value] ?? 0 });
+                                setMenuSelections(prev => ({ ...prev, main: index }));
                             }
+
                             void handleMainMenuSelect(value);
                         }}
                         isClaudeInstalled={isClaudeInstalled}
@@ -328,14 +368,14 @@ export const App: React.FC = () => {
                     <LineSelector
                         lines={settings.lines}
                         onSelect={(line) => {
-                            setMenuSelections({ ...menuSelections, lines: line });
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
                             handleLineSelect(line);
                         }}
                         onLinesUpdate={updateLines}
                         onBack={() => {
                             // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
-                            setMenuSelections({ ...menuSelections, main: 0 });
+                            setMenuSelections(prev => ({ ...prev, main: 0 }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -349,7 +389,7 @@ export const App: React.FC = () => {
                         onUpdate={(widgets) => { updateLine(selectedLine, widgets); }}
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
-                            setMenuSelections({ ...menuSelections, lines: selectedLine });
+                            setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
                             setScreen('lines');
                         }}
                         lineNumber={selectedLine + 1}
@@ -361,13 +401,13 @@ export const App: React.FC = () => {
                         lines={settings.lines}
                         onLinesUpdate={updateLines}
                         onSelect={(line) => {
-                            setMenuSelections({ ...menuSelections, lines: line });
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
                             setSelectedLine(line);
                             setScreen('colors');
                         }}
                         onBack={() => {
                             // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections({ ...menuSelections, main: 1 });
+                            setMenuSelections(prev => ({ ...prev, main: 1 }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -405,7 +445,7 @@ export const App: React.FC = () => {
                                 setScreen('terminalWidth');
                             } else {
                                 // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections({ ...menuSelections, main: 3 });
+                                setMenuSelections(prev => ({ ...prev, main: 3 }));
                                 setScreen('main');
                             }
                         }}
@@ -430,7 +470,7 @@ export const App: React.FC = () => {
                         }}
                         onBack={() => {
                             // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections({ ...menuSelections, main: 4 });
+                            setMenuSelections(prev => ({ ...prev, main: 4 }));
                             setScreen('main');
                         }}
                     />
@@ -440,7 +480,7 @@ export const App: React.FC = () => {
                         message={confirmDialog.message}
                         onConfirm={() => void confirmDialog.action()}
                         onCancel={() => {
-                            setScreen('main');
+                            setScreen(getConfirmCancelScreen(confirmDialog));
                             setConfirmDialog(null);
                         }}
                     />
@@ -451,9 +491,8 @@ export const App: React.FC = () => {
                         existingStatusLine={existingStatusLine}
                         onSelectNpx={handleNpxInstall}
                         onSelectBunx={handleBunxInstall}
-                        onCancel={() => {
-                            setScreen('main');
-                        }}
+                        onCancel={handleInstallMenuCancel}
+                        initialSelection={menuSelections.install}
                     />
                 )}
                 {screen === 'powerline' && (

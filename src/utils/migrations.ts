@@ -10,9 +10,114 @@ interface Migration {
     migrate: (data: Record<string, unknown>) => Record<string, unknown>;
 }
 
+type V1MigratedField
+    = | 'flexMode'
+        | 'compactThreshold'
+        | 'colorLevel'
+        | 'defaultSeparator'
+        | 'defaultPadding'
+        | 'inheritSeparatorColors'
+        | 'overrideBackgroundColor'
+        | 'overrideForegroundColor'
+        | 'globalBold';
+
+interface V1FieldRule {
+    key: V1MigratedField;
+    isValid: (value: unknown) => boolean;
+}
+
 // Type guards for checking data structure
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const V1_FIELD_RULES: V1FieldRule[] = [
+    {
+        key: 'flexMode',
+        isValid: value => typeof value === 'string'
+    },
+    {
+        key: 'compactThreshold',
+        isValid: value => typeof value === 'number'
+    },
+    {
+        key: 'colorLevel',
+        isValid: value => typeof value === 'number'
+    },
+    {
+        key: 'defaultSeparator',
+        isValid: value => typeof value === 'string'
+    },
+    {
+        key: 'defaultPadding',
+        isValid: value => typeof value === 'string'
+    },
+    {
+        key: 'inheritSeparatorColors',
+        isValid: value => typeof value === 'boolean'
+    },
+    {
+        key: 'overrideBackgroundColor',
+        isValid: value => typeof value === 'string'
+    },
+    {
+        key: 'overrideForegroundColor',
+        isValid: value => typeof value === 'string'
+    },
+    {
+        key: 'globalBold',
+        isValid: value => typeof value === 'boolean'
+    }
+];
+
+function toWidgetLine(line: unknown[], stripSeparators: boolean): WidgetItem[] {
+    const lineToProcess = stripSeparators
+        ? line.filter((item) => {
+            if (isRecord(item)) {
+                return item.type !== 'separator';
+            }
+            return true;
+        })
+        : line;
+
+    const typedLine: WidgetItem[] = [];
+    for (const item of lineToProcess) {
+        if (isRecord(item) && typeof item.type === 'string') {
+            typedLine.push({
+                ...item,
+                id: generateGuid(),
+                type: item.type
+            } as WidgetItem);
+        }
+    }
+
+    return typedLine;
+}
+
+function migrateV1Lines(data: Record<string, unknown>): WidgetItem[][] | undefined {
+    if (!Array.isArray(data.lines)) {
+        return undefined;
+    }
+
+    const stripSeparators = Boolean(data.defaultSeparator);
+    const processedLines: WidgetItem[][] = [];
+
+    for (const line of data.lines) {
+        if (Array.isArray(line)) {
+            processedLines.push(toWidgetLine(line, stripSeparators));
+        }
+    }
+
+    return processedLines;
+}
+
+function copyV1Fields(data: Record<string, unknown>, target: Record<string, unknown>): void {
+    for (const rule of V1_FIELD_RULES) {
+        const value = data[rule.key];
+        if (rule.isValid(value)) {
+            target[rule.key] = value;
+        }
+    }
 }
 
 // Define all migrations here
@@ -26,59 +131,13 @@ export const migrations: Migration[] = [
             const migrated: Record<string, unknown> = {};
 
             // Process lines: strip separators if needed and assign GUIDs
-            if (data.lines && Array.isArray(data.lines)) {
-                const processedLines: WidgetItem[][] = [];
-
-                for (const line of data.lines) {
-                    if (Array.isArray(line)) {
-                        // Filter out separators if defaultSeparator is enabled
-                        let processedLine = line;
-                        if (data.defaultSeparator) {
-                            processedLine = line.filter((item: unknown) => {
-                                if (isRecord(item)) {
-                                    return item.type !== 'separator';
-                                }
-                                return true;
-                            });
-                        }
-
-                        // Assign GUIDs to all items and build typed array
-                        const typedLine: WidgetItem[] = [];
-                        for (const item of processedLine) {
-                            if (isRecord(item) && typeof item.type === 'string') {
-                                typedLine.push({
-                                    ...item,
-                                    id: generateGuid(),
-                                    type: item.type
-                                } as WidgetItem);
-                            }
-                        }
-                        processedLines.push(typedLine);
-                    }
-                }
-
+            const processedLines = migrateV1Lines(data);
+            if (processedLines) {
                 migrated.lines = processedLines;
             }
 
             // Copy all v1 fields that exist
-            if (typeof data.flexMode === 'string')
-                migrated.flexMode = data.flexMode;
-            if (typeof data.compactThreshold === 'number')
-                migrated.compactThreshold = data.compactThreshold;
-            if (typeof data.colorLevel === 'number')
-                migrated.colorLevel = data.colorLevel;
-            if (typeof data.defaultSeparator === 'string')
-                migrated.defaultSeparator = data.defaultSeparator;
-            if (typeof data.defaultPadding === 'string')
-                migrated.defaultPadding = data.defaultPadding;
-            if (typeof data.inheritSeparatorColors === 'boolean')
-                migrated.inheritSeparatorColors = data.inheritSeparatorColors;
-            if (typeof data.overrideBackgroundColor === 'string')
-                migrated.overrideBackgroundColor = data.overrideBackgroundColor;
-            if (typeof data.overrideForegroundColor === 'string')
-                migrated.overrideForegroundColor = data.overrideForegroundColor;
-            if (typeof data.globalBold === 'boolean')
-                migrated.globalBold = data.globalBold;
+            copyV1Fields(data, migrated);
 
             // Add version field for v2
             migrated.version = 2;

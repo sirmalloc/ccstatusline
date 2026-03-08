@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import * as fs from 'fs';
 import {
     afterEach,
     beforeEach,
@@ -15,12 +15,7 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { SessionNameWidget } from '../SessionName';
 
-vi.mock('fs', () => ({ readFileSync: vi.fn() }));
-
-const mockReadFileSync = readFileSync as unknown as {
-    mockImplementation: (impl: () => string) => void;
-    mockReset: () => void;
-};
+let mockReadFileSync: { mockImplementation: (fn: () => string | never) => void };
 
 function render(transcriptPath: string | undefined, fileContent: string | null, rawValue = false, isPreview = false) {
     const widget = new SessionNameWidget();
@@ -47,8 +42,8 @@ function render(transcriptPath: string | undefined, fileContent: string | null, 
 
 describe('SessionNameWidget', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
-        mockReadFileSync.mockReset();
+        vi.restoreAllMocks();
+        mockReadFileSync = vi.spyOn(fs, 'readFileSync');
     });
 
     afterEach(() => {

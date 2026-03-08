@@ -7,6 +7,23 @@ import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
+const importResolverSettings = {
+    'import/resolver': {
+        typescript: {
+            project: ['./tsconfig.json'],
+            alwaysTryTypes: true,
+            noWarnOnMultipleProjects: true
+        },
+        node: {
+            extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
+        }
+    },
+    'import/parsers': {
+        '@typescript-eslint/parser': ['.ts', '.tsx']
+    },
+    'import/external-module-folders': ['node_modules', 'node_modules/@types']
+};
+
 export default ts.config([
     {
         files: ['**/*.ts', '**/*.tsx'],
@@ -38,21 +55,7 @@ export default ts.config([
             }
         },
         settings: {
-            'import/resolver': {
-                typescript: {
-                    project: ['./tsconfig.json'],
-                    alwaysTryTypes: true,
-                    noWarnOnMultipleProjects: true
-                },
-                parcel2: {},
-                node: {
-                    extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
-                }
-            },
-            'import/parsers': {
-                '@typescript-eslint/parser': ['.ts', '.tsx']
-            },
-            'import/external-module-folders': ['node_modules', 'node_modules/@types']
+            ...importResolverSettings
         },
         rules: {
             'no-control-regex': 'off', // We intentionally match ANSI escape sequences
@@ -119,22 +122,7 @@ export default ts.config([
             'react-hooks': reactHooksPlugin
         },
         settings: {
-            ...{
-                'import/resolver': {
-                    typescript: {
-                        project: ['./tsconfig.json'],
-                        alwaysTryTypes: true,
-                        noWarnOnMultipleProjects: true
-                    },
-                    node: {
-                        extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
-                    }
-                },
-                'import/parsers': {
-                    '@typescript-eslint/parser': ['.ts', '.tsx']
-                },
-                'import/external-module-folders': ['node_modules', 'node_modules/@types']
-            },
+            ...importResolverSettings,
             react: {
                 version: 'detect'
             }
