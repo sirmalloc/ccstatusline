@@ -16,7 +16,7 @@ export interface RenderUsageData {
     extraUsageLimit?: number;
     extraUsageUsed?: number;
     extraUsageUtilization?: number;
-    error?: 'no-credentials' | 'timeout' | 'api-error' | 'parse-error';
+    error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
 export interface RenderContext {

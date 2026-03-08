@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const FIVE_HOUR_BLOCK_MS = 5 * 60 * 60 * 1000;
 export const SEVEN_DAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const UsageErrorSchema = z.enum(['no-credentials', 'timeout', 'api-error', 'parse-error']);
+export const UsageErrorSchema = z.enum(['no-credentials', 'timeout', 'rate-limited', 'api-error', 'parse-error']);
 export type UsageError = z.infer<typeof UsageErrorSchema>;
 
 export interface UsageData {

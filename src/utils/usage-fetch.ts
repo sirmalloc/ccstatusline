@@ -19,9 +19,15 @@ const CACHE_FILE = path.join(CACHE_DIR, 'usage.json');
 const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
+const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 const TOKEN_CACHE_MAX_AGE = 3600; // 1 hour
 
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
+const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited']);
+const UsageLockSchema = z.object({
+    blockedUntil: z.number(),
+    error: UsageLockErrorSchema.optional()
+});
 
 const CachedUsageDataSchema = z.object({
     sessionUsage: z.number().nullable().optional(),
@@ -110,22 +116,39 @@ let cachedUsageData: UsageData | null = null;
 let usageCacheTime = 0;
 let cachedUsageToken: string | null = null;
 let usageTokenCacheTime = 0;
+let usageErrorCacheMaxAge = LOCK_MAX_AGE;
 
-function setCachedUsageError(error: UsageError, now: number): UsageData {
+type UsageLockError = z.infer<typeof UsageLockErrorSchema>;
+
+type UsageApiFetchResult = { kind: 'success'; body: string } | { kind: 'rate-limited'; retryAfterSeconds: number } | { kind: 'error' };
+
+function ensureCacheDirExists(): void {
+    if (!fs.existsSync(CACHE_DIR)) {
+        fs.mkdirSync(CACHE_DIR, { recursive: true });
+    }
+}
+
+function setCachedUsageError(error: UsageError, now: number, maxAge = LOCK_MAX_AGE): UsageData {
     const errorData: UsageData = { error };
     cachedUsageData = errorData;
     usageCacheTime = now;
+    usageErrorCacheMaxAge = maxAge;
     return errorData;
 }
 
-function getStaleUsageOrError(error: UsageError, now: number): UsageData {
+function cacheUsageData(data: UsageData, now: number): UsageData {
+    cachedUsageData = data;
+    usageCacheTime = now;
+    usageErrorCacheMaxAge = LOCK_MAX_AGE;
+    return data;
+}
+
+function getStaleUsageOrError(error: UsageError, now: number, errorCacheMaxAge = LOCK_MAX_AGE): UsageData {
     const stale = readStaleUsageCache();
     if (stale && !stale.error) {
-        cachedUsageData = stale;
-        usageCacheTime = now;
-        return stale;
+        return cacheUsageData(stale, now);
     }
-    return setCachedUsageError(error, now);
+    return setCachedUsageError(error, now, errorCacheMaxAge);
 }
 
 function getUsageToken(): string | null {
@@ -173,6 +196,76 @@ function readStaleUsageCache(): UsageData | null {
     }
 }
 
+function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
+    try {
+        ensureCacheDirExists();
+        fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+    } catch {
+        // Ignore lock file errors
+    }
+}
+
+function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageLockError } | null {
+    let hasValidJsonLock = false;
+
+    try {
+        const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
+        if (parsed) {
+            hasValidJsonLock = true;
+            if (parsed.blockedUntil > now) {
+                return {
+                    blockedUntil: parsed.blockedUntil,
+                    error: parsed.error ?? 'timeout'
+                };
+            }
+            return null;
+        }
+    } catch {
+        // Fall back to the legacy mtime-based lock behavior below.
+    }
+
+    if (hasValidJsonLock) {
+        return null;
+    }
+
+    try {
+        const lockStat = fs.statSync(LOCK_FILE);
+        const lockMtime = Math.floor(lockStat.mtimeMs / 1000);
+        const blockedUntil = lockMtime + LOCK_MAX_AGE;
+        if (blockedUntil > now) {
+            return {
+                blockedUntil,
+                error: 'timeout'
+            };
+        }
+    } catch {
+        // Lock file doesn't exist - OK to proceed
+    }
+
+    return null;
+}
+
+function parseRetryAfterSeconds(headerValue: string | string[] | undefined, nowMs = Date.now()): number | null {
+    const rawValue = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    const trimmedValue = rawValue?.trim();
+    if (!trimmedValue) {
+        return null;
+    }
+
+    if (/^\d+$/.test(trimmedValue)) {
+        const seconds = Number.parseInt(trimmedValue, 10);
+        return seconds > 0 ? seconds : null;
+    }
+
+    const retryAtMs = Date.parse(trimmedValue);
+    if (Number.isNaN(retryAtMs)) {
+        return null;
+    }
+
+    const retryAfterSeconds = Math.ceil((retryAtMs - nowMs) / 1000);
+    return retryAfterSeconds > 0 ? retryAfterSeconds : null;
+}
+
 const USAGE_API_HOST = 'api.anthropic.com';
 const USAGE_API_PATH = '/api/oauth/usage';
 const USAGE_API_TIMEOUT_MS = 5000;
@@ -206,11 +299,11 @@ function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
     }
 }
 
-async function fetchFromUsageApi(token: string): Promise<string | null> {
+async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
     return new Promise((resolve) => {
         let settled = false;
 
-        const finish = (value: string | null) => {
+        const finish = (value: UsageApiFetchResult) => {
             if (settled) {
                 return;
             }
@@ -220,7 +313,7 @@ async function fetchFromUsageApi(token: string): Promise<string | null> {
 
         const requestOptions = getUsageApiRequestOptions(token);
         if (!requestOptions) {
-            finish(null);
+            finish({ kind: 'error' });
             return;
         }
 
@@ -234,17 +327,26 @@ async function fetchFromUsageApi(token: string): Promise<string | null> {
 
             response.on('end', () => {
                 if (response.statusCode === 200 && data) {
-                    finish(data);
+                    finish({ kind: 'success', body: data });
                     return;
                 }
-                finish(null);
+
+                if (response.statusCode === 429) {
+                    finish({
+                        kind: 'rate-limited',
+                        retryAfterSeconds: parseRetryAfterSeconds(response.headers['retry-after']) ?? DEFAULT_RATE_LIMIT_BACKOFF
+                    });
+                    return;
+                }
+
+                finish({ kind: 'error' });
             });
         });
 
-        request.on('error', () => { finish(null); });
+        request.on('error', () => { finish({ kind: 'error' }); });
         request.on('timeout', () => {
             request.destroy();
-            finish(null);
+            finish({ kind: 'error' });
         });
         request.end();
     });
@@ -259,7 +361,7 @@ export async function fetchUsageData(): Promise<UsageData> {
         if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE) {
             return cachedUsageData;
         }
-        if (cachedUsageData.error && cacheAge < LOCK_MAX_AGE) {
+        if (cachedUsageData.error && cacheAge < usageErrorCacheMaxAge) {
             return cachedUsageData;
         }
     }
@@ -271,9 +373,7 @@ export async function fetchUsageData(): Promise<UsageData> {
         if (fileAge < CACHE_MAX_AGE) {
             const fileData = parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
             if (fileData && !fileData.error) {
-                cachedUsageData = fileData;
-                usageCacheTime = now;
-                return fileData;
+                return cacheUsageData(fileData, now);
             }
         }
     } catch {
@@ -286,41 +386,31 @@ export async function fetchUsageData(): Promise<UsageData> {
         return getStaleUsageOrError('no-credentials', now);
     }
 
-    // Rate limit: only try API once per 30 seconds
-    try {
-        const lockStat = fs.statSync(LOCK_FILE);
-        const lockAge = now - Math.floor(lockStat.mtimeMs / 1000);
-        if (lockAge < LOCK_MAX_AGE) {
-            // Rate limited - return stale cache or timeout error
-            const stale = readStaleUsageCache();
-            if (stale && !stale.error)
-                return stale;
-            return { error: 'timeout' };
-        }
-    } catch {
-        // Lock file doesn't exist - OK to proceed
+    const activeLock = readActiveUsageLock(now);
+    if (activeLock) {
+        return getStaleUsageOrError(
+            activeLock.error,
+            now,
+            Math.max(1, activeLock.blockedUntil - now)
+        );
     }
 
-    // Touch lock file
-    try {
-        const lockDir = path.dirname(LOCK_FILE);
-        if (!fs.existsSync(lockDir)) {
-            fs.mkdirSync(lockDir, { recursive: true });
-        }
-        fs.writeFileSync(LOCK_FILE, '');
-    } catch {
-        // Ignore lock file errors
-    }
+    writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
 
     // Fetch from API using Node's https module
     try {
         const response = await fetchFromUsageApi(token);
 
-        if (!response) {
+        if (response.kind === 'rate-limited') {
+            writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
+            return getStaleUsageOrError('rate-limited', now, response.retryAfterSeconds);
+        }
+
+        if (response.kind === 'error') {
             return getStaleUsageOrError('api-error', now);
         }
 
-        const usageData = parseUsageApiResponse(response);
+        const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             return getStaleUsageOrError('parse-error', now);
         }
@@ -332,17 +422,13 @@ export async function fetchUsageData(): Promise<UsageData> {
 
         // Save to cache
         try {
-            if (!fs.existsSync(CACHE_DIR)) {
-                fs.mkdirSync(CACHE_DIR, { recursive: true });
-            }
+            ensureCacheDirExists();
             fs.writeFileSync(CACHE_FILE, JSON.stringify(usageData));
         } catch {
             // Ignore cache write errors
         }
 
-        cachedUsageData = usageData;
-        usageCacheTime = now;
-        return usageData;
+        return cacheUsageData(usageData, now);
     } catch {
         return getStaleUsageOrError('parse-error', now);
     }

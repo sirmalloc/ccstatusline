@@ -109,6 +109,7 @@ export function getUsageErrorMessage(error: UsageError): string {
     switch (error) {
         case 'no-credentials': return '[No credentials]';
         case 'timeout': return '[Timeout]';
+        case 'rate-limited': return '[Rate limited]';
         case 'api-error': return '[API Error]';
         case 'parse-error': return '[Parse Error]';
     }
