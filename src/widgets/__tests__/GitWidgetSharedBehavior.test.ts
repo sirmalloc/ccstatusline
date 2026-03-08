@@ -9,11 +9,18 @@ import type {
     Widget,
     WidgetItem
 } from '../../types';
+import { GitAheadBehindWidget } from '../GitAheadBehind';
 import { GitBranchWidget } from '../GitBranch';
 import { GitChangesWidget } from '../GitChanges';
+import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitDeletionsWidget } from '../GitDeletions';
 import { GitInsertionsWidget } from '../GitInsertions';
+import { GitMergeConflictsWidget } from '../GitMergeConflicts';
 import { GitRootDirWidget } from '../GitRootDir';
+import { GitShaWidget } from '../GitSha';
+import { GitStagedFilesWidget } from '../GitStagedFiles';
+import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
+import { GitUntrackedFilesWidget } from '../GitUntrackedFiles';
 import { GitWorktreeWidget } from '../GitWorktree';
 
 type GitWidget = Widget & {
@@ -26,6 +33,13 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
     { name: 'GitChangesWidget', itemType: 'git-changes', widget: new GitChangesWidget() },
     { name: 'GitInsertionsWidget', itemType: 'git-insertions', widget: new GitInsertionsWidget() },
     { name: 'GitDeletionsWidget', itemType: 'git-deletions', widget: new GitDeletionsWidget() },
+    { name: 'GitStagedFilesWidget', itemType: 'git-staged-files', widget: new GitStagedFilesWidget() },
+    { name: 'GitUnstagedFilesWidget', itemType: 'git-unstaged-files', widget: new GitUnstagedFilesWidget() },
+    { name: 'GitUntrackedFilesWidget', itemType: 'git-untracked-files', widget: new GitUntrackedFilesWidget() },
+    { name: 'GitAheadBehindWidget', itemType: 'git-ahead-behind', widget: new GitAheadBehindWidget() },
+    { name: 'GitMergeConflictsWidget', itemType: 'git-merge-conflicts', widget: new GitMergeConflictsWidget() },
+    { name: 'GitCleanStatusWidget', itemType: 'git-clean-status', widget: new GitCleanStatusWidget() },
+    { name: 'GitShaWidget', itemType: 'git-sha', widget: new GitShaWidget() },
     { name: 'GitRootDirWidget', itemType: 'git-root-dir', widget: new GitRootDirWidget() },
     { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }
 ];
