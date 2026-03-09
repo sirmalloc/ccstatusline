@@ -36,7 +36,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "https-proxy-agent": "^7.0.0",
     "ink": "6.2.0",
-    "ink-gradient": "^3.0.0",
+    "ink-gradient": "^4.0.0",
     "ink-select-input": "^6.2.0",
     "pluralize": "^8.0.0",
     "react": "^19.1.1",
