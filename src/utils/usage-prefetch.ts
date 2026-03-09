@@ -6,6 +6,7 @@ import { fetchUsageData } from './usage';
 const USAGE_WIDGET_TYPES = new Set<string>([
     'session-usage',
     'weekly-usage',
+    'weekly-usage-projected',
     'block-timer',
     'reset-timer',
     'weekly-reset-timer'
