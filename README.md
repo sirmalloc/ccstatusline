@@ -268,10 +268,12 @@ For optimal Powerline rendering on Windows:
 # Install JetBrains Mono Nerd Font via winget
 winget install DEVCOM.JetBrainsMonoNerdFont
 
-# Alternative: Install base JetBrains Mono font
-winget install "JetBrains.JetBrainsMono"
-
 # Or download manually from: https://www.nerdfonts.com/font-downloads
+
+# Alternative: Download and install base JetBrains Mono font
+# from [JetBrains](https://www.jetbrains.com/lp/mono/)
+# or [GitHub](https://github.com/JetBrains/JetBrainsMono)
+# or [Google Fonts](https://fonts.google.com/specimen/JetBrains+Mono)
 ```
 
 #### Path Handling
@@ -288,7 +290,7 @@ ccstatusline automatically handles Windows-specific paths:
 **Issue**: Powerline symbols showing as question marks or boxes
 ```powershell
 # Solution: Install a compatible Nerd Font
-winget install JetBrainsMono.NerdFont
+winget install DEVCOM.JetBrainsMonoNerdFont
 # Then set the font in your terminal settings
 ```
 
