@@ -91,18 +91,30 @@ export function resolveWeeklyUsageWindow(usageData: UsageData, nowMs = Date.now(
 
 export function formatUsageDuration(durationMs: number, compact = false): string {
     const clampedMs = Math.max(0, durationMs);
-    const elapsedHours = Math.floor(clampedMs / (1000 * 60 * 60));
-    const elapsedMinutes = Math.floor((clampedMs % (1000 * 60 * 60)) / (1000 * 60));
+    const totalMinutes = Math.floor(clampedMs / (1000 * 60));
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+    const minutes = totalMinutes % 60;
 
     if (compact) {
-        return elapsedMinutes === 0 ? `${elapsedHours}h` : `${elapsedHours}h${elapsedMinutes}m`;
+        if (days > 0) {
+            return minutes === 0 ? `${days}d${hours}h` : `${days}d${hours}h${minutes}m`;
+        }
+        return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
     }
 
-    if (elapsedMinutes === 0) {
-        return `${elapsedHours}hr`;
+    if (days > 0) {
+        if (minutes === 0) {
+            return hours === 0 ? `${days}d` : `${days}d ${hours}hr`;
+        }
+        return `${days}d ${hours}hr ${minutes}m`;
     }
 
-    return `${elapsedHours}hr ${elapsedMinutes}m`;
+    if (minutes === 0) {
+        return `${hours}hr`;
+    }
+
+    return `${hours}hr ${minutes}m`;
 }
 
 export function getUsageErrorMessage(error: UsageError): string {
