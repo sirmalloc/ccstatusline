@@ -11,3 +11,4 @@ export {
     getSpeedMetricsCollection,
     getTokenMetrics
 } from './jsonl-metrics';
+export { getTranscriptThinkingEffort } from './jsonl-metadata';

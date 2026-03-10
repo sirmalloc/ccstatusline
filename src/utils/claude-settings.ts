@@ -114,6 +114,26 @@ async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
 
 interface LoadClaudeSettingsOptions { logErrors?: boolean }
 
+export function loadClaudeSettingsSync(options: LoadClaudeSettingsOptions = {}): ClaudeSettings {
+    const { logErrors = true } = options;
+    const settingsPath = getClaudeSettingsPath();
+
+    // File doesn't exist - return empty object
+    if (!fs.existsSync(settingsPath)) {
+        return {};
+    }
+
+    try {
+        const content = fs.readFileSync(settingsPath, 'utf-8');
+        return JSON.parse(content) as ClaudeSettings;
+    } catch (error) {
+        if (logErrors) {
+            console.error('Failed to load Claude settings:', error);
+        }
+        throw error;
+    }
+}
+
 export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}): Promise<ClaudeSettings> {
     const { logErrors = true } = options;
     const settingsPath = getClaudeSettingsPath();

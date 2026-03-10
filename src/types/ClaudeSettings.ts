@@ -1,4 +1,5 @@
 export interface ClaudeSettings {
+    effortLevel?: 'low' | 'medium' | 'high' | 'max';
     permissions?: {
         allow?: string[];
         deny?: string[];

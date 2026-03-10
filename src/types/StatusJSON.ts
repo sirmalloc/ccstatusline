@@ -54,11 +54,6 @@ export const StatusJSONSchema = z.looseObject({
         ]).nullable().optional(),
         used_percentage: CoercedNumberSchema.nullable().optional(),
         remaining_percentage: CoercedNumberSchema.nullable().optional()
-    }).nullable().optional(),
-    thinking: z.object({
-        enabled: z.boolean().optional(),
-        budget_tokens: z.number().nullable().optional(),
-        effort: z.enum(['low', 'medium', 'high']).optional()
     }).nullable().optional()
 });
 
