@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -6,7 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
 
-import { getClaudeConfigDir } from './claude-settings';
+import { getOAuthToken, oauthTokenHash } from './credentials';
+import type { SessionAccount } from './session-affinity';
 import type {
     UsageData,
     UsageError
@@ -15,14 +15,17 @@ import { UsageErrorSchema } from './usage-types';
 
 // Cache configuration
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
-const CACHE_FILE = path.join(CACHE_DIR, 'usage.json');
-const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
+
+function getUsageCacheFile(hash: string): string {
+    return path.join(CACHE_DIR, `usage-${hash}.json`);
+}
+
+function getUsageLockFile(hash: string): string {
+    return path.join(CACHE_DIR, `usage-${hash}.lock`);
+}
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
-const TOKEN_CACHE_MAX_AGE = 3600; // 1 hour
-
-const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited']);
 const UsageLockSchema = z.object({
     blockedUntil: z.number(),
@@ -67,11 +70,6 @@ function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null
     }
 }
 
-function parseUsageAccessToken(rawJson: string): string | null {
-    const parsed = parseJsonWithSchema(rawJson, UsageCredentialsSchema);
-    return parsed?.claudeAiOauth?.accessToken ?? null;
-}
-
 function parseCachedUsageData(rawJson: string): UsageData | null {
     const parsed = parseJsonWithSchema(rawJson, CachedUsageDataSchema);
     if (!parsed) {
@@ -111,12 +109,11 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
     };
 }
 
-// Memory caches
+// Memory caches — invalidated when token changes (different account)
 let cachedUsageData: UsageData | null = null;
 let usageCacheTime = 0;
-let cachedUsageToken: string | null = null;
-let usageTokenCacheTime = 0;
 let usageErrorCacheMaxAge = LOCK_MAX_AGE;
+let lastUsedUsageTokenHash: string | null = null;
 
 type UsageLockError = z.infer<typeof UsageLockErrorSchema>;
 
@@ -143,73 +140,47 @@ function cacheUsageData(data: UsageData, now: number): UsageData {
     return data;
 }
 
-function getStaleUsageOrError(error: UsageError, now: number, errorCacheMaxAge = LOCK_MAX_AGE): UsageData {
-    const stale = readStaleUsageCache();
+function getStaleUsageOrError(hash: string, error: UsageError, now: number, errorCacheMaxAge = LOCK_MAX_AGE): UsageData {
+    const stale = readStaleUsageCache(hash);
     if (stale && !stale.error) {
         return cacheUsageData(stale, now);
     }
     return setCachedUsageError(error, now, errorCacheMaxAge);
 }
 
+// Delegate to shared credential module which handles suffixed keychain entries
 function getUsageToken(): string | null {
-    const now = Math.floor(Date.now() / 1000);
+    return getOAuthToken();
+}
 
-    // Return cached token if still valid
-    if (cachedUsageToken && (now - usageTokenCacheTime) < TOKEN_CACHE_MAX_AGE) {
-        return cachedUsageToken;
-    }
-
+function readStaleUsageCache(hash: string): UsageData | null {
     try {
-        const isMac = process.platform === 'darwin';
-        if (isMac) {
-            // macOS: read from keychain
-            const result = execSync(
-                'security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null',
-                { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-            ).trim();
-            const token = parseUsageAccessToken(result);
-            if (token) {
-                cachedUsageToken = token;
-                usageTokenCacheTime = now;
-            }
-            return token;
-        }
-
-        // Non-macOS: read from credentials file, honoring CLAUDE_CONFIG_DIR
-        const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
-        const token = parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
-        if (token) {
-            cachedUsageToken = token;
-            usageTokenCacheTime = now;
-        }
-        return token;
+        return parseCachedUsageData(fs.readFileSync(getUsageCacheFile(hash), 'utf8'));
     } catch {
-        return null;
+        // Also try the legacy global file as fallback
+        try {
+            return parseCachedUsageData(fs.readFileSync(path.join(CACHE_DIR, 'usage.json'), 'utf8'));
+        } catch {
+            return null;
+        }
     }
 }
 
-function readStaleUsageCache(): UsageData | null {
-    try {
-        return parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
-    } catch {
-        return null;
-    }
-}
-
-function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
+function writeUsageLock(hash: string, blockedUntil: number, error: UsageLockError): void {
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+        fs.writeFileSync(getUsageLockFile(hash), JSON.stringify({ blockedUntil, error }));
     } catch {
         // Ignore lock file errors
     }
 }
 
-function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageLockError } | null {
+function readActiveUsageLock(hash: string, now: number): { blockedUntil: number; error: UsageLockError } | null {
+    const lockFile = getUsageLockFile(hash);
     let hasValidJsonLock = false;
 
     try {
-        const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
+        const parsed = parseJsonWithSchema(fs.readFileSync(lockFile, 'utf8'), UsageLockSchema);
         if (parsed) {
             hasValidJsonLock = true;
             if (parsed.blockedUntil > now) {
@@ -229,7 +200,7 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
     }
 
     try {
-        const lockStat = fs.statSync(LOCK_FILE);
+        const lockStat = fs.statSync(lockFile);
         const lockMtime = Math.floor(lockStat.mtimeMs / 1000);
         const blockedUntil = lockMtime + LOCK_MAX_AGE;
         if (blockedUntil > now) {
@@ -352,10 +323,36 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
     });
 }
 
-export async function fetchUsageData(): Promise<UsageData> {
+export async function fetchUsageData(session?: SessionAccount): Promise<UsageData> {
     const now = Math.floor(Date.now() / 1000);
 
-    // Check memory cache (fast path)
+    // Use session-pinned account if provided, otherwise fall back to current token
+    let token: string | null;
+    let hash: string;
+    let canFetch: boolean;
+
+    if (session) {
+        token = session.token;
+        hash = session.hash;
+        canFetch = session.canFetch;
+    } else {
+        token = getUsageToken();
+        hash = token ? oauthTokenHash(token) : '';
+        canFetch = true;
+    }
+
+    if (!hash) {
+        return setCachedUsageError('no-credentials', now);
+    }
+
+    // Invalidate memory cache if token changed (different account)
+    if (lastUsedUsageTokenHash && lastUsedUsageTokenHash !== hash) {
+        cachedUsageData = null;
+        usageCacheTime = 0;
+    }
+    lastUsedUsageTokenHash = hash;
+
+    // Re-check memory cache after potential invalidation
     if (cachedUsageData) {
         const cacheAge = now - usageCacheTime;
         if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE) {
@@ -366,12 +363,13 @@ export async function fetchUsageData(): Promise<UsageData> {
         }
     }
 
-    // Check file cache
+    // Check per-token file cache (no age limit when we can't fetch — serve stale)
+    const cacheFile = getUsageCacheFile(hash);
     try {
-        const stat = fs.statSync(CACHE_FILE);
+        const stat = fs.statSync(cacheFile);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
-        if (fileAge < CACHE_MAX_AGE) {
-            const fileData = parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
+        if (!canFetch || fileAge < CACHE_MAX_AGE) {
+            const fileData = parseCachedUsageData(fs.readFileSync(cacheFile, 'utf8'));
             if (fileData && !fileData.error) {
                 return cacheUsageData(fileData, now);
             }
@@ -380,56 +378,56 @@ export async function fetchUsageData(): Promise<UsageData> {
         // File doesn't exist or read error - continue to API call
     }
 
-    // Get token before lock/rate-limit checks so auth failures are not masked as timeout.
-    const token = getUsageToken();
-    if (!token) {
-        return getStaleUsageOrError('no-credentials', now);
+    // Can't make API calls — session is pinned to a different account
+    if (!canFetch || !token) {
+        return getStaleUsageOrError(hash, 'no-credentials', now);
     }
 
-    const activeLock = readActiveUsageLock(now);
+    const activeLock = readActiveUsageLock(hash, now);
     if (activeLock) {
         return getStaleUsageOrError(
+            hash,
             activeLock.error,
             now,
             Math.max(1, activeLock.blockedUntil - now)
         );
     }
 
-    writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
+    writeUsageLock(hash, now + LOCK_MAX_AGE, 'timeout');
 
     // Fetch from API using Node's https module
     try {
         const response = await fetchFromUsageApi(token);
 
         if (response.kind === 'rate-limited') {
-            writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, response.retryAfterSeconds);
+            writeUsageLock(hash, now + response.retryAfterSeconds, 'rate-limited');
+            return getStaleUsageOrError(hash, 'rate-limited', now, response.retryAfterSeconds);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now);
+            return getStaleUsageOrError(hash, 'api-error', now);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
-            return getStaleUsageOrError('parse-error', now);
+            return getStaleUsageOrError(hash, 'parse-error', now);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
-            return getStaleUsageOrError('parse-error', now);
+            return getStaleUsageOrError(hash, 'parse-error', now);
         }
 
-        // Save to cache
+        // Save to per-token cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify(usageData));
+            fs.writeFileSync(getUsageCacheFile(hash), JSON.stringify(usageData));
         } catch {
             // Ignore cache write errors
         }
 
         return cacheUsageData(usageData, now);
     } catch {
-        return getStaleUsageOrError('parse-error', now);
+        return getStaleUsageOrError(hash, 'parse-error', now);
     }
 }

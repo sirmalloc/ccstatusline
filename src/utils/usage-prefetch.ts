@@ -1,5 +1,6 @@
 import type { WidgetItem } from '../types/Widget';
 
+import type { SessionAccount } from './session-affinity';
 import type { UsageData } from './usage';
 import { fetchUsageData } from './usage';
 
@@ -15,10 +16,10 @@ export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
     return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type)));
 }
 
-export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][]): Promise<UsageData | null> {
+export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], session?: SessionAccount): Promise<UsageData | null> {
     if (!hasUsageDependentWidgets(lines)) {
         return null;
     }
 
-    return await fetchUsageData();
+    return await fetchUsageData(session);
 }
