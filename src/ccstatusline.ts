@@ -36,6 +36,8 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import { prefetchProfileDataIfNeeded } from './utils/profile-prefetch';
+import { resolveSessionAccount } from './utils/session-affinity';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -121,7 +123,14 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
-    const usageData = await prefetchUsageDataIfNeeded(lines);
+    // Resolve session-pinned account — each session keeps its original account's
+    // data. Pin is cleared by the hook handler when /login is detected.
+    const session = resolveSessionAccount(data.session_id);
+
+    const [usageData, profileData] = await Promise.all([
+        prefetchUsageDataIfNeeded(lines, session),
+        prefetchProfileDataIfNeeded(lines, session)
+    ]);
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
@@ -147,6 +156,7 @@ async function renderMultipleLines(data: StatusJSON) {
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        profileData,
         sessionDuration,
         skillsMetrics,
         isPreview: false

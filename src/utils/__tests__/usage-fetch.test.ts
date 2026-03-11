@@ -129,8 +129,10 @@ https.request = (...args) => {
 
 const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
 
-const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
-const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
+import { createHash } from 'crypto';
+const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 8);
+const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + tokenHash + '.lock');
+const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + tokenHash + '.json');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 Date.now = () => nowMs;
 
@@ -167,7 +169,7 @@ process.stdout.write(JSON.stringify({
         fs.mkdirSync(bin, { recursive: true });
         fs.mkdirSync(claudeConfig, { recursive: true });
 
-        fs.writeFileSync(securityScript, '#!/bin/sh\necho \'{"claudeAiOauth":{"accessToken":"test-token"}}\'\n');
+        fs.writeFileSync(securityScript, '#!/bin/sh\nif [ "$1" = "dump-keychain" ]; then\n  echo \'    "svce"<blob>="Claude Code-credentials"\'\nelse\n  echo \'{"claudeAiOauth":{"accessToken":"test-token","expiresAt":9999999999}}\'\nfi\n');
         fs.chmodSync(securityScript, 0o755);
         fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
 
@@ -574,7 +576,8 @@ describe('fetchUsageData error handling', () => {
         try {
             const home = harness.createTokenHome('legacy-lock');
             const lockDir = path.join(home.home, '.cache', 'ccstatusline');
-            const lockFile = path.join(lockDir, 'usage.lock');
+            const testTokenHash = require('crypto').createHash('sha256').update('test-token').digest('hex').slice(0, 8);
+            const lockFile = path.join(lockDir, `usage-${testTokenHash}.lock`);
 
             fs.mkdirSync(lockDir, { recursive: true });
             fs.writeFileSync(lockFile, '');
