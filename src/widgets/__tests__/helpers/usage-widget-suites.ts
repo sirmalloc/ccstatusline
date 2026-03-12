@@ -53,7 +53,8 @@ const EXPECTED_USAGE_KEYBINDS: CustomKeybind[] = [
 const EXPECTED_TIMER_KEYBINDS: CustomKeybind[] = [
     { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
     { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-    { key: 's', label: '(s)hort time', action: 'toggle-compact' }
+    { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+    { key: 'd', label: '(d)ate mode', action: 'toggle-date' }
 ];
 
 function getUsageContext(field: 'sessionUsage' | 'weeklyUsage', value: number): RenderContext {
@@ -225,5 +226,16 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
         expect(compact?.metadata?.compact).toBe('true');
         expect(cleared?.metadata?.compact).toBe('false');
         expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { compact: 'true' } }).modifierText).toBe('(compact)');
+    });
+
+    it('toggles date metadata and shows date modifier text', () => {
+        const widget = config.createWidget();
+
+        const dated = widget.handleEditorAction('toggle-date', config.baseItem);
+        const cleared = widget.handleEditorAction('toggle-date', dated ?? config.baseItem);
+
+        expect(dated?.metadata?.absolute).toBe('true');
+        expect(cleared?.metadata?.absolute).toBe('false');
+        expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { absolute: 'true' } }).modifierText).toBe('(date)');
     });
 }

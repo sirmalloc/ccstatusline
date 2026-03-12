@@ -32,11 +32,22 @@ export function isUsageCompact(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'compact');
 }
 
+export function isUsageDateMode(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'absolute');
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
 
-interface UsageDisplayModifierOptions { includeCompact?: boolean }
+export function toggleUsageDateMode(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'absolute');
+}
+
+interface UsageDisplayModifierOptions {
+    includeCompact?: boolean;
+    includeDate?: boolean;
+}
 
 export function getUsageDisplayModifierText(
     item: WidgetItem,
@@ -57,6 +68,10 @@ export function getUsageDisplayModifierText(
 
     if (options.includeCompact && isUsageCompact(item)) {
         modifiers.push('compact');
+    }
+
+    if (options.includeDate && isUsageDateMode(item)) {
+        modifiers.push('date');
     }
 
     return makeModifierText(modifiers);

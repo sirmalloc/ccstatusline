@@ -22,12 +22,14 @@ function render(widget: BlockResetTimerWidget, item: WidgetItem, context: Render
 
 describe('BlockResetTimerWidget', () => {
     let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockFormatUsageResetAt: { mockReturnValue: (value: string | null) => void };
     let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
     let mockResolveUsageWindowWithFallback: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
 
     beforeEach(() => {
         vi.restoreAllMocks();
         mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockFormatUsageResetAt = vi.spyOn(usage, 'formatUsageResetAt');
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
         mockResolveUsageWindowWithFallback = vi.spyOn(usage, 'resolveUsageWindowWithFallback');
     });
@@ -109,6 +111,24 @@ describe('BlockResetTimerWidget', () => {
         mockFormatUsageDuration.mockReturnValue('3hr 45m');
 
         expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('3hr 45m');
+    });
+
+    it('shows reset timestamp in date mode', () => {
+        const widget = new BlockResetTimerWidget();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 4500000,
+            remainingMs: 13500000,
+            elapsedPercent: 25,
+            remainingPercent: 75
+        });
+        mockFormatUsageResetAt.mockReturnValue('2026-03-12 08:30 UTC');
+
+        expect(render(widget,
+            { id: 'reset', type: 'reset-timer', metadata: { absolute: 'true' } },
+            { usageData: { sessionResetAt: '2026-03-12T08:30:00.000Z' } }
+        )).toBe('Reset: 2026-03-12 08:30 UTC');
     });
 
     runUsageTimerEditorSuite({
