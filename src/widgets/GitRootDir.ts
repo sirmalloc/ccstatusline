@@ -10,13 +10,22 @@ import {
     isInsideGitWorkTree,
     runGit
 } from '../utils/git';
+import { renderOsc8Link } from '../utils/hyperlink';
 
+import { makeModifierText } from './shared/editor-display';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    isMetadataFlagEnabled,
+    toggleMetadataFlag
+} from './shared/metadata';
+
+const LINK_KEY = 'linkToCursor';
+const TOGGLE_LINK_ACTION = 'toggle-link';
 
 export class GitRootDirWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -24,21 +33,33 @@ export class GitRootDirWidget implements Widget {
     getDisplayName(): string { return 'Git Root Dir'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const isLink = isMetadataFlagEnabled(item, LINK_KEY);
+        const modifiers: string[] = [];
+        const noGitText = getHideNoGitModifierText(item);
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
+        if (isLink)
+            modifiers.push('Cursor link');
         return {
             displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
+            modifierText: makeModifierText(modifiers)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === TOGGLE_LINK_ACTION) {
+            return toggleMetadataFlag(item, LINK_KEY);
+        }
         return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
+        const isLink = isMetadataFlagEnabled(item, LINK_KEY);
 
         if (context.isPreview) {
-            return 'my-repo';
+            const name = 'my-repo';
+            return isLink ? renderOsc8Link('cursor://file/Users/example/my-repo', name) : name;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -46,11 +67,17 @@ export class GitRootDirWidget implements Widget {
         }
 
         const rootDir = this.getGitRootDir(context);
-        if (rootDir) {
-            return this.getRootDirName(rootDir);
+        if (!rootDir) {
+            return hideNoGit ? null : 'no git';
         }
 
-        return hideNoGit ? null : 'no git';
+        const name = this.getRootDirName(rootDir);
+
+        if (isLink) {
+            return renderOsc8Link(`cursor://file${rootDir}`, name);
+        }
+
+        return name;
     }
 
     private getGitRootDir(context: RenderContext): string | null {
@@ -66,7 +93,10 @@ export class GitRootDirWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
+        return [
+            ...getHideNoGitKeybinds(),
+            { key: 'l', label: '(l)ink to Cursor', action: TOGGLE_LINK_ACTION }
+        ];
     }
 
     supportsRawValue(): boolean { return false; }
