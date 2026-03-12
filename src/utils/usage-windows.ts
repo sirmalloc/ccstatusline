@@ -105,6 +105,32 @@ export function formatUsageDuration(durationMs: number, compact = false): string
     return `${elapsedHours}hr ${elapsedMinutes}m`;
 }
 
+function pad(value: number): string {
+    return value.toString().padStart(2, '0');
+}
+
+export function formatUsageResetAt(resetAt: string | undefined, compact = false): string | null {
+    if (!resetAt) {
+        return null;
+    }
+
+    const resetAtMs = Date.parse(resetAt);
+    if (Number.isNaN(resetAtMs)) {
+        return null;
+    }
+
+    const date = new Date(resetAtMs);
+    const year = date.getUTCFullYear();
+    const month = pad(date.getUTCMonth() + 1);
+    const day = pad(date.getUTCDate());
+    const hours = pad(date.getUTCHours());
+    const minutes = pad(date.getUTCMinutes());
+
+    return compact
+        ? `${month}-${day} ${hours}:${minutes}Z`
+        : `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
 export function getUsageErrorMessage(error: UsageError): string {
     switch (error) {
         case 'no-credentials': return '[No credentials]';

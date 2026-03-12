@@ -22,12 +22,14 @@ function render(widget: WeeklyResetTimerWidget, item: WidgetItem, context: Rende
 
 describe('WeeklyResetTimerWidget', () => {
     let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockFormatUsageResetAt: { mockReturnValue: (value: string | null) => void };
     let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
     let mockResolveWeeklyUsageWindow: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
 
     beforeEach(() => {
         vi.restoreAllMocks();
         mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockFormatUsageResetAt = vi.spyOn(usage, 'formatUsageResetAt');
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
         mockResolveWeeklyUsageWindow = vi.spyOn(usage, 'resolveWeeklyUsageWindow');
     });
@@ -109,6 +111,24 @@ describe('WeeklyResetTimerWidget', () => {
         mockFormatUsageDuration.mockReturnValue('120hr 15m');
 
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('120hr 15m');
+    });
+
+    it('shows weekly reset timestamp in date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 171900000,
+            remainingMs: 432900000,
+            elapsedPercent: 28.4216269841,
+            remainingPercent: 71.5783730159
+        });
+        mockFormatUsageResetAt.mockReturnValue('2026-03-15 08:30 UTC');
+
+        expect(render(widget,
+            { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { absolute: 'true' } },
+            { usageData: { weeklyResetAt: '2026-03-15T08:30:00.000Z' } }
+        )).toBe('Weekly Reset: 2026-03-15 08:30 UTC');
     });
 
     runUsageTimerEditorSuite({

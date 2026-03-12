@@ -461,8 +461,8 @@ bun run example
 - **Memory Usage** - Shows system memory usage (used/total)
 - **Session Usage** - Shows daily/session API usage percentage
 - **Weekly Usage** - Shows weekly API usage percentage
-- **Block Reset Timer** - Shows time remaining until current 5-hour block reset window
-- **Weekly Reset Timer** - Shows time remaining until weekly usage reset
+- **Block Reset Timer** - Shows time remaining until current 5-hour block reset window (or exact reset datetime in date mode)
+- **Weekly Reset Timer** - Shows time remaining until weekly usage reset (or exact reset datetime in date mode)
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
 - **Skills** - Shows skill activity as last used, total count, or unique list (with optional list limit and hide-when-empty toggle)
 - **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
@@ -550,8 +550,8 @@ Widget-specific shortcuts:
 - **Git widgets**: `h` toggle hide `no git` output
 - **Context % widgets**: `u` toggle used vs remaining display
 - **Block Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Block Reset Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Weekly Reset Timer**: `p` cycle display mode (time/full bar/short bar)
+- **Block Reset Timer**: `p` cycle display mode (time/full bar/short bar), `s` toggle compact time/date, `d` toggle exact reset datetime
+- **Weekly Reset Timer**: `p` cycle display mode (time/full bar/short bar), `s` toggle compact time/date, `d` toggle exact reset datetime
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
 - **Link**: `u` URL, `e` link text
