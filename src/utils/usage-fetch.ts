@@ -289,7 +289,8 @@ function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'anthropic-beta': 'oauth-2025-04-20'
+                'anthropic-beta': 'oauth-2025-04-20',
+                'User-Agent': 'claude-code/2.1.74'
             },
             timeout: USAGE_API_TIMEOUT_MS,
             ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
