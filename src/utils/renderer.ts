@@ -513,7 +513,8 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            const widgetText = widgetImpl.render(effectiveWidget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
