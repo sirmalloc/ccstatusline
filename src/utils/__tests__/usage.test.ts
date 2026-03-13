@@ -140,10 +140,22 @@ describe('usage window helpers', () => {
         expect(formatUsageDuration(4 * 60 * 60 * 1000 + 5 * 60 * 1000)).toBe('4hr 5m');
     });
 
+    it('formats duration with days when >= 24h', () => {
+        expect(formatUsageDuration(25 * 60 * 60 * 1000)).toBe('1d 1hr');
+        expect(formatUsageDuration(36.5 * 60 * 60 * 1000)).toBe('1d 12hr 30m');
+        expect(formatUsageDuration(168 * 60 * 60 * 1000)).toBe('7d');
+    });
+
     it('formats duration in compact style', () => {
         expect(formatUsageDuration(0, true)).toBe('0h');
         expect(formatUsageDuration(3 * 60 * 60 * 1000, true)).toBe('3h');
         expect(formatUsageDuration(3.5 * 60 * 60 * 1000, true)).toBe('3h30m');
         expect(formatUsageDuration(4 * 60 * 60 * 1000 + 5 * 60 * 1000, true)).toBe('4h5m');
+    });
+
+    it('formats duration with days in compact style when >= 24h', () => {
+        expect(formatUsageDuration(25 * 60 * 60 * 1000, true)).toBe('1d1h');
+        expect(formatUsageDuration(36.5 * 60 * 60 * 1000, true)).toBe('1d12h30m');
+        expect(formatUsageDuration(168 * 60 * 60 * 1000, true)).toBe('7d');
     });
 });
