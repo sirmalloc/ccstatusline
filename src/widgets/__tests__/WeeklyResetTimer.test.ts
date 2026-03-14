@@ -50,7 +50,7 @@ describe('WeeklyResetTimerWidget', () => {
             metadata: { daysHours: 'true' }
         };
 
-        expect(render(widget, item, { isPreview: true })).toBe('Weekly Reset: 1d 12h');
+        expect(render(widget, item, { isPreview: true })).toBe('Weekly Reset: 1d 12hr');
     });
 
     it('renders remaining time in time mode', () => {
@@ -123,7 +123,7 @@ describe('WeeklyResetTimerWidget', () => {
             remainingPercent: 80.1587301587
         });
 
-        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset: 5d 14h');
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset: 5d 14hr');
     });
 
     it('shows raw value without label in time mode', () => {

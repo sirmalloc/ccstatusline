@@ -84,7 +84,7 @@ export class WeeklyResetTimerWidget implements Widget {
             }
 
             if (daysHours) {
-                return formatRawOrLabeledValue(item, 'Weekly Reset: ', '1d 12h');
+                return formatRawOrLabeledValue(item, 'Weekly Reset: ', '1d 12hr');
             }
 
             return formatRawOrLabeledValue(item, 'Weekly Reset: ', compact ? '36h30m' : '36hr 30m');

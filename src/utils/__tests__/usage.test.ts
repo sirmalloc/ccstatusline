@@ -149,11 +149,11 @@ describe('usage window helpers', () => {
     });
 
     it('formats duration in days+hours style', () => {
-        expect(formatUsageDurationDaysHours(0)).toBe('0h');
-        expect(formatUsageDurationDaysHours(12 * 60 * 60 * 1000)).toBe('12h');
+        expect(formatUsageDurationDaysHours(0)).toBe('0hr');
+        expect(formatUsageDurationDaysHours(12 * 60 * 60 * 1000)).toBe('12hr');
         expect(formatUsageDurationDaysHours(24 * 60 * 60 * 1000)).toBe('1d');
-        expect(formatUsageDurationDaysHours(36 * 60 * 60 * 1000)).toBe('1d 12h');
-        expect(formatUsageDurationDaysHours(6.5 * 24 * 60 * 60 * 1000)).toBe('6d 12h');
+        expect(formatUsageDurationDaysHours(36 * 60 * 60 * 1000)).toBe('1d 12hr');
+        expect(formatUsageDurationDaysHours(6.5 * 24 * 60 * 60 * 1000)).toBe('6d 12hr');
         expect(formatUsageDurationDaysHours(7 * 24 * 60 * 60 * 1000)).toBe('7d');
     });
 });

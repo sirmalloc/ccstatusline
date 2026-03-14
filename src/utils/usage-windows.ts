@@ -111,14 +111,14 @@ export function formatUsageDurationDaysHours(durationMs: number): string {
     const hours = Math.floor((clampedMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
     if (days === 0) {
-        return `${hours}h`;
+        return `${hours}hr`;
     }
 
     if (hours === 0) {
         return `${days}d`;
     }
 
-    return `${days}d ${hours}h`;
+    return `${days}d ${hours}hr`;
 }
 
 export function getUsageErrorMessage(error: UsageError): string {
