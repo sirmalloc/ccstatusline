@@ -15,6 +15,7 @@ import {
 } from '../usage-types';
 import {
     formatUsageDuration,
+    formatUsageDurationDaysHours,
     getUsageWindowFromResetAt,
     getWeeklyUsageWindowFromResetAt,
     resolveUsageWindowWithFallback,
@@ -145,5 +146,14 @@ describe('usage window helpers', () => {
         expect(formatUsageDuration(3 * 60 * 60 * 1000, true)).toBe('3h');
         expect(formatUsageDuration(3.5 * 60 * 60 * 1000, true)).toBe('3h30m');
         expect(formatUsageDuration(4 * 60 * 60 * 1000 + 5 * 60 * 1000, true)).toBe('4h5m');
+    });
+
+    it('formats duration in days+hours style', () => {
+        expect(formatUsageDurationDaysHours(0)).toBe('0h');
+        expect(formatUsageDurationDaysHours(12 * 60 * 60 * 1000)).toBe('12h');
+        expect(formatUsageDurationDaysHours(24 * 60 * 60 * 1000)).toBe('1d');
+        expect(formatUsageDurationDaysHours(36 * 60 * 60 * 1000)).toBe('1d 12h');
+        expect(formatUsageDurationDaysHours(6.5 * 24 * 60 * 60 * 1000)).toBe('6d 12h');
+        expect(formatUsageDurationDaysHours(7 * 24 * 60 * 60 * 1000)).toBe('7d');
     });
 });

@@ -105,6 +105,22 @@ export function formatUsageDuration(durationMs: number, compact = false): string
     return `${elapsedHours}hr ${elapsedMinutes}m`;
 }
 
+export function formatUsageDurationDaysHours(durationMs: number): string {
+    const clampedMs = Math.max(0, durationMs);
+    const days = Math.floor(clampedMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((clampedMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+    if (days === 0) {
+        return `${hours}h`;
+    }
+
+    if (hours === 0) {
+        return `${days}d`;
+    }
+
+    return `${days}d ${hours}h`;
+}
+
 export function getUsageErrorMessage(error: UsageError): string {
     switch (error) {
         case 'no-credentials': return '[No credentials]';

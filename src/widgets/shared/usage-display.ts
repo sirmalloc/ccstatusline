@@ -36,7 +36,15 @@ export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
 
-interface UsageDisplayModifierOptions { includeCompact?: boolean }
+export function isUsageDaysHours(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'daysHours');
+}
+
+export function toggleUsageDaysHours(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'daysHours');
+}
+
+interface UsageDisplayModifierOptions { includeCompact?: boolean; includeDaysHours?: boolean }
 
 export function getUsageDisplayModifierText(
     item: WidgetItem,
@@ -57,6 +65,10 @@ export function getUsageDisplayModifierText(
 
     if (options.includeCompact && isUsageCompact(item)) {
         modifiers.push('compact');
+    }
+
+    if (options.includeDaysHours && isUsageDaysHours(item)) {
+        modifiers.push('days+hours');
     }
 
     return makeModifierText(modifiers);

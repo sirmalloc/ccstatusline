@@ -41,6 +41,7 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
     baseItem: WidgetItem;
     createWidget: () => TWidget;
     expectedDisplayName: string;
+    expectedKeybinds?: CustomKeybind[];
     expectedModifierText: string;
     modifierItem: WidgetItem;
 }
@@ -175,7 +176,7 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
 
         expect(widget.getDisplayName()).toBe(config.expectedDisplayName);
         expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds()).toEqual(EXPECTED_TIMER_KEYBINDS);
+        expect(widget.getCustomKeybinds()).toEqual(config.expectedKeybinds ?? EXPECTED_TIMER_KEYBINDS);
     });
 
     it('clears invert metadata when cycling back to time mode', () => {

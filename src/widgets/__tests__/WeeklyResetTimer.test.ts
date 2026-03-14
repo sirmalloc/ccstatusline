@@ -42,6 +42,17 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { isPreview: true })).toBe('Weekly Reset: 36hr 30m');
     });
 
+    it('renders preview using days+hours format', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { daysHours: 'true' }
+        };
+
+        expect(render(widget, item, { isPreview: true })).toBe('Weekly Reset: 1d 12h');
+    });
+
     it('renders remaining time in time mode', () => {
         const widget = new WeeklyResetTimerWidget();
 
@@ -96,6 +107,25 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: {} })).toBeNull();
     });
 
+    it('renders remaining time in days+hours format', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { daysHours: 'true' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 120000000,
+            remainingMs: 484800000,
+            elapsedPercent: 19.8412698413,
+            remainingPercent: 80.1587301587
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset: 5d 14h');
+    });
+
     it('shows raw value without label in time mode', () => {
         const widget = new WeeklyResetTimerWidget();
 
@@ -111,10 +141,28 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('120hr 15m');
     });
 
+    it('toggles days+hours metadata and shows modifier text', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const baseItem: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer' };
+
+        const toggled = widget.handleEditorAction('toggle-days-hours', baseItem);
+        const cleared = widget.handleEditorAction('toggle-days-hours', toggled ?? baseItem);
+
+        expect(toggled?.metadata?.daysHours).toBe('true');
+        expect(cleared?.metadata?.daysHours).toBe('false');
+        expect(widget.getEditorDisplay({ ...baseItem, metadata: { daysHours: 'true' } }).modifierText).toBe('(days+hours)');
+    });
+
     runUsageTimerEditorSuite({
         baseItem: { id: 'weekly-reset', type: 'weekly-reset-timer' },
         createWidget: () => new WeeklyResetTimerWidget(),
         expectedDisplayName: 'Weekly Reset Timer',
+        expectedKeybinds: [
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 'd', label: '(d)ays+hours', action: 'toggle-days-hours' }
+        ],
         expectedModifierText: '(short bar, inverted)',
         modifierItem: {
             id: 'weekly-reset',

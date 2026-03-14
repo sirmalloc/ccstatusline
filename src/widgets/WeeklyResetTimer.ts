@@ -8,6 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     formatUsageDuration,
+    formatUsageDurationDaysHours,
     getUsageErrorMessage,
     resolveWeeklyUsageWindow
 } from '../utils/usage';
@@ -19,9 +20,11 @@ import {
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
     isUsageCompact,
+    isUsageDaysHours,
     isUsageInverted,
     isUsageProgressMode,
     toggleUsageCompact,
+    toggleUsageDaysHours,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -41,7 +44,7 @@ export class WeeklyResetTimerWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item, { includeCompact: true })
+            modifierText: getUsageDisplayModifierText(item, { includeCompact: true, includeDaysHours: true })
         };
     }
 
@@ -58,6 +61,10 @@ export class WeeklyResetTimerWidget implements Widget {
             return toggleUsageCompact(item);
         }
 
+        if (action === 'toggle-days-hours') {
+            return toggleUsageDaysHours(item);
+        }
+
         return null;
     }
 
@@ -65,6 +72,7 @@ export class WeeklyResetTimerWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
+        const daysHours = isUsageDaysHours(item);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -73,6 +81,10 @@ export class WeeklyResetTimerWidget implements Widget {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
                 return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+            }
+
+            if (daysHours) {
+                return formatRawOrLabeledValue(item, 'Weekly Reset: ', '1d 12h');
             }
 
             return formatRawOrLabeledValue(item, 'Weekly Reset: ', compact ? '36h30m' : '36hr 30m');
@@ -97,7 +109,9 @@ export class WeeklyResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${percentage}%`);
         }
 
-        const remainingTime = formatUsageDuration(window.remainingMs, compact);
+        const remainingTime = daysHours
+            ? formatUsageDurationDaysHours(window.remainingMs)
+            : formatUsageDuration(window.remainingMs, compact);
         return formatRawOrLabeledValue(item, 'Weekly Reset: ', remainingTime);
     }
 
@@ -105,7 +119,8 @@ export class WeeklyResetTimerWidget implements Widget {
         return [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 'd', label: '(d)ays+hours', action: 'toggle-days-hours' }
         ];
     }
 
