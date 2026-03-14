@@ -161,7 +161,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
-            { key: 'd', label: '(d)ays+hours', action: 'toggle-days-hours' }
+            { key: 'y', label: 'da(y)s+hours', action: 'toggle-days-hours' }
         ],
         expectedModifierText: '(short bar, inverted)',
         modifierItem: {
