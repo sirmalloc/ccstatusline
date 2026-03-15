@@ -22,7 +22,7 @@
     "docs:clean": "rm -rf docs"
   },
   "devDependencies": {
-    "@eslint/js": "^9.33.0",
+    "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.2.3",
     "@types/bun": "latest",
     "@types/pluralize": "^0.0.33",
