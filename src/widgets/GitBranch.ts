@@ -11,6 +11,7 @@ import {
     runGit
 } from '../utils/git';
 import {
+    encodeGitRefForUrlPath,
     parseGitHubBaseUrl,
     renderOsc8Link
 } from '../utils/hyperlink';
@@ -81,7 +82,7 @@ export class GitBranchWidget implements Widget {
             const remoteUrl = runGit('remote get-url origin', context);
             const baseUrl = remoteUrl ? parseGitHubBaseUrl(remoteUrl) : null;
             if (baseUrl) {
-                return renderOsc8Link(`${baseUrl}/tree/${branch}`, displayText);
+                return renderOsc8Link(`${baseUrl}/tree/${encodeGitRefForUrlPath(branch)}`, displayText);
             }
         }
 
