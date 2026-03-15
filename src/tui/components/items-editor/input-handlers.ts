@@ -338,7 +338,7 @@ export interface HandleNormalInputModeArgs {
     setMoveMode: (moveMode: boolean) => void;
     setShowClearConfirm: (show: boolean) => void;
     openWidgetPicker: (action: WidgetPickerAction) => void;
-    getVisibleCustomKeybinds: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
+    getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
 }
 
@@ -354,7 +354,7 @@ export function handleNormalInputMode({
     setMoveMode,
     setShowClearConfirm,
     openWidgetPicker,
-    getVisibleCustomKeybinds,
+    getCustomKeybindsForWidget,
     setCustomEditorWidget
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
@@ -436,7 +436,7 @@ export function handleNormalInputMode({
                 return;
             }
 
-            const customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
+            const customKeybinds = getCustomKeybindsForWidget(widgetImpl, currentWidget);
             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
 
             if (matchedKeybind && !key.ctrl) {

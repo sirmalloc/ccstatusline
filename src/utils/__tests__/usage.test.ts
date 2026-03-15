@@ -158,4 +158,16 @@ describe('usage window helpers', () => {
         expect(formatUsageDuration(36.5 * 60 * 60 * 1000, true)).toBe('1d12h30m');
         expect(formatUsageDuration(168 * 60 * 60 * 1000, true)).toBe('7d');
     });
+
+    it('formats duration without days when requested', () => {
+        expect(formatUsageDuration(25 * 60 * 60 * 1000, false, false)).toBe('25hr');
+        expect(formatUsageDuration(36.5 * 60 * 60 * 1000, false, false)).toBe('36hr 30m');
+        expect(formatUsageDuration(168 * 60 * 60 * 1000, false, false)).toBe('168hr');
+    });
+
+    it('formats duration without days in compact style when requested', () => {
+        expect(formatUsageDuration(25 * 60 * 60 * 1000, true, false)).toBe('25h');
+        expect(formatUsageDuration(36.5 * 60 * 60 * 1000, true, false)).toBe('36h30m');
+        expect(formatUsageDuration(168 * 60 * 60 * 1000, true, false)).toBe('168h');
+    });
 });

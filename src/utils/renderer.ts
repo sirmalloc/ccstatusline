@@ -352,7 +352,7 @@ function renderPowerlineStatusLine(
             //   - Background: previous widget's background color
 
             // Build separator with raw ANSI codes to avoid reset issues
-            let separatorOutput = '';
+            let separatorOutput: string;
 
             // Check if adjacent widgets have the same background color
             const sameBackground = widget.bgColor && nextWidget.bgColor && widget.bgColor === nextWidget.bgColor;
@@ -832,7 +832,7 @@ export function renderStatusLine(
     });
 
     // Build the final status line
-    let statusLine = '';
+    let statusLine: string;
 
     if (hasFlexSeparator && terminalWidth) {
         // Split elements by flex separators
