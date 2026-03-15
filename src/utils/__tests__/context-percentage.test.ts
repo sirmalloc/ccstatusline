@@ -23,7 +23,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 100000
+                    contextLength: 100000,
+                    model: null
                 }
             };
 
@@ -61,7 +62,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
@@ -79,7 +81,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
@@ -95,7 +98,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 2000000
+                    contextLength: 2000000,
+                    model: null
                 }
             };
 
@@ -111,7 +115,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
@@ -127,7 +132,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
@@ -148,7 +154,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
@@ -166,7 +173,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
@@ -188,7 +196,8 @@ describe('calculateContextPercentage', () => {
                     outputTokens: 0,
                     cachedTokens: 0,
                     totalTokens: 0,
-                    contextLength: 42000
+                    contextLength: 42000,
+                    model: null
                 }
             };
 
