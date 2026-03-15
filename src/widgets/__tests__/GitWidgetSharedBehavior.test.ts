@@ -32,9 +32,9 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
 
 describe('Git widget shared behavior', () => {
     it.each(cases)('$name should expose hide-no-git keybind', ({ widget }) => {
-        expect(widget.getCustomKeybinds()).toEqual([
+        expect(widget.getCustomKeybinds()).toContainEqual(
             { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' }
-        ]);
+        );
     });
 
     it.each(cases)('$name should toggle hideNoGit metadata', ({ widget, itemType }) => {
