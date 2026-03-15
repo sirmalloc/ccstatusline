@@ -467,6 +467,7 @@ bun run example
 - **Weekly Reset Timer** - Shows time remaining until weekly usage reset
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
 - **Skills** - Shows skill activity as last used, total count, or unique list (with optional list limit and hide-when-empty toggle)
+- **Vim Mode** - Displays current vim editor mode
 - **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
 - **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 
