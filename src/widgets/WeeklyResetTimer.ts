@@ -12,12 +12,17 @@ import {
     resolveWeeklyUsageWindow
 } from '../utils/usage';
 
+import { makeModifierText } from './shared/editor-display';
+import {
+    isMetadataFlagEnabled,
+    toggleMetadataFlag
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
-    getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    getUsageTimerCustomKeybinds,
     isUsageCompact,
     isUsageInverted,
     isUsageProgressMode,
@@ -32,6 +37,43 @@ function makeTimerProgressBar(percent: number, width: number): string {
     return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
 }
 
+const WEEKLY_PREVIEW_DURATION_MS = 36.5 * 60 * 60 * 1000;
+
+function isWeeklyResetHoursOnly(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'hours');
+}
+
+function toggleWeeklyResetHoursOnly(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'hours');
+}
+
+function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
+    const displayMode = getUsageDisplayMode(item);
+    const modifiers: string[] = [];
+
+    if (displayMode === 'progress') {
+        modifiers.push('progress bar');
+    } else if (displayMode === 'progress-short') {
+        modifiers.push('short bar');
+    }
+
+    if (isUsageInverted(item)) {
+        modifiers.push('inverted');
+    }
+
+    if (!isUsageProgressMode(displayMode)) {
+        if (isUsageCompact(item)) {
+            modifiers.push('compact');
+        }
+
+        if (isWeeklyResetHoursOnly(item)) {
+            modifiers.push('hours only');
+        }
+    }
+
+    return makeModifierText(modifiers);
+}
+
 export class WeeklyResetTimerWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows time remaining until weekly usage reset'; }
@@ -41,13 +83,13 @@ export class WeeklyResetTimerWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item, { includeCompact: true })
+            modifierText: getWeeklyResetModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item);
+            return cycleUsageDisplayMode(item, ['compact', 'hours']);
         }
 
         if (action === 'toggle-invert') {
@@ -58,6 +100,10 @@ export class WeeklyResetTimerWidget implements Widget {
             return toggleUsageCompact(item);
         }
 
+        if (action === 'toggle-hours') {
+            return toggleWeeklyResetHoursOnly(item);
+        }
+
         return null;
     }
 
@@ -65,6 +111,7 @@ export class WeeklyResetTimerWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
+        const useDays = !isWeeklyResetHoursOnly(item);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -75,7 +122,7 @@ export class WeeklyResetTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly Reset: ', compact ? '36h30m' : '36hr 30m');
+            return formatRawOrLabeledValue(item, 'Weekly Reset: ', formatUsageDuration(WEEKLY_PREVIEW_DURATION_MS, compact, useDays));
         }
 
         const usageData = context.usageData ?? {};
@@ -97,16 +144,18 @@ export class WeeklyResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${percentage}%`);
         }
 
-        const remainingTime = formatUsageDuration(window.remainingMs, compact);
+        const remainingTime = formatUsageDuration(window.remainingMs, compact, useDays);
         return formatRawOrLabeledValue(item, 'Weekly Reset: ', remainingTime);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        const keybinds = getUsageTimerCustomKeybinds(item);
+
+        if (!item || !isUsageProgressMode(getUsageDisplayMode(item))) {
+            keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
+        }
+
+        return keybinds;
     }
 
     supportsRawValue(): boolean { return true; }

@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -20,7 +20,8 @@ const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
-const TOKEN_CACHE_MAX_AGE = 3600; // 1 hour
+const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
+const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited']);
@@ -114,13 +115,16 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
 // Memory caches
 let cachedUsageData: UsageData | null = null;
 let usageCacheTime = 0;
-let cachedUsageToken: string | null = null;
-let usageTokenCacheTime = 0;
 let usageErrorCacheMaxAge = LOCK_MAX_AGE;
 
 type UsageLockError = z.infer<typeof UsageLockErrorSchema>;
 
 type UsageApiFetchResult = { kind: 'success'; body: string } | { kind: 'rate-limited'; retryAfterSeconds: number } | { kind: 'error' };
+interface MacKeychainCredentialCandidate {
+    modifiedAt: string | null;
+    order: number;
+    service: string;
+}
 
 function ensureCacheDirExists(): void {
     if (!fs.existsSync(CACHE_DIR)) {
@@ -151,41 +155,160 @@ function getStaleUsageOrError(error: UsageError, now: number, errorCacheMaxAge =
     return setCachedUsageError(error, now, errorCacheMaxAge);
 }
 
-function getUsageToken(): string | null {
-    const now = Math.floor(Date.now() / 1000);
+function normalizeSecurityTimedateValue(rawValue: string): string | null {
+    const cleaned = rawValue.replace(/\\000/g, '').replace(/\0/g, '').trim();
+    return /^\d{14}Z$/.test(cleaned) ? cleaned : null;
+}
 
-    // Return cached token if still valid
-    if (cachedUsageToken && (now - usageTokenCacheTime) < TOKEN_CACHE_MAX_AGE) {
-        return cachedUsageToken;
+function decodeHexAscii(rawHex: string): string | null {
+    if (rawHex.length === 0 || rawHex.length % 2 !== 0) {
+        return null;
     }
 
-    try {
-        const isMac = process.platform === 'darwin';
-        if (isMac) {
-            // macOS: read from keychain
-            const result = execSync(
-                'security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null',
-                { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-            ).trim();
-            const token = parseUsageAccessToken(result);
-            if (token) {
-                cachedUsageToken = token;
-                usageTokenCacheTime = now;
-            }
-            return token;
+    let decoded = '';
+
+    for (let i = 0; i < rawHex.length; i += 2) {
+        const byte = Number.parseInt(rawHex.slice(i, i + 2), 16);
+        if (Number.isNaN(byte)) {
+            return null;
         }
 
-        // Non-macOS: read from credentials file, honoring CLAUDE_CONFIG_DIR
-        const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
-        const token = parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
-        if (token) {
-            cachedUsageToken = token;
-            usageTokenCacheTime = now;
+        decoded += String.fromCharCode(byte);
+    }
+
+    return decoded;
+}
+
+function parseModifiedTimeFromKeychainBlock(block: string): string | null {
+    const quotedMatch = /"mdat"<timedate>=(?:0x[0-9A-Fa-f]+\s+)?"([^"]+)"/.exec(block);
+    if (quotedMatch?.[1]) {
+        const parsed = normalizeSecurityTimedateValue(quotedMatch[1]);
+        if (parsed !== null) {
+            return parsed;
         }
-        return token;
+    }
+
+    const hexMatch = /"mdat"<timedate>=0x([0-9A-Fa-f]+)/.exec(block);
+    if (!hexMatch?.[1]) {
+        return null;
+    }
+
+    const decoded = decodeHexAscii(hexMatch[1]);
+    return decoded ? normalizeSecurityTimedateValue(decoded) : null;
+}
+
+function sortMacKeychainCredentialCandidates(a: MacKeychainCredentialCandidate, b: MacKeychainCredentialCandidate): number {
+    if (a.modifiedAt !== null && b.modifiedAt !== null && a.modifiedAt !== b.modifiedAt) {
+        return b.modifiedAt.localeCompare(a.modifiedAt);
+    }
+
+    if (a.modifiedAt !== null && b.modifiedAt === null) {
+        return -1;
+    }
+
+    if (a.modifiedAt === null && b.modifiedAt !== null) {
+        return 1;
+    }
+
+    return a.order - b.order;
+}
+
+export function parseMacKeychainCredentialCandidates(rawDump: string, servicePrefix = MACOS_USAGE_CREDENTIALS_SERVICE): string[] {
+    const blocks = rawDump.split(/(?=^keychain:\s)/m).filter(block => block.trim().length > 0);
+    const dedupedCandidates = new Map<string, MacKeychainCredentialCandidate>();
+    let order = 0;
+
+    for (const block of blocks) {
+        const serviceMatch = /"svce"<blob>="([^"]+)"/.exec(block);
+        const service = serviceMatch?.[1];
+
+        if (!service || !service.startsWith(servicePrefix) || service === MACOS_USAGE_CREDENTIALS_SERVICE) {
+            continue;
+        }
+
+        const candidate: MacKeychainCredentialCandidate = {
+            modifiedAt: parseModifiedTimeFromKeychainBlock(block),
+            order,
+            service
+        };
+        order += 1;
+
+        const existing = dedupedCandidates.get(service);
+        if (!existing || sortMacKeychainCredentialCandidates(candidate, existing) < 0) {
+            dedupedCandidates.set(service, candidate);
+        }
+    }
+
+    return [...dedupedCandidates.values()]
+        .sort(sortMacKeychainCredentialCandidates)
+        .map(candidate => candidate.service);
+}
+
+function readMacKeychainSecret(service: string): string | null {
+    try {
+        return execFileSync(
+            'security',
+            ['find-generic-password', '-s', service, '-w'],
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+        ).trim();
     } catch {
         return null;
     }
+}
+
+function readUsageTokenFromMacKeychainService(service: string): string | null {
+    const secret = readMacKeychainSecret(service);
+    return secret ? parseUsageAccessToken(secret) : null;
+}
+
+function listMacKeychainCredentialCandidates(): string[] {
+    try {
+        const rawDump = execFileSync(
+            'security',
+            ['dump-keychain'],
+            {
+                encoding: 'utf8',
+                maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
+                stdio: ['pipe', 'pipe', 'ignore']
+            }
+        );
+
+        return parseMacKeychainCredentialCandidates(rawDump);
+    } catch {
+        return [];
+    }
+}
+
+function readUsageTokenFromMacKeychainCandidates(): string | null {
+    const candidates = listMacKeychainCredentialCandidates();
+
+    for (const service of candidates) {
+        const token = readUsageTokenFromMacKeychainService(service);
+        if (token) {
+            return token;
+        }
+    }
+
+    return null;
+}
+
+function readUsageTokenFromCredentialsFile(): string | null {
+    try {
+        const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
+        return parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+export function getUsageToken(): string | null {
+    if (process.platform !== 'darwin') {
+        return readUsageTokenFromCredentialsFile();
+    }
+
+    return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageTokenFromMacKeychainCandidates()
+        ?? readUsageTokenFromCredentialsFile();
 }
 
 function readStaleUsageCache(): UsageData | null {

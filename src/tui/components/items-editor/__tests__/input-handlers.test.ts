@@ -166,7 +166,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -192,7 +192,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -218,7 +218,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -244,7 +244,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -271,7 +271,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget
         });
 
