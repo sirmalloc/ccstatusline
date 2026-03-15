@@ -352,11 +352,10 @@ function renderPowerlineStatusLine(
             //   - Background: previous widget's background color
 
             // Build separator with raw ANSI codes to avoid reset issues
+            let separatorOutput: string;
 
             // Check if adjacent widgets have the same background color
             const sameBackground = widget.bgColor && nextWidget.bgColor && widget.bgColor === nextWidget.bgColor;
-
-            let separatorOutput: string;
 
             if (shouldInvert) {
                 // Inverted: swap fg/bg logic

@@ -32,7 +32,6 @@ import {
     type WidgetPickerAction,
     type WidgetPickerState
 } from './items-editor/input-handlers';
-import { shouldShowCustomKeybind } from './items-editor/keybind-visibility';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -95,12 +94,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         setCustomEditorWidget(null);
     };
 
-    const getVisibleCustomKeybinds = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
+    const getCustomKeybindsForWidget = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
         if (!widgetImpl.getCustomKeybinds) {
             return [];
         }
 
-        return widgetImpl.getCustomKeybinds().filter(keybind => shouldShowCustomKeybind(widget, keybind));
+        return widgetImpl.getCustomKeybinds(widget);
     };
 
     const openWidgetPicker = (action: WidgetPickerAction) => {
@@ -200,7 +199,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             setMoveMode,
             setShowClearConfirm,
             openWidgetPicker,
-            getVisibleCustomKeybinds,
+            getCustomKeybindsForWidget,
             setCustomEditorWidget
         });
     });
@@ -263,7 +262,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         if (widgetImpl) {
             canToggleRaw = widgetImpl.supportsRawValue();
             // Get custom keybinds from the widget
-            customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
+            customKeybinds = getCustomKeybindsForWidget(widgetImpl, currentWidget);
         } else {
             canToggleRaw = false;
         }
