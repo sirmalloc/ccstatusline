@@ -58,4 +58,15 @@ describe('StatusJSONSchema numeric coercion', () => {
 
         expect(result.success).toBe(false);
     });
+
+    it('accepts null vim payloads', () => {
+        const result = StatusJSONSchema.safeParse({ vim: null });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.vim).toBeNull();
+    });
 });

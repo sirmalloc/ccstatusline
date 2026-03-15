@@ -155,10 +155,10 @@ function renderPowerlineStatusLine(
         // Use pre-rendered content - use the correct index from the mapping
         const actualPreRenderedIndex = preRenderedIndices[i];
         const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
+        const widgetImpl = getWidget(widget.type);
         if (preRendered?.content) {
             widgetText = preRendered.content;
             // Get default color from widget impl for consistency
-            const widgetImpl = getWidget(widget.type);
             if (widgetImpl) {
                 defaultColor = widgetImpl.getDefaultColor();
             }
