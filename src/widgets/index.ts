@@ -4,6 +4,7 @@ export { GitBranchWidget } from './GitBranch';
 export { GitChangesWidget } from './GitChanges';
 export { GitInsertionsWidget } from './GitInsertions';
 export { GitDeletionsWidget } from './GitDeletions';
+export { GitIndicatorsWidget } from './GitIndicators';
 export { GitRootDirWidget } from './GitRootDir';
 export { GitWorktreeWidget } from './GitWorktree';
 export { TokensInputWidget } from './TokensInput';

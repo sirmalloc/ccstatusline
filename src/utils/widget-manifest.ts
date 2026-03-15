@@ -23,6 +23,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'git-changes', create: () => new widgets.GitChangesWidget() },
     { type: 'git-insertions', create: () => new widgets.GitInsertionsWidget() },
     { type: 'git-deletions', create: () => new widgets.GitDeletionsWidget() },
+    { type: 'git-indicators', create: () => new widgets.GitIndicatorsWidget() },
     { type: 'git-root-dir', create: () => new widgets.GitRootDirWidget() },
     { type: 'git-worktree', create: () => new widgets.GitWorktreeWidget() },
     { type: 'current-working-dir', create: () => new widgets.CurrentWorkingDirWidget() },
