@@ -54,7 +54,8 @@ export const StatusJSONSchema = z.looseObject({
         ]).nullable().optional(),
         used_percentage: CoercedNumberSchema.nullable().optional(),
         remaining_percentage: CoercedNumberSchema.nullable().optional()
-    }).nullable().optional()
+    }).nullable().optional(),
+    vim: z.object({ mode: z.string().optional() }).optional()
 });
 
 export type StatusJSON = z.infer<typeof StatusJSONSchema>;
