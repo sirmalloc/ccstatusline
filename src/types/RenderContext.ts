@@ -30,6 +30,7 @@ export interface RenderContext {
     skillsMetrics?: SkillsMetrics | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
+    minimalist?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
 }
