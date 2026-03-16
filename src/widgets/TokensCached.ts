@@ -23,10 +23,8 @@ export class TokensCachedWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Cached: ', '12k');
         }
 
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(context.tokenMetrics.cachedTokens));
-        }
-        return null;
+        const cachedTokens = context.tokenMetrics?.cachedTokens ?? 0;
+        return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(cachedTokens));
     }
 
     supportsRawValue(): boolean { return true; }

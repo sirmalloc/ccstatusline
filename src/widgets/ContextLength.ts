@@ -27,10 +27,8 @@ export class ContextLengthWidget implements Widget {
             return item.rawValue ? formatTokens(contextLengthTokens) : `Ctx: ${formatTokens(contextLengthTokens)}`;
         }
 
-        if (context.tokenMetrics) {
-            return item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
-        }
-        return null;
+        const contextLength = context.tokenMetrics?.contextLength ?? 0;
+        return item.rawValue ? formatTokens(contextLength) : `Ctx: ${formatTokens(contextLength)}`;
     }
 
     supportsRawValue(): boolean { return true; }

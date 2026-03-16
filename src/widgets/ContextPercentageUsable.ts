@@ -57,7 +57,10 @@ export class ContextPercentageUsableWidget implements Widget {
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
             return formatRawOrLabeledValue(item, 'Ctx(u): ', `${displayPercentage.toFixed(1)}%`);
         }
-        return null;
+
+        // Default to 0% when no data available
+        const displayPercentage = isInverse ? 100 : 0;
+        return formatRawOrLabeledValue(item, 'Ctx(u): ', `${displayPercentage.toFixed(1)}%`);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

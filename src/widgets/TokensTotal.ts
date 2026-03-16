@@ -23,10 +23,8 @@ export class TokensTotalWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Total: ', '30.6k');
         }
 
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens));
-        }
-        return null;
+        const totalTokens = context.tokenMetrics?.totalTokens ?? 0;
+        return formatRawOrLabeledValue(item, 'Total: ', formatTokens(totalTokens));
     }
 
     supportsRawValue(): boolean { return true; }

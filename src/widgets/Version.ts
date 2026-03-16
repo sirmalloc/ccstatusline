@@ -18,10 +18,10 @@ export class VersionWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '1.0.0' : 'v1.0.0';
-        } else if (context.data?.version) {
-            return item.rawValue ? context.data.version : `v${context.data.version}`;
         }
-        return null;
+
+        const version = context.data?.version ?? 'N/A';
+        return item.rawValue ? version : `v${version}`;
     }
 
     supportsRawValue(): boolean { return true; }
