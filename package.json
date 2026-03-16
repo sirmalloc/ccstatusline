@@ -34,7 +34,7 @@
     "eslint-plugin-import-newlines": "^2.0.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "globals": "^14.0.0",
+    "globals": "^17.3.0",
     "https-proxy-agent": "^7.0.0",
     "ink": "6.2.0",
     "ink-gradient": "^4.0.0",
