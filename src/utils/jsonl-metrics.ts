@@ -194,6 +194,25 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                 + (usage.cache_creation_input_tokens ?? 0);
         }
 
+        // Include tokens from subagent transcript files
+        const subagentPaths = getSubagentTranscriptPaths(transcriptPath);
+        for (const subagentPath of subagentPaths) {
+            try {
+                const subLines = await readJsonlLines(subagentPath);
+                for (const subLine of subLines) {
+                    const subData = parseJsonlLine(subLine) as TranscriptLine | null;
+                    if (subData?.message?.usage) {
+                        inputTokens += subData.message.usage.input_tokens || 0;
+                        outputTokens += subData.message.usage.output_tokens || 0;
+                        cachedTokens += subData.message.usage.cache_read_input_tokens ?? 0;
+                        cachedTokens += subData.message.usage.cache_creation_input_tokens ?? 0;
+                    }
+                }
+            } catch {
+                // Skip unreadable subagent files
+            }
+        }
+
         const totalTokens = inputTokens + outputTokens + cachedTokens;
 
         return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength };
@@ -409,11 +428,7 @@ function buildEmptyWindowedMetrics(windowSeconds: number[]): Record<string, Spee
     return windowed;
 }
 
-function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: Set<string>): string[] {
-    if (referencedAgentIds.size === 0) {
-        return [];
-    }
-
+function getSubagentTranscriptPaths(transcriptPath: string): string[] {
     const transcriptDir = path.dirname(transcriptPath);
     const transcriptStem = path.parse(transcriptPath).name;
     const candidateDirs = [
@@ -437,10 +452,6 @@ function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: 
 
                 const match = /^agent-(.+)\.jsonl$/.exec(entry.name);
                 if (!match?.[1]) {
-                    continue;
-                }
-
-                if (!referencedAgentIds.has(match[1])) {
                     continue;
                 }
 
@@ -487,8 +498,7 @@ export async function getSpeedMetricsCollection(
         ];
 
         if (options.includeSubagents === true) {
-            const referencedSubagentIds = getReferencedSubagentIds(mainLines);
-            const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedSubagentIds);
+            const subagentPaths = getSubagentTranscriptPaths(transcriptPath);
             const subagentMetricsResults = await Promise.all(subagentPaths.map(async (subagentPath) => {
                 try {
                     const subagentLines = await readJsonlLines(subagentPath);
