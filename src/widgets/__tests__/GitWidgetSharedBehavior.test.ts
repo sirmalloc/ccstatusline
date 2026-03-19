@@ -13,6 +13,7 @@ import { GitBranchWidget } from '../GitBranch';
 import { GitChangesWidget } from '../GitChanges';
 import { GitDeletionsWidget } from '../GitDeletions';
 import { GitInsertionsWidget } from '../GitInsertions';
+import { GitPrWidget } from '../GitPr';
 import { GitRootDirWidget } from '../GitRootDir';
 import { GitWorktreeWidget } from '../GitWorktree';
 
@@ -26,6 +27,7 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
     { name: 'GitChangesWidget', itemType: 'git-changes', widget: new GitChangesWidget() },
     { name: 'GitInsertionsWidget', itemType: 'git-insertions', widget: new GitInsertionsWidget() },
     { name: 'GitDeletionsWidget', itemType: 'git-deletions', widget: new GitDeletionsWidget() },
+    { name: 'GitPrWidget', itemType: 'git-pr', widget: new GitPrWidget() },
     { name: 'GitRootDirWidget', itemType: 'git-root-dir', widget: new GitRootDirWidget() },
     { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }
 ];
