@@ -91,13 +91,13 @@ describe('usage prefetch', () => {
 
         const usageData = await prefetchUsageDataIfNeeded(lines, {
             rate_limits: {
-                five_hour: { used_percentage: 23, resets_at: 1774008000 },
-                seven_day: { used_percentage: 2, resets_at: 1774594800 }
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
             }
         });
 
-        expect(usageData?.sessionUsage).toBe(23);
-        expect(usageData?.weeklyUsage).toBe(2);
+        expect(usageData?.sessionUsage).toBe(42);
+        expect(usageData?.weeklyUsage).toBe(15);
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
     });
 
@@ -121,7 +121,7 @@ describe('usage prefetch', () => {
             [{ id: '1', type: 'session-usage' }]
         );
 
-        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { resets_at: 1774008000 } } });
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { resets_at: 1774020000 } } });
 
         expect(usageData).toEqual({ sessionUsage: 42 });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
@@ -131,23 +131,23 @@ describe('usage prefetch', () => {
 describe('extractUsageDataFromRateLimits', () => {
     it('extracts session and weekly usage from rate_limits', () => {
         const result = extractUsageDataFromRateLimits({
-            five_hour: { used_percentage: 23, resets_at: 1774008000 },
-            seven_day: { used_percentage: 2, resets_at: 1774594800 }
+            five_hour: { used_percentage: 42, resets_at: 1774020000 },
+            seven_day: { used_percentage: 15, resets_at: 1774540000 }
         });
 
         expect(result).not.toBeNull();
-        expect(result?.sessionUsage).toBe(23);
-        expect(result?.weeklyUsage).toBe(2);
+        expect(result?.sessionUsage).toBe(42);
+        expect(result?.weeklyUsage).toBe(15);
     });
 
     it('converts epoch seconds to ISO strings for resets_at', () => {
         const result = extractUsageDataFromRateLimits({
-            five_hour: { used_percentage: 23, resets_at: 1774008000 },
-            seven_day: { used_percentage: 2, resets_at: 1774594800 }
+            five_hour: { used_percentage: 42, resets_at: 1774020000 },
+            seven_day: { used_percentage: 15, resets_at: 1774540000 }
         });
 
-        expect(result?.sessionResetAt).toBe(new Date(1774008000 * 1000).toISOString());
-        expect(result?.weeklyResetAt).toBe(new Date(1774594800 * 1000).toISOString());
+        expect(result?.sessionResetAt).toBe(new Date(1774020000 * 1000).toISOString());
+        expect(result?.weeklyResetAt).toBe(new Date(1774540000 * 1000).toISOString());
     });
 
     it('returns null when rate_limits is null', () => {
@@ -159,13 +159,13 @@ describe('extractUsageDataFromRateLimits', () => {
     });
 
     it('returns null when both used_percentage values are missing', () => {
-        const result = extractUsageDataFromRateLimits({ five_hour: { resets_at: 1774008000 } });
+        const result = extractUsageDataFromRateLimits({ five_hour: { resets_at: 1774020000 } });
 
         expect(result).toBeNull();
     });
 
     it('extracts partial data when only five_hour is present', () => {
-        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: 50, resets_at: 1774008000 } });
+        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: 50, resets_at: 1774020000 } });
 
         expect(result).not.toBeNull();
         expect(result?.sessionUsage).toBe(50);
@@ -173,7 +173,7 @@ describe('extractUsageDataFromRateLimits', () => {
     });
 
     it('extracts partial data when only seven_day is present', () => {
-        const result = extractUsageDataFromRateLimits({ seven_day: { used_percentage: 10, resets_at: 1774594800 } });
+        const result = extractUsageDataFromRateLimits({ seven_day: { used_percentage: 10, resets_at: 1774540000 } });
 
         expect(result).not.toBeNull();
         expect(result?.sessionUsage).toBeUndefined();
@@ -181,14 +181,14 @@ describe('extractUsageDataFromRateLimits', () => {
     });
 
     it('treats used_percentage of 0 as valid data', () => {
-        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: 0, resets_at: 1774008000 } });
+        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: 0, resets_at: 1774020000 } });
 
         expect(result).not.toBeNull();
         expect(result?.sessionUsage).toBe(0);
     });
 
     it('treats null used_percentage as missing and falls back', () => {
-        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: null, resets_at: 1774008000 } });
+        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: null, resets_at: 1774020000 } });
 
         expect(result).toBeNull();
     });

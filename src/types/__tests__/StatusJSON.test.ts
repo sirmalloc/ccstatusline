@@ -73,8 +73,8 @@ describe('StatusJSONSchema numeric coercion', () => {
     it('parses rate_limits with valid data', () => {
         const result = StatusJSONSchema.safeParse({
             rate_limits: {
-                five_hour: { used_percentage: 23, resets_at: 1774008000 },
-                seven_day: { used_percentage: 2, resets_at: 1774594800 }
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
             }
         });
 
@@ -83,10 +83,10 @@ describe('StatusJSONSchema numeric coercion', () => {
             return;
         }
 
-        expect(result.data.rate_limits?.five_hour?.used_percentage).toBe(23);
-        expect(result.data.rate_limits?.five_hour?.resets_at).toBe(1774008000);
-        expect(result.data.rate_limits?.seven_day?.used_percentage).toBe(2);
-        expect(result.data.rate_limits?.seven_day?.resets_at).toBe(1774594800);
+        expect(result.data.rate_limits?.five_hour?.used_percentage).toBe(42);
+        expect(result.data.rate_limits?.five_hour?.resets_at).toBe(1774020000);
+        expect(result.data.rate_limits?.seven_day?.used_percentage).toBe(15);
+        expect(result.data.rate_limits?.seven_day?.resets_at).toBe(1774540000);
     });
 
     it('accepts null rate_limits', () => {
@@ -101,14 +101,14 @@ describe('StatusJSONSchema numeric coercion', () => {
     });
 
     it('coerces rate_limits string numbers', () => {
-        const result = StatusJSONSchema.safeParse({ rate_limits: { five_hour: { used_percentage: '23', resets_at: '1774008000' } } });
+        const result = StatusJSONSchema.safeParse({ rate_limits: { five_hour: { used_percentage: '42', resets_at: '1774020000' } } });
 
         expect(result.success).toBe(true);
         if (!result.success) {
             return;
         }
 
-        expect(result.data.rate_limits?.five_hour?.used_percentage).toBe(23);
-        expect(result.data.rate_limits?.five_hour?.resets_at).toBe(1774008000);
+        expect(result.data.rate_limits?.five_hour?.used_percentage).toBe(42);
+        expect(result.data.rate_limits?.five_hour?.resets_at).toBe(1774020000);
     });
 });
