@@ -42,13 +42,25 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
     return { sessionUsage, sessionResetAt, weeklyUsage, weeklyResetAt };
 }
 
+function hasCompleteRateLimitsUsageData(usageData: UsageData | null): usageData is UsageData & {
+    sessionUsage: number;
+    sessionResetAt: string;
+    weeklyUsage: number;
+    weeklyResetAt: string;
+} {
+    return usageData?.sessionUsage !== undefined
+        && usageData.sessionResetAt !== undefined
+        && usageData.weeklyUsage !== undefined
+        && usageData.weeklyResetAt !== undefined;
+}
+
 export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: StatusJSON): Promise<UsageData | null> {
     if (!hasUsageDependentWidgets(lines)) {
         return null;
     }
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
-    if (rateLimitsData) {
+    if (hasCompleteRateLimitsUsageData(rateLimitsData)) {
         return rateLimitsData;
     }
 

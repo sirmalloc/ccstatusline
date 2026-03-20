@@ -126,6 +126,57 @@ describe('usage prefetch', () => {
         expect(usageData).toEqual({ sessionUsage: 42 });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
+
+    it('falls back to API fetch when seven_day is absent from rate_limits', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 50,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 10,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z'
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'weekly-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 50, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({
+            sessionUsage: 50,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 10,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z'
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+    });
+
+    it('falls back to API fetch when sessionResetAt is missing from rate_limits', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 42,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 15,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z'
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
+            }
+        });
+
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 15,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z'
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+    });
 });
 
 describe('extractUsageDataFromRateLimits', () => {
