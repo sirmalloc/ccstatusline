@@ -4,22 +4,50 @@
   "transcript_path": "/path/to/transcript.json",
   "cwd": "/current/working/directory",
   "model": {
-    "id": "claude-opus-4-1",
-    "display_name": "Opus"
+    "id": "claude-opus-4-6[1m]",
+    "display_name": "Opus 4.6 (1M context)"
   },
   "workspace": {
-    "current_dir": "/current/working/directory",
-    "project_dir": "/original/project/directory"
+    "current_dir": "/home/user/projects/my-project",
+    "project_dir": "/home/user/projects/my-project",
+    "added_dirs": []
   },
-  "version": "1.0.80",
+  "version": "2.1.80",
   "output_style": {
     "name": "default"
   },
   "cost": {
-    "total_cost_usd": 0.01234,
-    "total_duration_ms": 45000,
-    "total_api_duration_ms": 2300,
+    "total_cost_usd": 1.67,
+    "total_duration_ms": 580650,
+    "total_api_duration_ms": 248088,
     "total_lines_added": 156,
     "total_lines_removed": 23
+  },
+  "context_window": {
+    "total_input_tokens": 50113,
+    "total_output_tokens": 10462,
+    "context_window_size": 1000000,
+    "current_usage": {
+      "input_tokens": 8500,
+      "output_tokens": 1200,
+      "cache_creation_input_tokens": 5000,
+      "cache_read_input_tokens": 2000
+    },
+    "used_percentage": 8,
+    "remaining_percentage": 92
+  },
+  "exceeds_200k_tokens": false,
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 23,
+      "resets_at": 1774008000
+    },
+    "seven_day": {
+      "used_percentage": 2,
+      "resets_at": 1774594800
+    }
+  },
+  "vim": {
+    "mode": "NORMAL"
   }
 }
