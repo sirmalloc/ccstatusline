@@ -121,7 +121,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
-    const usageData = await prefetchUsageDataIfNeeded(lines);
+    const usageData = await prefetchUsageDataIfNeeded(lines, data);
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
