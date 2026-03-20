@@ -8,6 +8,8 @@ export type TranscriptThinkingEffort = 'low' | 'medium' | 'high' | 'max';
 
 const MODEL_STDOUT_PREFIX = '<local-command-stdout>Set model to ';
 const MODEL_STDOUT_EFFORT_REGEX = /^<local-command-stdout>Set model to[\s\S]*? with (low|medium|high|max) effort<\/local-command-stdout>$/i;
+const EFFORT_STDOUT_PREFIX = '<local-command-stdout>Set effort level to ';
+const EFFORT_STDOUT_REGEX = /^<local-command-stdout>Set effort level to (low|medium|high|max)\b/i;
 
 interface TranscriptEntry { message?: { content?: string } }
 
@@ -44,6 +46,14 @@ export function getTranscriptThinkingEffort(transcriptPath: string | undefined):
             }
 
             const visibleContent = getVisibleText(entry.message.content).trim();
+
+            if (visibleContent.startsWith(EFFORT_STDOUT_PREFIX)) {
+                const effortMatch = EFFORT_STDOUT_REGEX.exec(visibleContent);
+                if (effortMatch) {
+                    return normalizeThinkingEffort(effortMatch[1]);
+                }
+            }
+
             if (!visibleContent.startsWith(MODEL_STDOUT_PREFIX)) {
                 continue;
             }
