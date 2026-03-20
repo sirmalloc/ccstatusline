@@ -8,8 +8,8 @@
     "display_name": "Opus 4.6 (1M context)"
   },
   "workspace": {
-    "current_dir": "/home/user/projects/my-project",
-    "project_dir": "/home/user/projects/my-project",
+    "current_dir": "/current/working/directory",
+    "project_dir": "/original/project/directory",
     "added_dirs": []
   },
   "version": "2.1.80",
@@ -17,9 +17,9 @@
     "name": "default"
   },
   "cost": {
-    "total_cost_usd": 1.67,
-    "total_duration_ms": 580650,
-    "total_api_duration_ms": 248088,
+    "total_cost_usd": 0.01234,
+    "total_duration_ms": 45000,
+    "total_api_duration_ms": 2300,
     "total_lines_added": 156,
     "total_lines_removed": 23
   },
@@ -39,12 +39,12 @@
   "exceeds_200k_tokens": false,
   "rate_limits": {
     "five_hour": {
-      "used_percentage": 23,
-      "resets_at": 1774008000
+      "used_percentage": 42,
+      "resets_at": 1774020000
     },
     "seven_day": {
-      "used_percentage": 2,
-      "resets_at": 1774594800
+      "used_percentage": 15,
+      "resets_at": 1774540000
     }
   },
   "vim": {
