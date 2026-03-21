@@ -15,6 +15,7 @@ export type UsageDisplayMode = 'time' | 'progress' | 'progress-short';
 const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
 const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
+const CURSOR_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
@@ -40,6 +41,14 @@ export function isUsageCompact(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'compact');
 }
 
+export function isUsageCursorEnabled(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'cursor');
+}
+
+export function toggleUsageCursor(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'cursor');
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
@@ -63,6 +72,10 @@ export function getUsageDisplayModifierText(
         modifiers.push('inverted');
     }
 
+    if (isUsageCursorEnabled(item) && isUsageProgressMode(mode)) {
+        modifiers.push('time cursor');
+    }
+
     if (options.includeCompact && !isUsageProgressMode(mode) && isUsageCompact(item)) {
         modifiers.push('compact');
     }
@@ -79,7 +92,7 @@ export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: 
             : 'time';
 
     const nextItem = removeMetadataKeys(item, nextMode === 'time'
-        ? ['invert']
+        ? ['invert', 'cursor']
         : disabledInProgressKeys);
     const nextMetadata: Record<string, string> = {
         ...(nextItem.metadata ?? {}),
@@ -101,6 +114,7 @@ export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[
 
     if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
         keybinds.push(INVERT_TOGGLE_KEYBIND);
+        keybinds.push(CURSOR_TOGGLE_KEYBIND);
     }
 
     return keybinds;

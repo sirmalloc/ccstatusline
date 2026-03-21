@@ -53,7 +53,8 @@ const EXPECTED_USAGE_KEYBINDS: CustomKeybind[] = [
 
 const EXPECTED_USAGE_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+    { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' }
 ];
 
 const EXPECTED_TIMER_TIME_KEYBINDS: CustomKeybind[] = [
@@ -120,18 +121,20 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, config.baseItem, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
-    it('clears invert metadata when cycling back to time mode', () => {
+    it('clears invert and cursor metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
             ...config.baseItem,
             metadata: {
                 display: 'progress-short',
-                invert: 'true'
+                invert: 'true',
+                cursor: 'true'
             }
         });
 
         expect(updated?.metadata?.display).toBe('time');
         expect(updated?.metadata?.invert).toBeUndefined();
+        expect(updated?.metadata?.cursor).toBeUndefined();
     });
 
     it('cycles display modes in the expected order', () => {

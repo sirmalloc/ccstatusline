@@ -8,9 +8,10 @@ import type {
 } from '../types/Widget';
 import {
     getUsageErrorMessage,
-    makeUsageProgressBar
+    resolveWeeklyUsageWindow
 } from '../utils/usage';
 
+import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     cycleUsageDisplayMode,
@@ -18,8 +19,10 @@ import {
     getUsageDisplayModifierText,
     getUsagePercentCustomKeybinds,
     getUsageProgressBarWidth,
+    isUsageCursorEnabled,
     isUsageInverted,
     isUsageProgressMode,
+    toggleUsageCursor,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -45,12 +48,17 @@ export class WeeklyUsageWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
+        if (action === 'toggle-cursor') {
+            return toggleUsageCursor(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const showCursor = isUsageCursorEnabled(item);
 
         if (context.isPreview) {
             const previewPercent = 12;
@@ -58,7 +66,8 @@ export class WeeklyUsageWidget implements Widget {
 
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
-                const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
+                const progressBar = makeTimerProgressBar(renderedPercent, width, showCursor ? { cursorPercent: 50 } : undefined);
+                const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
                 return formatRawOrLabeledValue(item, 'Weekly: ', progressDisplay);
             }
 
@@ -75,7 +84,17 @@ export class WeeklyUsageWidget implements Widget {
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
             const renderedPercent = inverted ? 100 - percent : percent;
-            const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
+
+            let cursorOpts;
+            if (showCursor) {
+                const window = resolveWeeklyUsageWindow(data);
+                if (window) {
+                    cursorOpts = { cursorPercent: window.elapsedPercent };
+                }
+            }
+
+            const progressBar = makeTimerProgressBar(renderedPercent, width, cursorOpts);
+            const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
             return formatRawOrLabeledValue(item, 'Weekly: ', progressDisplay);
         }
 
