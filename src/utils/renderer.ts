@@ -698,9 +698,11 @@ export function renderStatusLine(
 
             if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
-                const prevWidget = widgets[i - 1];
+                // Use preRendered widget which has rules applied for accurate colors
+                const prevPreRendered = preRenderedWidgets[i - 1];
+                const prevWidget = prevPreRendered?.widget ?? widgets[i - 1];
                 if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
-                    // Get the previous widget's colors
+                    // Get the previous widget's colors (with rules applied)
                     let widgetColor = prevWidget.color;
                     if (!widgetColor) {
                         const widgetImpl = getWidget(prevWidget.type);
@@ -739,27 +741,28 @@ export function renderStatusLine(
             }
 
             if (widgetText) {
-                // Widget color already set by applyRules() if rules exist
-                const effectiveColor = widget.color ?? defaultColor;
+                // Use widget from preRendered which has rules applied (colors, bold, etc.)
+                const effectiveWidget = preRendered?.widget ?? widget;
+                const effectiveColor = effectiveWidget.color ?? defaultColor;
 
                 // Special handling for custom-command with preserveColors
-                if (widget.type === 'custom-command' && widget.preserveColors) {
+                if (widget.type === 'custom-command' && effectiveWidget.preserveColors) {
                     // Handle max width truncation for commands with ANSI codes
                     let finalOutput = widgetText;
-                    if (widget.maxWidth && widget.maxWidth > 0) {
+                    if (effectiveWidget.maxWidth && effectiveWidget.maxWidth > 0) {
                         const plainLength = getVisibleWidth(widgetText);
-                        if (plainLength > widget.maxWidth) {
-                            finalOutput = truncateStyledText(widgetText, widget.maxWidth, { ellipsis: false });
+                        if (plainLength > effectiveWidget.maxWidth) {
+                            finalOutput = truncateStyledText(widgetText, effectiveWidget.maxWidth, { ellipsis: false });
                         }
                     }
                     // Preserve original colors from command output
-                    elements.push({ content: finalOutput, type: widget.type, widget });
+                    elements.push({ content: finalOutput, type: widget.type, widget: effectiveWidget });
                 } else {
-                    // Normal widget rendering with colors - use effectiveColor from threshold resolution
+                    // Normal widget rendering with colors - use effectiveWidget which has rules applied
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, effectiveColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, effectiveColor, effectiveWidget.backgroundColor, effectiveWidget.bold),
                         type: widget.type,
-                        widget
+                        widget: effectiveWidget
                     });
                 }
             }
