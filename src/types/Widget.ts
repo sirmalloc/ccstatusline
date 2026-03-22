@@ -13,12 +13,19 @@ export const WidgetItemSchema = z.object({
     character: z.string().optional(),
     rawValue: z.boolean().optional(),
     customText: z.string().optional(),
+    customSymbol: z.string().optional(),
     commandPath: z.string().optional(),
     maxWidth: z.number().optional(),
     preserveColors: z.boolean().optional(),
     timeout: z.number().optional(),
     merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
-    metadata: z.record(z.string(), z.string()).optional()
+    hide: z.boolean().optional(),
+    metadata: z.record(z.string(), z.string()).optional(),
+    rules: z.array(z.object({
+        when: z.record(z.string(), z.any()),  // flexible for now (includes optional 'not' flag)
+        apply: z.record(z.string(), z.any()), // any widget properties
+        stop: z.boolean().optional()
+    })).optional()
 });
 
 // Inferred types from Zod schemas
@@ -42,6 +49,7 @@ export interface Widget {
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
+    getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
 }
 
 export interface WidgetEditorProps {

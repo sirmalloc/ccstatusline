@@ -9,6 +9,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import {
+    clearGitCache,
     getGitChangeCounts,
     isInsideGitWorkTree,
     resolveGitCwd,
@@ -27,6 +28,7 @@ const mockExecSync = execSync as unknown as {
 describe('git utils', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
     describe('resolveGitCwd', () => {

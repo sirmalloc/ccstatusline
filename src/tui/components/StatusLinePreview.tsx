@@ -17,6 +17,26 @@ import {
 } from '../../utils/renderer';
 import { advanceGlobalSeparatorIndex } from '../../utils/separator-index';
 
+/**
+ * Create mock context data for preview mode that matches widget preview values
+ * This ensures rules evaluate correctly in preview
+ */
+function createPreviewContextData(): RenderContext['data'] {
+    return {
+        context_window: {
+            context_window_size: 200000,
+            total_input_tokens: 18600,  // Results in ~9.3% used
+            total_output_tokens: 0,
+            current_usage: 18600,
+            used_percentage: 11.6,  // Matches context-percentage-usable preview
+            remaining_percentage: 88.4
+        },
+        cost: {
+            total_cost_usd: 2.45
+        }
+    };
+}
+
 export interface StatusLinePreviewProps {
     lines: WidgetItem[][];
     terminalWidth: number;
@@ -33,12 +53,18 @@ const renderSingleLine = (
     preRenderedWidgets: PreRenderedWidget[],
     preCalculatedMaxWidths: number[]
 ): RenderResult => {
-    // Create render context for preview
+    // Create render context for preview with mock data for rules evaluation
     const context: RenderContext = {
+        data: createPreviewContextData(),
         terminalWidth,
         isPreview: true,
         lineIndex,
-        globalSeparatorIndex
+        globalSeparatorIndex,
+        gitData: {
+            changedFiles: 3,
+            insertions: 42,
+            deletions: 18
+        }
     };
 
     return renderStatusLineWithInfo(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
@@ -52,7 +78,18 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             return { renderedLines: [], anyTruncated: false };
 
         // Always pre-render all widgets once (for efficiency)
-        const preRenderedLines = preRenderAllWidgets(lines, settings, { terminalWidth, isPreview: true });
+        // Include mock data for rules evaluation in preview
+        const previewContext: RenderContext = {
+            data: createPreviewContextData(),
+            terminalWidth,
+            isPreview: true,
+            gitData: {
+                changedFiles: 3,
+                insertions: 42,
+                deletions: 18
+            }
+        };
+        const preRenderedLines = preRenderAllWidgets(lines, settings, previewContext);
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
         let globalSeparatorIndex = 0;

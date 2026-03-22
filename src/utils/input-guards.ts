@@ -5,6 +5,17 @@ export interface InputKeyLike {
     tab?: boolean;
 }
 
+export interface InputKey extends InputKeyLike {
+    upArrow?: boolean;
+    downArrow?: boolean;
+    leftArrow?: boolean;
+    rightArrow?: boolean;
+    return?: boolean;
+    escape?: boolean;
+    backspace?: boolean;
+    delete?: boolean;
+}
+
 const CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/u;
 
 export const shouldInsertInput = (input: string, key: InputKeyLike): boolean => {

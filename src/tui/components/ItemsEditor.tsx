@@ -23,6 +23,7 @@ import {
 } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import { RulesEditor } from './RulesEditor';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -47,6 +48,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [rulesEditorWidget, setRulesEditorWidget] = useState<WidgetItem | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 
     const widgetCatalog = getWidgetCatalog(settings);
@@ -157,6 +159,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
+        // Skip input if rules editor is active
+        if (rulesEditorWidget) {
+            return;
+        }
+
         // Skip input handling when clear confirmation is active - let ConfirmDialog handle it
         if (showClearConfirm) {
             return;
@@ -200,7 +207,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             setShowClearConfirm,
             openWidgetPicker,
             getCustomKeybindsForWidget,
-            setCustomEditorWidget
+            setCustomEditorWidget,
+            setRulesEditorWidget
         });
     });
 
@@ -287,6 +295,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     if (canMerge) {
         helpText += ', (m)erge';
     }
+    if (!isSeparator && !isFlexSeparator && hasWidgets) {
+        helpText += ', (x) exceptions';
+    }
     helpText += ', ESC back';
 
     // Build custom keybinds text
@@ -305,6 +316,24 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             onCancel: handleEditorCancel,
             action: customEditorWidget.action
         });
+    }
+
+    if (rulesEditorWidget) {
+        return (
+            <RulesEditor
+                widget={rulesEditorWidget}
+                settings={settings}
+                onUpdate={(updatedWidget) => {
+                    // Update widget in widgets array
+                    const newWidgets = widgets.map(w =>
+                        w.id === updatedWidget.id ? updatedWidget : w
+                    );
+                    onUpdate(newWidgets);  // This triggers preview update!
+                    setRulesEditorWidget(updatedWidget);  // Keep editor in sync
+                }}
+                onBack={() => setRulesEditorWidget(null)}
+            />
+        );
     }
 
     if (showClearConfirm) {
@@ -526,9 +555,21 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                 {modifierText}
                                             </Text>
                                         )}
+                                        {widget.type !== 'separator' && widget.type !== 'flex-separator' && (
+                                            <Text dimColor>
+                                                {' '}
+                                                [{widget.color ?? 'default'}]
+                                            </Text>
+                                        )}
                                         {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
                                         {widget.merge === true && <Text dimColor> (merged→)</Text>}
                                         {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                        {widget.rules && widget.rules.length > 0 && (
+                                            <Text dimColor>
+                                                {' '}
+                                                ({widget.rules.length} rule{widget.rules.length === 1 ? '' : 's'})
+                                            </Text>
+                                        )}
                                     </Box>
                                 );
                             })}

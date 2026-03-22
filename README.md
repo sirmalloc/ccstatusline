@@ -36,6 +36,7 @@
 - [Quick Start](#-quick-start)
 - [Windows Support](#-windows-support)
 - [Usage](#-usage)
+  - [Widget Rules](#-widget-rules)
 - [API Documentation](#-api-documentation)
 - [Development](#️-development)
 - [Contributing](#-contributing)
@@ -45,6 +46,18 @@
 ---
 
 ## 🆕 Recent Updates
+
+### v2.3.0 - Widget Rules Engine
+
+- **📏 Conditional Widget Rules** - Define rules that dynamically change widget properties based on conditions
+  - Apply color, bold, hide, and other property overrides when conditions match
+  - Supports numeric operators (`>`, `>=`, `<`, `<=`, `=`, `≠`)
+  - Supports string operators (`contains`, `starts with`, `ends with`, and negations)
+  - Supports boolean operators (`is true`, `is false`)
+  - Supports set operators (`in`, `not in` for matching against lists)
+  - Cross-widget conditions: change one widget's appearance based on another widget's value
+  - Rules execute top-to-bottom with optional `stop` flag to halt evaluation
+  - Edit rules via the TUI: press `x` on any widget in the line editor
 
 ### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
 
@@ -549,6 +562,7 @@ Common controls in the line editor:
 - `d` delete selected widget
 - `r` toggle raw value (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
+- `x` open rules editor (define conditional property overrides)
 
 Widget-specific shortcuts:
 - **Git widgets**: `h` toggle hide `no git` output
@@ -559,6 +573,164 @@ Widget-specific shortcuts:
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
 - **Link**: `u` URL, `e` link text
+
+---
+
+### 📏 Widget Rules
+
+Rules let you dynamically change widget properties based on conditions. For example, change the Context % widget to red when usage exceeds 75%, or highlight the Git Branch widget when on `main`.
+
+#### Opening the Rules Editor
+
+In the line editor, press `x` on any widget to open its rules editor.
+
+#### How Rules Work
+
+Rules follow an MS Office-style model:
+- Rules are evaluated **top-to-bottom** in order
+- Each matching rule's `apply` properties are merged onto the widget
+- A rule with `stop: true` halts further evaluation when it matches
+- The widget's base properties serve as defaults (no special "default rule" needed)
+
+#### Rules Schema
+
+```json
+{
+  "id": "context-1",
+  "type": "context-percentage",
+  "color": "white",
+  "rules": [
+    {
+      "when": { "greaterThan": 75 },
+      "apply": { "color": "red", "bold": true },
+      "stop": true
+    },
+    {
+      "when": { "greaterThan": 50 },
+      "apply": { "color": "yellow" },
+      "stop": true
+    }
+  ]
+}
+```
+
+#### Available Operators
+
+| Category | Operators | Example |
+|----------|-----------|---------|
+| **Numeric** | `>`, `>=`, `<`, `<=`, `=`, `≠` | `{ "greaterThan": 75 }` |
+| **String** | `contains`, `starts with`, `ends with` | `{ "contains": "feature/" }` |
+| **String (negated)** | `does not contain`, `does not start with`, `does not end with` | `{ "contains": "main", "not": true }` |
+| **Boolean** | `is true`, `is false` | `{ "isTrue": true }` |
+| **Set** | `in`, `not in` | `{ "in": ["main", "master", "develop"] }` |
+
+#### Cross-Widget Conditions
+
+Reference another widget's value using the `widget` property:
+
+```json
+{
+  "when": { "widget": "git-branch", "in": ["main", "master"] },
+  "apply": { "color": "cyan", "bold": true }
+}
+```
+
+This rule changes the current widget's appearance based on the git branch name, even if the current widget is something else entirely (like Context %).
+
+#### Applyable Properties
+
+Rules can override any widget property:
+- `color` - Foreground color
+- `backgroundColor` - Background color
+- `bold` - Bold text
+- `hide` - Hide the widget entirely
+- `rawValue` - Toggle raw value mode
+- `merge` - Merge with adjacent widget
+- `character` - Override display character
+- Widget-specific metadata
+
+#### Rules Editor Keybinds
+
+The rules editor has two modes, toggled with `Tab`:
+
+**Property Mode:**
+- `↑↓` - Navigate rules
+- `←→` - Open condition editor
+- `a` - Add new rule
+- `d` - Delete selected rule
+- `Enter` - Move mode (reorder rules)
+- `s` - Toggle stop flag
+- `h` - Toggle hide
+- `r` - Toggle raw value
+- `m` - Cycle merge mode
+- `c` - Clear property overrides
+- `Tab` - Switch to color mode
+
+**Color Mode:**
+- `←→` - Cycle foreground color
+- `↑↓` - Navigate rules
+- `f` - Toggle foreground/background editing
+- `b` - Toggle bold
+- `h` - Enter hex color (truecolor terminals)
+- `a` - Enter ANSI 256 color code
+- `r` - Reset colors to base widget
+- `Tab` - Switch to property mode
+
+#### Editing Conditions
+
+Press `←` or `→` in property mode to open the condition editor:
+
+- **←→** cycles between fields: Widget → Operator → Value
+- **↑↓** opens pickers (widget picker or operator picker)
+- **Enter** saves the condition
+- **ESC** cancels
+
+The operator picker is organized by category (Numeric, String, Boolean, Set) — use `←→` to switch categories and `↑↓` to select an operator.
+
+#### Example: Traffic Light Context %
+
+```json
+{
+  "type": "context-percentage",
+  "color": "green",
+  "rules": [
+    { "when": { "greaterThan": 80 }, "apply": { "color": "red", "bold": true }, "stop": true },
+    { "when": { "greaterThan": 60 }, "apply": { "color": "yellow" }, "stop": true }
+  ]
+}
+```
+- 0-60%: Green (base color)
+- 61-80%: Yellow
+- 81-100%: Red + bold
+
+#### Example: Highlight Protected Branches
+
+```json
+{
+  "type": "git-branch",
+  "color": "white",
+  "rules": [
+    { "when": { "in": ["main", "master", "production"] }, "apply": { "color": "cyan", "bold": true } },
+    { "when": { "startsWith": "release/" }, "apply": { "color": "magenta" } }
+  ]
+}
+```
+
+#### Example: Cross-Widget Alert
+
+```json
+{
+  "type": "model",
+  "color": "white",
+  "rules": [
+    {
+      "when": { "widget": "context-percentage", "greaterThan": 90 },
+      "apply": { "color": "red", "bold": true }
+    }
+  ]
+}
+```
+The Model widget turns red when context usage exceeds 90%.
 
 ---
 

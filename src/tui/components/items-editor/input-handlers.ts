@@ -4,11 +4,15 @@ import type {
     WidgetItem,
     WidgetItemType
 } from '../../../types/Widget';
+import type { InputKey } from '../../../utils/input-guards';
+import { toggleWidgetMerge, toggleWidgetRawValue } from '../../../utils/widget-properties';
 import {
     filterWidgetCatalog,
     getWidget,
     type WidgetCatalogEntry
 } from '../../../utils/widgets';
+
+export type { InputKey };
 
 export type WidgetPickerAction = 'change' | 'add' | 'insert';
 export type WidgetPickerLevel = 'category' | 'widget';
@@ -26,21 +30,6 @@ export interface CustomEditorWidgetState {
     widget: WidgetItem;
     impl: Widget;
     action?: string;
-}
-
-export interface InputKey {
-    ctrl?: boolean;
-    meta?: boolean;
-    tab?: boolean;
-    shift?: boolean;
-    upArrow?: boolean;
-    downArrow?: boolean;
-    leftArrow?: boolean;
-    rightArrow?: boolean;
-    return?: boolean;
-    escape?: boolean;
-    backspace?: boolean;
-    delete?: boolean;
 }
 
 type Setter<T> = (value: T | ((prev: T) => T)) => void;
@@ -326,6 +315,76 @@ export function handleMoveInputMode({
     }
 }
 
+/**
+ * Handle widget property editing (raw value, merge, custom keybinds)
+ * Shared between ItemsEditor and RulesEditor
+ */
+export interface HandleWidgetPropertyInputArgs {
+    input: string;
+    key: InputKey;
+    widget: WidgetItem;
+    onUpdate: (updatedWidget: WidgetItem) => void;
+    getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
+    setCustomEditorWidget?: (state: CustomEditorWidgetState | null) => void;
+}
+
+export function handleWidgetPropertyInput({
+    input,
+    key,
+    widget,
+    onUpdate,
+    getCustomKeybindsForWidget,
+    setCustomEditorWidget
+}: HandleWidgetPropertyInputArgs): boolean {
+    // Handle raw value toggle
+    if (input === 'r') {
+        const widgetImpl = getWidget(widget.type);
+        if (!widgetImpl?.supportsRawValue()) {
+            return false;
+        }
+        onUpdate(toggleWidgetRawValue(widget));
+        return true;
+    }
+
+    // Handle merge toggle
+    if (input === 'm') {
+        onUpdate(toggleWidgetMerge(widget));
+        return true;
+    }
+
+    // Handle widget-specific custom keybinds
+    const widgetImpl = getWidget(widget.type);
+    if (!widgetImpl?.getCustomKeybinds) {
+        return false;
+    }
+
+    const customKeybinds = getCustomKeybindsForWidget(widgetImpl, widget);
+    const matchedKeybind = customKeybinds.find(kb => kb.key === input);
+
+    if (matchedKeybind && !key.ctrl) {
+        // Try handleEditorAction first (for widgets that handle actions directly)
+        if (widgetImpl.handleEditorAction) {
+            const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, widget);
+            if (updatedWidget) {
+                onUpdate(updatedWidget);
+                return true;
+            }
+        }
+
+        // If no handleEditorAction or it didn't return a widget, check for renderEditor
+        if (widgetImpl.renderEditor && setCustomEditorWidget) {
+            setCustomEditorWidget({
+                widget,
+                impl: widgetImpl,
+                action: matchedKeybind.action
+            });
+            return true;
+        }
+    }
+
+    return false;
+}
+
 export interface HandleNormalInputModeArgs {
     input: string;
     key: InputKey;
@@ -340,6 +399,7 @@ export interface HandleNormalInputModeArgs {
     openWidgetPicker: (action: WidgetPickerAction) => void;
     getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
+    setRulesEditorWidget: (widget: WidgetItem | null) => void;
 }
 
 export function handleNormalInputMode({
@@ -355,7 +415,8 @@ export function handleNormalInputMode({
     setShowClearConfirm,
     openWidgetPicker,
     getCustomKeybindsForWidget,
-    setCustomEditorWidget
+    setCustomEditorWidget,
+    setRulesEditorWidget
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(Math.max(0, selectedIndex - 1));
@@ -377,10 +438,8 @@ export function handleNormalInputMode({
         if (selectedIndex >= newWidgets.length && selectedIndex > 0) {
             setSelectedIndex(selectedIndex - 1);
         }
-    } else if (input === 'c') {
-        if (widgets.length > 0) {
-            setShowClearConfirm(true);
-        }
+    } else if (input === 'c' && widgets.length > 0) {
+        setShowClearConfirm(true);
     } else if (input === ' ' && widgets.length > 0) {
         const currentWidget = widgets[selectedIndex];
         if (currentWidget?.type === 'separator') {
@@ -391,68 +450,34 @@ export function handleNormalInputMode({
             newWidgets[selectedIndex] = { ...currentWidget, character: nextChar };
             onUpdate(newWidgets);
         }
-    } else if (input === 'r' && widgets.length > 0) {
+    } else if (input === 'x' && widgets.length > 0) {
         const currentWidget = widgets[selectedIndex];
         if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-            const widgetImpl = getWidget(currentWidget.type);
-            if (!widgetImpl?.supportsRawValue()) {
-                return;
-            }
-            const newWidgets = [...widgets];
-            newWidgets[selectedIndex] = { ...currentWidget, rawValue: !currentWidget.rawValue };
-            onUpdate(newWidgets);
-        }
-    } else if (input === 'm' && widgets.length > 0) {
-        const currentWidget = widgets[selectedIndex];
-        if (currentWidget && selectedIndex < widgets.length - 1
-            && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-            const newWidgets = [...widgets];
-            let nextMergeState: boolean | 'no-padding' | undefined;
-
-            if (currentWidget.merge === undefined) {
-                nextMergeState = true;
-            } else if (currentWidget.merge === true) {
-                nextMergeState = 'no-padding';
-            } else {
-                nextMergeState = undefined;
-            }
-
-            if (nextMergeState === undefined) {
-                const { merge, ...rest } = currentWidget;
-                void merge; // Intentionally unused
-                newWidgets[selectedIndex] = rest;
-            } else {
-                newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
-            }
-            onUpdate(newWidgets);
+            setRulesEditorWidget(currentWidget);
         }
     } else if (key.escape) {
         onBack();
     } else if (widgets.length > 0) {
+        // Try widget property input ('r', 'm', custom keybinds)
         const currentWidget = widgets[selectedIndex];
         if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-            const widgetImpl = getWidget(currentWidget.type);
-            if (!widgetImpl?.getCustomKeybinds) {
+            // Special case for merge: only allow if not the last widget
+            if (input === 'm' && selectedIndex >= widgets.length - 1) {
                 return;
             }
 
-            const customKeybinds = getCustomKeybindsForWidget(widgetImpl, currentWidget);
-            const matchedKeybind = customKeybinds.find(kb => kb.key === input);
-
-            if (matchedKeybind && !key.ctrl) {
-                if (widgetImpl.handleEditorAction) {
-                    const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
-                    if (updatedWidget) {
-                        const newWidgets = [...widgets];
-                        newWidgets[selectedIndex] = updatedWidget;
-                        onUpdate(newWidgets);
-                    } else if (widgetImpl.renderEditor) {
-                        setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
-                    }
-                } else if (widgetImpl.renderEditor) {
-                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
-                }
-            }
+            handleWidgetPropertyInput({
+                input,
+                key,
+                widget: currentWidget,
+                onUpdate: (updatedWidget) => {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = updatedWidget;
+                    onUpdate(newWidgets);
+                },
+                getCustomKeybindsForWidget,
+                setCustomEditorWidget
+            });
         }
     }
 }

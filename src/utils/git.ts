@@ -7,6 +7,9 @@ export interface GitChangeCounts {
     deletions: number;
 }
 
+// Cache for git commands - key is "command|cwd"
+const gitCommandCache = new Map<string, string | null>();
+
 export function resolveGitCwd(context: RenderContext): string | undefined {
     const candidates = [
         context.data?.cwd,
@@ -24,18 +27,35 @@ export function resolveGitCwd(context: RenderContext): string | undefined {
 }
 
 export function runGit(command: string, context: RenderContext): string | null {
+    const cwd = resolveGitCwd(context);
+    const cacheKey = `${command}|${cwd ?? ''}`;
+
+    // Check cache first
+    if (gitCommandCache.has(cacheKey)) {
+        return gitCommandCache.get(cacheKey)!;
+    }
+
     try {
-        const cwd = resolveGitCwd(context);
         const output = execSync(`git ${command}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
         }).trim();
 
-        return output.length > 0 ? output : null;
+        const result = output.length > 0 ? output : null;
+        gitCommandCache.set(cacheKey, result);
+        return result;
     } catch {
+        gitCommandCache.set(cacheKey, null);
         return null;
     }
+}
+
+/**
+ * Clear git command cache - for testing only
+ */
+export function clearGitCache(): void {
+    gitCommandCache.clear();
 }
 
 export function isInsideGitWorkTree(context: RenderContext): boolean {

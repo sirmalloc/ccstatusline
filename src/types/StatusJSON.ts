@@ -61,6 +61,7 @@ export const StatusJSONSchema = z.looseObject({
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
     vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    worktree: z.unknown().nullable().optional(),
     rate_limits: z.object({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional()
