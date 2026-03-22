@@ -17,18 +17,18 @@ export class WorktreeModeWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        if (context.isPreview) {
-            return item.rawValue ? '[wt]' : '⎇';
-        }
-
-        const worktree = context.data?.worktree;
+        const worktree = context.isPreview ? true : context.data?.worktree;
         const isInWorktree = worktree !== undefined && worktree !== null;
+
+        if (item.rawValue) {
+            return isInWorktree ? 'true' : 'false';
+        }
 
         if (!isInWorktree) {
             return null;
         }
 
-        return item.rawValue ? '[wt]' : '⎇';
+        return '⎇';
     }
 
     supportsRawValue(): boolean { return true; }
