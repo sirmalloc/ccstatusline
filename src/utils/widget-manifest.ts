@@ -70,7 +70,10 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'skills', create: () => new widgets.SkillsWidget() },
     { type: 'thinking-effort', create: () => new widgets.ThinkingEffortWidget() },
     { type: 'vim-mode', create: () => new widgets.VimModeWidget() },
-    { type: 'worktree-mode', create: () => new widgets.WorktreeModeWidget() }
+    { type: 'worktree-mode', create: () => new widgets.WorktreeModeWidget() },
+    { type: 'worktree-name', create: () => new widgets.WorktreeNameWidget() },
+    { type: 'worktree-branch', create: () => new widgets.WorktreeBranchWidget() },
+    { type: 'worktree-original-branch', create: () => new widgets.WorktreeOriginalBranchWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [

@@ -52,3 +52,6 @@ export { SkillsWidget } from './Skills';
 export { ThinkingEffortWidget } from './ThinkingEffort';
 export { VimModeWidget } from './VimMode';
 export { WorktreeModeWidget } from './WorktreeMode';
+export { WorktreeNameWidget } from './WorktreeName';
+export { WorktreeBranchWidget } from './WorktreeBranch';
+export { WorktreeOriginalBranchWidget } from './WorktreeOriginalBranch';
