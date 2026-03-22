@@ -8,7 +8,6 @@ import {
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
-
 import { clearGitCache } from '../git';
 import {
     getWidgetBooleanValue,
@@ -29,9 +28,7 @@ const mockExecSync = execSync as unknown as {
 
 // Mock git-remote module
 const mockGetForkStatus = vi.fn();
-vi.mock('../git-remote', () => ({
-    getForkStatus: mockGetForkStatus
-}));
+vi.mock('../git-remote', () => ({ getForkStatus: mockGetForkStatus }));
 
 describe('Widget Values', () => {
     beforeEach(() => {
@@ -173,13 +170,7 @@ describe('Widget Values', () => {
     });
 
     test('extracts session-cost value', () => {
-        const context: RenderContext = {
-            data: {
-                cost: {
-                    total_cost_usd: 0.45
-                }
-            }
-        };
+        const context: RenderContext = { data: { cost: { total_cost_usd: 0.45 } } };
 
         const value = getWidgetNumericValue('session-cost', context, { id: 'test', type: 'session-cost' });
         expect(value).toBe(0.45);
@@ -199,9 +190,7 @@ describe('Widget Values', () => {
     });
 
     test('returns null when context-percentage data missing', () => {
-        const context: RenderContext = {
-            data: {}
-        };
+        const context: RenderContext = { data: {} };
         const value = getWidgetNumericValue('context-percentage', context, { id: 'test', type: 'context-percentage' });
         expect(value).toBeNull();
     });
@@ -233,13 +222,7 @@ describe('Widget Values', () => {
         });
 
         test('extracts model string value', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
 
             const value = getWidgetStringValue('model', context, { id: 'test', type: 'model' });
             expect(value).toBe('claude-opus-4-6');
@@ -295,13 +278,7 @@ describe('Widget Values', () => {
         });
 
         test('returns null for non-boolean strings', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
             const value = getWidgetBooleanValue('model', context, { id: 'test', type: 'model' });
             expect(value).toBeNull();
         });

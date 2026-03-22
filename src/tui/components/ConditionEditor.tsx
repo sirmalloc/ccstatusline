@@ -1,11 +1,18 @@
-import { Box, Text, useInput } from 'ink';
+import {
+    Box,
+    Text,
+    useInput
+} from 'ink';
 import React, { useState } from 'react';
 
 import {
-    ALL_OPERATORS,
     BOOLEAN_OPERATORS,
     DISPLAY_OPERATOR_CONFIG,
     DISPLAY_OPERATOR_LABELS,
+    NUMERIC_OPERATORS,
+    OPERATOR_LABELS,
+    SET_OPERATORS,
+    STRING_OPERATORS,
     getConditionNot,
     getConditionOperator,
     getConditionValue,
@@ -15,10 +22,6 @@ import {
     isNumericOperator,
     isSetOperator,
     isStringOperator,
-    NUMERIC_OPERATORS,
-    OPERATOR_LABELS,
-    SET_OPERATORS,
-    STRING_OPERATORS,
     type DisplayOperator,
     type Operator
 } from '../../types/Condition';
@@ -29,6 +32,7 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
+
 import {
     handlePickerInputMode,
     normalizePickerState,
@@ -57,7 +61,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
 
     const [operator, setOperator] = useState<Operator>(initialOp);
     const [valueInput, setValueInput] = useState(() => {
-        if (initialValue === null || initialValue === undefined) {
+        if (initialValue === null) {
             return '50';  // Default numeric value
         }
         if (Array.isArray(initialValue)) {
@@ -107,15 +111,16 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
         }
 
         // Base operators
-        if (isNumericOperator(op as Operator)) return 'Numeric';
-        if (isStringOperator(op as Operator)) return 'String';
-        if (isBooleanOperator(op as Operator)) return 'Boolean';
+        if (isNumericOperator(op as Operator))
+            return 'Numeric';
+        if (isStringOperator(op as Operator))
+            return 'String';
+        if (isBooleanOperator(op as Operator))
+            return 'Boolean';
         return 'Set';
     };
 
-    const getOperatorsInCategory = (category: 'Numeric' | 'String' | 'Boolean' | 'Set'): Array<Operator | DisplayOperator> => {
-        const displayOps: DisplayOperator[] = ['notEquals', 'notContains', 'notStartsWith', 'notEndsWith', 'isFalse'];
-
+    const getOperatorsInCategory = (category: 'Numeric' | 'String' | 'Boolean' | 'Set'): (Operator | DisplayOperator)[] => {
         switch (category) {
             case 'Numeric':
                 return [...NUMERIC_OPERATORS, 'notEquals'];
@@ -131,7 +136,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
     const openOperatorPicker = () => {
         // Check if current condition matches a display operator
         const displayOp = getDisplayOperator(condition);
-        const currentOp = displayOp || operator;
+        const currentOp = displayOp ?? operator;
 
         const currentCategory = getOperatorCategory(currentOp);
         const operatorsInCategory = getOperatorsInCategory(currentCategory);
@@ -161,7 +166,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
         } else {
             // Base operator
             setOperator(selectedOp as Operator);
-            // Don't change not flag for base operators
+            setNotFlag(false);
         }
 
         setOperatorPicker(null);
@@ -200,7 +205,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
 
         // Handle operator picker input
         if (operatorPicker) {
-            const categories: Array<'Numeric' | 'String' | 'Boolean' | 'Set'> = ['Numeric', 'String', 'Boolean', 'Set'];
+            const categories: ('Numeric' | 'String' | 'Boolean' | 'Set')[] = ['Numeric', 'String', 'Boolean', 'Set'];
             const operatorsInCategory = getOperatorsInCategory(operatorPicker.category);
 
             if (key.escape) {
@@ -211,27 +216,44 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                 const nextCategoryIndex = key.rightArrow
                     ? (currentCategoryIndex + 1) % categories.length
                     : (currentCategoryIndex - 1 + categories.length) % categories.length;
-                const newCategory = categories[nextCategoryIndex]!;
+                const newCategory = categories[nextCategoryIndex] ?? categories[0];
+                if (!newCategory) {
+                    setOperatorPicker(null);
+                    return;
+                }
                 const newOps = getOperatorsInCategory(newCategory);
+                const firstOperator = newOps[0];
+                if (!firstOperator) {
+                    setOperatorPicker(null);
+                    return;
+                }
 
                 setOperatorPicker({
                     category: newCategory,
                     selectedIndex: 0,
-                    selectedItem: newOps[0]!
+                    selectedItem: firstOperator
                 });
             } else if (key.upArrow) {
                 const newIndex = Math.max(0, operatorPicker.selectedIndex - 1);
+                const selectedItem = operatorsInCategory[newIndex];
+                if (!selectedItem) {
+                    return;
+                }
                 setOperatorPicker({
                     ...operatorPicker,
                     selectedIndex: newIndex,
-                    selectedItem: operatorsInCategory[newIndex]!
+                    selectedItem
                 });
             } else if (key.downArrow) {
                 const newIndex = Math.min(operatorsInCategory.length - 1, operatorPicker.selectedIndex + 1);
+                const selectedItem = operatorsInCategory[newIndex];
+                if (!selectedItem) {
+                    return;
+                }
                 setOperatorPicker({
                     ...operatorPicker,
                     selectedIndex: newIndex,
-                    selectedItem: operatorsInCategory[newIndex]!
+                    selectedItem
                 });
             } else if (key.return) {
                 applyOperatorPickerSelection(operatorPicker.selectedItem);
@@ -266,7 +288,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                     .split(',')
                     .map(v => v.trim())
                     .filter(v => v.length > 0)
-                    .map(v => {
+                    .map((v) => {
                         // Try to parse as number, otherwise keep as string
                         const num = Number(v);
                         return isNaN(num) ? v : num;
@@ -299,7 +321,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                 setMode('operator');
             } else if (mode === 'operator') {
                 setMode('widget');
-            } else if (mode === 'widget') {
+            } else {
                 setMode('value');  // Wrap around
             }
         } else if (key.rightArrow) {
@@ -308,7 +330,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                 setMode('operator');
             } else if (mode === 'operator') {
                 setMode('value');
-            } else if (mode === 'value') {
+            } else {
                 setMode('widget');  // Wrap around
             }
         } else if (key.upArrow || key.downArrow) {
@@ -374,11 +396,11 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
 
     // Render operator picker if open
     if (operatorPicker) {
-        const categories: Array<'Numeric' | 'String' | 'Boolean' | 'Set'> = ['Numeric', 'String', 'Boolean', 'Set'];
+        const categories: ('Numeric' | 'String' | 'Boolean' | 'Set')[] = ['Numeric', 'String', 'Boolean', 'Set'];
         const operatorsInCategory = getOperatorsInCategory(operatorPicker.category);
 
         return (
-            <Box flexDirection='column' borderStyle="round" borderColor="cyan" padding={1}>
+            <Box flexDirection='column' borderStyle='round' borderColor='cyan' padding={1}>
                 <Box marginBottom={1}>
                     <Text bold>Select Operator</Text>
                 </Box>
@@ -411,7 +433,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                             : OPERATOR_LABELS[op as Operator];
 
                         return (
-                            <Text key={String(op)} color={isSelected ? 'green' : undefined}>
+                            <Text key={op} color={isSelected ? 'green' : undefined}>
                                 {isSelected ? '▶ ' : '  '}
                                 {label}
                             </Text>
@@ -425,24 +447,17 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
     // Render widget picker if open
     if (widgetPicker) {
         const selectedPickerCategory = widgetPicker.selectedCategory ?? (widgetCategories[0] ?? 'All');
-        const pickerCategories = widgetCategories.filter(c =>
-            c.toLowerCase().includes(widgetPicker.categoryQuery.toLowerCase())
+        const pickerCategories = widgetCategories.filter(c => c.toLowerCase().includes(widgetPicker.categoryQuery.toLowerCase())
         );
         const topLevelSearchEntries = widgetPicker.level === 'category' && widgetPicker.categoryQuery.trim().length > 0
             ? filterWidgetCatalog(widgetCatalog, 'All', widgetPicker.categoryQuery)
             : [];
-        const selectedTopLevelSearchEntry = widgetPicker
-            ? topLevelSearchEntries.find(entry => entry.type === widgetPicker.selectedType)
-            : null;
-        const pickerEntries = widgetPicker
-            ? filterWidgetCatalog(widgetCatalog, selectedPickerCategory ?? 'All', widgetPicker.widgetQuery)
-            : [];
-        const selectedPickerEntry = widgetPicker
-            ? pickerEntries.find(entry => entry.type === widgetPicker.selectedType)
-            : null;
+        const selectedTopLevelSearchEntry = topLevelSearchEntries.find(entry => entry.type === widgetPicker.selectedType) ?? null;
+        const pickerEntries = filterWidgetCatalog(widgetCatalog, selectedPickerCategory, widgetPicker.widgetQuery);
+        const selectedPickerEntry = pickerEntries.find(entry => entry.type === widgetPicker.selectedType) ?? null;
 
         return (
-            <Box flexDirection='column' borderStyle="round" borderColor="cyan" padding={1}>
+            <Box flexDirection='column' borderStyle='round' borderColor='cyan' padding={1}>
                 <Box marginBottom={1}>
                     <Text bold>Select Widget to Reference</Text>
                 </Box>
@@ -463,7 +478,10 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                     <>
                         <Text dimColor>↑↓ select widget, Enter apply, ESC back, type to search</Text>
                         <Box>
-                            <Text dimColor>Category: {selectedPickerCategory}</Text>
+                            <Text dimColor>
+                                Category:
+                                {selectedPickerCategory}
+                            </Text>
                         </Box>
                         <Box>
                             <Text dimColor>
@@ -481,7 +499,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                             topLevelSearchEntries.length === 0 ? (
                                 <Text dimColor>No widgets match the search.</Text>
                             ) : (
-                                topLevelSearchEntries.map((entry) => (
+                                topLevelSearchEntries.map(entry => (
                                     <Text key={entry.type} color={selectedTopLevelSearchEntry?.type === entry.type ? 'green' : undefined}>
                                         {selectedTopLevelSearchEntry?.type === entry.type ? '▶ ' : '  '}
                                         {entry.displayName}
@@ -489,7 +507,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                                 ))
                             )
                         ) : (
-                            pickerCategories.map((cat) => (
+                            pickerCategories.map(cat => (
                                 <Text key={cat} color={cat === selectedPickerCategory ? 'green' : undefined}>
                                     {cat === selectedPickerCategory ? '▶ ' : '  '}
                                     {cat}
@@ -500,7 +518,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                         pickerEntries.length === 0 ? (
                             <Text dimColor>No widgets in this category match the search.</Text>
                         ) : (
-                            pickerEntries.map((entry) => (
+                            pickerEntries.map(entry => (
                                 <Text key={entry.type} color={selectedPickerEntry?.type === entry.type ? 'green' : undefined}>
                                     {selectedPickerEntry?.type === entry.type ? '▶ ' : '  '}
                                     {entry.displayName}
@@ -514,7 +532,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
     }
 
     return (
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
+        <Box flexDirection='column' borderStyle='round' borderColor='cyan' padding={1}>
             <Box marginBottom={1}>
                 <Text bold>Edit Condition</Text>
             </Box>
@@ -538,7 +556,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
                         </Text>
                     </>
                 )}
-                {!isValid && <Text color="red"> (invalid)</Text>}
+                {!isValid && <Text color='red'> (invalid)</Text>}
             </Box>
 
             <Box marginBottom={1}>

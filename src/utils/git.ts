@@ -32,7 +32,7 @@ export function runGit(command: string, context: RenderContext): string | null {
 
     // Check cache first
     if (gitCommandCache.has(cacheKey)) {
-        return gitCommandCache.get(cacheKey)!;
+        return gitCommandCache.get(cacheKey) ?? null;
     }
 
     try {
@@ -102,11 +102,16 @@ export function getGitStatus(context: RenderContext): GitStatus {
     let untracked = false;
 
     for (const line of output.split('\n')) {
-        if (line.length < 2) continue;
-        if (!staged && /^[MADRCTU]/.test(line)) staged = true;
-        if (!unstaged && /^.[MD]/.test(line)) unstaged = true;
-        if (!untracked && line.startsWith('??')) untracked = true;
-        if (staged && unstaged && untracked) break;
+        if (line.length < 2)
+            continue;
+        if (!staged && /^[MADRCTU]/.test(line))
+            staged = true;
+        if (!unstaged && /^.[MD]/.test(line))
+            unstaged = true;
+        if (!untracked && line.startsWith('??'))
+            untracked = true;
+        if (staged && unstaged && untracked)
+            break;
     }
 
     return { staged, unstaged, untracked };
@@ -119,25 +124,29 @@ export interface GitAheadBehind {
 
 export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null {
     const output = runGit('rev-list --left-right --count HEAD...@{upstream}', context);
-    if (!output) return null;
+    if (!output)
+        return null;
 
     const parts = output.split(/\s+/);
-    if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+    if (parts.length !== 2 || !parts[0] || !parts[1])
+        return null;
 
     const ahead = parseInt(parts[0], 10);
     const behind = parseInt(parts[1], 10);
 
-    if (isNaN(ahead) || isNaN(behind)) return null;
+    if (isNaN(ahead) || isNaN(behind))
+        return null;
 
     return { ahead, behind };
 }
 
 export function getGitConflictCount(context: RenderContext): number {
     const output = runGit('ls-files --unmerged', context);
-    if (!output) return 0;
+    if (!output)
+        return 0;
 
     // Count unique file paths (unmerged files appear 3 times in output)
-    const files = new Set(output.split('\n').map(line => {
+    const files = new Set(output.split('\n').map((line) => {
         const parts = line.split(/\s+/).slice(3);
         return parts.join(' ');
     }).filter(path => path.length > 0));

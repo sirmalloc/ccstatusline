@@ -5,7 +5,10 @@ import type {
     WidgetItemType
 } from '../../../types/Widget';
 import type { InputKey } from '../../../utils/input-guards';
-import { toggleWidgetMerge, toggleWidgetRawValue } from '../../../utils/widget-properties';
+import {
+    toggleWidgetMerge,
+    toggleWidgetRawValue
+} from '../../../utils/widget-properties';
 import {
     filterWidgetCatalog,
     getWidget,

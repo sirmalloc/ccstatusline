@@ -7,6 +7,12 @@
 
 import type { WidgetItem } from '../types/Widget';
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+    return typeof value === 'object'
+        && value !== null
+        && Object.values(value).every(entry => typeof entry === 'string');
+}
+
 /**
  * Merge base widget with rule.apply overrides, handling metadata deep merge
  *
@@ -22,12 +28,13 @@ export function mergeWidgetWithRuleApply(
     apply: Record<string, unknown>
 ): WidgetItem {
     const merged = { ...widget, ...apply };
+    const applyMetadata = isStringRecord(apply.metadata) ? apply.metadata : undefined;
 
     // Deep merge metadata to preserve both base widget and rule metadata
-    if (apply.metadata || widget.metadata) {
+    if (applyMetadata || widget.metadata) {
         merged.metadata = {
-            ...(widget.metadata as Record<string, string> | undefined),
-            ...(apply.metadata as Record<string, string> | undefined)
+            ...(widget.metadata ?? {}),
+            ...(applyMetadata ?? {})
         };
     }
 
@@ -111,9 +118,12 @@ export function toggleWidgetRawValue(widget: WidgetItem): WidgetItem {
  * Deep equality check for comparing values
  */
 function isEqual(a: unknown, b: unknown): boolean {
-    if (a === b) return true;
-    if (a == null || b == null) return false;
-    if (typeof a !== typeof b) return false;
+    if (a === b)
+        return true;
+    if (a === null || a === undefined || b === null || b === undefined)
+        return false;
+    if (typeof a !== typeof b)
+        return false;
 
     // For objects, do deep comparison
     if (typeof a === 'object' && typeof b === 'object') {
@@ -123,7 +133,8 @@ function isEqual(a: unknown, b: unknown): boolean {
         const aKeys = Object.keys(aObj);
         const bKeys = Object.keys(bObj);
 
-        if (aKeys.length !== bKeys.length) return false;
+        if (aKeys.length !== bKeys.length)
+            return false;
 
         return aKeys.every(key => isEqual(aObj[key], bObj[key]));
     }
@@ -145,7 +156,7 @@ export function extractWidgetOverrides(
         ...Object.keys(currentApply)
     ]);
 
-    allKeys.forEach(key => {
+    allKeys.forEach((key) => {
         // Skip structural properties that shouldn't be in rule.apply
         if (key === 'id' || key === 'type' || key === 'rules') {
             return;

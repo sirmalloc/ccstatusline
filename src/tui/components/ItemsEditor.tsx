@@ -325,13 +325,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 settings={settings}
                 onUpdate={(updatedWidget) => {
                     // Update widget in widgets array
-                    const newWidgets = widgets.map(w =>
-                        w.id === updatedWidget.id ? updatedWidget : w
+                    const newWidgets = widgets.map(w => w.id === updatedWidget.id ? updatedWidget : w
                     );
                     onUpdate(newWidgets);  // This triggers preview update!
                     setRulesEditorWidget(updatedWidget);  // Keep editor in sync
                 }}
-                onBack={() => setRulesEditorWidget(null)}
+                onBack={() => { setRulesEditorWidget(null); }}
             />
         );
     }
@@ -558,7 +557,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                         {widget.type !== 'separator' && widget.type !== 'flex-separator' && (
                                             <Text dimColor>
                                                 {' '}
-                                                [{widget.color ?? 'default'}]
+                                                [
+                                                {widget.color ?? 'default'}
+                                                ]
                                             </Text>
                                         )}
                                         {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
@@ -567,7 +568,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                         {widget.rules && widget.rules.length > 0 && (
                                             <Text dimColor>
                                                 {' '}
-                                                ({widget.rules.length} rule{widget.rules.length === 1 ? '' : 's'})
+                                                (
+                                                {widget.rules.length}
+                                                {' '}
+                                                rule
+                                                {widget.rules.length === 1 ? '' : 's'}
+                                                )
                                             </Text>
                                         )}
                                     </Box>

@@ -1,9 +1,14 @@
-import { Box, Text, useInput } from 'ink';
+import {
+    Box,
+    Text,
+    useInput
+} from 'ink';
 import React, { useState } from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
 import {
     DISPLAY_OPERATOR_LABELS,
+    OPERATOR_LABELS,
     getConditionNot,
     getConditionOperator,
     getConditionValue,
@@ -11,21 +16,23 @@ import {
     getDisplayOperator,
     isBooleanOperator,
     isSetOperator,
-    isStringOperator,
-    OPERATOR_LABELS
+    isStringOperator
 } from '../../types/Condition';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { applyColors } from '../../utils/colors';
-import { extractWidgetOverrides, mergeWidgetWithRuleApply } from '../../utils/widget-properties';
+import {
+    extractWidgetOverrides,
+    mergeWidgetWithRuleApply
+} from '../../utils/widget-properties';
 import { getWidget } from '../../utils/widgets';
 
+import { ConditionEditor } from './ConditionEditor';
 import {
     getCurrentColorInfo,
     handleColorInput,
     type ColorEditorState
 } from './color-editor/input-handlers';
-import { ConditionEditor } from './ConditionEditor';
 import { handleWidgetPropertyInput } from './items-editor/input-handlers';
 
 export interface RulesEditorProps {
@@ -249,16 +256,26 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
         if (key.upArrow && selectedIndex > 0) {
             // Swap with rule above
             const newRules = [...rules];
-            [newRules[selectedIndex], newRules[selectedIndex - 1]] =
-                [newRules[selectedIndex - 1]!, newRules[selectedIndex]!];
+            const currentRule = newRules[selectedIndex];
+            const previousRule = newRules[selectedIndex - 1];
+            if (!currentRule || !previousRule) {
+                return;
+            }
+            newRules[selectedIndex] = previousRule;
+            newRules[selectedIndex - 1] = currentRule;
 
             onUpdate({ ...widget, rules: newRules });
             setSelectedIndex(selectedIndex - 1);
         } else if (key.downArrow && selectedIndex < rules.length - 1) {
             // Swap with rule below
             const newRules = [...rules];
-            [newRules[selectedIndex], newRules[selectedIndex + 1]] =
-                [newRules[selectedIndex + 1]!, newRules[selectedIndex]!];
+            const currentRule = newRules[selectedIndex];
+            const nextRule = newRules[selectedIndex + 1];
+            if (!currentRule || !nextRule) {
+                return;
+            }
+            newRules[selectedIndex] = nextRule;
+            newRules[selectedIndex + 1] = currentRule;
 
             onUpdate({ ...widget, rules: newRules });
             setSelectedIndex(selectedIndex + 1);
@@ -345,9 +362,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
             if (displayOp === 'notContains' || displayOp === 'notStartsWith' || displayOp === 'notEndsWith') {
                 return `when ${widgetName} ${displayLabel} "${value}"`;
             }
-            if (displayOp === 'isFalse') {
-                return `when ${widgetName} ${displayLabel}`;
-            }
+            return `when ${widgetName} ${displayLabel}`;
         }
 
         // Fall back to showing base operator with NOT prefix if needed
@@ -404,7 +419,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
             baseLabels.push('hidden');
         }
 
-        if (tempWidget.character !== undefined && tempWidget.character !== null) {
+        if (tempWidget.character !== undefined) {
             baseLabels.push(`character: ${tempWidget.character}`);
         }
 
@@ -509,20 +524,25 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                     onUpdate({ ...widget, rules: newRules });
                     setConditionEditorIndex(null);
                 }}
-                onCancel={() => setConditionEditorIndex(null)}
+                onCancel={() => { setConditionEditorIndex(null); }}
             />
         );
     }
 
     return (
-        <Box flexDirection="column">
+        <Box flexDirection='column'>
             <Box marginBottom={1}>
-                <Text bold>Rules for {widget.type}</Text>
+                <Text bold>
+                    Rules for
+                    {widget.type}
+                </Text>
                 {moveMode && <Text color='blue'> [MOVE MODE]</Text>}
                 {!moveMode && editorMode === 'color' && (
                     <Text color='magenta'>
                         {' '}
-                        [COLOR MODE{colorEditorState.editingBackground ? ' - BACKGROUND' : ' - FOREGROUND'}]
+                        [COLOR MODE
+                        {colorEditorState.editingBackground ? ' - BACKGROUND' : ' - FOREGROUND'}
+                        ]
                     </Text>
                 )}
                 {!moveMode && editorMode === 'property' && <Text color='cyan'> [PROPERTY MODE]</Text>}
@@ -537,7 +557,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                     </Box>
 
                     {editorMode === 'color' && colorEditorState.hexInputMode && (
-                        <Box marginBottom={1} flexDirection="column">
+                        <Box marginBottom={1} flexDirection='column'>
                             <Text>Enter 6-digit hex color code (without #):</Text>
                             <Text>
                                 #
@@ -550,7 +570,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                     )}
 
                     {editorMode === 'color' && colorEditorState.ansi256InputMode && (
-                        <Box marginBottom={1} flexDirection="column">
+                        <Box marginBottom={1} flexDirection='column'>
                             <Text>Enter ANSI 256 color code (0-255):</Text>
                             <Text>
                                 {colorEditorState.ansi256Input}
@@ -592,7 +612,15 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                         return (
                             <Box marginBottom={1}>
                                 <Text>
-                                    Current {colorType} ({colorNumber}): {styledColor}
+                                    Current
+                                    {' '}
+                                    {colorType}
+                                    {' '}
+                                    (
+                                    {colorNumber}
+                                    ):
+                                    {' '}
+                                    {styledColor}
                                     {tempWidget.bold && <Text bold> [BOLD]</Text>}
                                 </Text>
                             </Box>
@@ -636,7 +664,9 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                                 {/* In move mode, override styling with selection color */}
                                 {/* In normal mode, show rule's styled label */}
                                 <Text color={moveMode ? selectionColor : undefined}>
-                                    {index + 1}. {moveMode ? displayName : styledLabel}
+                                    {index + 1}
+                                    .
+                                    {moveMode ? displayName : styledLabel}
                                 </Text>
                                 <Text dimColor>
                                     {(() => {

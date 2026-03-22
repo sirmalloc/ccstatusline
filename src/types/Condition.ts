@@ -1,22 +1,22 @@
 // Operator types
-export type NumericOperator =
-    | 'greaterThan'
-    | 'lessThan'
-    | 'equals'
-    | 'greaterThanOrEqual'
-    | 'lessThanOrEqual';
+export type NumericOperator
+    = | 'greaterThan'
+        | 'lessThan'
+        | 'equals'
+        | 'greaterThanOrEqual'
+        | 'lessThanOrEqual';
 
-export type StringOperator =
-    | 'contains'
-    | 'startsWith'
-    | 'endsWith';
+export type StringOperator
+    = | 'contains'
+        | 'startsWith'
+        | 'endsWith';
 
-export type BooleanOperator =
-    | 'isTrue';
+export type BooleanOperator
+    = | 'isTrue';
 
-export type SetOperator =
-    | 'in'
-    | 'notIn';
+export type SetOperator
+    = | 'in'
+        | 'notIn';
 
 export type Operator = NumericOperator | StringOperator | BooleanOperator | SetOperator;
 
@@ -70,12 +70,12 @@ export const OPERATOR_LABELS: Record<Operator, string> = {
 };
 
 // Display-only operators - syntactic sugar that maps to base operator + not flag
-export type DisplayOperator =
-    | 'notEquals'           // equals + not
-    | 'notContains'         // contains + not
-    | 'notStartsWith'       // startsWith + not
-    | 'notEndsWith'         // endsWith + not
-    | 'isFalse';            // isTrue: false (special case, not using not flag)
+export type DisplayOperator
+    = | 'notEquals'           // equals + not
+        | 'notContains'         // contains + not
+        | 'notStartsWith'       // startsWith + not
+        | 'notEndsWith'         // endsWith + not
+        | 'isFalse';            // isTrue: false (special case, not using not flag)
 
 export const DISPLAY_OPERATOR_LABELS: Record<DisplayOperator, string> = {
     notEquals: '≠',
@@ -97,14 +97,23 @@ export const DISPLAY_OPERATOR_CONFIG: Record<DisplayOperator, { operator: Operat
 // Get display operator if condition matches a display operator pattern
 export function getDisplayOperator(when: Record<string, unknown>): DisplayOperator | null {
     const operator = getConditionOperator(when);
-    const notFlag = getConditionNot(when);
-    const value = when[operator!];
+    if (!operator) {
+        return null;
+    }
 
-    if (operator === 'equals' && notFlag) return 'notEquals';
-    if (operator === 'contains' && notFlag) return 'notContains';
-    if (operator === 'startsWith' && notFlag) return 'notStartsWith';
-    if (operator === 'endsWith' && notFlag) return 'notEndsWith';
-    if (operator === 'isTrue' && value === false) return 'isFalse';
+    const notFlag = getConditionNot(when);
+    const value = when[operator];
+
+    if (operator === 'equals' && notFlag)
+        return 'notEquals';
+    if (operator === 'contains' && notFlag)
+        return 'notContains';
+    if (operator === 'startsWith' && notFlag)
+        return 'notStartsWith';
+    if (operator === 'endsWith' && notFlag)
+        return 'notEndsWith';
+    if (operator === 'isTrue' && value === false)
+        return 'isFalse';
 
     return null;
 }
@@ -124,16 +133,18 @@ export function getConditionNot(when: Record<string, unknown>): boolean {
 // Helper to get operator from condition
 export function getConditionOperator(when: Record<string, unknown>): Operator | null {
     for (const op of ALL_OPERATORS) {
-        if (op in when) return op;
+        if (op in when)
+            return op;
     }
     return null;
 }
 
 // Helper to get value from condition (works for all operator types)
-export function getConditionValue(when: Record<string, unknown>): number | string | boolean | Array<string | number> | null {
+export function getConditionValue(when: Record<string, unknown>): number | string | boolean | (string | number)[] | null {
     const op = getConditionOperator(when);
-    if (!op) return null;
-    return when[op] as number | string | boolean | Array<string | number> | null;
+    if (!op)
+        return null;
+    return when[op] as number | string | boolean | (string | number)[] | null;
 }
 
 // Type guards for operators

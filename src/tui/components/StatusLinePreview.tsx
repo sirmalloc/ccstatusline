@@ -31,9 +31,7 @@ function createPreviewContextData(): RenderContext['data'] {
             used_percentage: 11.6,  // Matches context-percentage-usable preview
             remaining_percentage: 88.4
         },
-        cost: {
-            total_cost_usd: 2.45
-        }
+        cost: { total_cost_usd: 2.45 }
     };
 }
 

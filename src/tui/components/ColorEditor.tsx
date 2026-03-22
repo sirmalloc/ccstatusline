@@ -191,7 +191,7 @@ export const ColorEditor: React.FC<ColorEditorProps> = ({
     let colorDisplay;
     if (editingBackground) {
         if (!currentColor) {
-            colorDisplay = <Text color="gray">(no background)</Text>;
+            colorDisplay = <Text color='gray'>(no background)</Text>;
         } else {
             const displayName = currentColor.startsWith('ansi256:')
                 ? `ANSI ${currentColor.substring(8)}`
@@ -204,7 +204,7 @@ export const ColorEditor: React.FC<ColorEditorProps> = ({
         }
     } else {
         if (!currentColor) {
-            colorDisplay = <Text color="gray">(default)</Text>;
+            colorDisplay = <Text color='gray'>(default)</Text>;
         } else {
             const displayName = currentColor.startsWith('ansi256:')
                 ? `ANSI ${currentColor.substring(8)}`
@@ -221,16 +221,18 @@ export const ColorEditor: React.FC<ColorEditorProps> = ({
     const widgetName = widgetImpl?.getDisplayName() ?? widget.type;
 
     return (
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
+        <Box flexDirection='column' borderStyle='round' borderColor='cyan' padding={1}>
             <Box marginBottom={1}>
                 <Text bold>
-                    Edit Colors: {widgetName}
-                    {editingBackground && <Text color="yellow"> [BACKGROUND]</Text>}
+                    Edit Colors:
+                    {' '}
+                    {widgetName}
+                    {editingBackground && <Text color='yellow'> [BACKGROUND]</Text>}
                 </Text>
             </Box>
 
             {hexInputMode ? (
-                <Box flexDirection="column">
+                <Box flexDirection='column'>
                     <Text>Enter 6-digit hex color code (without #):</Text>
                     <Text>
                         #
@@ -240,7 +242,7 @@ export const ColorEditor: React.FC<ColorEditorProps> = ({
                     <Text dimColor>Press Enter when done, ESC to cancel</Text>
                 </Box>
             ) : ansi256InputMode ? (
-                <Box flexDirection="column">
+                <Box flexDirection='column'>
                     <Text>Enter ANSI 256 color code (0-255):</Text>
                     <Text>
                         {ansi256Input}
@@ -254,9 +256,13 @@ export const ColorEditor: React.FC<ColorEditorProps> = ({
                 <>
                     <Box marginBottom={1}>
                         <Text>
-                            Current {editingBackground ? 'background' : 'foreground'}
+                            Current
                             {' '}
-                            ({colorNumber === 'custom' ? 'custom' : `${colorNumber}/${colorList.length}`}):
+                            {editingBackground ? 'background' : 'foreground'}
+                            {' '}
+                            (
+                            {colorNumber === 'custom' ? 'custom' : `${colorNumber}/${colorList.length}`}
+                            ):
                             {' '}
                             {colorDisplay}
                             {widget.bold && <Text bold> [BOLD]</Text>}
@@ -265,7 +271,10 @@ export const ColorEditor: React.FC<ColorEditorProps> = ({
 
                     <Box>
                         <Text dimColor>
-                            ←→ cycle {editingBackground ? 'background' : 'foreground'}, (f) bg/fg, (b)old,
+                            ←→ cycle
+                            {' '}
+                            {editingBackground ? 'background' : 'foreground'}
+                            , (f) bg/fg, (b)old,
                             {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                             {' '}
                             (r)eset, ESC cancel

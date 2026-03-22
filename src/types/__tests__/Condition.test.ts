@@ -1,11 +1,15 @@
-import { describe, expect, test } from 'vitest';
+import {
+    describe,
+    expect,
+    test
+} from 'vitest';
 
 import {
     DISPLAY_OPERATOR_LABELS,
+    OPERATOR_LABELS,
     getConditionOperator,
     getConditionValue,
-    getDisplayOperator,
-    OPERATOR_LABELS
+    getDisplayOperator
 } from '../Condition';
 
 describe('Condition utilities', () => {

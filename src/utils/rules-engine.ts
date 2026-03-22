@@ -7,20 +7,15 @@ import {
     isNumericOperator,
     isSetOperator,
     isStringOperator,
-    type BooleanOperator,
     type NumericOperator,
-    type Operator,
     type SetOperator,
     type StringOperator
 } from '../types/Condition';
 import type { RenderContext } from '../types/RenderContext';
 import type { WidgetItem } from '../types/Widget';
 
-import { getWidgetValue } from './widget-values';
 import { mergeWidgetWithRuleApply } from './widget-properties';
-
-// Debug mode - set to true to log rule evaluation details
-const DEBUG_RULES = process.env.DEBUG_RULES === 'true';
+import { getWidgetValue } from './widget-values';
 
 /**
  * Evaluate a numeric condition against a value
@@ -71,7 +66,6 @@ function evaluateStringCondition(
  * Supports type coercion: numbers and strings can be treated as booleans
  */
 function evaluateBooleanCondition(
-    operator: BooleanOperator,
     widgetValue: boolean | number | string,
     conditionValue: boolean
 ): boolean {
@@ -96,12 +90,7 @@ function evaluateBooleanCondition(
         return false;
     }
 
-    switch (operator) {
-        case 'isTrue':
-            return boolValue === conditionValue;
-        default:
-            return false;
-    }
+    return boolValue === conditionValue;
 }
 
 /**
@@ -110,7 +99,7 @@ function evaluateBooleanCondition(
 function evaluateSetCondition(
     operator: SetOperator,
     widgetValue: string | number,
-    conditionValue: Array<string | number>
+    conditionValue: (string | number)[]
 ): boolean {
     switch (operator) {
         case 'in':
@@ -190,7 +179,7 @@ function evaluateCondition(
         if (typeof conditionValue !== 'boolean') {
             return false;  // Invalid condition value
         }
-        result = evaluateBooleanCondition(operator, widgetValue, conditionValue);
+        result = evaluateBooleanCondition(widgetValue, conditionValue);
     } else if (isSetOperator(operator)) {
         if (!Array.isArray(conditionValue)) {
             return false;  // Invalid condition value

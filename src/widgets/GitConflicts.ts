@@ -28,7 +28,8 @@ export class GitConflictsWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
         const noGitText = getHideNoGitModifierText(item);
-        if (noGitText) modifiers.push('hide \'no git\'');
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
 
         return {
             displayText: this.getDisplayName(),
@@ -44,7 +45,8 @@ export class GitConflictsWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            if (item.rawValue) return 'true';
+            if (item.rawValue)
+                return 'true';
             return '⚠ 2';
         }
 
@@ -70,7 +72,8 @@ export class GitConflictsWidget implements Widget {
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context)) return null;
+        if (!isInsideGitWorkTree(context))
+            return null;
         const count = getGitConflictCount(context);
         return count > 0 ? 1 : 0;
     }

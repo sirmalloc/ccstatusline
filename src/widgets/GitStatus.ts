@@ -28,7 +28,8 @@ export class GitStatusWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
         const noGitText = getHideNoGitModifierText(item);
-        if (noGitText) modifiers.push('hide \'no git\'');
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
 
         return {
             displayText: this.getDisplayName(),
@@ -63,9 +64,12 @@ export class GitStatusWidget implements Widget {
 
     private formatStatus(_item: WidgetItem, status: { staged: boolean; unstaged: boolean; untracked: boolean }): string {
         const parts: string[] = [];
-        if (status.staged) parts.push('+');
-        if (status.unstaged) parts.push('*');
-        if (status.untracked) parts.push('?');
+        if (status.staged)
+            parts.push('+');
+        if (status.unstaged)
+            parts.push('*');
+        if (status.untracked)
+            parts.push('?');
 
         return parts.join('');
     }

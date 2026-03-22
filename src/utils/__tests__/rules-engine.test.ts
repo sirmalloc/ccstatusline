@@ -8,7 +8,6 @@ import {
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
-
 import { clearGitCache } from '../git';
 import { applyRules } from '../rules-engine';
 
@@ -483,13 +482,7 @@ describe('Rules Engine', () => {
         });
 
         test('endsWith operator matches suffix', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
 
             const item = {
                 id: 'test',
@@ -508,13 +501,7 @@ describe('Rules Engine', () => {
         });
 
         test('endsWith operator does not match wrong suffix', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
 
             const item = {
                 id: 'test',
@@ -678,13 +665,7 @@ describe('Rules Engine', () => {
         });
 
         test('notIn operator matches when value not in array', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
 
             const item = {
                 id: 'test',
@@ -703,13 +684,7 @@ describe('Rules Engine', () => {
         });
 
         test('notIn operator does not match when value in array', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
 
             const item = {
                 id: 'test',
@@ -897,13 +872,7 @@ describe('Rules Engine', () => {
         });
 
         test('NOT with set operator (notIn)', () => {
-            const context: RenderContext = {
-                data: {
-                    model: {
-                        id: 'claude-opus-4-6'
-                    }
-                }
-            };
+            const context: RenderContext = { data: { model: { id: 'claude-opus-4-6' } } };
 
             const item = {
                 id: 'test',

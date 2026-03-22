@@ -28,7 +28,8 @@ export class GitAheadBehindWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
         const noGitText = getHideNoGitModifierText(item);
-        if (noGitText) modifiers.push('hide \'no git\'');
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
 
         return {
             displayText: this.getDisplayName(),
@@ -44,7 +45,8 @@ export class GitAheadBehindWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            if (item.rawValue) return '2,3';
+            if (item.rawValue)
+                return '2,3';
             return '↑2↓3';
         }
 
@@ -67,8 +69,10 @@ export class GitAheadBehindWidget implements Widget {
         }
 
         const parts: string[] = [];
-        if (result.ahead > 0) parts.push(`↑${result.ahead}`);
-        if (result.behind > 0) parts.push(`↓${result.behind}`);
+        if (result.ahead > 0)
+            parts.push(`↑${result.ahead}`);
+        if (result.behind > 0)
+            parts.push(`↓${result.behind}`);
 
         return parts.join('');
     }
@@ -78,9 +82,11 @@ export class GitAheadBehindWidget implements Widget {
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context)) return null;
+        if (!isInsideGitWorkTree(context))
+            return null;
         const result = getGitAheadBehind(context);
-        if (!result) return null;
+        if (!result)
+            return null;
         // Return total divergence (ahead + behind)
         return result.ahead + result.behind;
     }

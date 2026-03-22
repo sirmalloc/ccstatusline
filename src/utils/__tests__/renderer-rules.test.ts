@@ -8,7 +8,6 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-
 import * as colorsModule from '../colors';
 import {
     preRenderAllWidgets,
@@ -189,7 +188,7 @@ describe('Renderer with Rules', () => {
         // Find the call that rendered our widget (not separators, etc)
         // applyColors is called with (text, fgColor, bgColor, bold, level)
         const widgetRenderCall = applyColorsSpy.mock.calls.find(
-            call => call[0]?.includes('80.0%')  // Our widget content
+            call => call[0].includes('80.0%')  // Our widget content
         );
 
         expect(widgetRenderCall).toBeDefined();
@@ -223,7 +222,7 @@ describe('Renderer with Rules', () => {
         renderStatusLine([widget], baseSettings, highContext, preRendered[0] ?? [], []);
 
         const widgetRenderCall = applyColorsSpy.mock.calls.find(
-            call => call[0]?.includes('80.0%')
+            call => call[0].includes('80.0%')
         );
 
         expect(widgetRenderCall).toBeDefined();

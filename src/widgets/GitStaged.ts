@@ -30,7 +30,8 @@ export class GitStagedWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
         const noGitText = getHideNoGitModifierText(item);
-        if (noGitText) modifiers.push('hide \'no git\'');
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
 
         return {
             displayText: this.getDisplayName(),
@@ -67,7 +68,8 @@ export class GitStagedWidget implements Widget {
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context)) return null;
+        if (!isInsideGitWorkTree(context))
+            return null;
         const status = getGitStatus(context);
         return status.staged ? 1 : 0;
     }

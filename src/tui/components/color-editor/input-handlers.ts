@@ -4,7 +4,10 @@ import {
     getAvailableBackgroundColorsForUI,
     getAvailableColorsForUI
 } from '../../../utils/colors';
-import { shouldInsertInput, type InputKey } from '../../../utils/input-guards';
+import {
+    shouldInsertInput,
+    type InputKey
+} from '../../../utils/input-guards';
 import { getWidget } from '../../../utils/widgets';
 
 export type { InputKey };

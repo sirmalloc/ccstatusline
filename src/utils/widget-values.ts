@@ -18,32 +18,37 @@ import { getWidget } from './widgets';
  */
 function parseNumericValue(text: string | null): number | null {
     // Handle null/empty
-    if (!text) return null;
+    if (!text)
+        return null;
 
     const cleaned = text.trim();
-    if (!cleaned) return null;
+    if (!cleaned)
+        return null;
 
     // Try boolean strings first (case-insensitive)
     const lower = cleaned.toLowerCase();
-    if (lower === 'true') return 1;
-    if (lower === 'false') return 0;
+    if (lower === 'true')
+        return 1;
+    if (lower === 'false')
+        return 0;
 
     // Try to extract number with optional suffix (anywhere in string)
     // Allow commas/underscores within the number (for formatting), but not at the end
-    const match = cleaned.match(/([+-]?[\d,._]*\d)\s*([KMB%])?/i);
+    const match = /([+-]?[\d,._]*\d)\s*([KMB%])?/i.exec(cleaned);
     if (!match) {
         // Not a number, not a boolean - unparseable
         return null;
     }
 
     const [fullMatch, numStr, suffix] = match;
-    if (!numStr) return null;
+    if (!numStr)
+        return null;
 
     // Check if this looks like an identifier rather than a numeric value
     // If there are word characters (letters/numbers) directly adjacent to the matched number
     // without clear separators, it's likely an identifier like "opus-4-6" or "v1.2.3"
-    const beforeMatch = cleaned.substring(0, match.index!);
-    const afterMatch = cleaned.substring(match.index! + fullMatch.length);
+    const beforeMatch = cleaned.substring(0, match.index);
+    const afterMatch = cleaned.substring(match.index + fullMatch.length);
 
     // If there are letters immediately before the number (without separator), skip it
     // Exception: Allow common prefixes like "Ctx:" or "Cost:"
@@ -65,7 +70,8 @@ function parseNumericValue(text: string | null): number | null {
 
     // Parse base number (remove commas, handle dots/underscores)
     const baseNum = parseFloat(numStr.replace(/[,_]/g, ''));
-    if (isNaN(baseNum)) return null;
+    if (isNaN(baseNum))
+        return null;
 
     // Apply multiplier based on suffix
     switch (suffix?.toUpperCase()) {
@@ -95,7 +101,8 @@ export function getWidgetNumericValue(
     item: WidgetItem
 ): number | null {
     const widget = getWidget(widgetType);
-    if (!widget) return null;
+    if (!widget)
+        return null;
 
     // Try explicit numeric value method first
     if (widget.getNumericValue) {
@@ -127,7 +134,8 @@ export function getWidgetStringValue(
     item: WidgetItem
 ): string | null {
     const widget = getWidget(widgetType);
-    if (!widget) return null;
+    if (!widget)
+        return null;
 
     // Render in raw value mode to get clean text without labels
     const rawItem = { ...item, rawValue: true };
@@ -148,7 +156,8 @@ export function getWidgetBooleanValue(
     item: WidgetItem
 ): boolean | null {
     const widget = getWidget(widgetType);
-    if (!widget) return null;
+    if (!widget)
+        return null;
 
     // For git-changes, check if there are any changes
     if (widgetType === 'git-changes') {
@@ -163,11 +172,14 @@ export function getWidgetBooleanValue(
     // Try to parse as boolean from rendered output
     const rawItem = { ...item, rawValue: true };
     const rendered = widget.render(rawItem, context, DEFAULT_SETTINGS);
-    if (!rendered) return null;
+    if (!rendered)
+        return null;
 
     const cleaned = rendered.trim().toLowerCase();
-    if (cleaned === 'true') return true;
-    if (cleaned === 'false') return false;
+    if (cleaned === 'true')
+        return true;
+    if (cleaned === 'false')
+        return false;
 
     // Not a boolean value
     return null;
@@ -191,7 +203,8 @@ export function getWidgetValue(
 ): number | string | boolean | null {
     // Try numeric first (most widgets have numeric values)
     const numericValue = getWidgetNumericValue(widgetType, context, item);
-    if (numericValue !== null) return numericValue;
+    if (numericValue !== null)
+        return numericValue;
 
     // Fall back to string
     return getWidgetStringValue(widgetType, context, item);
