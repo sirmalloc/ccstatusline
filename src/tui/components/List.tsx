@@ -26,6 +26,7 @@ interface ListProps<V = string | number> extends BoxProps {
     items: (ListEntry<V> | '-')[];
     onSelect: (value: V | 'back', index: number) => void;
     onSelectionChange?: (value: V | 'back', index: number) => void;
+    onBack?: () => void;
     initialSelection?: number;
     showBackButton?: boolean;
     color?: ForegroundColorName;
@@ -36,10 +37,11 @@ export function List<V = string | number>({
     items,
     onSelect,
     onSelectionChange,
+    onBack,
     initialSelection = 0,
     showBackButton,
     color,
-    wrapNavigation = false,
+    wrapNavigation = true,
     ...boxProps
 }: ListProps<V>) {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
@@ -95,6 +97,16 @@ export function List<V = string | number>({
 
         if (key.return && selectedItem) {
             onSelect(selectedItem.value, selectedIndex);
+            return;
+        }
+
+        if (key.rightArrow && selectedItem) {
+            onSelect(selectedItem.value, selectedIndex);
+            return;
+        }
+
+        if (key.leftArrow) {
+            if (onBack) { onBack(); }
             return;
         }
     });
