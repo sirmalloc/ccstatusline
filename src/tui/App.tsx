@@ -252,9 +252,6 @@ export const App: React.FC = () => {
             case 'lines':
                 setScreen('lines');
                 break;
-            case 'colors':
-                setScreen('colorLines');
-                break;
             case 'terminalConfig':
                 setScreen('terminalConfig');
                 break;
@@ -444,8 +441,8 @@ export const App: React.FC = () => {
                             if (target === 'width') {
                                 setScreen('terminalWidth');
                             } else {
-                                // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections(prev => ({ ...prev, main: 3 }));
+                                // Save that we came from 'terminalConfig' menu (index 2)
+                                setMenuSelections(prev => ({ ...prev, main: 2 }));
                                 setScreen('main');
                             }
                         }}
@@ -469,8 +466,8 @@ export const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections(prev => ({ ...prev, main: 4 }));
+                            // Save that we came from 'globalOverrides' menu (index 3)
+                            setMenuSelections(prev => ({ ...prev, main: 3 }));
                             setScreen('main');
                         }}
                     />
