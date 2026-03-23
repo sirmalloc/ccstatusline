@@ -25,6 +25,7 @@ import {
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { RulesEditor } from './RulesEditor';
+import { type ColorEditorState } from './color-editor/input-handlers';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -50,6 +51,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [rulesEditorWidget, setRulesEditorWidget] = useState<WidgetItem | null>(null);
+    const [editorMode, setEditorMode] = useState<'items' | 'color'>('items');
+    const [colorEditorState, setColorEditorState] = useState<ColorEditorState>({
+        editingBackground: false,
+        hexInputMode: false,
+        hexInput: '',
+        ansi256InputMode: false,
+        ansi256Input: ''
+    });
     const separatorChars = ['|', '-', ',', ' '];
 
     const widgetCatalog = getWidgetCatalog(settings);
@@ -167,6 +176,35 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
         // Skip input handling when clear confirmation is active - let ConfirmDialog handle it
         if (showClearConfirm) {
+            return;
+        }
+
+        // Tab toggles between items and color mode — check before mode-specific routing
+        // Only when: widgets exist, no overlay active (picker, move mode, custom editor, rules editor, clear confirm)
+        if (key.tab && widgets.length > 0 && !widgetPicker && !moveMode) {
+            const widget = widgets[selectedIndex];
+            if (widget) {
+                const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator'
+                    ? getWidget(widget.type)
+                    : null;
+                if (widgetImpl?.supportsColors(widget)) {
+                    if (editorMode === 'color') {
+                        // Reset hex/ansi256 input modes when switching back to items mode
+                        if (colorEditorState.hexInputMode || colorEditorState.ansi256InputMode) {
+                            setColorEditorState(prev => ({
+                                ...prev,
+                                hexInputMode: false,
+                                hexInput: '',
+                                ansi256InputMode: false,
+                                ansi256Input: ''
+                            }));
+                        }
+                        setEditorMode('items');
+                    } else {
+                        setEditorMode('color');
+                    }
+                }
+            }
             return;
         }
 
