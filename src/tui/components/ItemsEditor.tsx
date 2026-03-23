@@ -27,6 +27,7 @@ import {
     getWidgetCatalogCategories
 } from '../../utils/widgets';
 
+import { ConditionEditor } from './ConditionEditor';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
     getCurrentColorInfo,
@@ -788,6 +789,37 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 </Box>
             </Box>
         );
+    }
+
+    // If condition editor is active, render it instead of the normal UI
+    if (ruleConditionEditorIndex !== null && expandedWidgetId !== null) {
+        const condEditorWidget = widgets.find(w => w.id === expandedWidgetId);
+        if (condEditorWidget) {
+            const condEditorRules = condEditorWidget.rules ?? [];
+            const condEditorRule = condEditorRules[ruleConditionEditorIndex];
+            if (condEditorRule) {
+                return (
+                    <ConditionEditor
+                        widgetType={condEditorWidget.type}
+                        condition={condEditorRule.when}
+                        settings={settings}
+                        onSave={(newCondition) => {
+                            const newRules = [...condEditorRules];
+                            newRules[ruleConditionEditorIndex] = {
+                                ...condEditorRule,
+                                when: newCondition
+                            };
+                            const newWidgets = widgets.map(w => w.id === expandedWidgetId ? { ...w, rules: newRules } : w);
+                            onUpdate(newWidgets);
+                            setRuleConditionEditorIndex(null);
+                        }}
+                        onCancel={() => { setRuleConditionEditorIndex(null); }}
+                    />
+                );
+            }
+            // Rule index out of bounds — reset
+            setRuleConditionEditorIndex(null);
+        }
     }
 
     // Compute expanded widget display name for title bar
