@@ -426,9 +426,9 @@ export function handleNormalInputMode({
     toggleRulesExpansion
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
-        setSelectedIndex(Math.max(0, selectedIndex - 1));
+        setSelectedIndex(selectedIndex > 0 ? selectedIndex - 1 : widgets.length - 1);
     } else if (key.downArrow && widgets.length > 0) {
-        setSelectedIndex(Math.min(widgets.length - 1, selectedIndex + 1));
+        setSelectedIndex(selectedIndex < widgets.length - 1 ? selectedIndex + 1 : 0);
     } else if (key.leftArrow && widgets.length > 0) {
         openWidgetPicker('change');
     } else if (key.rightArrow && widgets.length > 0) {
