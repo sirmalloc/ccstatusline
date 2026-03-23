@@ -7,6 +7,9 @@ export interface GitChangeCounts {
     deletions: number;
 }
 
+// Cache for git commands - key is "command|cwd"
+const gitCommandCache = new Map<string, string | null>();
+
 export function resolveGitCwd(context: RenderContext): string | undefined {
     const candidates = [
         context.data?.cwd,
@@ -24,18 +27,35 @@ export function resolveGitCwd(context: RenderContext): string | undefined {
 }
 
 export function runGit(command: string, context: RenderContext): string | null {
+    const cwd = resolveGitCwd(context);
+    const cacheKey = `${command}|${cwd ?? ''}`;
+
+    // Check cache first
+    if (gitCommandCache.has(cacheKey)) {
+        return gitCommandCache.get(cacheKey) ?? null;
+    }
+
     try {
-        const cwd = resolveGitCwd(context);
         const output = execSync(`git ${command}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
         }).trim();
 
-        return output.length > 0 ? output : null;
+        const result = output.length > 0 ? output : null;
+        gitCommandCache.set(cacheKey, result);
+        return result;
     } catch {
+        gitCommandCache.set(cacheKey, null);
         return null;
     }
+}
+
+/**
+ * Clear git command cache - for testing only
+ */
+export function clearGitCache(): void {
+    gitCommandCache.clear();
 }
 
 export function isInsideGitWorkTree(context: RenderContext): boolean {
@@ -62,4 +82,77 @@ export function getGitChangeCounts(context: RenderContext): GitChangeCounts {
         insertions: unstagedCounts.insertions + stagedCounts.insertions,
         deletions: unstagedCounts.deletions + stagedCounts.deletions
     };
+}
+
+export interface GitStatus {
+    staged: boolean;
+    unstaged: boolean;
+    untracked: boolean;
+}
+
+export function getGitStatus(context: RenderContext): GitStatus {
+    const output = runGit('--no-optional-locks status --porcelain', context);
+
+    if (!output) {
+        return { staged: false, unstaged: false, untracked: false };
+    }
+
+    let staged = false;
+    let unstaged = false;
+    let untracked = false;
+
+    for (const line of output.split('\n')) {
+        if (line.length < 2)
+            continue;
+        if (!staged && /^[MADRCTU]/.test(line))
+            staged = true;
+        if (!unstaged && /^.[MD]/.test(line))
+            unstaged = true;
+        if (!untracked && line.startsWith('??'))
+            untracked = true;
+        if (staged && unstaged && untracked)
+            break;
+    }
+
+    return { staged, unstaged, untracked };
+}
+
+export interface GitAheadBehind {
+    ahead: number;
+    behind: number;
+}
+
+export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null {
+    const output = runGit('rev-list --left-right --count HEAD...@{upstream}', context);
+    if (!output)
+        return null;
+
+    const parts = output.split(/\s+/);
+    if (parts.length !== 2 || !parts[0] || !parts[1])
+        return null;
+
+    const ahead = parseInt(parts[0], 10);
+    const behind = parseInt(parts[1], 10);
+
+    if (isNaN(ahead) || isNaN(behind))
+        return null;
+
+    return { ahead, behind };
+}
+
+export function getGitConflictCount(context: RenderContext): number {
+    const output = runGit('ls-files --unmerged', context);
+    if (!output)
+        return 0;
+
+    // Count unique file paths (unmerged files appear 3 times in output)
+    const files = new Set(output.split('\n').map((line) => {
+        const parts = line.split(/\s+/).slice(3);
+        return parts.join(' ');
+    }).filter(path => path.length > 0));
+    return files.size;
+}
+
+export function getGitShortSha(context: RenderContext): string | null {
+    return runGit('rev-parse --short HEAD', context);
 }
