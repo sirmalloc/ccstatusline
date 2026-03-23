@@ -42,7 +42,6 @@ import {
 import { getPackageVersion } from '../utils/terminal';
 
 import {
-    ColorMenu,
     ConfirmDialog,
     GlobalOverridesMenu,
     InstallMenu,
@@ -66,8 +65,6 @@ interface FlashMessage {
 type AppScreen = 'main'
     | 'lines'
     | 'items'
-    | 'colorLines'
-    | 'colors'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -391,44 +388,6 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
-                    />
-                )}
-                {screen === 'colorLines' && (
-                    <LineSelector
-                        lines={settings.lines}
-                        onLinesUpdate={updateLines}
-                        onSelect={(line) => {
-                            setMenuSelections(prev => ({ ...prev, lines: line }));
-                            setSelectedLine(line);
-                            setScreen('colors');
-                        }}
-                        onBack={() => {
-                            // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections(prev => ({ ...prev, main: 1 }));
-                            setScreen('main');
-                        }}
-                        initialSelection={menuSelections.lines}
-                        title='Select Line to Edit Colors'
-                        blockIfPowerlineActive={true}
-                        settings={settings}
-                        allowEditing={false}
-                    />
-                )}
-                {screen === 'colors' && (
-                    <ColorMenu
-                        widgets={settings.lines[selectedLine] ?? []}
-                        lineIndex={selectedLine}
-                        settings={settings}
-                        onUpdate={(updatedWidgets) => {
-                            // Update only the selected line
-                            const newLines = [...settings.lines];
-                            newLines[selectedLine] = updatedWidgets;
-                            setSettings({ ...settings, lines: newLines });
-                        }}
-                        onBack={() => {
-                            // Go back to line selection for colors
-                            setScreen('colorLines');
-                        }}
                     />
                 )}
                 {screen === 'terminalConfig' && (
