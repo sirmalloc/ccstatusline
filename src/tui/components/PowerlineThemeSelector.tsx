@@ -139,10 +139,11 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
             return;
         }
 
+        const cmd = input.toLowerCase();
         if (key.escape) {
             onUpdate(originalSettingsRef.current);
             onBack();
-        } else if (input === 'c' || input === 'C') {
+        } else if (cmd === 'c') {
             const currentThemeName = themes[selectedIndex];
             if (currentThemeName && currentThemeName !== 'custom') {
                 setShowCustomizeConfirm(true);

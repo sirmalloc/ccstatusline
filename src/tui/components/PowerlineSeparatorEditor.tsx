@@ -211,14 +211,18 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, mode === 'separator' ? newInvertBgs : undefined);
                     setSelectedIndex(selectedIndex + 1);
                 }
-            } else if ((input === 't' || input === 'T') && mode === 'separator') {
-                // Toggle background inversion
-                const newInvertBgs = [...invertBgs];
-                newInvertBgs[selectedIndex] = !(newInvertBgs[selectedIndex] ?? false);
-                updateSeparators(separators, newInvertBgs);
+            } else {
+                const cmd = input.toLowerCase();
+                if (cmd === 't' && mode === 'separator') {
+                    // Toggle background inversion
+                    const newInvertBgs = [...invertBgs];
+                    newInvertBgs[selectedIndex] = !(newInvertBgs[selectedIndex] ?? false);
+                    updateSeparators(separators, newInvertBgs);
+                }
             }
         } else {
             // Normal mode
+            const cmd = input.toLowerCase();
             if (key.escape || key.leftArrow) {
                 onBack();
             } else if (key.upArrow && separators.length > 0) {
@@ -227,7 +231,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 setSelectedIndex(selectedIndex >= separators.length - 1 ? 0 : selectedIndex + 1);
             } else if (key.return && separators.length > 0) {
                 setFocusMode(true);
-            } else if ((input === 'a' || input === 'A') && (mode === 'separator' || separators.length < 3)) {
+            } else if (cmd === 'a' && (mode === 'separator' || separators.length < 3)) {
                 // Add after current (max 3 for caps)
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
@@ -248,7 +252,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(selectedIndex + 1);
                 }
-            } else if ((input === 'i' || input === 'I') && (mode === 'separator' || separators.length < 3)) {
+            } else if (cmd === 'i' && (mode === 'separator' || separators.length < 3)) {
                 // Insert before current (max 3 for caps)
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
@@ -268,13 +272,13 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     }
                     updateSeparators(newSeparators, newInvertBgs);
                 }
-            } else if ((input === 'd' || input === 'D') && (mode !== 'separator' || separators.length > 1)) {
+            } else if (cmd === 'd' && (mode !== 'separator' || separators.length > 1)) {
                 // Delete current (min 1 for separator, no min for caps)
                 const newSeparators = separators.filter((_, i) => i !== selectedIndex);
                 const newInvertBgs = mode === 'separator' ? invertBgs.filter((_, i) => i !== selectedIndex) : [];
                 updateSeparators(newSeparators, newInvertBgs);
                 setSelectedIndex(Math.min(selectedIndex, Math.max(0, newSeparators.length - 1)));
-            } else if (input === 'c' || input === 'C') {
+            } else if (cmd === 'c') {
                 // Clear all
                 if (mode === 'separator') {
                     updateSeparators(['\uE0B0'], [false]);
@@ -282,7 +286,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators([]);
                 }
                 setSelectedIndex(0);
-            } else if (input === 'h' || input === 'H') {
+            } else if (cmd === 'h') {
                 // Enter hex input mode
                 setHexInputMode(true);
                 setHexInput('');
