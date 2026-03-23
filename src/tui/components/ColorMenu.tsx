@@ -27,6 +27,13 @@ import {
     toggleWidgetBold
 } from './color-menu/mutations';
 
+export function getColorsWithHidden(): { name: string; value: string }[] {
+    return [
+        { name: 'Hidden', value: 'hidden' },
+        ...getAvailableColorsForUI()
+    ];
+}
+
 export interface ColorMenuProps {
     widgets: WidgetItem[];
     lineIndex?: number;

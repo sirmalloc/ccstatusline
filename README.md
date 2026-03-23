@@ -38,6 +38,7 @@
 - [Quick Start](#-quick-start)
 - [Windows Support](docs/WINDOWS.md)
 - [Usage](docs/USAGE.md)
+  - [Widget Rules](#-widget-rules)
 - [Development](docs/DEVELOPMENT.md)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -47,6 +48,7 @@
 
 ## 🆕 Recent Updates
 
+<<<<<<< HEAD
 ### v2.2.8 - Git widgets, smarter picker search, and minimalist mode
 
 - **🔀 New Git PR widget** - Added a `Git PR` widget with clickable PR links plus optional status and title display for the current branch.
@@ -56,6 +58,15 @@
 - **🔎 Smarter widget picker search** - The add/change widget picker now supports substring, initialism, and fuzzy matching, with ranked results and live match highlighting.
 - **📏 Better terminal width detection** - Flex separators and right-alignment now work more reliably when ccstatusline is launched through wrapper processes or nested PTYs.
 - **🎨 Powerline theme continuity** - Built-in Powerline themes can now continue colors cleanly across multiple status lines instead of restarting each line.
+- **📏 Conditional Widget Rules** - Define rules that dynamically change widget properties based on conditions
+  - Apply color, bold, hide, and other property overrides when conditions match
+  - Supports numeric operators (`>`, `>=`, `<`, `<=`, `=`, `≠`)
+  - Supports string operators (`contains`, `starts with`, `ends with`, and negations)
+  - Supports boolean operators (`is true`, `is false`)
+  - Supports set operators (`in`, `not in` for matching against lists)
+  - Cross-widget conditions: change one widget's appearance based on another widget's value
+  - Rules execute top-to-bottom with optional `stop` flag to halt evaluation
+  - Edit rules via the TUI: press `x` on any widget in the line editor
 
 ### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
 
@@ -258,6 +269,401 @@ Other supported command values are:
 - `ccstatusline` (for self-managed/global installs)
 
 </details>
+
+> 💡 **Note:** These settings are applied during rendering and don't add widgets to your widget list. They provide a consistent look across your entire status line without modifying individual widget configurations.
+
+> ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
+
+### ⏱️ Block Timer Widget
+
+The Block Timer widget helps you track your progress through Claude Code's 5-hour conversation blocks:
+
+![Block Timer](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/blockTimer.png)
+
+**Display Modes:**
+- **Time Display** - Shows elapsed time as "3hr 45m" (default)
+- **Progress Bar** - Full width 32-character progress bar with percentage
+- **Progress Bar (Short)** - Compact 16-character progress bar with percentage
+
+**Features:**
+- Automatically detects block boundaries from transcript timestamps
+- Floors block start time to the hour for consistent tracking
+- Shows "Block: 3hr 45m" in normal mode or just "3hr 45m" in raw value mode
+- Progress bars show completion percentage (e.g., "[████████████████████████░░░░░░░░] 73.9%")
+- Toggle between modes with the **(p)** key in the widgets editor
+
+### 🔤 Raw Value Mode
+
+Some widgets support "raw value" mode which displays just the value without a label:
+- Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
+- Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
+- Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
+- Normal: `Ctx: 18.6k` → Raw: `18.6k`
+
+### ⌨️ Widget Editor Keybinds
+
+Common controls in the line editor:
+- `a` add widget
+- `i` insert widget
+- `Enter` enter/exit move mode
+- `d` delete selected widget
+- `r` toggle raw value (supported widgets)
+- `m` cycle merge mode (`off` → `merge` → `merge no padding`)
+- `x` open rules editor (define conditional property overrides)
+
+Widget-specific shortcuts:
+- **Git widgets**: `h` toggle hide `no git` output
+- **Context % widgets**: `u` toggle used vs remaining display
+- **Block Timer**: `p` cycle display mode (time/full bar/short bar)
+- **Block Reset Timer**: `p` cycle display mode (time/full bar/short bar)
+- **Weekly Reset Timer**: `p` cycle display mode (time/full bar/short bar)
+- **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
+- **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
+- **Link**: `u` URL, `e` link text
+
+---
+
+### 📏 Widget Rules
+
+Rules let you dynamically change widget properties based on conditions. For example, change the Context % widget to red when usage exceeds 75%, or highlight the Git Branch widget when on `main`.
+
+#### Opening the Rules Editor
+
+In the line editor, press `x` on any widget to open its rules editor.
+
+#### How Rules Work
+
+Rules follow an MS Office-style model:
+- Rules are evaluated **top-to-bottom** in order
+- Each matching rule's `apply` properties are merged onto the widget
+- A rule with `stop: true` halts further evaluation when it matches
+- The widget's base properties serve as defaults (no special "default rule" needed)
+
+#### Rules Schema
+
+```json
+{
+  "id": "context-1",
+  "type": "context-percentage",
+  "color": "white",
+  "rules": [
+    {
+      "when": { "greaterThan": 75 },
+      "apply": { "color": "red", "bold": true },
+      "stop": true
+    },
+    {
+      "when": { "greaterThan": 50 },
+      "apply": { "color": "yellow" },
+      "stop": true
+    }
+  ]
+}
+```
+
+#### Available Operators
+
+| Category | Operators | Example |
+|----------|-----------|---------|
+| **Numeric** | `>`, `>=`, `<`, `<=`, `=`, `≠` | `{ "greaterThan": 75 }` |
+| **String** | `contains`, `starts with`, `ends with` | `{ "contains": "feature/" }` |
+| **String (negated)** | `does not contain`, `does not start with`, `does not end with` | `{ "contains": "main", "not": true }` |
+| **Boolean** | `is true`, `is false` | `{ "isTrue": true }` |
+| **Set** | `in`, `not in` | `{ "in": ["main", "master", "develop"] }` |
+
+#### Cross-Widget Conditions
+
+Reference another widget's value using the `widget` property:
+
+```json
+{
+  "when": { "widget": "git-branch", "in": ["main", "master"] },
+  "apply": { "color": "cyan", "bold": true }
+}
+```
+
+This rule changes the current widget's appearance based on the git branch name, even if the current widget is something else entirely (like Context %).
+
+#### Applyable Properties
+
+Rules can override any widget property:
+- `color` - Foreground color
+- `backgroundColor` - Background color
+- `bold` - Bold text
+- `hide` - Hide the widget entirely
+- `rawValue` - Toggle raw value mode
+- `merge` - Merge with adjacent widget
+- `character` - Override display character
+- Widget-specific metadata
+
+#### Rules Editor Keybinds
+
+The rules editor has two modes, toggled with `Tab`:
+
+**Property Mode:**
+- `↑↓` - Navigate rules
+- `←→` - Open condition editor
+- `a` - Add new rule
+- `d` - Delete selected rule
+- `Enter` - Move mode (reorder rules)
+- `s` - Toggle stop flag
+- `h` - Toggle hide
+- `r` - Toggle raw value
+- `m` - Cycle merge mode
+- `c` - Clear property overrides
+- `Tab` - Switch to color mode
+
+**Color Mode:**
+- `←→` - Cycle foreground color
+- `↑↓` - Navigate rules
+- `f` - Toggle foreground/background editing
+- `b` - Toggle bold
+- `h` - Enter hex color (truecolor terminals)
+- `a` - Enter ANSI 256 color code
+- `r` - Reset colors to base widget
+- `Tab` - Switch to property mode
+
+#### Editing Conditions
+
+Press `←` or `→` in property mode to open the condition editor:
+
+- **←→** cycles between fields: Widget → Operator → Value
+- **↑↓** opens pickers (widget picker or operator picker)
+- **Enter** saves the condition
+- **ESC** cancels
+
+The operator picker is organized by category (Numeric, String, Boolean, Set) — use `←→` to switch categories and `↑↓` to select an operator.
+
+#### Example: Traffic Light Context %
+
+```json
+{
+  "type": "context-percentage",
+  "color": "green",
+  "rules": [
+    { "when": { "greaterThan": 80 }, "apply": { "color": "red", "bold": true }, "stop": true },
+    { "when": { "greaterThan": 60 }, "apply": { "color": "yellow" }, "stop": true }
+  ]
+}
+```
+- 0-60%: Green (base color)
+- 61-80%: Yellow
+- 81-100%: Red + bold
+
+#### Example: Highlight Protected Branches
+
+```json
+{
+  "type": "git-branch",
+  "color": "white",
+  "rules": [
+    { "when": { "in": ["main", "master", "production"] }, "apply": { "color": "cyan", "bold": true } },
+    { "when": { "startsWith": "release/" }, "apply": { "color": "magenta" } }
+  ]
+}
+```
+
+#### Example: Cross-Widget Alert
+
+```json
+{
+  "type": "model",
+  "color": "white",
+  "rules": [
+    {
+      "when": { "widget": "context-percentage", "greaterThan": 90 },
+      "apply": { "color": "red", "bold": true }
+    }
+  ]
+}
+```
+The Model widget turns red when context usage exceeds 90%.
+
+---
+
+### 🔧 Custom Widgets
+
+#### Custom Text Widget
+Add static text to your status line. Perfect for:
+- Project identifiers
+- Environment indicators (dev/prod)
+- Personal labels or reminders
+
+#### Custom Command Widget
+Execute shell commands and display their output dynamically:
+- Refreshes whenever the statusline is updated by Claude Code
+- Receives the full Claude Code JSON data via stdin (model info, session ID, transcript path, etc.)
+- Displays command output inline in your status line
+- Configurable timeout (default: 1000ms)
+- Optional max-width truncation
+- Optional ANSI color preservation (`preserve colors`)
+- Examples:
+  - `pwd | xargs basename` - Show current directory name
+  - `node -v` - Display Node.js version
+  - `git rev-parse --short HEAD` - Show current commit hash
+  - `date +%H:%M` - Display current time
+  - `curl -s wttr.in?format="%t"` - Show current temperature
+  - `npx -y ccusage@latest statusline` - Display Claude usage metrics (set timeout: 5000ms)
+
+> ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
+
+> 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters! They receive the same JSON via stdin that ccstatusline receives from Claude Code, allowing you to chain or combine multiple status line tools.
+
+#### Link Widget
+Create clickable links in terminals that support OSC 8 hyperlinks:
+- `metadata.url` - target URL (http/https)
+- `metadata.text` - optional display text (defaults to URL)
+- Falls back to plain text when URL is missing or unsupported
+
+---
+
+### 🔗 Integration Example: ccusage
+
+[ccusage](https://github.com/ryoppippi/ccusage) is a tool that tracks and displays Claude Code usage metrics. You can integrate it directly into your status line:
+
+1. Add a Custom Command widget
+2. Set command: `npx -y ccusage@latest statusline`
+3. Set timeout: `5000` (5 seconds for initial download)
+4. Enable "preserve colors" to keep ccusage's color formatting
+
+![ccusage integration](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/ccusage.png)
+
+> 📄 **How it works:** The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
+
+### ✂️ Smart Truncation
+
+When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
+Truncation is ANSI/OSC-aware, so preserved color output and OSC 8 hyperlinks remain well-formed.
+
+---
+
+## 📖 API Documentation
+
+Complete API documentation is generated using TypeDoc and includes detailed information about:
+
+- **Core Types**: Configuration interfaces, widget definitions, and render contexts
+- **Widget System**: All available widgets and their customization options  
+- **Utility Functions**: Helper functions for rendering, configuration, and terminal handling
+- **Status Line Rendering**: Core rendering engine and formatting options
+
+### Generating Documentation
+
+To generate the API documentation locally:
+
+```bash
+# Generate documentation
+bun run docs
+
+# Clean generated documentation
+bun run docs:clean
+```
+
+The documentation will be generated in the `docs/` directory and can be viewed by opening `docs/index.html` in your web browser.
+
+### Documentation Structure
+
+- **Types**: Core TypeScript interfaces and type definitions
+- **Widgets**: Individual widget implementations and their APIs
+- **Utils**: Utility functions for configuration, rendering, and terminal operations
+- **Main Module**: Primary entry point and orchestration functions
+
+---
+
+## 🛠️ Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh) (v1.0+)
+- Git
+- Node.js 14+ (optional, for running the built `dist/ccstatusline.js` binary or npm publishing)
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/sirmalloc/ccstatusline.git
+cd ccstatusline
+
+# Install dependencies
+bun install
+```
+
+### Development Commands
+
+```bash
+# Run in TUI mode
+bun run start
+
+# Test piped mode with example payload
+bun run example
+
+# Run tests
+bun test
+
+# Run typecheck + eslint checks without modifying files
+bun run lint
+
+# Apply ESLint auto-fixes intentionally
+bun run lint:fix
+
+# Build for distribution
+bun run build
+
+# Generate TypeDoc documentation
+bun run docs
+```
+
+### Configuration Files
+
+- `~/.config/ccstatusline/settings.json` - ccstatusline UI/render settings
+- `~/.claude/settings.json` - Claude Code settings (`statusLine` command object)
+- `~/.cache/ccstatusline/block-cache-*.json` - block timer cache (keyed by Claude config directory hash)
+
+If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
+
+### Build Notes
+
+- Build target is Node.js 14+ (`dist/ccstatusline.js`)
+- During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
+
+### 📁 Project Structure
+
+```
+ccstatusline/
+├── src/
+│   ├── ccstatusline.ts         # Main entry point
+│   ├── tui/                    # React/Ink configuration UI
+│   │   ├── App.tsx             # Root TUI component
+│   │   ├── index.tsx           # TUI entry point
+│   │   └── components/         # UI components
+│   │       ├── MainMenu.tsx
+│   │       ├── LineSelector.tsx
+│   │       ├── ItemsEditor.tsx
+│   │       ├── ColorMenu.tsx
+│   │       ├── PowerlineSetup.tsx
+│   │       └── ...
+│   ├── widgets/                # Status line widget implementations
+│   │   ├── Model.ts
+│   │   ├── GitBranch.ts
+│   │   ├── TokensTotal.ts
+│   │   ├── OutputStyle.ts
+│   │   └── ...
+│   ├── utils/                  # Utility functions
+│   │   ├── config.ts           # Settings management
+│   │   ├── renderer.ts         # Core rendering logic
+│   │   ├── powerline.ts        # Powerline font utilities
+│   │   ├── colors.ts           # Color definitions
+│   │   └── claude-settings.ts  # Claude Code integration (supports CLAUDE_CONFIG_DIR)
+│   └── types/                  # TypeScript type definitions
+│       ├── Settings.ts
+│       ├── Widget.ts
+│       ├── PowerlineConfig.ts
+│       └── ...
+├── dist/                       # Built files (generated)
+├── package.json
+├── tsconfig.json
+└── README.md
+```
 
 ## 🤝 Contributing
 

@@ -20,7 +20,12 @@ export const WidgetItemSchema = z.object({
     timeout: z.number().optional(),
     merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
     hide: z.boolean().optional(),
-    metadata: z.record(z.string(), z.string()).optional()
+    metadata: z.record(z.string(), z.string()).optional(),
+    rules: z.array(z.object({
+        when: z.record(z.string(), z.any()),  // flexible for now (includes optional 'not' flag)
+        apply: z.record(z.string(), z.any()), // any widget properties
+        stop: z.boolean().optional()
+    })).optional()
 });
 
 // Inferred types from Zod schemas

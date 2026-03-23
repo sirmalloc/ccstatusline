@@ -223,7 +223,8 @@ describe('items-editor input handlers', () => {
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
-            setCustomEditorWidget: vi.fn()
+            setCustomEditorWidget: vi.fn(),
+            setRulesEditorWidget: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -249,7 +250,8 @@ describe('items-editor input handlers', () => {
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
-            setCustomEditorWidget: vi.fn()
+            setCustomEditorWidget: vi.fn(),
+            setRulesEditorWidget: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -275,7 +277,8 @@ describe('items-editor input handlers', () => {
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
-            setCustomEditorWidget: vi.fn()
+            setCustomEditorWidget: vi.fn(),
+            setRulesEditorWidget: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -301,7 +304,8 @@ describe('items-editor input handlers', () => {
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
-            setCustomEditorWidget: vi.fn()
+            setCustomEditorWidget: vi.fn(),
+            setRulesEditorWidget: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -328,7 +332,8 @@ describe('items-editor input handlers', () => {
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
-            setCustomEditorWidget
+            setCustomEditorWidget,
+            setRulesEditorWidget: vi.fn()
         });
 
         expect(onUpdate).not.toHaveBeenCalled();
