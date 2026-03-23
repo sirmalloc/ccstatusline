@@ -178,7 +178,8 @@ describe('git utils', () => {
             expect(getGitStatus({})).toEqual({
                 staged: false,
                 unstaged: false,
-                untracked: false
+                untracked: false,
+                conflicts: false
             });
         });
 
@@ -188,6 +189,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects unstaged modification', () => {
@@ -196,6 +198,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(false);
             expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects both staged and unstaged modification', () => {
@@ -204,6 +207,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects unstaged deletion', () => {
@@ -212,6 +216,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(false);
             expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects staged deletion', () => {
@@ -220,6 +225,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects untracked files', () => {
@@ -229,12 +235,14 @@ describe('git utils', () => {
             expect(result.untracked).toBe(true);
             expect(result.staged).toBe(false);
             expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects merge conflict: both modified (UU)', () => {
             mockExecSync.mockReturnValueOnce('UU file.txt');
 
             const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
         });
@@ -243,6 +251,7 @@ describe('git utils', () => {
             mockExecSync.mockReturnValueOnce('AU file.txt');
 
             const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
         });
@@ -251,6 +260,7 @@ describe('git utils', () => {
             mockExecSync.mockReturnValueOnce('DU file.txt');
 
             const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
         });
@@ -259,6 +269,7 @@ describe('git utils', () => {
             mockExecSync.mockReturnValueOnce('AA file.txt');
 
             const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
         });
@@ -267,6 +278,7 @@ describe('git utils', () => {
             mockExecSync.mockReturnValueOnce('UA file.txt');
 
             const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
         });
@@ -275,6 +287,16 @@ describe('git utils', () => {
             mockExecSync.mockReturnValueOnce('UD file.txt');
 
             const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
+            expect(result.staged).toBe(true);
+            expect(result.unstaged).toBe(true);
+        });
+
+        it('detects merge conflict: both deleted (DD)', () => {
+            mockExecSync.mockReturnValueOnce('DD file.txt');
+
+            const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
         });
@@ -285,6 +307,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects copied file in index (staged)', () => {
@@ -293,6 +316,7 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects type changed file in index (staged)', () => {
@@ -301,12 +325,24 @@ describe('git utils', () => {
             const result = getGitStatus({});
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
         });
 
         it('detects mixed status with multiple files', () => {
             mockExecSync.mockReturnValueOnce('M  staged.txt\0 M unstaged.txt\0?? untracked.txt');
 
             const result = getGitStatus({});
+            expect(result.staged).toBe(true);
+            expect(result.unstaged).toBe(true);
+            expect(result.untracked).toBe(true);
+            expect(result.conflicts).toBe(false);
+        });
+
+        it('detects mixed status with conflicts', () => {
+            mockExecSync.mockReturnValueOnce('UU conflict.txt\0M  staged.txt\0 M unstaged.txt\0?? untracked.txt');
+
+            const result = getGitStatus({});
+            expect(result.conflicts).toBe(true);
             expect(result.staged).toBe(true);
             expect(result.unstaged).toBe(true);
             expect(result.untracked).toBe(true);
@@ -318,7 +354,8 @@ describe('git utils', () => {
             expect(getGitStatus({})).toEqual({
                 staged: false,
                 unstaged: false,
-                untracked: false
+                untracked: false,
+                conflicts: false
             });
         });
     });

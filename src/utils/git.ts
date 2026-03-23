@@ -88,33 +88,38 @@ export interface GitStatus {
     staged: boolean;
     unstaged: boolean;
     untracked: boolean;
+    conflicts: boolean;
 }
 
 export function getGitStatus(context: RenderContext): GitStatus {
     const output = runGit('--no-optional-locks status --porcelain -z', context);
 
     if (!output) {
-        return { staged: false, unstaged: false, untracked: false };
+        return { staged: false, unstaged: false, untracked: false, conflicts: false };
     }
 
     let staged = false;
     let unstaged = false;
     let untracked = false;
+    let conflicts = false;
 
     for (const line of output.split('\0')) {
         if (line.length < 2)
             continue;
+        // Conflict detection: DD, AU, UD, UA, DU, AA, UU
+        if (!conflicts && /^(DD|AU|UD|UA|DU|AA|UU)/.test(line))
+            conflicts = true;
         if (!staged && /^[MADRCTU]/.test(line))
             staged = true;
         if (!unstaged && /^.[MADRCTU]/.test(line))
             unstaged = true;
         if (!untracked && line.startsWith('??'))
             untracked = true;
-        if (staged && unstaged && untracked)
+        if (staged && unstaged && untracked && conflicts)
             break;
     }
 
-    return { staged, unstaged, untracked };
+    return { staged, unstaged, untracked, conflicts };
 }
 
 export interface GitAheadBehind {

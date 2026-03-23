@@ -21,7 +21,7 @@ import {
 
 export class GitStatusWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows git status indicators: + staged, * unstaged, ? untracked'; }
+    getDescription(): string { return 'Shows git status indicators: + staged, * unstaged, ? untracked, ! conflicts'; }
     getDisplayName(): string { return 'Git Status'; }
     getCategory(): string { return 'Git'; }
 
@@ -45,7 +45,7 @@ export class GitStatusWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            return this.formatStatus(item, { staged: true, unstaged: true, untracked: false });
+            return this.formatStatus(item, { staged: true, unstaged: true, untracked: false, conflicts: false });
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -55,15 +55,17 @@ export class GitStatusWidget implements Widget {
         const status = getGitStatus(context);
 
         // Hide if clean
-        if (!status.staged && !status.unstaged && !status.untracked) {
+        if (!status.staged && !status.unstaged && !status.untracked && !status.conflicts) {
             return null;
         }
 
         return this.formatStatus(item, status);
     }
 
-    private formatStatus(_item: WidgetItem, status: { staged: boolean; unstaged: boolean; untracked: boolean }): string {
+    private formatStatus(_item: WidgetItem, status: { staged: boolean; unstaged: boolean; untracked: boolean; conflicts: boolean }): string {
         const parts: string[] = [];
+        if (status.conflicts)
+            parts.push('!');
         if (status.staged)
             parts.push('+');
         if (status.unstaged)
