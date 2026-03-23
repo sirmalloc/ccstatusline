@@ -341,11 +341,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             if (ruleEditorMode === 'color') {
                 // Up/Down navigate rules
                 if (key.upArrow) {
-                    setRuleSelectedIndex(Math.max(0, ruleSelectedIndex - 1));
+                    setRuleSelectedIndex(ruleSelectedIndex > 0 ? ruleSelectedIndex - 1 : rules.length - 1);
                     return;
                 }
                 if (key.downArrow) {
-                    setRuleSelectedIndex(Math.min(rules.length - 1, ruleSelectedIndex + 1));
+                    setRuleSelectedIndex(ruleSelectedIndex < rules.length - 1 ? ruleSelectedIndex + 1 : 0);
                     return;
                 }
 
@@ -407,11 +407,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             // 5. Rule property mode (the only remaining mode after 'color' above)
             // Up/Down navigate rules
             if (key.upArrow) {
-                setRuleSelectedIndex(Math.max(0, ruleSelectedIndex - 1));
+                setRuleSelectedIndex(ruleSelectedIndex > 0 ? ruleSelectedIndex - 1 : rules.length - 1);
                 return;
             }
             if (key.downArrow) {
-                setRuleSelectedIndex(Math.min(rules.length - 1, ruleSelectedIndex + 1));
+                setRuleSelectedIndex(ruleSelectedIndex < rules.length - 1 ? ruleSelectedIndex + 1 : 0);
                 return;
             }
 
@@ -496,11 +496,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             if (widget) {
                 // Up/Down for navigation (same as items mode)
                 if (key.upArrow) {
-                    setSelectedIndex(Math.max(0, selectedIndex - 1));
+                    setSelectedIndex(selectedIndex > 0 ? selectedIndex - 1 : widgets.length - 1);
                     return;
                 }
                 if (key.downArrow) {
-                    setSelectedIndex(Math.min(widgets.length - 1, selectedIndex + 1));
+                    setSelectedIndex(selectedIndex < widgets.length - 1 ? selectedIndex + 1 : 0);
                     return;
                 }
 
