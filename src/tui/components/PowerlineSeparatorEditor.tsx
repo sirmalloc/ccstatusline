@@ -113,7 +113,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     useInput((input, key) => {
         if (hexInputMode) {
             // Hex input mode
-            if (key.escape) {
+            if (key.escape || key.leftArrow) {
                 setHexInputMode(false);
                 setHexInput('');
                 setCursorPos(0);
