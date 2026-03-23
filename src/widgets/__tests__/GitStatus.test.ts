@@ -25,4 +25,8 @@ describe('GitStatusWidget', () => {
         expect(widget.getCategory()).toBe('Git');
         expect(widget.supportsRawValue()).toBe(false);
     });
+
+    it('shows correct description including conflicts', () => {
+        expect(widget.getDescription()).toContain('! conflicts');
+    });
 });
