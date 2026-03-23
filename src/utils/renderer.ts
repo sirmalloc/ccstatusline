@@ -19,6 +19,7 @@ import {
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import { applyRules } from './rules-engine';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -165,13 +166,19 @@ function renderPowerlineStatusLine(
         }
 
         if (widgetText) {
+            // Use widget from preRendered (has rules applied) instead of original widget
+            const widgetWithRules = preRendered?.widget ?? widget;
+            const effectiveColor = widgetWithRules.color ?? defaultColor;
+
+            // Update widget color for use in powerline rendering (use widgetWithRules not widget!)
+            const coloredWidget = { ...widgetWithRules, color: effectiveColor };
             // Apply default padding from settings
             const padding = settings.defaultPadding ?? '';
 
             // If override FG color is set and this is a custom command with preserveColors,
             // we need to strip the ANSI codes from the widget text
             if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                && widget.type === 'custom-command' && widget.preserveColors) {
+                && coloredWidget.type === 'custom-command' && coloredWidget.preserveColors) {
                 // Strip ANSI color codes when override is active
                 widgetText = stripSgrCodes(widgetText);
             }
@@ -180,19 +187,19 @@ function renderPowerlineStatusLine(
             const prevItem = i > 0 ? filteredWidgets[i - 1] : null;
             const nextItem = i < filteredWidgets.length - 1 ? filteredWidgets[i + 1] : null;
             const omitLeadingPadding = prevItem?.merge === 'no-padding';
-            const omitTrailingPadding = widget.merge === 'no-padding' && nextItem;
+            const omitTrailingPadding = coloredWidget.merge === 'no-padding' && nextItem;
 
             const leadingPadding = omitLeadingPadding ? '' : padding;
             const trailingPadding = omitTrailingPadding ? '' : padding;
             const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
 
-            // Determine colors
-            let fgColor = widget.color ?? defaultColor;
-            let bgColor = widget.backgroundColor;
+            // Determine colors - use effectiveColor from threshold resolution
+            let fgColor = effectiveColor;
+            let bgColor = coloredWidget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
             // For custom commands with preserveColors, only skip foreground theme colors
-            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
+            const skipFgTheme = coloredWidget.type === 'custom-command' && coloredWidget.preserveColors;
 
             if (themeColors) {
                 if (!skipFgTheme) {
@@ -202,7 +209,7 @@ function renderPowerlineStatusLine(
 
                 // Only increment color index if this widget is not merged with the next one
                 // This ensures merged widgets share the same color
-                if (!widget.merge) {
+                if (!coloredWidget.merge) {
                     widgetColorIndex++;
                 }
             }
@@ -216,7 +223,7 @@ function renderPowerlineStatusLine(
                 content: paddedText,
                 bgColor: bgColor ?? undefined,  // Make sure undefined, not empty string
                 fgColor: fgColor,
-                widget: widget
+                widget: coloredWidget
             });
         }
     }
@@ -513,7 +520,16 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            // Apply rules to widget properties before rendering
+            // Pass all widgets in the line for cross-widget condition evaluation
+            const widgetWithRules = applyRules(widget, context, lineWidgets);
+
+            // Skip rendering if widget is hidden
+            if (widgetWithRules.hide) {
+                continue;
+            }
+
+            const widgetText = widgetImpl.render(widgetWithRules, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
@@ -521,7 +537,7 @@ export function preRenderAllWidgets(
             preRenderedLine.push({
                 content: widgetText,
                 plainLength,
-                widget
+                widget: widgetWithRules  // Use widget with rules applied!
             });
         }
 
@@ -682,9 +698,11 @@ export function renderStatusLine(
 
             if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
-                const prevWidget = widgets[i - 1];
+                // Use preRendered widget which has rules applied for accurate colors
+                const prevPreRendered = preRenderedWidgets[i - 1];
+                const prevWidget = prevPreRendered?.widget ?? widgets[i - 1];
                 if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
-                    // Get the previous widget's colors
+                    // Get the previous widget's colors (with rules applied)
                     let widgetColor = prevWidget.color;
                     if (!widgetColor) {
                         const widgetImpl = getWidget(prevWidget.type);
@@ -723,24 +741,28 @@ export function renderStatusLine(
             }
 
             if (widgetText) {
+                // Use widget from preRendered which has rules applied (colors, bold, etc.)
+                const effectiveWidget = preRendered?.widget ?? widget;
+                const effectiveColor = effectiveWidget.color ?? defaultColor;
+
                 // Special handling for custom-command with preserveColors
-                if (widget.type === 'custom-command' && widget.preserveColors) {
+                if (widget.type === 'custom-command' && effectiveWidget.preserveColors) {
                     // Handle max width truncation for commands with ANSI codes
                     let finalOutput = widgetText;
-                    if (widget.maxWidth && widget.maxWidth > 0) {
+                    if (effectiveWidget.maxWidth && effectiveWidget.maxWidth > 0) {
                         const plainLength = getVisibleWidth(widgetText);
-                        if (plainLength > widget.maxWidth) {
-                            finalOutput = truncateStyledText(widgetText, widget.maxWidth, { ellipsis: false });
+                        if (plainLength > effectiveWidget.maxWidth) {
+                            finalOutput = truncateStyledText(widgetText, effectiveWidget.maxWidth, { ellipsis: false });
                         }
                     }
                     // Preserve original colors from command output
-                    elements.push({ content: finalOutput, type: widget.type, widget });
+                    elements.push({ content: finalOutput, type: widget.type, widget: effectiveWidget });
                 } else {
-                    // Normal widget rendering with colors
+                    // Normal widget rendering with colors - use effectiveWidget which has rules applied
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, effectiveColor, effectiveWidget.backgroundColor, effectiveWidget.bold),
                         type: widget.type,
-                        widget
+                        widget: effectiveWidget
                     });
                 }
             }
