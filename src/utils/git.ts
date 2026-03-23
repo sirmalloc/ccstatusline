@@ -40,7 +40,7 @@ export function runGit(command: string, context: RenderContext): string | null {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
-        }).trim();
+        }).trimEnd();
 
         const result = output.length > 0 ? output : null;
         gitCommandCache.set(cacheKey, result);
@@ -91,7 +91,7 @@ export interface GitStatus {
 }
 
 export function getGitStatus(context: RenderContext): GitStatus {
-    const output = runGit('--no-optional-locks status --porcelain', context);
+    const output = runGit('--no-optional-locks status --porcelain -z', context);
 
     if (!output) {
         return { staged: false, unstaged: false, untracked: false };
@@ -101,12 +101,12 @@ export function getGitStatus(context: RenderContext): GitStatus {
     let unstaged = false;
     let untracked = false;
 
-    for (const line of output.split('\n')) {
+    for (const line of output.split('\0')) {
         if (line.length < 2)
             continue;
         if (!staged && /^[MADRCTU]/.test(line))
             staged = true;
-        if (!unstaged && /^.[MD]/.test(line))
+        if (!unstaged && /^.[MADRCTU]/.test(line))
             unstaged = true;
         if (!untracked && line.startsWith('??'))
             untracked = true;
