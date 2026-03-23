@@ -10,7 +10,6 @@ import { type PowerlineFontStatus } from '../../utils/powerline';
 import { List } from './List';
 
 export type MainMenuOption = 'lines'
-    | 'colors'
     | 'powerline'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -49,12 +48,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             value: 'lines',
             description:
                 'Configure any number of status lines with various widgets like model info, git status, and token usage'
-        },
-        {
-            label: '🎨 Edit Colors',
-            value: 'colors',
-            description:
-                'Customize colors for each widget including foreground, background, and bold styling'
         },
         {
             label: '⚡ Powerline Setup',
