@@ -357,7 +357,10 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
 
             // Format based on display operator type
             if (displayOp === 'notEquals') {
-                return `when ${widgetName} ${displayLabel}${value}`;
+                if (typeof value === 'string') {
+                    return `when ${widgetName} ${displayLabel} "${value}"`;
+                }
+                return `when ${widgetName} ${displayLabel} ${value}`;
             }
             if (displayOp === 'notContains' || displayOp === 'notStartsWith' || displayOp === 'notEndsWith') {
                 return `when ${widgetName} ${displayLabel} "${value}"`;

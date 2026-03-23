@@ -6,13 +6,9 @@ import {
 import React, { useState } from 'react';
 
 import {
-    BOOLEAN_OPERATORS,
     DISPLAY_OPERATOR_CONFIG,
     DISPLAY_OPERATOR_LABELS,
-    NUMERIC_OPERATORS,
     OPERATOR_LABELS,
-    SET_OPERATORS,
-    STRING_OPERATORS,
     getConditionNot,
     getConditionOperator,
     getConditionValue,
@@ -123,13 +119,13 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
     const getOperatorsInCategory = (category: 'Numeric' | 'String' | 'Boolean' | 'Set'): (Operator | DisplayOperator)[] => {
         switch (category) {
             case 'Numeric':
-                return [...NUMERIC_OPERATORS, 'notEquals'];
+                return ['equals', 'notEquals', 'greaterThan', 'greaterThanOrEqual', 'lessThan', 'lessThanOrEqual'];
             case 'String':
-                return [...STRING_OPERATORS, 'notContains', 'notStartsWith', 'notEndsWith'];
+                return ['equals', 'notEquals', 'contains', 'notContains', 'startsWith', 'notStartsWith', 'endsWith', 'notEndsWith', 'isEmpty', 'notEmpty'];
             case 'Boolean':
-                return [...BOOLEAN_OPERATORS, 'isFalse'];
+                return ['isTrue', 'isFalse'];
             case 'Set':
-                return SET_OPERATORS;
+                return ['in', 'notIn'];
         }
     };
 
@@ -360,8 +356,13 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
     });
 
     // Check if current state matches a display operator
+    // Parse the value to its proper type so display operator detection works correctly
+    // (valueInput is always a string, but operators like isTrue need boolean values)
+    const parsedValue = isBooleanOperator(operator)
+        ? valueInput.toLowerCase() === 'true'
+        : valueInput;
     const currentCondition = {
-        [operator]: valueInput,
+        [operator]: parsedValue,
         ...(notFlag ? { not: true } : {}),
         ...(selectedWidget !== 'self' ? { widget: selectedWidget } : {})
     };

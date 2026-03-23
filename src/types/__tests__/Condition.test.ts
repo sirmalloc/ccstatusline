@@ -25,6 +25,8 @@ describe('Condition utilities', () => {
         expect(getConditionOperator({ contains: 'text' })).toBe('contains');
         expect(getConditionOperator({ startsWith: 'prefix' })).toBe('startsWith');
         expect(getConditionOperator({ endsWith: 'suffix' })).toBe('endsWith');
+        expect(getConditionOperator({ equals: 'exact' })).toBe('equals');
+        expect(getConditionOperator({ isEmpty: true })).toBe('isEmpty');
 
         // Boolean operators
         expect(getConditionOperator({ isTrue: true })).toBe('isTrue');
@@ -61,11 +63,11 @@ describe('Condition utilities', () => {
     });
 
     test('all operators have labels', () => {
-        expect(OPERATOR_LABELS.greaterThan).toBe('>');
-        expect(OPERATOR_LABELS.greaterThanOrEqual).toBe('≥');
-        expect(OPERATOR_LABELS.lessThan).toBe('<');
-        expect(OPERATOR_LABELS.lessThanOrEqual).toBe('≤');
-        expect(OPERATOR_LABELS.equals).toBe('=');
+        expect(OPERATOR_LABELS.greaterThan).toBe('greater than');
+        expect(OPERATOR_LABELS.greaterThanOrEqual).toBe('greater than or equal');
+        expect(OPERATOR_LABELS.lessThan).toBe('less than');
+        expect(OPERATOR_LABELS.lessThanOrEqual).toBe('less than or equal');
+        expect(OPERATOR_LABELS.equals).toBe('equals');
     });
 
     test('handles invalid conditions gracefully', () => {
@@ -92,16 +94,21 @@ describe('Condition utilities', () => {
         // notEndsWith: endsWith + not
         expect(getDisplayOperator({ endsWith: 'suffix', not: true })).toBe('notEndsWith');
 
+        // notEmpty: isEmpty + not
+        expect(getDisplayOperator({ isEmpty: true, not: true })).toBe('notEmpty');
+        expect(getDisplayOperator({ isEmpty: true })).toBeNull();
+
         // isFalse: isTrue with value false
         expect(getDisplayOperator({ isTrue: false })).toBe('isFalse');
         expect(getDisplayOperator({ isTrue: true })).toBeNull();
     });
 
     test('display operators have labels', () => {
-        expect(DISPLAY_OPERATOR_LABELS.notEquals).toBe('≠');
+        expect(DISPLAY_OPERATOR_LABELS.notEquals).toBe('not equals');
         expect(DISPLAY_OPERATOR_LABELS.notContains).toBe('does not contain');
         expect(DISPLAY_OPERATOR_LABELS.notStartsWith).toBe('does not start with');
         expect(DISPLAY_OPERATOR_LABELS.notEndsWith).toBe('does not end with');
+        expect(DISPLAY_OPERATOR_LABELS.notEmpty).toBe('is not empty');
         expect(DISPLAY_OPERATOR_LABELS.isFalse).toBe('is false');
     });
 });
