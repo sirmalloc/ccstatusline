@@ -657,7 +657,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         // Rule-level modes take priority
         if (expandedWidgetId !== null) {
             if (ruleMoveMode) {
-                return '↑↓ move rule, ←→ edit condition, Enter/ESC exit move mode';
+                return '↑↓ move rule, Enter/ESC exit move mode';
             }
 
             if (ruleEditorMode === 'color') {
@@ -680,7 +680,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
             // Rule property mode
             const expandedWidget = widgets.find(w => w.id === expandedWidgetId);
-            let ruleText = '↑↓ select, Enter move, (a)dd, (d)elete, (s)top, (h)ide, (c)lear properties, Tab: color mode, ← collapse, ESC: collapse';
+            let ruleText = '↑↓ select, → edit condition, Enter move, (a)dd, (d)elete, (s)top, (h)ide, (c)lear properties, Tab: color mode, ← collapse, ESC: collapse';
 
             if (expandedWidget && expandedWidget.type !== 'separator' && expandedWidget.type !== 'flex-separator') {
                 const expandedWidgetImpl = getWidget(expandedWidget.type);
