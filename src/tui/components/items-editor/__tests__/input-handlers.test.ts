@@ -224,7 +224,7 @@ describe('items-editor input handlers', () => {
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn(),
-            setRulesEditorWidget: vi.fn()
+            toggleRulesExpansion: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -251,7 +251,7 @@ describe('items-editor input handlers', () => {
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn(),
-            setRulesEditorWidget: vi.fn()
+            toggleRulesExpansion: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -278,7 +278,7 @@ describe('items-editor input handlers', () => {
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn(),
-            setRulesEditorWidget: vi.fn()
+            toggleRulesExpansion: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -305,7 +305,7 @@ describe('items-editor input handlers', () => {
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn(),
-            setRulesEditorWidget: vi.fn()
+            toggleRulesExpansion: vi.fn()
         });
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
@@ -333,7 +333,7 @@ describe('items-editor input handlers', () => {
             openWidgetPicker: vi.fn(),
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget,
-            setRulesEditorWidget: vi.fn()
+            toggleRulesExpansion: vi.fn()
         });
 
         expect(onUpdate).not.toHaveBeenCalled();
