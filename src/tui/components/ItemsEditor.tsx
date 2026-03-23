@@ -179,7 +179,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
-        // Tab toggles between items and color mode — check before mode-specific routing
+        // Tab toggles between items and color mode — always consumed here, never falls through
         // Only when: widgets exist, no overlay active (picker, move mode, custom editor, rules editor, clear confirm)
         if (key.tab && widgets.length > 0 && !widgetPicker && !moveMode) {
             const widget = widgets[selectedIndex];
@@ -206,6 +206,27 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 }
             }
             return;
+        }
+
+        // Auto-reset color mode if the current widget no longer supports colors
+        // (e.g. user navigated to a different widget while in color mode)
+        if (editorMode === 'color') {
+            const widget = widgets[selectedIndex];
+            const widgetImpl = widget && widget.type !== 'separator' && widget.type !== 'flex-separator'
+                ? getWidget(widget.type)
+                : null;
+            const supportsColors = widget !== undefined && (widgetImpl?.supportsColors(widget) ?? false);
+            if (!supportsColors) {
+                setEditorMode('items');
+                setColorEditorState(prev => ({
+                    ...prev,
+                    editingBackground: false,
+                    hexInputMode: false,
+                    hexInput: '',
+                    ansi256InputMode: false,
+                    ansi256Input: ''
+                }));
+            }
         }
 
         if (widgetPicker) {
