@@ -440,6 +440,8 @@ export function handleNormalInputMode({
         const currentWidget = widgets[selectedIndex];
         if (currentWidget?.id === expandedWidgetId) {
             toggleRulesExpansion(currentWidget);
+        } else if (expandedWidgetId === null) {
+            onBack();
         }
     } else if (key.return && widgets.length > 0) {
         setMoveMode(true);
