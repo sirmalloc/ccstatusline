@@ -141,12 +141,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                 return;
         }
 
-        if (key.escape || key.leftArrow) {
+        if (key.escape) {
             onBack();
-        }
-
-        if (key.rightArrow && localLines.length > 0 && selectedIndex < localLines.length) {
-            onSelect(selectedIndex);
         }
     });
 
@@ -302,6 +298,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         onSelectionChange={(_, index) => {
                             setSelectedIndex(index);
                         }}
+                        onBack={onBack}
                         initialSelection={selectedIndex}
                         showBackButton={true}
                     />
