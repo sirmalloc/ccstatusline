@@ -716,7 +716,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
         // Items mode
         let text = hasWidgets
-            ? '↑↓ select, ←→ open type picker'
+            ? '↑↓ select, → expand rules'
             : '(a)dd via picker, (i)nsert via picker';
         if (isSeparator) {
             text += ', Space edit separator';
@@ -729,9 +729,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
         if (canMerge) {
             text += ', (m)erge';
-        }
-        if (!isSeparator && !isFlexSeparator && hasWidgets) {
-            text += ', (x) rules';
         }
         if (hasWidgets && !isSeparator && !isFlexSeparator) {
             text += ', Tab: color mode';
@@ -874,7 +871,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             </Box>
             {moveMode ? (
                 <Box flexDirection='column' marginBottom={1}>
-                    <Text dimColor>↑↓ to move widget, ESC or Enter to exit move mode</Text>
+                    <Text dimColor>↑↓ to move widget, ←→ change type, ESC or Enter to exit move mode</Text>
                 </Box>
             ) : widgetPicker ? (
                 <Box flexDirection='column'>
