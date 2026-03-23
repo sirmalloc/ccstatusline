@@ -137,7 +137,8 @@ describe('items-editor input handlers', () => {
             selectedIndex: 1,
             onUpdate,
             setSelectedIndex,
-            setMoveMode
+            setMoveMode,
+            openWidgetPicker: vi.fn()
         });
 
         expect(onUpdate).toHaveBeenCalledWith([
@@ -160,6 +161,7 @@ describe('items-editor input handlers', () => {
             widgets,
             selectedIndex: 0,
             separatorChars: ['|', '-'],
+            expandedWidgetId: null,
             onBack: vi.fn(),
             onUpdate,
             setSelectedIndex: vi.fn(),
@@ -187,6 +189,7 @@ describe('items-editor input handlers', () => {
             widgets,
             selectedIndex: 0,
             separatorChars: ['|', '-'],
+            expandedWidgetId: null,
             onBack: vi.fn(),
             onUpdate,
             setSelectedIndex: vi.fn(),
@@ -214,6 +217,7 @@ describe('items-editor input handlers', () => {
             widgets,
             selectedIndex: 0,
             separatorChars: ['|', '-'],
+            expandedWidgetId: null,
             onBack: vi.fn(),
             onUpdate,
             setSelectedIndex: vi.fn(),
@@ -241,6 +245,7 @@ describe('items-editor input handlers', () => {
             widgets,
             selectedIndex: 0,
             separatorChars: ['|', '-'],
+            expandedWidgetId: null,
             onBack: vi.fn(),
             onUpdate,
             setSelectedIndex: vi.fn(),
@@ -269,6 +274,7 @@ describe('items-editor input handlers', () => {
             widgets,
             selectedIndex: 0,
             separatorChars: ['|', '-'],
+            expandedWidgetId: null,
             onBack: vi.fn(),
             onUpdate,
             setSelectedIndex: vi.fn(),
