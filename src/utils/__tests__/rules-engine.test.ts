@@ -519,6 +519,176 @@ describe('Rules Engine', () => {
             expect(result.bold).toBeUndefined();
         });
 
+        test('equals operator matches exact string', () => {
+            // Mock git commands for branch name
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('main\n');
+
+            const item = {
+                id: 'test',
+                type: 'git-branch',
+                color: 'white',
+                rules: [
+                    {
+                        when: { equals: 'main' },
+                        apply: { color: 'cyan' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('cyan');
+        });
+
+        test('equals operator does not match different string', () => {
+            // Mock git commands for branch name
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('develop\n');
+
+            const item = {
+                id: 'test',
+                type: 'git-branch',
+                color: 'white',
+                rules: [
+                    {
+                        when: { equals: 'main' },
+                        apply: { color: 'cyan' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('white');
+        });
+
+        test('equals with not flag acts as notEquals for strings', () => {
+            // Mock git commands for branch name
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('develop\n');
+
+            const item = {
+                id: 'test',
+                type: 'git-branch',
+                color: 'white',
+                rules: [
+                    {
+                        when: { equals: 'main', not: true },
+                        apply: { color: 'yellow' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('yellow');
+        });
+
+        test('equals still works for numeric values', () => {
+            const item = {
+                id: 'test',
+                type: 'context-percentage',
+                color: 'white',
+                rules: [
+                    {
+                        when: { equals: 80 },
+                        apply: { color: 'green' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, mockContext, [item]);
+            expect(result.color).toBe('green');
+        });
+
+        test('isEmpty matches empty string widget', () => {
+            const item = {
+                id: 'test',
+                type: 'custom-text',
+                customText: '',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isEmpty: true },
+                        apply: { color: 'gray' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('gray');
+        });
+
+        test('isEmpty does not match non-empty string', () => {
+            const item = {
+                id: 'test',
+                type: 'custom-text',
+                customText: 'hello',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isEmpty: true },
+                        apply: { color: 'gray' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('white');
+        });
+
+        test('isEmpty matches null widget value', () => {
+            // custom-text with no customText set renders '' which getWidgetValue returns as null
+            const item = {
+                id: 'test',
+                type: 'custom-text',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isEmpty: true },
+                        apply: { color: 'gray' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('gray');
+        });
+
+        test('isEmpty with not flag acts as notEmpty', () => {
+            const item = {
+                id: 'test',
+                type: 'custom-text',
+                customText: 'hello',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isEmpty: true, not: true },
+                        apply: { color: 'green' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('green');
+        });
+
+        test('notEmpty does not match empty string', () => {
+            const item = {
+                id: 'test',
+                type: 'custom-text',
+                customText: '',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isEmpty: true, not: true },
+                        apply: { color: 'green' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            expect(result.color).toBe('white');
+        });
+
         test('string operators fail on numeric widgets', () => {
             const item = {
                 id: 'test',

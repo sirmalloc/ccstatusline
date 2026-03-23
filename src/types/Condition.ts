@@ -9,7 +9,9 @@ export type NumericOperator
 export type StringOperator
     = | 'contains'
         | 'startsWith'
-        | 'endsWith';
+        | 'endsWith'
+        | 'equals'
+        | 'isEmpty';
 
 export type BooleanOperator
     = | 'isTrue';
@@ -31,7 +33,9 @@ export const NUMERIC_OPERATORS: NumericOperator[] = [
 export const STRING_OPERATORS: StringOperator[] = [
     'contains',
     'startsWith',
-    'endsWith'
+    'endsWith',
+    'equals',
+    'isEmpty'
 ];
 
 export const BOOLEAN_OPERATORS: BooleanOperator[] = [
@@ -53,15 +57,16 @@ export const ALL_OPERATORS: Operator[] = [
 // Display labels for operators
 export const OPERATOR_LABELS: Record<Operator, string> = {
     // Numeric
-    greaterThan: '>',
-    greaterThanOrEqual: '≥',
-    lessThan: '<',
-    lessThanOrEqual: '≤',
-    equals: '=',
+    equals: 'equals',
+    greaterThan: 'greater than',
+    greaterThanOrEqual: 'greater than or equal',
+    lessThan: 'less than',
+    lessThanOrEqual: 'less than or equal',
     // String
     contains: 'contains',
     startsWith: 'starts with',
     endsWith: 'ends with',
+    isEmpty: 'is empty',
     // Boolean
     isTrue: 'is true',
     // Set
@@ -75,13 +80,15 @@ export type DisplayOperator
         | 'notContains'         // contains + not
         | 'notStartsWith'       // startsWith + not
         | 'notEndsWith'         // endsWith + not
+        | 'notEmpty'            // isEmpty + not
         | 'isFalse';            // isTrue: false (special case, not using not flag)
 
 export const DISPLAY_OPERATOR_LABELS: Record<DisplayOperator, string> = {
-    notEquals: '≠',
+    notEquals: 'not equals',
     notContains: 'does not contain',
     notStartsWith: 'does not start with',
     notEndsWith: 'does not end with',
+    notEmpty: 'is not empty',
     isFalse: 'is false'
 };
 
@@ -91,6 +98,7 @@ export const DISPLAY_OPERATOR_CONFIG: Record<DisplayOperator, { operator: Operat
     notContains: { operator: 'contains', not: true },
     notStartsWith: { operator: 'startsWith', not: true },
     notEndsWith: { operator: 'endsWith', not: true },
+    notEmpty: { operator: 'isEmpty', not: true },
     isFalse: { operator: 'isTrue', value: false }  // Special: isTrue with value false
 };
 
@@ -112,6 +120,8 @@ export function getDisplayOperator(when: Record<string, unknown>): DisplayOperat
         return 'notStartsWith';
     if (operator === 'endsWith' && notFlag)
         return 'notEndsWith';
+    if (operator === 'isEmpty' && notFlag)
+        return 'notEmpty';
     if (operator === 'isTrue' && value === false)
         return 'isFalse';
 

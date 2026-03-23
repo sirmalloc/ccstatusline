@@ -56,6 +56,10 @@ function evaluateStringCondition(
             return widgetValue.startsWith(conditionValue);
         case 'endsWith':
             return widgetValue.endsWith(conditionValue);
+        case 'equals':
+            return widgetValue === conditionValue;
+        case 'isEmpty':
+            return widgetValue === '';
         default:
             return false;
     }
@@ -157,6 +161,12 @@ function evaluateCondition(
     // Get the target widget's value (generic - can be number, string, or boolean)
     const widgetValue = getWidgetValue(targetWidget.type, context, targetWidget);
 
+    // isEmpty treats null as empty
+    if (operator === 'isEmpty') {
+        const result = widgetValue === null || (typeof widgetValue === 'string' && widgetValue === '');
+        return notFlag ? !result : result;
+    }
+
     if (widgetValue === null) {
         return false;  // Widget has no evaluable value
     }
@@ -164,7 +174,16 @@ function evaluateCondition(
     // Route to appropriate evaluation function based on operator type
     let result: boolean;
 
-    if (isNumericOperator(operator)) {
+    // equals is shared between numeric and string - route by value types
+    if (operator === 'equals') {
+        if (typeof widgetValue === 'string' && typeof conditionValue === 'string') {
+            result = widgetValue === conditionValue;
+        } else if (typeof widgetValue === 'number' && typeof conditionValue === 'number') {
+            result = widgetValue === conditionValue;
+        } else {
+            return false;  // Type mismatch
+        }
+    } else if (isNumericOperator(operator)) {
         if (typeof widgetValue !== 'number' || typeof conditionValue !== 'number') {
             return false;  // Type mismatch
         }

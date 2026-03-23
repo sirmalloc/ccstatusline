@@ -23,7 +23,6 @@ const mockExecSync = execSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValueOnce: (value: string) => void;
-    mockReturnValueOnce: (value: string) => void;
 };
 
 describe('git utils', () => {
