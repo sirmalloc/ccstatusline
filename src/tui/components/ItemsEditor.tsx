@@ -42,6 +42,14 @@ import {
     type WidgetPickerAction,
     type WidgetPickerState
 } from './items-editor/input-handlers';
+import {
+    addRule,
+    deleteRule,
+    handleRuleColorInput,
+    handleRuleEditorComplete,
+    handleRuleMoveMode,
+    handleRulePropertyInput
+} from './rules-editor/input-handlers';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -70,14 +78,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [ruleMoveMode, setRuleMoveMode] = useState(false);
     const [ruleConditionEditorIndex, setRuleConditionEditorIndex] = useState<number | null>(null);
 
-    // Rule-level state is consumed by accordion rendering (Task 2.3) and input routing (Task 2.2).
-    // Reference values here to satisfy the linter until those tasks wire them into rendering/input.
-    void expandedWidgetId;
-    void ruleSelectedIndex;
-    void ruleEditorMode;
-    void ruleColorEditorState;
-    void ruleMoveMode;
-    void ruleConditionEditorIndex;
     const [editorMode, setEditorMode] = useState<'items' | 'color'>('items');
     const [colorEditorState, setColorEditorState] = useState<ColorEditorState>({
         editingBackground: false,
@@ -123,6 +123,27 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     };
 
     const handleEditorComplete = (updatedWidget: WidgetItem) => {
+        if (expandedWidgetId) {
+            // Rules are expanded — route through rule editor complete
+            const expandedWidget = widgets.find(w => w.id === expandedWidgetId);
+            if (expandedWidget) {
+                handleRuleEditorComplete({
+                    updatedWidget,
+                    baseWidget: expandedWidget,
+                    selectedIndex: ruleSelectedIndex,
+                    onUpdate: (updated) => {
+                        const newWidgets = [...widgets];
+                        const widgetIndex = widgets.findIndex(w => w.id === expandedWidgetId);
+                        if (widgetIndex !== -1) {
+                            newWidgets[widgetIndex] = updated;
+                            onUpdate(newWidgets);
+                        }
+                    },
+                    setCustomEditorWidget
+                });
+                return;
+            }
+        }
         const newWidgets = [...widgets];
         newWidgets[selectedIndex] = updatedWidget;
         onUpdate(newWidgets);
@@ -268,6 +289,200 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     ansi256Input: ''
                 }));
             }
+        }
+
+        // Rule-level input routing — when rules are expanded for a widget
+        if (expandedWidgetId !== null) {
+            const expandedWidget = widgets.find(w => w.id === expandedWidgetId);
+            if (!expandedWidget) {
+                setExpandedWidgetId(null);
+                return;
+            }
+
+            const rules = expandedWidget.rules ?? [];
+            const currentRule = rules[ruleSelectedIndex];
+
+            const updateExpandedWidget = (updatedWidget: WidgetItem) => {
+                const newWidgets = [...widgets];
+                const widgetIndex = widgets.findIndex(w => w.id === expandedWidgetId);
+                if (widgetIndex !== -1) {
+                    newWidgets[widgetIndex] = updatedWidget;
+                    onUpdate(newWidgets);
+                }
+            };
+
+            // 1. Condition editor active — let it handle input
+            if (ruleConditionEditorIndex !== null) {
+                return;
+            }
+
+            // 2. Custom editor widget is already guarded at the top of useInput,
+            // so it is always null here. No additional check needed.
+
+            // 3. Rule move mode
+            if (ruleMoveMode) {
+                handleRuleMoveMode({
+                    key,
+                    baseWidget: expandedWidget,
+                    selectedIndex: ruleSelectedIndex,
+                    setSelectedIndex: setRuleSelectedIndex,
+                    setMoveMode: setRuleMoveMode,
+                    onUpdate: updateExpandedWidget
+                });
+                return;
+            }
+
+            // 4. Rule color mode
+            if (ruleEditorMode === 'color') {
+                // Up/Down navigate rules
+                if (key.upArrow) {
+                    setRuleSelectedIndex(Math.max(0, ruleSelectedIndex - 1));
+                    return;
+                }
+                if (key.downArrow) {
+                    setRuleSelectedIndex(Math.min(rules.length - 1, ruleSelectedIndex + 1));
+                    return;
+                }
+
+                // ESC: if sub-mode active, delegate to handleRuleColorInput (it cancels sub-mode)
+                // If no sub-mode, switch to property mode
+                if (key.escape) {
+                    if (ruleColorEditorState.hexInputMode || ruleColorEditorState.ansi256InputMode) {
+                        if (currentRule) {
+                            handleRuleColorInput({
+                                input,
+                                key,
+                                baseWidget: expandedWidget,
+                                rule: currentRule,
+                                ruleIndex: ruleSelectedIndex,
+                                settings,
+                                colorEditorState: ruleColorEditorState,
+                                setColorEditorState: setRuleColorEditorState,
+                                onUpdate: updateExpandedWidget
+                            });
+                        }
+                    } else {
+                        setRuleEditorMode('property');
+                    }
+                    return;
+                }
+
+                // Tab: switch to property mode, reset sub-modes
+                if (key.tab) {
+                    if (ruleColorEditorState.hexInputMode || ruleColorEditorState.ansi256InputMode) {
+                        setRuleColorEditorState(prev => ({
+                            ...prev,
+                            hexInputMode: false,
+                            hexInput: '',
+                            ansi256InputMode: false,
+                            ansi256Input: ''
+                        }));
+                    }
+                    setRuleEditorMode('property');
+                    return;
+                }
+
+                // Delegate remaining to handleRuleColorInput
+                if (currentRule) {
+                    handleRuleColorInput({
+                        input,
+                        key,
+                        baseWidget: expandedWidget,
+                        rule: currentRule,
+                        ruleIndex: ruleSelectedIndex,
+                        settings,
+                        colorEditorState: ruleColorEditorState,
+                        setColorEditorState: setRuleColorEditorState,
+                        onUpdate: updateExpandedWidget
+                    });
+                }
+                return;
+            }
+
+            // 5. Rule property mode (the only remaining mode after 'color' above)
+            // Up/Down navigate rules
+            if (key.upArrow) {
+                setRuleSelectedIndex(Math.max(0, ruleSelectedIndex - 1));
+                return;
+            }
+            if (key.downArrow) {
+                setRuleSelectedIndex(Math.min(rules.length - 1, ruleSelectedIndex + 1));
+                return;
+            }
+
+            // ESC: collapse rules
+            if (key.escape) {
+                setExpandedWidgetId(null);
+                return;
+            }
+
+            // Tab: switch to color mode (only if widget supports colors)
+            if (key.tab) {
+                const widgetImpl = expandedWidget.type !== 'separator' && expandedWidget.type !== 'flex-separator'
+                    ? getWidget(expandedWidget.type)
+                    : null;
+                if (widgetImpl?.supportsColors(expandedWidget)) {
+                    setRuleEditorMode('color');
+                }
+                return;
+            }
+
+            // Enter: start rule move mode
+            if (key.return) {
+                setRuleMoveMode(true);
+                return;
+            }
+
+            // a: add rule
+            if (input === 'a') {
+                addRule({
+                    baseWidget: expandedWidget,
+                    setSelectedIndex: setRuleSelectedIndex,
+                    onUpdate: updateExpandedWidget
+                });
+                return;
+            }
+
+            // d: delete rule, auto-collapse if empty
+            if (input === 'd') {
+                deleteRule({
+                    baseWidget: expandedWidget,
+                    selectedIndex: ruleSelectedIndex,
+                    setSelectedIndex: setRuleSelectedIndex,
+                    onUpdate: updateExpandedWidget
+                });
+                // Check if rules are now empty (after delete)
+                const remainingRules = (expandedWidget.rules ?? []).filter((_, i) => i !== ruleSelectedIndex);
+                if (remainingRules.length === 0) {
+                    setExpandedWidgetId(null);
+                }
+                return;
+            }
+
+            // Left/Right: open condition editor
+            if (key.leftArrow || key.rightArrow) {
+                if (rules.length > 0) {
+                    setRuleConditionEditorIndex(ruleSelectedIndex);
+                }
+                return;
+            }
+
+            // Delegate remaining to handleRulePropertyInput
+            if (currentRule) {
+                handleRulePropertyInput({
+                    input,
+                    key,
+                    baseWidget: expandedWidget,
+                    rule: currentRule,
+                    ruleIndex: ruleSelectedIndex,
+                    onUpdate: updateExpandedWidget,
+                    getCustomKeybindsForWidget,
+                    setCustomEditorWidget
+                });
+            }
+
+            // Unconditional return — prevent fallthrough to widget-level handlers
+            return;
         }
 
         // Color mode input routing
