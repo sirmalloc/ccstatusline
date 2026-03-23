@@ -2,7 +2,7 @@
  * Shared widget property mutation utilities
  *
  * These functions handle the cycling/toggling of widget properties
- * and are used by both ItemsEditor and RulesEditor to ensure consistent behavior.
+ * and are used by ItemsEditor to ensure consistent behavior.
  */
 
 import type { WidgetItem } from '../types/Widget';
@@ -105,7 +105,7 @@ export function toggleWidgetRawValue(widget: WidgetItem): WidgetItem {
 /**
  * Extract property overrides for rule.apply by comparing updated widget to base widget
  *
- * Used by RulesEditor to determine what should be in rule.apply after widget modifications.
+ * Used by the accordion rules editor to determine what should be in rule.apply after widget modifications.
  * Only properties that differ from the base widget are included.
  * Properties that match the base are removed from the existing apply object.
  *

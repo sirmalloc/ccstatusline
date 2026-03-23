@@ -1,0 +1,142 @@
+<h2>Accordion Rules Editor: Full Design</h2>
+<p class="subtitle">Review the complete interaction model. Does this capture everything correctly?</p>
+
+<div class="section">
+  <h3>1. Normal Widget View (no rules expanded)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1 &mdash; Items Mode</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&uarr;&darr; select, &larr;&rarr; open type picker, (a)dd, (d)elete, (x) rules, Tab: color mode, ESC: back</div>
+      <div><span style="color: #4ade80;">&#9654; </span><span style="color: #4ade80;">1. Model</span> <span style="color: #888;">[cyan] (2 rules)</span></div>
+      <div><span>   </span>2. GitBranch <span style="color: #888;">[green]</span></div>
+      <div><span>   </span>3. TokensTotal <span style="color: #888;">[white] (1 rule)</span></div>
+      <div><span>   </span>4. Separator |</div>
+      <div><span>   </span>5. SessionCost <span style="color: #888;">[yellow]</span></div>
+    </div>
+  </div>
+  <p>Standard widget list. <code>(x) rules</code> hint visible. Rule count shown as annotation.</p>
+</div>
+
+<div class="section">
+  <h3>2. Rules Expanded (press <code>x</code> &mdash; focus shifts to rules)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1 &mdash; Rules for Model <span style="color: #a78bfa;">[PROPERTY MODE]</span></div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&uarr;&darr; select, &larr;&rarr; edit condition, Enter move, (a)dd, (d)elete, (s)top, (h)ide, Tab: color mode, ESC: collapse</div>
+      <div><span style="color: #888;">&#9655; </span><span style="color: #888;">1. Model</span> <span style="color: #666;">[cyan] (2 rules)</span></div>
+      <div style="padding-left: 20px;"><span style="color: #4ade80;">&#9654; </span>1. <span style="color: #ef4444;">Model</span> <span style="color: #888;">(when self &gt; 50) (raw value)</span></div>
+      <div style="padding-left: 20px;"><span>   </span>2. <span style="color: #ef4444; font-weight: bold;">Model</span> <span style="color: #888;">(when self &gt; 80) (stop) (hidden)</span></div>
+      <div><span>   </span>2. GitBranch <span style="color: #888;">[green]</span></div>
+      <div><span>   </span>3. TokensTotal <span style="color: #888;">[white] (1 rule)</span></div>
+    </div>
+  </div>
+  <p>Rules expand inline below the widget. The widget's selector dims (<span style="color: #888;">&#9655;</span>) to show it's the parent, not the focus. The first rule gets the active <span style="color: #4ade80;">&#9654;</span> selector. &uarr;&darr; navigates between rules only. Help text updates to show rule-level keybinds.</p>
+</div>
+
+<div class="section">
+  <h3>3. Tab to Color Mode (on a rule)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1 &mdash; Rules for Model <span style="color: #d946ef;">[COLOR MODE - FOREGROUND]</span></div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&larr;&rarr; cycle foreground, (f) bg/fg, (b)old, (r)eset, Tab: property mode, ESC: property mode</div>
+      <div style="color: #888; margin-bottom: 4px;">Current foreground (3/16): <span style="color: #ef4444;">Red</span></div>
+      <div><span style="color: #888;">&#9655; </span><span style="color: #888;">1. Model</span> <span style="color: #666;">[cyan] (2 rules)</span></div>
+      <div style="padding-left: 20px;"><span style="color: #d946ef;">&#9654; </span>1. <span style="color: #ef4444;">Model</span> <span style="color: #888;">(when self &gt; 50) (raw value)</span></div>
+      <div style="padding-left: 20px;"><span>   </span>2. <span style="color: #ef4444; font-weight: bold;">Model</span> <span style="color: #888;">(when self &gt; 80) (stop) (hidden)</span></div>
+      <div><span>   </span>2. GitBranch <span style="color: #888;">[green]</span></div>
+    </div>
+  </div>
+  <p>Tab switches to color mode for the selected rule. Magenta <span style="color: #d946ef;">&#9654;</span> selector. Color info displayed. &larr;&rarr; cycles colors for the rule's override. Same UX as widget-level color editing.</p>
+</div>
+
+<div class="section">
+  <h3>4. ESC Behavior (layered peeling)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Navigation Stack</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 14px; line-height: 2.0; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div>Rule color mode &nbsp;&nbsp;<span style="color: #f59e0b;">&xrarr; ESC &xrarr;</span>&nbsp;&nbsp; Rule property mode</div>
+      <div>Rule property mode &nbsp;&nbsp;<span style="color: #f59e0b;">&xrarr; ESC &xrarr;</span>&nbsp;&nbsp; Collapse rules (widget level)</div>
+      <div>Widget color mode &nbsp;&nbsp;<span style="color: #f59e0b;">&xrarr; ESC &xrarr;</span>&nbsp;&nbsp; Widget items mode</div>
+      <div>Widget items mode &nbsp;&nbsp;<span style="color: #f59e0b;">&xrarr; ESC &xrarr;</span>&nbsp;&nbsp; Line Selector</div>
+    </div>
+  </div>
+  <p>ESC always peels back one layer. Never skips a level. Predictable and safe.</p>
+</div>
+
+<div class="section">
+  <h3>5. Keybind Parity Table</h3>
+  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+    <tr style="border-bottom: 2px solid #333;">
+      <th style="text-align: left; padding: 8px; color: #888;">Key</th>
+      <th style="text-align: left; padding: 8px; color: #888;">Widget Level</th>
+      <th style="text-align: left; padding: 8px; color: #888;">Rule Level</th>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">&uarr;&darr;</td>
+      <td style="padding: 8px;">Navigate widgets</td>
+      <td style="padding: 8px;">Navigate rules</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">Tab</td>
+      <td style="padding: 8px;">Items &harr; Color mode</td>
+      <td style="padding: 8px;">Property &harr; Color mode</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">&larr;&rarr;</td>
+      <td style="padding: 8px;">Type picker (items) / Cycle color</td>
+      <td style="padding: 8px;">Condition editor (prop) / Cycle color</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">a</td>
+      <td style="padding: 8px;">Add widget</td>
+      <td style="padding: 8px;">Add rule</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">d</td>
+      <td style="padding: 8px;">Delete widget</td>
+      <td style="padding: 8px;">Delete rule</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">Enter</td>
+      <td style="padding: 8px;">Move mode (reorder)</td>
+      <td style="padding: 8px;">Move mode (reorder)</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">x</td>
+      <td style="padding: 8px;">Expand rules (drill in)</td>
+      <td style="padding: 8px;">N/A</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">s</td>
+      <td style="padding: 8px;">N/A</td>
+      <td style="padding: 8px;">Toggle stop flag</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">h</td>
+      <td style="padding: 8px;">Hex input (color mode)</td>
+      <td style="padding: 8px;">Hide toggle (prop) / Hex input (color)</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #222;">
+      <td style="padding: 8px; font-family: monospace;">ESC</td>
+      <td style="padding: 8px;">Back to line selector</td>
+      <td style="padding: 8px;">Collapse rules (back to widget)</td>
+    </tr>
+  </table>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)">
+    <div class="letter">&#10003;</div>
+    <div class="content">
+      <h3>Design looks correct</h3>
+      <p>Ready to write up as a spec</p>
+    </div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">&#9998;</div>
+    <div class="content">
+      <h3>Needs changes</h3>
+      <p>I'll describe what to adjust in the terminal</p>
+    </div>
+  </div>
+</div>

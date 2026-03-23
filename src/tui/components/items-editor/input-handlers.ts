@@ -320,7 +320,7 @@ export function handleMoveInputMode({
 
 /**
  * Handle widget property editing (raw value, merge, custom keybinds)
- * Shared between ItemsEditor and RulesEditor
+ * Shared between ItemsEditor and rules-editor input handlers
  */
 export interface HandleWidgetPropertyInputArgs {
     input: string;
