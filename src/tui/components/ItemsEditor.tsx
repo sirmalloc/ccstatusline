@@ -19,6 +19,7 @@ import {
 } from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
+import { mergeWidgetWithRuleApply } from '../../utils/widget-properties';
 import {
     filterWidgetCatalog,
     getMatchSegments,
@@ -42,6 +43,10 @@ import {
     type WidgetPickerAction,
     type WidgetPickerState
 } from './items-editor/input-handlers';
+import {
+    formatAppliedProperties,
+    formatCondition
+} from './rules-editor/formatting';
 import {
     addRule,
     deleteRule,
@@ -1001,9 +1006,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
                                 const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
                                 const inColorMode = editorMode === 'color';
+                                const isExpanded = expandedWidgetId === widget.id;
 
                                 // Determine selector color: blue for move, magenta for color, green for items
                                 const selectorColor = moveMode ? 'blue' : inColorMode ? 'magenta' : 'green';
+
+                                // When rules are expanded, parent widget loses its selector arrow
+                                const showParentSelector = isSelected && !isExpanded;
 
                                 // Build styled label for color mode
                                 let styledLabel: string | undefined;
@@ -1022,56 +1031,103 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                     );
                                 }
 
+                                // Build rule rows for expanded widget
+                                const rules = isExpanded ? (widget.rules ?? []) : [];
+
                                 return (
-                                    <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
-                                        <Box width={3}>
-                                            <Text color={isSelected ? selectorColor : undefined}>
-                                                {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                            </Text>
+                                    <React.Fragment key={widget.id}>
+                                        <Box flexDirection='row' flexWrap='nowrap'>
+                                            <Box width={3}>
+                                                <Text color={showParentSelector ? selectorColor : undefined}>
+                                                    {showParentSelector ? (moveMode ? '◆ ' : '▶ ') : '  '}
+                                                </Text>
+                                            </Box>
+                                            {inColorMode && isSep ? (
+                                                <Text dimColor>
+                                                    {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                                </Text>
+                                            ) : inColorMode && styledLabel ? (
+                                                <Text>
+                                                    {`${index + 1}. `}
+                                                    {styledLabel}
+                                                </Text>
+                                            ) : (
+                                                <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                                    {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                                </Text>
+                                            )}
+                                            {modifierText && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    {modifierText}
+                                                </Text>
+                                            )}
+                                            {widget.type !== 'separator' && widget.type !== 'flex-separator' && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    [
+                                                    {widget.color ?? 'default'}
+                                                    ]
+                                                </Text>
+                                            )}
+                                            {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                            {widget.merge === true && <Text dimColor> (merged→)</Text>}
+                                            {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                            {!isExpanded && widget.rules && widget.rules.length > 0 && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    (
+                                                    {widget.rules.length}
+                                                    {' '}
+                                                    rule
+                                                    {widget.rules.length === 1 ? '' : 's'}
+                                                    )
+                                                </Text>
+                                            )}
                                         </Box>
-                                        {inColorMode && isSep ? (
-                                            <Text dimColor>
-                                                {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                            </Text>
-                                        ) : inColorMode && styledLabel ? (
-                                            <Text>
-                                                {`${index + 1}. `}
-                                                {styledLabel}
-                                            </Text>
-                                        ) : (
-                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                                {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                            </Text>
-                                        )}
-                                        {modifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {modifierText}
-                                            </Text>
-                                        )}
-                                        {widget.type !== 'separator' && widget.type !== 'flex-separator' && (
-                                            <Text dimColor>
-                                                {' '}
-                                                [
-                                                {widget.color ?? 'default'}
-                                                ]
-                                            </Text>
-                                        )}
-                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                        {widget.rules && widget.rules.length > 0 && (
-                                            <Text dimColor>
-                                                {' '}
-                                                (
-                                                {widget.rules.length}
-                                                {' '}
-                                                rule
-                                                {widget.rules.length === 1 ? '' : 's'}
-                                                )
-                                            </Text>
-                                        )}
-                                    </Box>
+                                        {isExpanded && rules.map((rule, ruleIndex) => {
+                                            const isRuleSelected = ruleIndex === ruleSelectedIndex;
+                                            const condition = formatCondition(rule.when);
+                                            const stopIndicator = rule.stop ? ' (stop)' : '';
+                                            const appliedProps = formatAppliedProperties(rule.apply, widget);
+
+                                            // Get display name for rule line
+                                            const ruleDisplayName = widgetImpl
+                                                ? (widgetImpl.getEditorDisplay(widget).displayText || getWidgetDisplay(widget))
+                                                : getWidgetDisplay(widget);
+
+                                            // Get effective colors via mergeWidgetWithRuleApply
+                                            const tempWidget = mergeWidgetWithRuleApply(widget, rule.apply);
+                                            const colorLevel = getColorLevelString(settings.colorLevel);
+                                            const effectiveColor = tempWidget.color ?? widgetImpl?.getDefaultColor() ?? 'white';
+                                            const effectiveBg = tempWidget.backgroundColor;
+                                            const effectiveBold = tempWidget.bold ?? false;
+                                            const ruleStyledLabel = applyColors(ruleDisplayName, effectiveColor, effectiveBg, effectiveBold, colorLevel);
+
+                                            // Selector colors: green in property mode, magenta in color mode, blue in move mode
+                                            const ruleSelectorColor = ruleMoveMode ? 'blue' : ruleEditorMode === 'color' ? 'magenta' : 'green';
+
+                                            return (
+                                                <Box key={ruleIndex} flexDirection='row' flexWrap='nowrap'>
+                                                    <Box width={3}>
+                                                        <Text>{'  '}</Text>
+                                                    </Box>
+                                                    <Box width={3}>
+                                                        <Text color={isRuleSelected ? ruleSelectorColor : undefined}>
+                                                            {isRuleSelected ? (ruleMoveMode ? '◆ ' : '▶ ') : '  '}
+                                                        </Text>
+                                                    </Box>
+                                                    <Text color={ruleMoveMode && isRuleSelected ? 'blue' : undefined}>
+                                                        {`${ruleIndex + 1}.`}
+                                                        {ruleMoveMode ? ruleDisplayName : ruleStyledLabel}
+                                                    </Text>
+                                                    <Text dimColor>
+                                                        {` (${condition})${stopIndicator}${appliedProps}`}
+                                                    </Text>
+                                                </Box>
+                                            );
+                                        })}
+                                    </React.Fragment>
                                 );
                             })}
                             {/* Display description for selected widget */}
