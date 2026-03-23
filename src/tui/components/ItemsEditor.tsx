@@ -27,7 +27,6 @@ import {
 } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
-import { RulesEditor } from './RulesEditor';
 import {
     getCurrentColorInfo,
     handleColorInput,
@@ -57,7 +56,27 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
-    const [rulesEditorWidget, setRulesEditorWidget] = useState<WidgetItem | null>(null);
+    const [expandedWidgetId, setExpandedWidgetId] = useState<string | null>(null);
+    const [ruleSelectedIndex, setRuleSelectedIndex] = useState(0);
+    const [ruleEditorMode, setRuleEditorMode] = useState<'property' | 'color'>('property');
+    const [ruleColorEditorState, setRuleColorEditorState] = useState<ColorEditorState>({
+        editingBackground: false,
+        hexInputMode: false,
+        hexInput: '',
+        ansi256InputMode: false,
+        ansi256Input: ''
+    });
+    const [ruleMoveMode, setRuleMoveMode] = useState(false);
+    const [ruleConditionEditorIndex, setRuleConditionEditorIndex] = useState<number | null>(null);
+
+    // Rule-level state is consumed by accordion rendering (Task 2.3) and input routing (Task 2.2).
+    // Reference values here to satisfy the linter until those tasks wire them into rendering/input.
+    void expandedWidgetId;
+    void ruleSelectedIndex;
+    void ruleEditorMode;
+    void ruleColorEditorState;
+    void ruleMoveMode;
+    void ruleConditionEditorIndex;
     const [editorMode, setEditorMode] = useState<'items' | 'color'>('items');
     const [colorEditorState, setColorEditorState] = useState<ColorEditorState>({
         editingBackground: false,
@@ -111,6 +130,25 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     const handleEditorCancel = () => {
         setCustomEditorWidget(null);
+    };
+
+    const toggleRulesExpansion = (widget: WidgetItem) => {
+        if (expandedWidgetId === widget.id) {
+            setExpandedWidgetId(null);
+        } else {
+            setExpandedWidgetId(widget.id);
+            setRuleSelectedIndex(0);
+            setRuleEditorMode('property');
+            setRuleColorEditorState({
+                editingBackground: false,
+                hexInputMode: false,
+                hexInput: '',
+                ansi256InputMode: false,
+                ansi256Input: ''
+            });
+            setRuleMoveMode(false);
+            setRuleConditionEditorIndex(null);
+        }
     };
 
     const getCustomKeybindsForWidget = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
@@ -176,18 +214,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
-        // Skip input if rules editor is active
-        if (rulesEditorWidget) {
-            return;
-        }
-
         // Skip input handling when clear confirmation is active - let ConfirmDialog handle it
         if (showClearConfirm) {
             return;
         }
 
         // Tab toggles between items and color mode — always consumed here, never falls through
-        // Only when: widgets exist, no overlay active (picker, move mode, custom editor, rules editor, clear confirm)
+        // Only when: widgets exist, no overlay active (picker, move mode, custom editor, clear confirm)
         if (key.tab && widgets.length > 0 && !widgetPicker && !moveMode) {
             const widget = widgets[selectedIndex];
             if (widget) {
@@ -318,7 +351,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            setRulesEditorWidget
+            toggleRulesExpansion
         });
     });
 
@@ -453,23 +486,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             onCancel: handleEditorCancel,
             action: customEditorWidget.action
         });
-    }
-
-    if (rulesEditorWidget) {
-        return (
-            <RulesEditor
-                widget={rulesEditorWidget}
-                settings={settings}
-                onUpdate={(updatedWidget) => {
-                    // Update widget in widgets array
-                    const newWidgets = widgets.map(w => w.id === updatedWidget.id ? updatedWidget : w
-                    );
-                    onUpdate(newWidgets);  // This triggers preview update!
-                    setRulesEditorWidget(updatedWidget);  // Keep editor in sync
-                }}
-                onBack={() => { setRulesEditorWidget(null); }}
-            />
-        );
     }
 
     if (showClearConfirm) {

@@ -402,7 +402,7 @@ export interface HandleNormalInputModeArgs {
     openWidgetPicker: (action: WidgetPickerAction) => void;
     getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
-    setRulesEditorWidget: (widget: WidgetItem | null) => void;
+    toggleRulesExpansion: (widget: WidgetItem) => void;
 }
 
 export function handleNormalInputMode({
@@ -419,7 +419,7 @@ export function handleNormalInputMode({
     openWidgetPicker,
     getCustomKeybindsForWidget,
     setCustomEditorWidget,
-    setRulesEditorWidget
+    toggleRulesExpansion
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(Math.max(0, selectedIndex - 1));
@@ -456,7 +456,7 @@ export function handleNormalInputMode({
     } else if (input === 'x' && widgets.length > 0) {
         const currentWidget = widgets[selectedIndex];
         if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-            setRulesEditorWidget(currentWidget);
+            toggleRulesExpansion(currentWidget);
         }
     } else if (key.escape) {
         onBack();
