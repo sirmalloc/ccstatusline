@@ -554,7 +554,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 selectedIndex,
                 onUpdate,
                 setSelectedIndex,
-                setMoveMode
+                setMoveMode,
+                openWidgetPicker
             });
             return;
         }
@@ -565,6 +566,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             widgets,
             selectedIndex,
             separatorChars,
+            expandedWidgetId,
             onBack,
             onUpdate,
             setSelectedIndex,

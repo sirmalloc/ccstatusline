@@ -289,6 +289,7 @@ export interface HandleMoveInputModeArgs {
     onUpdate: (widgets: WidgetItem[]) => void;
     setSelectedIndex: (index: number) => void;
     setMoveMode: (moveMode: boolean) => void;
+    openWidgetPicker: (action: WidgetPickerAction) => void;
 }
 
 export function handleMoveInputMode({
@@ -297,7 +298,8 @@ export function handleMoveInputMode({
     selectedIndex,
     onUpdate,
     setSelectedIndex,
-    setMoveMode
+    setMoveMode,
+    openWidgetPicker
 }: HandleMoveInputModeArgs): void {
     if (key.upArrow && selectedIndex > 0) {
         const newWidgets = [...widgets];
@@ -317,6 +319,8 @@ export function handleMoveInputMode({
         }
         onUpdate(newWidgets);
         setSelectedIndex(selectedIndex + 1);
+    } else if (key.leftArrow || key.rightArrow) {
+        openWidgetPicker('change');
     } else if (key.escape || key.return) {
         setMoveMode(false);
     }
@@ -398,6 +402,7 @@ export interface HandleNormalInputModeArgs {
     widgets: WidgetItem[];
     selectedIndex: number;
     separatorChars: string[];
+    expandedWidgetId: string | null;
     onBack: () => void;
     onUpdate: (widgets: WidgetItem[]) => void;
     setSelectedIndex: (index: number) => void;
@@ -415,6 +420,7 @@ export function handleNormalInputMode({
     widgets,
     selectedIndex,
     separatorChars,
+    expandedWidgetId,
     onBack,
     onUpdate,
     setSelectedIndex,
@@ -429,10 +435,16 @@ export function handleNormalInputMode({
         setSelectedIndex(selectedIndex > 0 ? selectedIndex - 1 : widgets.length - 1);
     } else if (key.downArrow && widgets.length > 0) {
         setSelectedIndex(selectedIndex < widgets.length - 1 ? selectedIndex + 1 : 0);
-    } else if (key.leftArrow && widgets.length > 0) {
-        openWidgetPicker('change');
     } else if (key.rightArrow && widgets.length > 0) {
-        openWidgetPicker('change');
+        const currentWidget = widgets[selectedIndex];
+        if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+            toggleRulesExpansion(currentWidget);
+        }
+    } else if (key.leftArrow && widgets.length > 0) {
+        const currentWidget = widgets[selectedIndex];
+        if (currentWidget?.id === expandedWidgetId) {
+            toggleRulesExpansion(currentWidget);
+        }
     } else if (key.return && widgets.length > 0) {
         setMoveMode(true);
     } else if (input === 'a') {
@@ -456,11 +468,6 @@ export function handleNormalInputMode({
             const newWidgets = [...widgets];
             newWidgets[selectedIndex] = { ...currentWidget, character: nextChar };
             onUpdate(newWidgets);
-        }
-    } else if (input === 'x' && widgets.length > 0) {
-        const currentWidget = widgets[selectedIndex];
-        if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
-            toggleRulesExpansion(currentWidget);
         }
     } else if (key.escape) {
         onBack();
