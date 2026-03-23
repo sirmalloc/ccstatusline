@@ -680,7 +680,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
             // Rule property mode
             const expandedWidget = widgets.find(w => w.id === expandedWidgetId);
-            let ruleText = '↑↓ select, → edit condition, Enter move, (a)dd, (d)elete, (s)top, (h)ide, (c)lear properties, Tab: color mode, ← collapse, ESC: collapse';
+            let ruleText = '↑↓ select, → edit condition, Enter to edit, (a)dd, (d)elete, (s)top, (h)ide, (c)lear properties, Tab: color mode, ← collapse, ESC: collapse';
 
             if (expandedWidget && expandedWidget.type !== 'separator' && expandedWidget.type !== 'flex-separator') {
                 const expandedWidgetImpl = getWidget(expandedWidget.type);
@@ -729,7 +729,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             text += ', Space edit separator';
         }
         if (hasWidgets) {
-            text += ', Enter to move, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
+            text += ', Enter to edit, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
         }
         if (canToggleRaw) {
             text += ', (r)aw value';
