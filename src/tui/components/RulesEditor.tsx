@@ -330,7 +330,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
         }
     });
 
-    // Get widget display name (same as ColorMenu does)
+    // Get widget display name
     const getWidgetDisplayName = () => {
         const widgetImpl = getWidget(widget.type);
         return widgetImpl ? widgetImpl.getDisplayName() : widget.type;
@@ -636,7 +636,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                         const stopIndicator = rule.stop ? ' (stop)' : '';
                         const appliedProps = formatAppliedProperties(rule.apply);
 
-                        // Get widget display name (same as ColorMenu pattern)
+                        // Get widget display name
                         const displayName = getWidgetDisplayName();
 
                         // Get widget's actual configured color/bold as base
@@ -650,7 +650,7 @@ export const RulesEditor: React.FC<RulesEditorProps> = ({ widget, settings, onUp
                         const backgroundColor = rule.apply.backgroundColor ? String(rule.apply.backgroundColor) : baseBackgroundColor;
                         const bold = rule.apply.bold !== undefined ? Boolean(rule.apply.bold) : baseBold;
 
-                        // Apply colors (same as ColorMenu does)
+                        // Apply colors
                         const colorLevel = getColorLevelString(settings.colorLevel);
                         const styledLabel = applyColors(displayName, color, backgroundColor, bold, colorLevel);
 

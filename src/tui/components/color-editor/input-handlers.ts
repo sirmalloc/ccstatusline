@@ -53,7 +53,7 @@ function cycleColor(
 }
 
 /**
- * Shared color input handler for both ColorMenu and RulesEditor
+ * Shared color input handler for ItemsEditor and RulesEditor
  * Returns true if input was handled, false otherwise
  */
 export function handleColorInput({
