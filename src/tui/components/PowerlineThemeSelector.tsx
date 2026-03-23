@@ -215,10 +215,6 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                     onBack();
                 }}
                 onSelectionChange={(themeName, index) => {
-                    if (themeName === 'back') {
-                        return;
-                    }
-
                     setSelectedIndex(index);
                 }}
                 initialSelection={selectedIndex}

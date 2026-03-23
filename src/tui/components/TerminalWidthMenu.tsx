@@ -152,11 +152,6 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({
                     initialSelection={getTerminalWidthSelectionIndex(selectedOption)}
                     onBack={onBack}
                     onSelect={(value) => {
-                        if (value === 'back') {
-                            onBack();
-                            return;
-                        }
-
                         setSelectedOption(value);
 
                         const updatedSettings = {
@@ -170,7 +165,6 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({
                             setEditingThreshold(true);
                         }
                     }}
-                    showBackButton={true}
                 />
             )}
         </Box>
