@@ -245,30 +245,20 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     return;
                 }
 
-                // ESC: if hex/ansi256 sub-mode is active, let handleColorInput cancel it
-                // Otherwise, switch back to items mode
-                if (key.escape) {
-                    if (colorEditorState.hexInputMode || colorEditorState.ansi256InputMode) {
-                        handleColorInput({
-                            input,
-                            key,
-                            widget,
-                            settings,
-                            state: colorEditorState,
-                            setState: setColorEditorState,
-                            onUpdate: (updatedWidget) => {
-                                const newWidgets = [...widgets];
-                                newWidgets[selectedIndex] = updatedWidget;
-                                onUpdate(newWidgets);
-                            }
-                        });
-                    } else {
-                        setEditorMode('items');
-                    }
+                // ESC with no sub-mode active: switch back to items mode.
+                // If a sub-mode is active, fall through to handleColorInput which handles ESC internally.
+                if (key.escape && !colorEditorState.hexInputMode && !colorEditorState.ansi256InputMode) {
+                    setEditorMode('items');
                     return;
                 }
 
-                // Delegate all other input to handleColorInput
+                const updateWidget = (updatedWidget: WidgetItem) => {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = updatedWidget;
+                    onUpdate(newWidgets);
+                };
+
+                // Delegate all input (including ESC in sub-modes) to handleColorInput
                 handleColorInput({
                     input,
                     key,
@@ -276,13 +266,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     settings,
                     state: colorEditorState,
                     setState: setColorEditorState,
-                    onUpdate: (updatedWidget) => {
-                        const newWidgets = [...widgets];
-                        newWidgets[selectedIndex] = updatedWidget;
-                        onUpdate(newWidgets);
-                    }
+                    onUpdate: updateWidget
                 });
             }
+            // Return unconditionally to prevent fall-through even when widget is undefined
+            // (shouldn't happen since Tab guards widgets.length > 0, but is defensive)
             return;
         }
 
