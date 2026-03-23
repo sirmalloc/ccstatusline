@@ -51,7 +51,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 };
                 onUpdate(updatedSettings);
                 setEditingPadding(false);
-            } else if (key.escape) {
+            } else if (key.escape || key.leftArrow) {
                 setPaddingInput(settings.defaultPadding ?? '');
                 setEditingPadding(false);
             } else if (key.backspace) {
@@ -80,7 +80,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     onUpdate(updatedSettings);
                     setEditingSeparator(false);
                 }
-            } else if (key.escape) {
+            } else if (key.escape || key.leftArrow) {
                 setSeparatorInput(settings.defaultSeparator ?? '');
                 setEditingSeparator(false);
             } else if (key.backspace) {
@@ -94,7 +94,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             // Skip input handling when confirmation is active - let ConfirmDialog handle it
             return;
         } else {
-            if (key.escape) {
+            if (key.escape || key.leftArrow) {
                 onBack();
             } else if (input === 'p' || input === 'P') {
                 setEditingPadding(true);
