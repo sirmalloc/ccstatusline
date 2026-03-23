@@ -5,6 +5,7 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
+import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
 import type {
     CustomKeybind,
@@ -12,7 +13,10 @@ import type {
     WidgetItem,
     WidgetItemType
 } from '../../types/Widget';
-import { getBackgroundColorsForPowerline } from '../../utils/colors';
+import {
+    applyColors,
+    getBackgroundColorsForPowerline
+} from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
@@ -26,6 +30,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { RulesEditor } from './RulesEditor';
 import {
+    getCurrentColorInfo,
     handleColorInput,
     type ColorEditorState
 } from './color-editor/input-handlers';
@@ -484,6 +489,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {' '}
                 </Text>
                 {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                {!moveMode && !widgetPicker && editorMode === 'color' && (
+                    <Text color='magenta'>
+                        [COLOR MODE
+                        {colorEditorState.editingBackground ? ' - BACKGROUND' : ' - FOREGROUND'}
+                        ]
+                    </Text>
+                )}
                 {widgetPicker && <Text color='cyan'>{`[${pickerActionLabel.toUpperCase()}]`}</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
@@ -648,6 +660,76 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     )}
                 </Box>
             )}
+            {!widgetPicker && editorMode === 'color' && colorEditorState.hexInputMode && (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Enter 6-digit hex color code (without #):</Text>
+                    <Text>
+                        #
+                        {colorEditorState.hexInput}
+                        <Text dimColor>
+                            {colorEditorState.hexInput.length < 6 ? '_'.repeat(6 - colorEditorState.hexInput.length) : ''}
+                        </Text>
+                    </Text>
+                </Box>
+            )}
+            {!widgetPicker && editorMode === 'color' && colorEditorState.ansi256InputMode && (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Enter ANSI 256 color code (0-255):</Text>
+                    <Text>
+                        {colorEditorState.ansi256Input}
+                        <Text dimColor>
+                            {colorEditorState.ansi256Input.length === 0
+                                ? '___'
+                                : colorEditorState.ansi256Input.length === 1
+                                    ? '__'
+                                    : colorEditorState.ansi256Input.length === 2
+                                        ? '_'
+                                        : ''}
+                        </Text>
+                    </Text>
+                </Box>
+            )}
+            {!widgetPicker && editorMode === 'color' && !colorEditorState.hexInputMode && !colorEditorState.ansi256InputMode && (() => {
+                const selectedWidget = widgets[selectedIndex];
+                if (!selectedWidget) {
+                    return null;
+                }
+
+                const isSep = selectedWidget.type === 'separator' || selectedWidget.type === 'flex-separator';
+                if (isSep) {
+                    return null;
+                }
+
+                const { colorIndex, totalColors, displayName } = getCurrentColorInfo(
+                    selectedWidget,
+                    colorEditorState.editingBackground
+                );
+
+                const colorType = colorEditorState.editingBackground ? 'background' : 'foreground';
+                const colorNumber = colorIndex === -1 ? 'custom' : `${colorIndex}/${totalColors}`;
+
+                const level = getColorLevelString(settings.colorLevel);
+                const styledColor = colorEditorState.editingBackground
+                    ? applyColors(` ${displayName} `, undefined, selectedWidget.backgroundColor, false, level)
+                    : applyColors(displayName, selectedWidget.color, undefined, false, level);
+
+                return (
+                    <Box marginTop={1}>
+                        <Text>
+                            Current
+                            {' '}
+                            {colorType}
+                            {' '}
+                            (
+                            {colorNumber}
+                            ):
+                            {' '}
+                            {styledColor}
+                            {selectedWidget.bold && <Text bold> [BOLD]</Text>}
+                        </Text>
+                    </Box>
+                );
+            })()}
             {!widgetPicker && (
                 <Box marginTop={1} flexDirection='column'>
                     {widgets.length === 0 ? (
@@ -656,20 +738,53 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                         <>
                             {widgets.map((widget, index) => {
                                 const isSelected = index === selectedIndex;
-                                const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
+                                const isSep = widget.type === 'separator' || widget.type === 'flex-separator';
+                                const widgetImpl = !isSep ? getWidget(widget.type) : null;
                                 const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
                                 const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const inColorMode = editorMode === 'color';
+
+                                // Determine selector color: blue for move, magenta for color, green for items
+                                const selectorColor = moveMode ? 'blue' : inColorMode ? 'magenta' : 'green';
+
+                                // Build styled label for color mode
+                                let styledLabel: string | undefined;
+                                if (inColorMode && !isSep && widgetImpl) {
+                                    const colorLevel = getColorLevelString(settings.colorLevel);
+                                    const defaultColor = widgetImpl.getDefaultColor();
+                                    const fgColor = widget.color ?? defaultColor;
+                                    const bgColor = widget.backgroundColor;
+                                    const boldFlag = widget.bold ?? false;
+                                    styledLabel = applyColors(
+                                        displayText || getWidgetDisplay(widget),
+                                        fgColor,
+                                        bgColor,
+                                        boldFlag,
+                                        colorLevel
+                                    );
+                                }
 
                                 return (
                                     <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
                                         <Box width={3}>
-                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                            <Text color={isSelected ? selectorColor : undefined}>
                                                 {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
                                             </Text>
                                         </Box>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                        </Text>
+                                        {inColorMode && isSep ? (
+                                            <Text dimColor>
+                                                {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                            </Text>
+                                        ) : inColorMode && styledLabel ? (
+                                            <Text>
+                                                {`${index + 1}. `}
+                                                {styledLabel}
+                                            </Text>
+                                        ) : (
+                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                                {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
+                                            </Text>
+                                        )}
                                         {modifierText && (
                                             <Text dimColor>
                                                 {' '}
