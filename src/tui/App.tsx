@@ -291,7 +291,18 @@ export const App: React.FC = () => {
                 exit();
                 break;
             case 'exit':
-                exit();
+                if (hasChanges) {
+                    setConfirmDialog({
+                        message: 'You have unsaved changes. Exit without saving?',
+                        action: () => {
+                            exit();
+                            return Promise.resolve();
+                        }
+                    });
+                    setScreen('confirm');
+                } else {
+                    exit();
+                }
                 break;
         }
     };
