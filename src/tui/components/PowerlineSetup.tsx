@@ -443,18 +443,12 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         items={buildPowerlineSetupMenuItems(powerlineConfig)}
                         onBack={onBack}
                         onSelect={(value) => {
-                            if (value === 'back') {
-                                onBack();
-                                return;
-                            }
-
                             setScreen(value);
                         }}
                         onSelectionChange={(_, index) => {
                             setSelectedMenuItem(index);
                         }}
                         initialSelection={selectedMenuItem}
-                        showBackButton={true}
                     />
                 </>
             )}

@@ -288,11 +288,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         marginTop={1}
                         items={lineItems}
                         onSelect={(line) => {
-                            if (line === 'back') {
-                                onBack();
-                                return;
-                            }
-
                             onSelect(line);
                         }}
                         onSelectionChange={(_, index) => {
@@ -300,7 +295,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                         }}
                         onBack={onBack}
                         initialSelection={selectedIndex}
-                        showBackButton={true}
                     />
                 )}
             </Box>

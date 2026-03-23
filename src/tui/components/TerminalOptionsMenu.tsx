@@ -72,12 +72,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
     const [showColorWarning, setShowColorWarning] = useState(false);
     const [pendingColorLevel, setPendingColorLevel] = useState<0 | 1 | 2 | 3 | null>(null);
 
-    const handleSelect = (value: TerminalOptionsValue | 'back') => {
-        if (value === 'back') {
-            onBack();
-            return;
-        }
-
+    const handleSelect = (value: TerminalOptionsValue) => {
         if (value === 'width') {
             onBack('width');
             return;
@@ -155,7 +150,6 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
                         items={buildTerminalOptionsItems(settings.colorLevel)}
                         onSelect={handleSelect}
                         onBack={onBack}
-                        showBackButton={true}
                     />
                 </>
             )}

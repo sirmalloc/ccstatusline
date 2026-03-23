@@ -135,10 +135,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 items={menuItems}
                 marginTop={1}
                 onSelect={(value, index) => {
-                    if (value === 'back') {
-                        return;
-                    }
-
                     onSelect(value, index);
                 }}
                 initialSelection={initialSelection}

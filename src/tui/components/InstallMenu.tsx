@@ -42,9 +42,6 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                     onSelectBunx();
                 }
                 break;
-            case 'back':
-                onCancel();
-                break;
         }
     }
 
@@ -85,15 +82,9 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                 items={listItems}
                 onBack={onCancel}
                 onSelect={(line) => {
-                    if (line === 'back') {
-                        onCancel();
-                        return;
-                    }
-
                     onSelect(line);
                 }}
                 initialSelection={initialSelection}
-                showBackButton={true}
             />
 
             <Box marginTop={2}>

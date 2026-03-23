@@ -7,7 +7,6 @@ import {
 } from 'ink';
 import {
     useEffect,
-    useMemo,
     useRef,
     useState,
     type PropsWithChildren
@@ -24,11 +23,10 @@ export interface ListEntry<V = string | number> {
 
 interface ListProps<V = string | number> extends BoxProps {
     items: (ListEntry<V> | '-')[];
-    onSelect: (value: V | 'back', index: number) => void;
-    onSelectionChange?: (value: V | 'back', index: number) => void;
+    onSelect: (value: V, index: number) => void;
+    onSelectionChange?: (value: V, index: number) => void;
     onBack?: () => void;
     initialSelection?: number;
-    showBackButton?: boolean;
     color?: ForegroundColorName;
     wrapNavigation?: boolean;
 }
@@ -39,7 +37,6 @@ export function List<V = string | number>({
     onSelectionChange,
     onBack,
     initialSelection = 0,
-    showBackButton,
     color,
     wrapNavigation = true,
     ...boxProps
@@ -47,17 +44,10 @@ export function List<V = string | number>({
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const latestOnSelectionChangeRef = useRef(onSelectionChange);
 
-    const _items = useMemo(() => {
-        if (showBackButton) {
-            return [...items, '-' as const, { label: '← Back', value: 'back' as V }];
-        }
-        return items;
-    }, [items, showBackButton]);
-
-    const selectableItems = _items.filter(item => item !== '-' && !item.disabled) as ListEntry<V>[];
+    const selectableItems = items.filter(item => item !== '-' && !item.disabled) as ListEntry<V>[];
     const selectedItem = selectableItems[selectedIndex];
     const selectedValue = selectedItem?.value;
-    const actualIndex = _items.findIndex(item => item === selectedItem);
+    const actualIndex = items.findIndex(item => item === selectedItem);
 
     useEffect(() => {
         latestOnSelectionChangeRef.current = onSelectionChange;
@@ -113,7 +103,7 @@ export function List<V = string | number>({
 
     return (
         <Box flexDirection='column' {...boxProps}>
-            {_items.map((item, index) => {
+            {items.map((item, index) => {
                 if (item === '-') {
                     return <ListSeparator key={index} />;
                 }
