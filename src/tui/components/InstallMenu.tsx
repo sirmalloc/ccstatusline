@@ -83,6 +83,7 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                 color='blue'
                 marginTop={1}
                 items={listItems}
+                onBack={onCancel}
                 onSelect={(line) => {
                     if (line === 'back') {
                         onCancel();

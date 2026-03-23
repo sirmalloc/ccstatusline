@@ -207,6 +207,10 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
             <List
                 marginTop={1}
                 items={themeItems}
+                onBack={() => {
+                    onUpdate(originalSettingsRef.current);
+                    onBack();
+                }}
                 onSelect={() => {
                     onBack();
                 }}

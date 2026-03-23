@@ -422,6 +422,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                     <List
                         marginTop={1}
                         items={buildPowerlineSetupMenuItems(powerlineConfig)}
+                        onBack={onBack}
                         onSelect={(value) => {
                             if (value === 'back') {
                                 onBack();

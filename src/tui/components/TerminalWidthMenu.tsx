@@ -150,6 +150,7 @@ export const TerminalWidthMenu: React.FC<TerminalWidthMenuProps> = ({
                     marginTop={1}
                     items={buildTerminalWidthItems(selectedOption, compactThreshold)}
                     initialSelection={getTerminalWidthSelectionIndex(selectedOption)}
+                    onBack={onBack}
                     onSelect={(value) => {
                         if (value === 'back') {
                             onBack();

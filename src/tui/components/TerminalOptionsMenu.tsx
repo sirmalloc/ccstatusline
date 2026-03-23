@@ -154,6 +154,7 @@ export const TerminalOptionsMenu: React.FC<TerminalOptionsMenuProps> = ({
                         marginTop={1}
                         items={buildTerminalOptionsItems(settings.colorLevel)}
                         onSelect={handleSelect}
+                        onBack={onBack}
                         showBackButton={true}
                     />
                 </>
