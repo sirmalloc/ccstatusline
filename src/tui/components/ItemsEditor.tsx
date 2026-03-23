@@ -25,7 +25,10 @@ import {
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { RulesEditor } from './RulesEditor';
-import { type ColorEditorState } from './color-editor/input-handlers';
+import {
+    handleColorInput,
+    type ColorEditorState
+} from './color-editor/input-handlers';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -227,6 +230,61 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     ansi256Input: ''
                 }));
             }
+        }
+
+        // Color mode input routing
+        if (editorMode === 'color') {
+            const widget = widgets[selectedIndex];
+            if (widget) {
+                // Up/Down for navigation (same as items mode)
+                if (key.upArrow) {
+                    setSelectedIndex(Math.max(0, selectedIndex - 1));
+                    return;
+                }
+                if (key.downArrow) {
+                    setSelectedIndex(Math.min(widgets.length - 1, selectedIndex + 1));
+                    return;
+                }
+
+                // ESC: if hex/ansi256 sub-mode is active, let handleColorInput cancel it
+                // Otherwise, switch back to items mode
+                if (key.escape) {
+                    if (colorEditorState.hexInputMode || colorEditorState.ansi256InputMode) {
+                        handleColorInput({
+                            input,
+                            key,
+                            widget,
+                            settings,
+                            state: colorEditorState,
+                            setState: setColorEditorState,
+                            onUpdate: (updatedWidget) => {
+                                const newWidgets = [...widgets];
+                                newWidgets[selectedIndex] = updatedWidget;
+                                onUpdate(newWidgets);
+                            }
+                        });
+                    } else {
+                        setEditorMode('items');
+                    }
+                    return;
+                }
+
+                // Delegate all other input to handleColorInput
+                handleColorInput({
+                    input,
+                    key,
+                    widget,
+                    settings,
+                    state: colorEditorState,
+                    setState: setColorEditorState,
+                    onUpdate: (updatedWidget) => {
+                        const newWidgets = [...widgets];
+                        newWidgets[selectedIndex] = updatedWidget;
+                        onUpdate(newWidgets);
+                    }
+                });
+            }
+            return;
         }
 
         if (widgetPicker) {
