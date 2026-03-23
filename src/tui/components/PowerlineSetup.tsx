@@ -183,9 +183,10 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         }
 
         if (screen === 'menu') {
+            const cmd = input.toLowerCase();
             if (key.escape) {
                 onBack();
-            } else if (input === 't' || input === 'T') {
+            } else if (cmd === 't') {
                 if (!powerlineConfig.enabled) {
                     if (hasSeparatorItems) {
                         setConfirmingEnable(true);
@@ -201,9 +202,9 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         }
                     });
                 }
-            } else if (input === 'i' || input === 'I') {
+            } else if (cmd === 'i') {
                 setConfirmingFontInstall(true);
-            } else if ((input === 'a' || input === 'A') && powerlineConfig.enabled) {
+            } else if (cmd === 'a' && powerlineConfig.enabled) {
                 onUpdate({
                     ...settings,
                     powerline: {

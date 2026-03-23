@@ -95,13 +95,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             // Skip input handling when confirmation is active - let ConfirmDialog handle it
             return;
         } else {
+            const cmd = input.toLowerCase();
             if (key.escape || key.leftArrow) {
                 onBack();
-            } else if (input === 'p' || input === 'P') {
+            } else if (cmd === 'p') {
                 setEditingPadding(true);
-            } else if ((input === 's' || input === 'S') && !isPowerlineEnabled && !key.ctrl) {
+            } else if (cmd === 's' && !isPowerlineEnabled && !key.ctrl) {
                 setEditingSeparator(true);
-            } else if ((input === 'i' || input === 'I') && !isPowerlineEnabled) {
+            } else if (cmd === 'i' && !isPowerlineEnabled) {
                 const newInheritColors = !inheritColors;
                 setInheritColors(newInheritColors);
                 const updatedSettings = {
@@ -109,7 +110,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     inheritSeparatorColors: newInheritColors
                 };
                 onUpdate(updatedSettings);
-            } else if ((input === 'b' || input === 'B') && !isPowerlineEnabled) {
+            } else if (cmd === 'b' && !isPowerlineEnabled) {
                 // Cycle through background colors
                 const nextIndex = (currentBgIndex + 1) % bgColors.length;
                 const nextBgColor = bgColors[nextIndex];
@@ -118,14 +119,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideBackgroundColor: nextBgColor === 'none' ? undefined : nextBgColor
                 };
                 onUpdate(updatedSettings);
-            } else if ((input === 'c' || input === 'C') && !isPowerlineEnabled) {
+            } else if (cmd === 'c' && !isPowerlineEnabled) {
                 // Clear override background color
                 const updatedSettings = {
                     ...settings,
                     overrideBackgroundColor: undefined
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'o' || input === 'O') {
+            } else if (cmd === 'o') {
                 // Toggle global bold
                 const newGlobalBold = !globalBold;
                 setGlobalBold(newGlobalBold);
@@ -134,7 +135,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     globalBold: newGlobalBold
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'm' || input === 'M') {
+            } else if (cmd === 'm') {
                 // Toggle minimalist mode
                 const newMinimalistMode = !minimalistMode;
                 setMinimalistMode(newMinimalistMode);
@@ -143,7 +144,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     minimalistMode: newMinimalistMode
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'f' || input === 'F') {
+            } else if (cmd === 'f') {
                 // Cycle through foreground colors
                 const nextIndex = (currentFgIndex + 1) % fgColors.length;
                 const nextFgColor = fgColors[nextIndex];
@@ -152,7 +153,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideForegroundColor: nextFgColor === 'none' ? undefined : nextFgColor
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'g' || input === 'G') {
+            } else if (cmd === 'g') {
                 // Clear override foreground color
                 const updatedSettings = {
                     ...settings,
