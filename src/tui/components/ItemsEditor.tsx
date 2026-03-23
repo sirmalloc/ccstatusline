@@ -644,6 +644,55 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Build mode-aware help text
     const buildHelpText = (): string => {
+        // Rule-level modes take priority
+        if (expandedWidgetId !== null) {
+            if (ruleMoveMode) {
+                return '↑↓ move rule, Enter/ESC exit move mode';
+            }
+
+            if (ruleEditorMode === 'color') {
+                const { hexInputMode, ansi256InputMode, editingBackground } = ruleColorEditorState;
+
+                if (hexInputMode || ansi256InputMode) {
+                    // Sub-modes render their own prompts
+                    return '';
+                }
+
+                const colorType = editingBackground ? 'background' : 'foreground';
+                const hexAnsiHelp = settings.colorLevel === 3
+                    ? ', (h)ex'
+                    : settings.colorLevel === 2
+                        ? ', (a)nsi256'
+                        : '';
+
+                return `←→ cycle ${colorType}, (f) bg/fg, (b)old${hexAnsiHelp}, (r)eset\nTab: property mode, ESC: property mode`;
+            }
+
+            // Rule property mode
+            const expandedWidget = widgets.find(w => w.id === expandedWidgetId);
+            let ruleText = '↑↓ select, ←→ edit condition, Enter move, (a)dd, (d)elete, (s)top, (h)ide, (c)lear properties, Tab: color mode, ESC: collapse';
+
+            if (expandedWidget && expandedWidget.type !== 'separator' && expandedWidget.type !== 'flex-separator') {
+                const expandedWidgetImpl = getWidget(expandedWidget.type);
+                if (expandedWidgetImpl) {
+                    const widgetCustomKeybinds = getCustomKeybindsForWidget(expandedWidgetImpl, expandedWidget);
+                    if (widgetCustomKeybinds.length > 0) {
+                        ruleText += '\n' + widgetCustomKeybinds.map(kb => kb.label).join(', ');
+                    }
+                    if (expandedWidgetImpl.supportsRawValue()) {
+                        ruleText += ', (r)aw value';
+                    }
+                    // Check if merge is applicable (widget is not the last)
+                    const expandedWidgetIndex = widgets.findIndex(w => w.id === expandedWidgetId);
+                    if (expandedWidgetIndex !== -1 && expandedWidgetIndex < widgets.length - 1) {
+                        ruleText += ', (m)erge';
+                    }
+                }
+            }
+
+            return ruleText;
+        }
+
         if (editorMode === 'color') {
             const { editingBackground, hexInputMode, ansi256InputMode } = colorEditorState;
 
@@ -741,6 +790,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         );
     }
 
+    // Compute expanded widget display name for title bar
+    const expandedWidget = expandedWidgetId !== null ? widgets.find(w => w.id === expandedWidgetId) : null;
+    const expandedWidgetDisplayName = expandedWidget
+        ? (expandedWidget.type !== 'separator' && expandedWidget.type !== 'flex-separator'
+            ? (getWidget(expandedWidget.type)?.getDisplayName() ?? expandedWidget.type)
+            : expandedWidget.type)
+        : null;
+
     return (
         <Box flexDirection='column'>
             <Box>
@@ -748,10 +805,20 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     Edit Line
                     {' '}
                     {lineNumber}
-                    {' '}
+                    {expandedWidgetDisplayName !== null
+                        ? ` — Rules for ${expandedWidgetDisplayName}`
+                        : ' '}
                 </Text>
-                {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
-                {!moveMode && !widgetPicker && editorMode === 'color' && (
+                {expandedWidgetId !== null && ruleMoveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                {expandedWidgetId !== null && !ruleMoveMode && ruleEditorMode === 'color' && (
+                    <Text color='magenta'>
+                        [COLOR MODE
+                        {ruleColorEditorState.editingBackground ? ' - BACKGROUND' : ' - FOREGROUND'}
+                        ]
+                    </Text>
+                )}
+                {expandedWidgetId === null && moveMode && <Text color='blue'>[MOVE MODE]</Text>}
+                {expandedWidgetId === null && !moveMode && !widgetPicker && editorMode === 'color' && (
                     <Text color='magenta'>
                         [COLOR MODE
                         {colorEditorState.editingBackground ? ' - BACKGROUND' : ' - FOREGROUND'}
@@ -906,6 +973,79 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     )}
                 </Box>
             )}
+            {!widgetPicker && expandedWidgetId !== null && ruleEditorMode === 'color' && ruleColorEditorState.hexInputMode && (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Enter 6-digit hex color code (without #):</Text>
+                    <Text>
+                        #
+                        {ruleColorEditorState.hexInput}
+                        <Text dimColor>
+                            {ruleColorEditorState.hexInput.length < 6 ? '_'.repeat(6 - ruleColorEditorState.hexInput.length) : ''}
+                        </Text>
+                    </Text>
+                </Box>
+            )}
+            {!widgetPicker && expandedWidgetId !== null && ruleEditorMode === 'color' && ruleColorEditorState.ansi256InputMode && (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Enter ANSI 256 color code (0-255):</Text>
+                    <Text>
+                        {ruleColorEditorState.ansi256Input}
+                        <Text dimColor>
+                            {ruleColorEditorState.ansi256Input.length === 0
+                                ? '___'
+                                : ruleColorEditorState.ansi256Input.length === 1
+                                    ? '__'
+                                    : ruleColorEditorState.ansi256Input.length === 2
+                                        ? '_'
+                                        : ''}
+                        </Text>
+                    </Text>
+                </Box>
+            )}
+            {!widgetPicker && expandedWidgetId !== null && ruleEditorMode === 'color' && !ruleColorEditorState.hexInputMode && !ruleColorEditorState.ansi256InputMode && (() => {
+                const baseWidget = widgets.find(w => w.id === expandedWidgetId);
+                if (!baseWidget) {
+                    return null;
+                }
+
+                const isSep = baseWidget.type === 'separator' || baseWidget.type === 'flex-separator';
+                if (isSep) {
+                    return null;
+                }
+
+                const currentRule = (baseWidget.rules ?? [])[ruleSelectedIndex];
+                const tempWidget = currentRule ? mergeWidgetWithRuleApply(baseWidget, currentRule.apply) : baseWidget;
+
+                const { colorIndex, totalColors, displayName } = getCurrentColorInfo(
+                    tempWidget,
+                    ruleColorEditorState.editingBackground
+                );
+
+                const colorType = ruleColorEditorState.editingBackground ? 'background' : 'foreground';
+                const colorNumber = colorIndex === -1 ? 'custom' : `${colorIndex}/${totalColors}`;
+
+                const level = getColorLevelString(settings.colorLevel);
+                const styledColor = ruleColorEditorState.editingBackground
+                    ? applyColors(` ${displayName} `, undefined, tempWidget.backgroundColor, false, level)
+                    : applyColors(displayName, tempWidget.color, undefined, false, level);
+
+                return (
+                    <Box marginTop={1}>
+                        <Text>
+                            Current
+                            {' '}
+                            {colorType}
+                            {' '}
+                            (
+                            {colorNumber}
+                            ):
+                            {' '}
+                            {styledColor}
+                            {tempWidget.bold && <Text bold> [BOLD]</Text>}
+                        </Text>
+                    </Box>
+                );
+            })()}
             {!widgetPicker && editorMode === 'color' && colorEditorState.hexInputMode && (
                 <Box marginTop={1} flexDirection='column'>
                     <Text>Enter 6-digit hex color code (without #):</Text>
