@@ -141,8 +141,12 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                 return;
         }
 
-        if (key.escape) {
+        if (key.escape || key.leftArrow) {
             onBack();
+        }
+
+        if (key.rightArrow && localLines.length > 0 && selectedIndex < localLines.length) {
+            onSelect(selectedIndex);
         }
     });
 
