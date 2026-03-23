@@ -1,0 +1,96 @@
+<h2>Accordion Rules Editor: Full Design (v2)</h2>
+<p class="subtitle">Fixed: Selection arrow stays in a fixed column. Indented rules have their own arrow column.</p>
+
+<div class="section">
+  <h3>1. Normal Widget View (no rules expanded)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&uarr;&darr; select, &larr;&rarr; type picker, (a)dd, (d)elete, (x) rules, Tab: color mode, ESC: back</div>
+      <div><span style="color: #4ade80;">&#9654; </span><span style="color: #4ade80;">1. Model</span> <span style="color: #888;">[cyan] (2 rules)</span></div>
+      <div><span style="color: #888;">  </span> 2. GitBranch <span style="color: #888;">[green]</span></div>
+      <div><span style="color: #888;">  </span> 3. TokensTotal <span style="color: #888;">[white] (1 rule)</span></div>
+      <div><span style="color: #888;">  </span> 4. Separator |</div>
+      <div><span style="color: #888;">  </span> 5. SessionCost <span style="color: #888;">[yellow]</span></div>
+    </div>
+  </div>
+  <p>&uarr;&darr; navigates widgets. Arrow column is fixed at left edge.</p>
+</div>
+
+<div class="section">
+  <h3>2. Press <code>x</code> &mdash; Rules expand, focus shifts into rules</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1 &mdash; Rules for Model</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&uarr;&darr; select, &larr;&rarr; edit condition, (a)dd, (d)elete, (s)top, (h)ide, Tab: color mode, ESC: collapse</div>
+      <div><span style="color: #888;">  </span> 1. Model <span style="color: #666;">[cyan]</span></div>
+      <div><span style="color: #888;">  </span>    <span style="color: #4ade80;">&#9654; </span>1. <span style="color: #ef4444;">Model</span> <span style="color: #888;">(when self &gt; 50) (raw value)</span></div>
+      <div><span style="color: #888;">  </span>    <span style="color: #888;">  </span> 2. <span style="color: #ef4444; font-weight: bold;">Model</span> <span style="color: #888;">(when self &gt; 80) (stop) (hidden)</span></div>
+      <div><span style="color: #888;">  </span> 2. GitBranch <span style="color: #888;">[green]</span></div>
+      <div><span style="color: #888;">  </span> 3. TokensTotal <span style="color: #888;">[white] (1 rule)</span></div>
+    </div>
+  </div>
+  <p>Rules are permanently indented under the parent widget. The rule arrow column is offset from the widget arrow column. The parent widget loses its arrow (no longer selected). &uarr;&darr; navigates rules only.</p>
+</div>
+
+<div class="section">
+  <h3>3. Navigating to rule 2</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1 &mdash; Rules for Model</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&uarr;&darr; select, &larr;&rarr; edit condition, (a)dd, (d)elete, (s)top, (h)ide, Tab: color mode, ESC: collapse</div>
+      <div><span style="color: #888;">  </span> 1. Model <span style="color: #666;">[cyan]</span></div>
+      <div><span style="color: #888;">  </span>    <span style="color: #888;">  </span> 1. <span style="color: #ef4444;">Model</span> <span style="color: #888;">(when self &gt; 50) (raw value)</span></div>
+      <div><span style="color: #888;">  </span>    <span style="color: #4ade80;">&#9654; </span>2. <span style="color: #ef4444; font-weight: bold;">Model</span> <span style="color: #888;">(when self &gt; 80) (stop) (hidden)</span></div>
+      <div><span style="color: #888;">  </span> 2. GitBranch <span style="color: #888;">[green]</span></div>
+      <div><span style="color: #888;">  </span> 3. TokensTotal <span style="color: #888;">[white] (1 rule)</span></div>
+    </div>
+  </div>
+  <p>Arrow moves down to rule 2. Nothing else shifts. The indentation is fixed &mdash; only the arrow position changes.</p>
+</div>
+
+<div class="section">
+  <h3>4. Tab to color mode (on rule 2)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit Line 1 &mdash; Rules for Model <span style="color: #d946ef;">[COLOR MODE - FOREGROUND]</span></div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div style="color: #888; margin-bottom: 4px;">&larr;&rarr; cycle foreground, (f) bg/fg, (b)old, (r)eset, Tab: property mode, ESC: property mode</div>
+      <div style="color: #888; margin-bottom: 4px;">Current foreground (3/16): <span style="color: #ef4444;">Red</span></div>
+      <div><span style="color: #888;">  </span> 1. Model <span style="color: #666;">[cyan]</span></div>
+      <div><span style="color: #888;">  </span>    <span style="color: #888;">  </span> 1. <span style="color: #ef4444;">Model</span> <span style="color: #888;">(when self &gt; 50) (raw value)</span></div>
+      <div><span style="color: #888;">  </span>    <span style="color: #d946ef;">&#9654; </span>2. <span style="color: #ef4444; font-weight: bold;">Model</span> <span style="color: #888;">(when self &gt; 80) (stop) (hidden)</span></div>
+      <div><span style="color: #888;">  </span> 2. GitBranch <span style="color: #888;">[green]</span></div>
+    </div>
+  </div>
+  <p>Magenta arrow for color mode. Color info shown. Everything else stays put.</p>
+</div>
+
+<div class="section">
+  <h3>5. ESC Layering</h3>
+  <div class="mockup">
+    <div class="mockup-header">Navigation Stack</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 14px; line-height: 2.2; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+      <div>Rule color mode &nbsp;&nbsp;&nbsp;<span style="color: #f59e0b;">&rarr; ESC &rarr;</span>&nbsp;&nbsp; Rule property mode</div>
+      <div>Rule property mode &nbsp;<span style="color: #f59e0b;">&rarr; ESC &rarr;</span>&nbsp;&nbsp; Collapse rules (widget level)</div>
+      <div>Widget color mode &nbsp;&nbsp;<span style="color: #f59e0b;">&rarr; ESC &rarr;</span>&nbsp;&nbsp; Widget items mode</div>
+      <div>Widget items mode &nbsp;&nbsp;<span style="color: #f59e0b;">&rarr; ESC &rarr;</span>&nbsp;&nbsp; Line Selector</div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)">
+    <div class="letter">&#10003;</div>
+    <div class="content">
+      <h3>Design looks correct</h3>
+      <p>Ready to write up as a spec</p>
+    </div>
+  </div>
+  <div class="option" data-choice="revise" onclick="toggleSelect(this)">
+    <div class="letter">&#9998;</div>
+    <div class="content">
+      <h3>Needs changes</h3>
+      <p>I'll describe what to adjust in the terminal</p>
+    </div>
+  </div>
+</div>

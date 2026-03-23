@@ -1,0 +1,62 @@
+<h2>Accordion Rules: How should expanded rules look?</h2>
+<p class="subtitle">When you press a key on a widget, its rules expand inline below it. But how much detail should each rule show?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Compact: Condition + Color Preview Only</h3>
+      <div class="mockup">
+        <div class="mockup-header">ItemsEditor - Compact Rules</div>
+        <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+          <div style="color: #888; margin-bottom: 8px;">Edit Line 1</div>
+          <div><span style="color: #4ade80;">&#9654; </span><span style="color: #4ade80;">1. Model</span> <span style="color: #888;">[cyan]</span></div>
+          <div style="padding-left: 24px; color: #888;">&#9656; when &gt;50 <span style="color: #ef4444;">&#9632; red</span></div>
+          <div style="padding-left: 24px; color: #888;">&#9656; when &gt;80 <span style="color: #ef4444;">&#9632; red, bold</span> (hidden)</div>
+          <div><span>   </span>2. GitBranch <span style="color: #888;">[green]</span></div>
+          <div><span>   </span>3. TokensTotal <span style="color: #888;">[white] (2 rules)</span></div>
+        </div>
+      </div>
+      <p>Each rule is one short line. Condition summary + color swatch + key overrides. Quick to scan. Less info but less clutter.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Detailed: Full Condition + All Properties</h3>
+      <div class="mockup">
+        <div class="mockup-header">ItemsEditor - Detailed Rules</div>
+        <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+          <div style="color: #888; margin-bottom: 8px;">Edit Line 1</div>
+          <div><span style="color: #4ade80;">&#9654; </span><span style="color: #4ade80;">1. Model</span> <span style="color: #888;">[cyan]</span></div>
+          <div style="padding-left: 24px; color: #888;">&#9656; 1. <span style="color: #ef4444;">Model</span> (when self greaterThan 50) <span style="color: #888;">(raw value)</span></div>
+          <div style="padding-left: 24px; color: #888;">&#9656; 2. <span style="color: #ef4444; font-weight: bold;">Model</span> (when self greaterThan 80) (stop) (hidden)</div>
+          <div><span>   </span>2. GitBranch <span style="color: #888;">[green]</span></div>
+          <div><span>   </span>3. TokensTotal <span style="color: #888;">[white] (2 rules)</span></div>
+        </div>
+      </div>
+      <p>Mirrors current RulesEditor display: styled widget name + full condition text + all property overrides. More info but takes more space.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid: Compact by default, expand selected rule</h3>
+      <div class="mockup">
+        <div class="mockup-header">ItemsEditor - Hybrid Rules</div>
+        <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6; background: #1a1a2e; color: #e0e0e0; padding: 16px;">
+          <div style="color: #888; margin-bottom: 8px;">Edit Line 1</div>
+          <div><span style="color: #4ade80;">&#9654; </span><span style="color: #4ade80;">1. Model</span> <span style="color: #888;">[cyan]</span></div>
+          <div style="padding-left: 24px; color: #888;">  &#9656; when &gt;50 <span style="color: #ef4444;">&#9632; red</span></div>
+          <div style="padding-left: 24px;"><span style="color: #d946ef;">  &#9654;</span> <span style="color: #ef4444; font-weight: bold;">Model</span> <span style="color: #888;">(when self greaterThan 80) (stop) (hidden)</span></div>
+          <div style="padding-left: 24px; color: #d946ef; font-size: 12px;">     &#8593;&#8595; select, &#8592;&#8594; edit condition, Tab: color mode, (s)top, (h)ide</div>
+          <div><span>   </span>2. GitBranch <span style="color: #888;">[green]</span></div>
+          <div><span>   </span>3. TokensTotal <span style="color: #888;">[white] (2 rules)</span></div>
+        </div>
+      </div>
+      <p>Unselected rules show compact view. The selected rule shows full detail + inline help text. Best of both: scannable list, detailed editing.</p>
+    </div>
+  </div>
+</div>
