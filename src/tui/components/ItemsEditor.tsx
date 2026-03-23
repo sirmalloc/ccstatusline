@@ -389,26 +389,53 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
     const hasWidgets = widgets.length > 0;
 
-    // Build main help text (without custom keybinds)
-    let helpText = hasWidgets
-        ? '↑↓ select, ←→ open type picker'
-        : '(a)dd via picker, (i)nsert via picker';
-    if (isSeparator) {
-        helpText += ', Space edit separator';
-    }
-    if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
-    }
-    if (canToggleRaw) {
-        helpText += ', (r)aw value';
-    }
-    if (canMerge) {
-        helpText += ', (m)erge';
-    }
-    if (!isSeparator && !isFlexSeparator && hasWidgets) {
-        helpText += ', (x) exceptions';
-    }
-    helpText += ', ESC back';
+    // Build mode-aware help text
+    const buildHelpText = (): string => {
+        if (editorMode === 'color') {
+            const { editingBackground, hexInputMode, ansi256InputMode } = colorEditorState;
+
+            if (hexInputMode || ansi256InputMode) {
+                // Sub-modes render their own help text inline
+                return '';
+            }
+
+            const colorType = editingBackground ? 'background' : 'foreground';
+            const hexAnsiHelp = settings.colorLevel === 3
+                ? ', (h)ex'
+                : settings.colorLevel === 2
+                    ? ', (a)nsi256'
+                    : '';
+
+            return `←→ cycle ${colorType}, (f) bg/fg, (b)old${hexAnsiHelp}, (r)eset\nTab: items mode, ESC: items mode`;
+        }
+
+        // Items mode
+        let text = hasWidgets
+            ? '↑↓ select, ←→ open type picker'
+            : '(a)dd via picker, (i)nsert via picker';
+        if (isSeparator) {
+            text += ', Space edit separator';
+        }
+        if (hasWidgets) {
+            text += ', Enter to move, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
+        }
+        if (canToggleRaw) {
+            text += ', (r)aw value';
+        }
+        if (canMerge) {
+            text += ', (m)erge';
+        }
+        if (!isSeparator && !isFlexSeparator && hasWidgets) {
+            text += ', (x) rules';
+        }
+        if (hasWidgets && !isSeparator && !isFlexSeparator) {
+            text += ', Tab: color mode';
+        }
+        text += ', ESC: back';
+        return text;
+    };
+
+    const helpText = buildHelpText();
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
@@ -546,7 +573,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             ) : (
                 <Box flexDirection='column'>
                     <Text dimColor>{helpText}</Text>
-                    <Text dimColor>{customKeybindsText || ' '}</Text>
+                    {editorMode === 'items' && <Text dimColor>{customKeybindsText || ' '}</Text>}
                 </Box>
             )}
             {hasFlexSeparator && !widthDetectionAvailable && (
