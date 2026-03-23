@@ -327,14 +327,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
             // 3. Rule move mode
             if (ruleMoveMode) {
-                // Left/Right: open condition editor (exit move mode first)
-                if (key.leftArrow || key.rightArrow) {
-                    if (rules.length > 0) {
-                        setRuleConditionEditorIndex(ruleSelectedIndex);
-                        setRuleMoveMode(false);
-                    }
-                    return;
-                }
                 handleRuleMoveMode({
                     key,
                     baseWidget: expandedWidget,
@@ -479,8 +471,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 return;
             }
 
-            // Right: consumed but no-op (prevent fallthrough)
+            // Right: open condition editor
             if (key.rightArrow) {
+                if (rules.length > 0) {
+                    setRuleConditionEditorIndex(ruleSelectedIndex);
+                }
                 return;
             }
 
