@@ -1256,6 +1256,17 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                 </Text>
                                             )}
                                         </Box>
+                                        {isExpanded && rules.length === 0 && (
+                                            <Box flexDirection='row' flexWrap='nowrap'>
+                                                <Box width={3}>
+                                                    <Text>{'  '}</Text>
+                                                </Box>
+                                                <Box width={3}>
+                                                    <Text>{'  '}</Text>
+                                                </Box>
+                                                <Text dimColor>(no rules — press 'a' to add)</Text>
+                                            </Box>
+                                        )}
                                         {isExpanded && rules.map((rule, ruleIndex) => {
                                             const isRuleSelected = ruleIndex === ruleSelectedIndex;
                                             const condition = formatCondition(rule.when);
