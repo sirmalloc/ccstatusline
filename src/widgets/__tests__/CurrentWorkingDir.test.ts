@@ -48,6 +48,10 @@ describe('CurrentWorkingDirWidget', () => {
             startCaps: [],
             endCaps: [],
             autoAlign: false
+        },
+        terminalTitle: {
+            enabled: false,
+            template: '{task} | {repo}/{branch}'
         }
     };
 
