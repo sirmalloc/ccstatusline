@@ -221,6 +221,71 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     }
 }
 
+/**
+ * Ensures Claude Code permissions for the task-objective widget:
+ * - Read session discovery files (to learn the session ID via PPID)
+ * - Write task files (to update the task objective)
+ */
+const TASK_HOOK_TAG = 'ccstatusline-task-objective';
+
+/**
+ * Auto-approve Write tool calls to task files via a PreToolUse hook.
+ *
+ * Claude Code's permission system doesn't reliably match Write permissions
+ * for paths outside the project directory. A PreToolUse hook with
+ * permissionDecision: "allow" bypasses this entirely.
+ */
+function ensureTaskObjectivePermissions(settings: ClaudeSettings): void {
+    const cacheDir = path.join(os.homedir(), '.cache', 'ccstatusline');
+    const toAbsolute = (p: string) => p.startsWith('/') ? `/${p}` : `//${p}`;
+    const permissions = [
+        'Bash(echo $PPID)',
+        `Read(${toAbsolute(path.join(cacheDir, 'sessions', '*'))})`
+    ];
+
+    if (!settings.permissions) {
+        settings.permissions = {};
+    }
+    if (!settings.permissions.allow) {
+        settings.permissions.allow = [];
+    }
+    for (const permission of permissions) {
+        if (!settings.permissions.allow.includes(permission)) {
+            settings.permissions.allow.push(permission);
+        }
+    }
+
+    // Add a PreToolUse hook that auto-approves Write to task files
+    interface TaskHookEntry {
+        _tag?: string;
+        matcher?: string;
+        hooks?: { type: string; command: string }[];
+    }
+    const hooks = ((settings as Record<string, unknown>).hooks ?? {}) as Record<string, TaskHookEntry[]>;
+
+    // Remove any existing task-objective hooks
+    for (const event of Object.keys(hooks)) {
+        hooks[event] = (hooks[event] ?? []).filter(entry => entry._tag !== TASK_HOOK_TAG);
+        if (hooks[event].length === 0) {
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+            delete hooks[event];
+        }
+    }
+
+    // Hook command: check if the Write file_path contains 'claude-task-',
+    // if so return permissionDecision allow, otherwise pass through
+    const hookCommand = `jq -r 'if .tool_name == "Write" and (.tool_input.file_path | test("claude-task-")) then {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}} else {} end'`;
+
+    const list = hooks['PreToolUse'] ??= [];
+    list.push({
+        _tag: TASK_HOOK_TAG,
+        matcher: 'Write',
+        hooks: [{ type: 'command', command: hookCommand }]
+    });
+
+    (settings as Record<string, unknown>).hooks = hooks;
+}
+
 export async function installStatusLine(useBunx = false): Promise<void> {
     let settings: ClaudeSettings;
 
@@ -244,12 +309,28 @@ export async function installStatusLine(useBunx = false): Promise<void> {
         padding: 0
     };
 
+    // If the task-objective widget is configured, ensure Write permission
+    // for task files and CLAUDE.md instructions
+    const savedCcSettings = await loadSavedSettingsForHookSync();
+    if (savedCcSettings) {
+        const hasTaskWidget = savedCcSettings.lines.some(
+            line => line.some(item => item.type === 'task-objective')
+        );
+        if (hasTaskWidget) {
+            ensureTaskObjectivePermissions(settings);
+            // Pre-create tasks directory so Claude doesn't need mkdir at runtime
+            const fs = await import('fs');
+            fs.mkdirSync(path.join(os.homedir(), '.cache', 'ccstatusline', 'tasks'), { recursive: true });
+            const { ensureTaskInstructions } = await import('./claude-md');
+            ensureTaskInstructions();
+        }
+    }
+
     await saveClaudeSettings(settings);
 
-    const savedSettings = await loadSavedSettingsForHookSync();
-    if (savedSettings) {
+    if (savedCcSettings) {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(savedSettings);
+        await syncWidgetHooks(savedCcSettings);
     }
 }
 
@@ -273,6 +354,13 @@ export async function uninstallStatusLine(): Promise<void> {
         await removeManagedHooks();
     } catch {
         // Ignore hook cleanup failures during uninstall
+    }
+
+    try {
+        const { removeTaskInstructions } = await import('./claude-md');
+        removeTaskInstructions();
+    } catch {
+        // Ignore CLAUDE.md cleanup failures during uninstall
     }
 }
 

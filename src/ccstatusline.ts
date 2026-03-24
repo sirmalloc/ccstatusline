@@ -28,6 +28,7 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import { writeSessionId } from './utils/session-discovery';
 import {
     getSkillsFilePath,
     getSkillsMetrics
@@ -86,6 +87,12 @@ async function ensureWindowsUtf8CodePage() {
 }
 
 async function renderMultipleLines(data: StatusJSON) {
+    // Claude Code doesn't expose session_id to the conversation context, but
+    // the task-objective widget needs Claude to write files keyed by session ID.
+    // We bridge this gap by writing the session ID to a file keyed by the Claude
+    // CLI PID, which Claude can discover via echo $PPID. See session-discovery.ts.
+    writeSessionId(data.session_id);
+
     const settings = await loadSettings();
 
     // Set global chalk level based on settings

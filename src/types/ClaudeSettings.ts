@@ -3,6 +3,7 @@ export interface ClaudeSettings {
     permissions?: {
         allow?: string[];
         deny?: string[];
+        additionalDirectories?: string[];
     };
     statusLine?: {
         type: string;
