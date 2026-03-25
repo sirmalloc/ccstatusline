@@ -1,14 +1,16 @@
 import { readFileSync } from 'fs';
+import { homedir } from 'os';
 import { basename, join } from 'path';
 
 import type { RenderContext } from '../types/RenderContext';
-import { getTaskDir } from '../widgets/TaskObjective';
 
 import { runGit } from './git';
 
+const TASK_DIR = join(homedir(), '.cache', 'ccstatusline', 'tasks');
+
 function getTaskFromFile(sessionId: string): string | null {
     try {
-        const content = readFileSync(join(getTaskDir(), `claude-task-${sessionId}`), 'utf8').trim();
+        const content = readFileSync(join(TASK_DIR, `claude-task-${sessionId}`), 'utf8').trim();
         if (!content) return null;
         try {
             const data = JSON.parse(content) as { task?: string };
