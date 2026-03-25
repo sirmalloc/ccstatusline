@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'fs';
+import { readFileSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -24,19 +24,19 @@ const STATUS_INDICATORS: Record<string, string> = {
     'reviewing':  '\u{1F50D}',  // 🔍
 };
 
+// Terminal statuses — elapsed time freezes when the task reaches one of these
+const TERMINAL_STATUSES = new Set(['complete', 'failed']);
+
 interface TaskFileData {
     task: string | null;
     status: string | null;
 }
 
-interface TaskState {
+interface SidecarData {
     task: string;
     startedAt: number;
+    frozenElapsedMs?: number;
 }
-
-// In-memory tracking of when each task started, keyed by session ID.
-// The timer resets when the task text changes (new task).
-const taskStartTimes = new Map<string, TaskState>();
 
 function formatElapsed(ms: number): string {
     if (ms < 0) return '0s';
@@ -75,26 +75,76 @@ function readTaskFile(sessionId: string): TaskFileData {
 }
 
 /**
- * Track task start time in memory. Returns elapsed ms since the current
- * task started. The timer resets when the task text changes (new task).
+ * Get elapsed ms since the current task started.
+ *
+ * Persists the start time in a sidecar file (<task-file>.started) so it
+ * survives across ccstatusline process restarts (ccstatusline launches as
+ * a fresh process per render). The sidecar stores the task text and a
+ * timestamp; if the task text changes, the timer resets.
+ *
+ * When the task reaches a terminal status (complete, failed), the elapsed
+ * time is frozen — subsequent renders show the same duration.
  */
-function getElapsedMs(sessionId: string, task: string): number {
-    const existing = taskStartTimes.get(sessionId);
-    if (existing && existing.task === task) {
-        return Date.now() - existing.startedAt;
+function getElapsedMs(sessionId: string, task: string, status: string | null): number {
+    const sidecarPath = getTaskFilePath(sessionId) + '.started';
+
+    // Check for existing sidecar
+    let sidecar: SidecarData | null = null;
+    try {
+        const content = readFileSync(sidecarPath, 'utf8').trim();
+        const data = JSON.parse(content) as SidecarData;
+        if (data.task === task && typeof data.startedAt === 'number') {
+            sidecar = data;
+        }
+    } catch {
+        // No sidecar or invalid — will create one below
     }
-    // New task or first time seeing this session — start the clock.
-    // Use the file's mtime as the start time so we pick up tasks that
-    // were written before this ccstatusline process started.
+
+    if (sidecar) {
+        // If already frozen, return the frozen value
+        if (typeof sidecar.frozenElapsedMs === 'number') {
+            return sidecar.frozenElapsedMs;
+        }
+
+        const elapsed = Date.now() - sidecar.startedAt;
+
+        // Freeze if we just reached a terminal status
+        if (status && TERMINAL_STATUSES.has(status)) {
+            try {
+                writeFileSync(sidecarPath, JSON.stringify({
+                    ...sidecar,
+                    frozenElapsedMs: elapsed
+                }), 'utf8');
+            } catch { /* non-fatal */ }
+        }
+
+        return elapsed;
+    }
+
+    // New task or first sighting — use the task file's birthtime if
+    // available (creation time), falling back to mtime, then now.
     let startedAt = Date.now();
     try {
-        const filePath = getTaskFilePath(sessionId);
-        startedAt = statSync(filePath).mtimeMs;
+        const stats = statSync(getTaskFilePath(sessionId));
+        // birthtimeMs is 0 on filesystems that don't support it
+        startedAt = stats.birthtimeMs > 0 ? stats.birthtimeMs : stats.mtimeMs;
     } catch {
         // Fall back to now
     }
-    taskStartTimes.set(sessionId, { task, startedAt });
-    return Date.now() - startedAt;
+
+    const newSidecar: SidecarData = { task, startedAt };
+    const elapsed = Date.now() - startedAt;
+
+    // If already terminal on first sighting, freeze immediately
+    if (status && TERMINAL_STATUSES.has(status)) {
+        newSidecar.frozenElapsedMs = elapsed;
+    }
+
+    try {
+        writeFileSync(sidecarPath, JSON.stringify(newSidecar), 'utf8');
+    } catch { /* non-fatal */ }
+
+    return elapsed;
 }
 
 export class TaskObjectiveWidget implements Widget {
@@ -131,7 +181,7 @@ export class TaskObjectiveWidget implements Widget {
         const prefix = indicator ? `${indicator} ` : '';
 
         const showElapsed = item.metadata?.showElapsed !== 'false';
-        const elapsedMs = getElapsedMs(sessionId, task);
+        const elapsedMs = getElapsedMs(sessionId, task, status);
         const suffix = showElapsed ? ` (${formatElapsed(elapsedMs)})` : '';
 
         let display = item.rawValue
