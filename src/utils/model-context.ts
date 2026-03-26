@@ -11,6 +11,13 @@ interface ModelIdentifier {
 const DEFAULT_CONTEXT_WINDOW_SIZE = 200000;
 const USABLE_CONTEXT_RATIO = 0.8;
 
+// Models where 1M context is the default (not an opt-in variant requiring a [1m] suffix).
+// Sonnet 4.6 and later report as plain "claude-sonnet-4-6" with no size hint in the display
+// name, unlike Opus 4.6 which reports as "Opus 4.6 (1M context)".
+const DEFAULT_1M_CONTEXT_MODEL_PREFIXES = [
+    'claude-sonnet-4-6',
+];
+
 function toValidWindowSize(value: number | null | undefined): number | null {
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
         return null;
@@ -97,6 +104,15 @@ export function getContextConfig(modelIdentifier?: string, contextWindowSize?: n
         return {
             maxTokens: inferredWindowSize,
             usableTokens: Math.floor(inferredWindowSize * USABLE_CONTEXT_RATIO)
+        };
+    }
+
+    // Fall back to known 1M-default models for cases where the display name
+    // doesn't include a context size hint (e.g. "claude-sonnet-4-6").
+    if (DEFAULT_1M_CONTEXT_MODEL_PREFIXES.some(prefix => modelIdentifier.includes(prefix))) {
+        return {
+            maxTokens: 1_000_000,
+            usableTokens: Math.floor(1_000_000 * USABLE_CONTEXT_RATIO)
         };
     }
 

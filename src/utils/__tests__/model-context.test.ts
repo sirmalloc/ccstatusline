@@ -104,6 +104,29 @@ describe('getContextConfig', () => {
         });
     });
 
+    describe('Models with 1M context as default (no suffix required)', () => {
+        it('should return 1M context window for claude-sonnet-4-6', () => {
+            const config = getContextConfig('claude-sonnet-4-6');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should return 1M context window for claude-sonnet-4-6 with Bedrock prefix', () => {
+            const config = getContextConfig('us.anthropic.claude-sonnet-4-6-20260101-v1:0');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('should still prioritise explicit context_window_size over known-1M-default lookup', () => {
+            const config = getContextConfig('claude-sonnet-4-6', 200000);
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(160000);
+        });
+    });
+
     describe('Older/default models', () => {
         it('should return 200k context window for older Sonnet 3.5 model', () => {
             const config = getContextConfig('claude-3-5-sonnet-20241022');
