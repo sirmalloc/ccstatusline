@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
+import { createHash } from 'node:crypto';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -129,8 +130,11 @@ https.request = (...args) => {
 
 const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
 
-const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
-const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
+import { createHash as _createHash } from 'node:crypto';
+const _claudeConfigDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+const _configHash = _createHash('sha256').update(path.resolve(_claudeConfigDir)).digest('hex').slice(0, 16);
+const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + _configHash + '.lock');
+const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + _configHash + '.json');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 Date.now = () => nowMs;
 
@@ -574,7 +578,8 @@ describe('fetchUsageData error handling', () => {
         try {
             const home = harness.createTokenHome('legacy-lock');
             const lockDir = path.join(home.home, '.cache', 'ccstatusline');
-            const lockFile = path.join(lockDir, 'usage.lock');
+            const configHash = createHash('sha256').update(path.resolve(home.claudeConfig)).digest('hex').slice(0, 16);
+            const lockFile = path.join(lockDir, `usage-${configHash}.lock`);
 
             fs.mkdirSync(lockDir, { recursive: true });
             fs.writeFileSync(lockFile, '');
@@ -591,6 +596,37 @@ describe('fetchUsageData error handling', () => {
             expect(result.first).toEqual({ error: 'timeout' });
             expect(result.second).toEqual({ error: 'timeout' });
             expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('falls back to credentials file when CLAUDE_CONFIG_DIR is set and keychain is unavailable', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('creds-file-fallback');
+
+            // Run with CLAUDE_CONFIG_DIR set but no security binary in PATH.
+            // The config-dir-specific keychain lookup and default keychain lookup
+            // both fail, so it should fall back to the credentials file.
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: '/nonexistent',
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.requestCount).toBe(1);
+            expect(result.requestHost).toBe('api.anthropic.com');
         } finally {
             harness.cleanup();
         }

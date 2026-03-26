@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { createHash } from 'node:crypto';
 import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
@@ -15,8 +16,18 @@ import { UsageErrorSchema } from './usage-types';
 
 // Cache configuration
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
-const CACHE_FILE = path.join(CACHE_DIR, 'usage.json');
-const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
+
+function getUsageCachePath(): string {
+    const configDir = path.resolve(getClaudeConfigDir());
+    const configHash = createHash('sha256').update(configDir).digest('hex').slice(0, 16);
+    return path.join(CACHE_DIR, `usage-${configHash}.json`);
+}
+
+function getUsageLockPath(): string {
+    const configDir = path.resolve(getClaudeConfigDir());
+    const configHash = createHash('sha256').update(configDir).digest('hex').slice(0, 16);
+    return path.join(CACHE_DIR, `usage-${configHash}.lock`);
+}
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
@@ -301,19 +312,30 @@ function readUsageTokenFromCredentialsFile(): string | null {
     }
 }
 
+// Claude Code stores per-profile keychain entries with the service name
+// "Claude Code-credentials-{first 8 hex chars of SHA-256(configDir)}".
+function getMacKeychainServiceForConfigDir(): string {
+    const configDir = path.resolve(getClaudeConfigDir());
+    const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8);
+    return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
+}
+
 export function getUsageToken(): string | null {
     if (process.platform !== 'darwin') {
         return readUsageTokenFromCredentialsFile();
     }
 
-    return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+    // Try the keychain entry specific to the current config dir first, then fall
+    // back to the default entry and the mtime-sorted candidate scan.
+    return readUsageTokenFromMacKeychainService(getMacKeychainServiceForConfigDir())
+        ?? readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
         ?? readUsageTokenFromMacKeychainCandidates()
         ?? readUsageTokenFromCredentialsFile();
 }
 
 function readStaleUsageCache(): UsageData | null {
     try {
-        return parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
+        return parseCachedUsageData(fs.readFileSync(getUsageCachePath(), 'utf8'));
     } catch {
         return null;
     }
@@ -322,7 +344,7 @@ function readStaleUsageCache(): UsageData | null {
 function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+        fs.writeFileSync(getUsageLockPath(), JSON.stringify({ blockedUntil, error }));
     } catch {
         // Ignore lock file errors
     }
@@ -332,7 +354,7 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
     let hasValidJsonLock = false;
 
     try {
-        const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
+        const parsed = parseJsonWithSchema(fs.readFileSync(getUsageLockPath(), 'utf8'), UsageLockSchema);
         if (parsed) {
             hasValidJsonLock = true;
             if (parsed.blockedUntil > now) {
@@ -352,7 +374,7 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
     }
 
     try {
-        const lockStat = fs.statSync(LOCK_FILE);
+        const lockStat = fs.statSync(getUsageLockPath());
         const lockMtime = Math.floor(lockStat.mtimeMs / 1000);
         const blockedUntil = lockMtime + LOCK_MAX_AGE;
         if (blockedUntil > now) {
@@ -491,10 +513,11 @@ export async function fetchUsageData(): Promise<UsageData> {
 
     // Check file cache
     try {
-        const stat = fs.statSync(CACHE_FILE);
+        const usageCachePath = getUsageCachePath();
+        const stat = fs.statSync(usageCachePath);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         if (fileAge < CACHE_MAX_AGE) {
-            const fileData = parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
+            const fileData = parseCachedUsageData(fs.readFileSync(usageCachePath, 'utf8'));
             if (fileData && !fileData.error) {
                 return cacheUsageData(fileData, now);
             }
@@ -546,7 +569,7 @@ export async function fetchUsageData(): Promise<UsageData> {
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify(usageData));
+            fs.writeFileSync(getUsageCachePath(), JSON.stringify(usageData));
         } catch {
             // Ignore cache write errors
         }
