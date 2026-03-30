@@ -5,7 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { fetchMiniMaxQuota } from '../utils/minimax-quota';
+import { getMiniMaxQuota } from '../utils/minimax-quota';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
@@ -19,34 +19,21 @@ export class MiniMaxQuotaWidget implements Widget {
         return { displayText: this.getDisplayName() };
     }
 
-    async renderAsync(item: WidgetItem, context: RenderContext): Promise<string | null> {
+    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         if (context.isPreview) {
             return formatRawOrLabeledValue(item, '', '⏎ 3500/4500  ◑ 40000/45000');
         }
 
-        const quota = await fetchMiniMaxQuota();
+        const quota = getMiniMaxQuota();
         if (!quota) {
             return null;
         }
 
         const intervalText = `${quota.intervalRemaining}/${quota.intervalTotal}`;
         const weeklyText = `${quota.weeklyRemaining}/${quota.weeklyTotal}`;
-        
+
         const displayText = `⏎ ${intervalText}  ◑ ${weeklyText}`;
         return formatRawOrLabeledValue(item, '', displayText);
-    }
-
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        // For synchronous rendering, we return a placeholder
-        // The async version is called separately for actual data
-        if (context.isPreview) {
-            return formatRawOrLabeledValue(item, '', '⏎ 3500/4500  ◑ 40000/45000');
-        }
-        
-        // Return loading state - actual rendering happens async
-        // This is a limitation of the sync widget interface
-        // In practice, the TUI will call renderAsync instead
-        return formatRawOrLabeledValue(item, '', '⏎ ...  ◑ ...');
     }
 
     supportsRawValue(): boolean { return true; }
