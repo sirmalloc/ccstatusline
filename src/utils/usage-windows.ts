@@ -1,6 +1,7 @@
 import type { BlockMetrics } from '../types';
 
 import { getCachedBlockMetrics } from './jsonl';
+import { getMiniMaxResetTime } from './minimax-quota';
 import {
     FIVE_HOUR_BLOCK_MS,
     SEVEN_DAY_WINDOW_MS,
@@ -13,7 +14,7 @@ function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
 }
 
-function buildUsageWindow(resetAtMs: number, nowMs: number, durationMs: number): UsageWindowMetrics | null {
+function buildUsageWindowFromResetMs(resetAtMs: number, nowMs: number, durationMs: number): UsageWindowMetrics | null {
     if (!Number.isFinite(resetAtMs) || !Number.isFinite(nowMs) || !Number.isFinite(durationMs) || durationMs <= 0) {
         return null;
     }
@@ -42,7 +43,7 @@ export function getUsageWindowFromResetAt(sessionResetAt: string | undefined, no
         return null;
     }
 
-    return buildUsageWindow(resetAtMs, nowMs, FIVE_HOUR_BLOCK_MS);
+    return buildUsageWindowFromResetMs(resetAtMs, nowMs, FIVE_HOUR_BLOCK_MS);
 }
 
 export function getUsageWindowFromBlockMetrics(blockMetrics: BlockMetrics, nowMs = Date.now()): UsageWindowMetrics | null {
@@ -51,19 +52,31 @@ export function getUsageWindowFromBlockMetrics(blockMetrics: BlockMetrics, nowMs
         return null;
     }
 
-    return buildUsageWindow(startAtMs + FIVE_HOUR_BLOCK_MS, nowMs, FIVE_HOUR_BLOCK_MS);
+    return buildUsageWindowFromResetMs(startAtMs + FIVE_HOUR_BLOCK_MS, nowMs, FIVE_HOUR_BLOCK_MS);
 }
 
 export function resolveUsageWindowWithFallback(
     usageData: UsageData,
     blockMetrics?: BlockMetrics | null,
+    minimaxResetAtMs?: number | null,
     nowMs = Date.now()
 ): UsageWindowMetrics | null {
+    // Priority 1: MiniMax reset time (if available)
+    const miniMaxReset = minimaxResetAtMs ?? getMiniMaxResetTime()?.resetAtMs;
+    if (miniMaxReset) {
+        const miniMaxWindow = buildUsageWindowFromResetMs(miniMaxReset, nowMs, FIVE_HOUR_BLOCK_MS);
+        if (miniMaxWindow) {
+            return miniMaxWindow;
+        }
+    }
+
+    // Priority 2: Anthropic API reset time
     const usageWindow = getUsageWindowFromResetAt(usageData.sessionResetAt, nowMs);
     if (usageWindow) {
         return usageWindow;
     }
 
+    // Priority 3: Block metrics (JSONL-based)
     const fallbackMetrics = blockMetrics ?? getCachedBlockMetrics();
     if (!fallbackMetrics) {
         return null;
@@ -82,7 +95,7 @@ export function getWeeklyUsageWindowFromResetAt(weeklyResetAt: string | undefine
         return null;
     }
 
-    return buildUsageWindow(resetAtMs, nowMs, SEVEN_DAY_WINDOW_MS);
+    return buildUsageWindowFromResetMs(resetAtMs, nowMs, SEVEN_DAY_WINDOW_MS);
 }
 
 export function resolveWeeklyUsageWindow(usageData: UsageData, nowMs = Date.now()): UsageWindowMetrics | null {

@@ -8,6 +8,15 @@ export interface MiniMaxQuotaData {
     intervalTotal: number;
     weeklyRemaining: number;
     weeklyTotal: number;
+    // Reset time for the current interval (for MiniMax-M model)
+    intervalResetAtMs?: number;  // Unix timestamp in ms
+    intervalResetAt?: string;    // ISO string
+}
+
+export interface MiniMaxResetTime {
+    resetAtMs: number;  // Unix timestamp in ms
+    resetAt: string;     // ISO string
+    modelName: string;
 }
 
 interface MiniMaxApiResponse {
@@ -57,7 +66,7 @@ function parseMiniMaxApiResponse(body: string): MiniMaxQuotaData | null {
 
         if (!data.model_remains) return null;
 
-        // Find MiniMax-M model
+        // Find MiniMax-M model (prefer MiniMax-M* over exact match)
         const miniMaxModel = data.model_remains.find(m =>
             m.model_name && m.model_name.includes('MiniMax-M')
         );
@@ -74,11 +83,39 @@ function parseMiniMaxApiResponse(body: string): MiniMaxQuotaData | null {
         const intervalRemaining = intervalUsage;
         const weeklyRemaining = weeklyUsage;
 
+        // Extract reset time if available
+        const intervalResetAtMs = miniMaxModel.end_time ?? undefined;
+
         return {
             intervalRemaining,
             intervalTotal,
             weeklyRemaining,
-            weeklyTotal
+            weeklyTotal,
+            intervalResetAtMs,
+            intervalResetAt: intervalResetAtMs ? new Date(intervalResetAtMs).toISOString() : undefined
+        };
+    } catch {
+        return null;
+    }
+}
+
+function parseMiniMaxResetTime(body: string): MiniMaxResetTime | null {
+    try {
+        const data: MiniMaxApiResponse = JSON.parse(body);
+
+        if (!data.model_remains) return null;
+
+        // Find MiniMax-M model (prefer MiniMax-M* over exact match)
+        const miniMaxModel = data.model_remains.find(m =>
+            m.model_name && m.model_name.includes('MiniMax-M')
+        );
+
+        if (!miniMaxModel || !miniMaxModel.end_time) return null;
+
+        return {
+            resetAtMs: miniMaxModel.end_time,
+            resetAt: new Date(miniMaxModel.end_time).toISOString(),
+            modelName: miniMaxModel.model_name ?? 'Unknown'
         };
     } catch {
         return null;
@@ -137,6 +174,21 @@ export function getMiniMaxQuota(): MiniMaxQuotaData | null {
     }
 
     return cachedQuotaData;
+}
+
+/**
+ * Gets the MiniMax reset time for the current interval (MiniMax-M model)
+ * Returns null if no data is available
+ */
+export function getMiniMaxResetTime(): { resetAt: string; resetAtMs: number } | null {
+    const quota = getMiniMaxQuota();
+    if (!quota || !quota.intervalResetAtMs) {
+        return null;
+    }
+    return {
+        resetAt: quota.intervalResetAt,
+        resetAtMs: quota.intervalResetAtMs
+    };
 }
 
 export async function fetchMiniMaxQuota(): Promise<MiniMaxQuotaData | null> {

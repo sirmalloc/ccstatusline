@@ -76,11 +76,12 @@ function findMostRecentBlockStartTime(
         timestamps = [];
 
         // Collect timestamps for this lookback period
+        // Only include files with mtime >= cutoffTime AND timestamps >= cutoffTime
         for (const { file, mtime } of filesWithStats) {
             if (mtime.getTime() < cutoffTime.getTime()) {
                 break;
             }
-            const fileTimestamps = getAllTimestampsFromFile(file);
+            const fileTimestamps = getAllTimestampsFromFile(file, cutoffTime);
             timestamps.push(...fileTimestamps);
         }
 
@@ -178,9 +179,9 @@ function findMostRecentBlockStartTime(
 }
 
 /**
- * Gets all timestamps from a JSONL file
+ * Gets all timestamps from a JSONL file that are newer than cutoffTime
  */
-function getAllTimestampsFromFile(filePath: string): Date[] {
+function getAllTimestampsFromFile(filePath: string, cutoffTime: Date): Date[] {
     const timestamps: Date[] = [];
     try {
         const lines = readJsonlLinesSync(filePath);
@@ -213,8 +214,9 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
                 continue;
 
             const date = new Date(timestamp);
-            if (!Number.isNaN(date.getTime()))
+            if (!Number.isNaN(date.getTime()) && date.getTime() >= cutoffTime.getTime()) {
                 timestamps.push(date);
+            }
         }
 
         return timestamps;
