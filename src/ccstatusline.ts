@@ -38,6 +38,7 @@ import {
 } from './utils/speed-window';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { prefetchMiniMaxQuotaIfNeeded } from './utils/minimax-prefetch';
+import { fetchMiniMaxQuota } from './utils/minimax-quota';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
@@ -124,8 +125,10 @@ async function renderMultipleLines(data: StatusJSON) {
 
     const usageData = await prefetchUsageDataIfNeeded(lines, data);
 
-    // Prefetch MiniMax quota data in background (fire and forget)
+    // Prefetch MiniMax quota data before rendering
+    // This ensures block timer has fresh reset time on first render
     prefetchMiniMaxQuotaIfNeeded(lines);
+    await fetchMiniMaxQuota().catch(() => {});
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
