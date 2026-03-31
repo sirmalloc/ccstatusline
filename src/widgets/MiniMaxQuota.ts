@@ -23,7 +23,7 @@ export class MiniMaxQuotaWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, '', 'Model M  5H 3500/4500  W 40000/45000\nModel IMG  D 45/50  W 300/350');
+            return formatRawOrLabeledValue(item, '', 'Model M  5H 3500/4500  W 40000/45000  |  Model IMG  D 45/50  W 300/350');
         }
 
         const quota = getMiniMaxQuota();
@@ -46,7 +46,7 @@ export class MiniMaxQuotaWidget implements Widget {
         }
 
         if (parts.length > 0) {
-            const displayText = parts.join('\n');
+            const displayText = parts.join('  |  ');
             this.lastKnownQuota = formatRawOrLabeledValue(item, '', displayText);
             return this.lastKnownQuota;
         }
@@ -64,7 +64,7 @@ export class MiniMaxQuotaWidget implements Widget {
             });
         }
 
-        return formatRawOrLabeledValue(item, '', '5H --/--  W --/--');
+        return formatRawOrLabeledValue(item, '', 'Model M  5H --/--  W --/--  |  Model IMG  D --/--  W --/--');
     }
 
     supportsRawValue(): boolean { return true; }
