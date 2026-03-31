@@ -11,6 +11,15 @@ export interface MiniMaxQuotaData {
     // Reset time for the current interval (for MiniMax-M model)
     intervalResetAtMs?: number;  // Unix timestamp in ms
     intervalResetAt?: string;    // ISO string
+    // Image-01 model quota
+    image01?: {
+        intervalRemaining: number;
+        intervalTotal: number;
+        weeklyRemaining: number;
+        weeklyTotal: number;
+        intervalResetAtMs?: number;
+        intervalResetAt?: string;
+    };
 }
 
 export interface MiniMaxResetTime {
@@ -86,13 +95,37 @@ function parseMiniMaxApiResponse(body: string): MiniMaxQuotaData | null {
         // Extract reset time if available
         const intervalResetAtMs = miniMaxModel.end_time ?? undefined;
 
+        // Find image-01 model
+        const imageModel = data.model_remains.find(m =>
+            m.model_name && m.model_name.includes('image-01')
+        );
+
+        let image01;
+        if (imageModel) {
+            const imgIntervalTotal = imageModel.current_interval_total_count ?? 0;
+            const imgIntervalUsage = imageModel.current_interval_usage_count ?? 0;
+            const imgWeeklyTotal = imageModel.current_weekly_total_count ?? 0;
+            const imgWeeklyUsage = imageModel.current_weekly_usage_count ?? 0;
+            const imgIntervalResetAtMs = imageModel.end_time ?? undefined;
+
+            image01 = {
+                intervalRemaining: imgIntervalUsage,
+                intervalTotal: imgIntervalTotal,
+                weeklyRemaining: imgWeeklyUsage,
+                weeklyTotal: imgWeeklyTotal,
+                intervalResetAtMs: imgIntervalResetAtMs,
+                intervalResetAt: imgIntervalResetAtMs ? new Date(imgIntervalResetAtMs).toISOString() : undefined
+            };
+        }
+
         return {
             intervalRemaining,
             intervalTotal,
             weeklyRemaining,
             weeklyTotal,
             intervalResetAtMs,
-            intervalResetAt: intervalResetAtMs ? new Date(intervalResetAtMs).toISOString() : undefined
+            intervalResetAt: intervalResetAtMs ? new Date(intervalResetAtMs).toISOString() : undefined,
+            image01
         };
     } catch {
         return null;
