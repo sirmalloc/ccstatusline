@@ -23,7 +23,7 @@ export class MiniMaxQuotaWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, '', '⏎ 3500/4500  ◑ 40000/45000\n⎙ 45/50  ◑ 300/350');
+            return formatRawOrLabeledValue(item, '', '5H 3500/4500  W 40000/45000\nD 45/50  W 300/350');
         }
 
         const quota = getMiniMaxQuota();
@@ -31,18 +31,18 @@ export class MiniMaxQuotaWidget implements Widget {
         // Build display text - show both MiniMax-M and image-01 if available
         const parts: string[] = [];
 
-        // MiniMax-M quota
+        // MiniMax-M quota (M2.7)
         if (quota && quota.intervalTotal > 0) {
             const intervalText = `${quota.intervalRemaining}/${quota.intervalTotal}`;
             const weeklyText = `${quota.weeklyRemaining}/${quota.weeklyTotal}`;
-            parts.push(`⏎ ${intervalText}  ◑ ${weeklyText}`);
+            parts.push(`5H ${intervalText}  W ${weeklyText}`);
         }
 
         // image-01 quota
         if (quota && quota.image01 && quota.image01.intervalTotal > 0) {
             const imgInterval = `${quota.image01.intervalRemaining}/${quota.image01.intervalTotal}`;
             const imgWeekly = `${quota.image01.weeklyRemaining}/${quota.image01.weeklyTotal}`;
-            parts.push(`⎙ ${imgInterval}  ◑ ${imgWeekly}`);
+            parts.push(`D ${imgInterval}  W ${imgWeekly}`);
         }
 
         if (parts.length > 0) {
@@ -64,7 +64,7 @@ export class MiniMaxQuotaWidget implements Widget {
             });
         }
 
-        return formatRawOrLabeledValue(item, '', '⏎ --  ◑ --');
+        return formatRawOrLabeledValue(item, '', '5H --/--  W --/--');
     }
 
     supportsRawValue(): boolean { return true; }
