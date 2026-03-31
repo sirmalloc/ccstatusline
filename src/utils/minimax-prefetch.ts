@@ -6,13 +6,25 @@ const MINIMAX_QUOTA_WIDGET_TYPES = new Set<string>([
     'minimax-quota'
 ]);
 
+// Widget types that use MiniMax reset time
+const BLOCK_TIMER_WIDGET_TYPES = new Set<string>([
+    'block-timer',
+    'block-reset-timer'
+]);
+
 export function hasMiniMaxQuotaWidgets(lines: WidgetItem[][]): boolean {
     return lines.some(line => line.some(item => MINIMAX_QUOTA_WIDGET_TYPES.has(item.type)));
 }
 
+export function hasBlockTimerWidgets(lines: WidgetItem[][]): boolean {
+    return lines.some(line => line.some(item => BLOCK_TIMER_WIDGET_TYPES.has(item.type)));
+}
+
 // Start prefetching MiniMax quota (fire and forget)
 export function prefetchMiniMaxQuotaIfNeeded(lines: WidgetItem[][]): void {
-    if (!hasMiniMaxQuotaWidgets(lines)) {
+    // Prefetch if we have MiniMax quota widget OR block timer widgets
+    // (block timers use MiniMax reset time when available)
+    if (!hasMiniMaxQuotaWidgets(lines) && !hasBlockTimerWidgets(lines)) {
         return;
     }
 
