@@ -162,26 +162,46 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         let cachedTokens = 0;
         let contextLength = 0;
 
-        // Parse each line and sum up token usage for totals
+        // Parse each line and sum up token usage for totals.
+        // Claude Code writes multiple JSONL entries per API call during streaming:
+        // intermediate entries have stop_reason: null, and the final entry has a
+        // string value like "end_turn" or "tool_use". Only count final entries to
+        // avoid inflating totals by 2-3x. If no entries have stop_reason set
+        // (e.g. older transcript formats), fall back to counting all entries.
         let mostRecentMainChainEntry: TranscriptLine | null = null;
         let mostRecentTimestamp: Date | null = null;
+
+        const parsedEntries: TranscriptLine[] = [];
+        let hasAnyStopReason = false;
 
         for (const line of lines) {
             const data = parseJsonlLine(line) as TranscriptLine | null;
             if (data?.message?.usage) {
-                inputTokens += data.message.usage.input_tokens || 0;
-                outputTokens += data.message.usage.output_tokens || 0;
-                cachedTokens += data.message.usage.cache_read_input_tokens ?? 0;
-                cachedTokens += data.message.usage.cache_creation_input_tokens ?? 0;
+                parsedEntries.push(data);
+                if (data.message.stop_reason) {
+                    hasAnyStopReason = true;
+                }
+            }
+        }
 
-                // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
-                // Also skip API error messages (synthetic messages with 0 tokens)
-                if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
-                    const entryTime = new Date(data.timestamp);
-                    if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
-                        mostRecentTimestamp = entryTime;
-                        mostRecentMainChainEntry = data;
-                    }
+        for (const data of parsedEntries) {
+            // Skip intermediate streaming entries when stop_reason data is available
+            if (hasAnyStopReason && !data.message!.stop_reason) {
+                continue;
+            }
+
+            inputTokens += data.message!.usage!.input_tokens || 0;
+            outputTokens += data.message!.usage!.output_tokens || 0;
+            cachedTokens += data.message!.usage!.cache_read_input_tokens ?? 0;
+            cachedTokens += data.message!.usage!.cache_creation_input_tokens ?? 0;
+
+            // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
+            // Also skip API error messages (synthetic messages with 0 tokens)
+            if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
+                const entryTime = new Date(data.timestamp);
+                if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
+                    mostRecentTimestamp = entryTime;
+                    mostRecentMainChainEntry = data;
                 }
             }
         }

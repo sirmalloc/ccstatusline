@@ -23,12 +23,14 @@ function makeUsageLine(params: {
     cacheCreate?: number;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    stopReason?: string | null;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
+            stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
                 output_tokens: params.output,
@@ -155,6 +157,109 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 141,
             cachedTokens: 92,
             totalTokens: 2032,
+            contextLength: 250
+        });
+    });
+
+    it('skips intermediate streaming entries and only counts final entries per API call', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'streaming.jsonl');
+
+        // Simulate two API calls, each with intermediate streaming entries (stop_reason: null)
+        // and a final entry (stop_reason: "tool_use" or "end_turn")
+        const lines = [
+            // API call 1: two intermediates + one final
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 1,
+                output: 30,
+                cacheRead: 12000,
+                cacheCreate: 11000,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 1,
+                output: 30,
+                cacheRead: 12000,
+                cacheCreate: 11000,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 1,
+                output: 150,
+                cacheRead: 12000,
+                cacheCreate: 11000,
+                stopReason: 'tool_use'
+            }),
+            // API call 2: one intermediate + one final
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 1,
+                output: 25,
+                cacheRead: 23000,
+                cacheCreate: 500,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                input: 1,
+                output: 400,
+                cacheRead: 23000,
+                cacheCreate: 500,
+                stopReason: 'end_turn'
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        // Should only count the two final entries, not the three intermediates
+        expect(metrics).toEqual({
+            inputTokens: 2,           // 1 + 1
+            outputTokens: 550,        // 150 + 400
+            cachedTokens: 46500,      // (12000 + 11000) + (23000 + 500)
+            totalTokens: 47052,       // 2 + 550 + 46500
+            contextLength: 23501      // last main-chain final entry: 1 + 23000 + 500
+        });
+    });
+
+    it('falls back to counting all entries when no stop_reason data is present', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'legacy.jsonl');
+
+        // Older transcript format without stop_reason
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100,
+                output: 50,
+                cacheRead: 20,
+                cacheCreate: 10
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T11:00:00.000Z',
+                input: 200,
+                output: 80,
+                cacheRead: 30,
+                cacheCreate: 20
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        // Should count all entries since none have stop_reason
+        expect(metrics).toEqual({
+            inputTokens: 300,
+            outputTokens: 130,
+            cachedTokens: 80,
+            totalTokens: 510,
             contextLength: 250
         });
     });
