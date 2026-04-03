@@ -11,6 +11,7 @@ import {
     getContextConfig,
     getModelContextIdentifier
 } from '../utils/model-context';
+import { formatTokens } from '../utils/renderer';
 import { makeUsageProgressBar } from '../utils/usage';
 
 type DisplayMode = 'progress' | 'progress-short';
@@ -61,7 +62,7 @@ export class ContextBarWidget implements Widget {
         const barWidth = displayMode === 'progress' ? 32 : 16;
 
         if (context.isPreview) {
-            const previewDisplay = `${makeUsageProgressBar(25, barWidth)} 50k/200k (25%)`;
+            const previewDisplay = `${makeUsageProgressBar(25, barWidth)} 50.0k/200.0k (25%)`;
             return item.rawValue ? previewDisplay : `Context: ${previewDisplay}`;
         }
 
@@ -86,9 +87,7 @@ export class ContextBarWidget implements Widget {
         const percent = (used / total) * 100;
         const clampedPercent = Math.max(0, Math.min(100, percent));
 
-        const usedK = Math.round(used / 1000);
-        const totalK = Math.round(total / 1000);
-        const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedK}k/${totalK}k (${Math.round(clampedPercent)}%)`;
+        const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${formatTokens(used)}/${formatTokens(total)} (${Math.round(clampedPercent)}%)`;
 
         return item.rawValue ? display : `Context: ${display}`;
     }
