@@ -13,6 +13,11 @@ import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
+    detectCompaction,
+    loadCompactionState,
+    saveCompactionState
+} from './utils/compaction';
+import {
     initConfigPath,
     loadSettings,
     saveSettings
@@ -141,6 +146,17 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
+    // Compaction detection — track context percentage drops between renders
+    let compactionCount = 0;
+    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    if (hasCompactionWidget && data.session_id && data.context_window?.used_percentage !== null && data.context_window?.used_percentage !== undefined) {
+        const prevState = loadCompactionState(data.session_id);
+        const ctxPct = Math.round(data.context_window.used_percentage);
+        const newState = detectCompaction(ctxPct, prevState);
+        saveCompactionState(data.session_id, newState);
+        compactionCount = newState.count;
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -150,6 +166,7 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
+        compactionData: compactionCount > 0 ? { count: compactionCount } : null,
         isPreview: false,
         minimalist: settings.minimalistMode
     };

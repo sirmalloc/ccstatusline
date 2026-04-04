@@ -19,6 +19,10 @@ export interface RenderUsageData {
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
+export interface CompactionData {
+    count: number;
+}
+
 export interface RenderContext {
     data?: StatusJSON;
     tokenMetrics?: TokenMetrics | null;
@@ -28,6 +32,7 @@ export interface RenderContext {
     sessionDuration?: string | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
+    compactionData?: CompactionData | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     minimalist?: boolean;
