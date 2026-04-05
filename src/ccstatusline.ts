@@ -230,6 +230,7 @@ interface HookInput {
     tool_name?: string;
     tool_input?: { skill?: string };
     prompt?: string;
+    version?: string;
 }
 
 async function handleHook(): Promise<void> {
@@ -246,6 +247,7 @@ async function handleHook(): Promise<void> {
             return;
         }
 
+        // Track skill invocations
         let skillName = '';
         if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
             skillName = data.tool_input?.skill ?? '';
@@ -255,22 +257,28 @@ async function handleHook(): Promise<void> {
                 skillName = match[1] ?? '';
             }
         }
-        if (!skillName) {
-            console.log('{}');
-            return;
+        if (skillName) {
+            const filePath = getSkillsFilePath(sessionId);
+            const fs = await import('fs');
+            const path = await import('path');
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                skill: skillName,
+                source: data.hook_event_name
+            });
+            fs.appendFileSync(filePath, entry + '\n');
         }
 
-        const filePath = getSkillsFilePath(sessionId);
-        const fs = await import('fs');
-        const path = await import('path');
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const entry = JSON.stringify({
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            skill: skillName,
-            source: data.hook_event_name
-        });
-        fs.appendFileSync(filePath, entry + '\n');
+        // Check for version change and generate tips
+        if (data.version) {
+            const settings = await loadSettings();
+            if (settings.tips.enabled) {
+                const { checkVersionAndGenerateTips } = await import('./utils/tips');
+                await checkVersionAndGenerateTips(data.version, settings);
+            }
+        }
     } catch { /* ignore parse errors */ }
     console.log('{}');
 }

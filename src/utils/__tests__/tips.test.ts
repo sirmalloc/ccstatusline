@@ -1,0 +1,297 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it
+} from 'vitest';
+
+import type { TipFile } from '../../types/TipData';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
+import { createTipsTmpDir, makeTipFile, tipsSettings } from '../../test-helpers/tips';
+import {
+    advanceTipRotation,
+    checkVersionAndGenerateTips,
+    cleanupExpiredTipFiles,
+    compareSemver,
+    fetchChangelog,
+    generateTips,
+    getLatestTipFile,
+    getMergedTipPool,
+    getTipIndexPath,
+    getTipsDir,
+    getLastVersionPath,
+    listValidTipFiles,
+    readLastVersion,
+    readTipFile,
+    readTipIndex,
+    resetTipRotationCache,
+    writeLastVersion,
+    writeTipFile,
+    writeTipIndex
+} from '../tips';
+
+let tmpDir: string;
+
+let origCacheDir: string | undefined;
+
+beforeEach(() => {
+    tmpDir = createTipsTmpDir('tips-test-');
+    origCacheDir = process.env.CCSTATUSLINE_CACHE_DIR;
+    process.env.CCSTATUSLINE_CACHE_DIR = tmpDir;
+    resetTipRotationCache();
+});
+
+afterEach(() => {
+    if (origCacheDir === undefined) {
+        delete process.env.CCSTATUSLINE_CACHE_DIR;
+    } else {
+        process.env.CCSTATUSLINE_CACHE_DIR = origCacheDir;
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+describe('path helpers', () => {
+    it('getTipsDir uses tipDir from settings when set', () => {
+        const settings = tipsSettings(tmpDir, { tipDir: '/custom/tips' });
+        expect(getTipsDir(settings)).toBe('/custom/tips');
+    });
+
+    it('getTipsDir uses default cache path when tipDir is empty', () => {
+        // With CCSTATUSLINE_CACHE_DIR set, it uses that as the base
+        const settings = tipsSettings(tmpDir, { tipDir: '' });
+        const dir = getTipsDir(settings);
+        expect(dir).toContain('tips');
+        expect(dir.startsWith(tmpDir)).toBe(true);
+    });
+
+    it('getLastVersionPath returns path in cache dir', () => {
+        const p = getLastVersionPath();
+        expect(p).toContain('last-version.json');
+    });
+
+    it('getTipIndexPath returns path in cache dir', () => {
+        const p = getTipIndexPath();
+        expect(p).toContain('tip-index.json');
+    });
+});
+
+describe('last-version storage', () => {
+    it('returns null when file does not exist', () => {
+        expect(readLastVersion()).toBeNull();
+    });
+
+    it('writes and reads last version', () => {
+        writeLastVersion('2.1.0');
+        const result = readLastVersion();
+        expect(result).not.toBeNull();
+        expect(result!.version).toBe('2.1.0');
+        expect(result!.checkedAt).toBeTruthy();
+    });
+});
+
+describe('tip file storage', () => {
+    it('returns null when file does not exist', () => {
+        const settings = tipsSettings(tmpDir);
+        expect(readTipFile('9.9.9', settings)).toBeNull();
+    });
+
+    it('writes and reads tip file', () => {
+        const settings = tipsSettings(tmpDir);
+        const tipFile = makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2']);
+        writeTipFile(tipFile, settings);
+        const result = readTipFile('2.1.0', settings);
+        expect(result).not.toBeNull();
+        expect(result!.version).toBe('2.1.0');
+        expect(result!.tips).toEqual(['tip1', 'tip2']);
+    });
+});
+
+describe('tip index storage', () => {
+    it('returns default index when file does not exist', () => {
+        const idx = readTipIndex();
+        expect(idx.index).toBe(0);
+        expect(idx.renderCount).toBe(0);
+    });
+
+    it('writes and reads tip index', () => {
+        const idx = { index: 3, renderCount: 15, updatedAt: new Date().toISOString() };
+        writeTipIndex(idx);
+        const result = readTipIndex();
+        expect(result.index).toBe(3);
+        expect(result.renderCount).toBe(15);
+    });
+});
+
+describe('compareSemver', () => {
+    it('compares versions correctly', () => {
+        expect(compareSemver('1.0.0', '2.0.0')).toBeLessThan(0);
+        expect(compareSemver('2.0.0', '1.0.0')).toBeGreaterThan(0);
+        expect(compareSemver('1.0.0', '1.0.0')).toBe(0);
+        expect(compareSemver('1.2.3', '1.2.4')).toBeLessThan(0);
+        expect(compareSemver('1.3.0', '1.2.9')).toBeGreaterThan(0);
+        expect(compareSemver('2.0.0', '1.99.99')).toBeGreaterThan(0);
+    });
+
+    it('handles pre-release suffixes', () => {
+        expect(compareSemver('2.1.0-beta.1', '2.1.0')).toBe(0);
+        expect(compareSemver('2.1.0-beta.1', '2.0.0')).toBeGreaterThan(0);
+        expect(compareSemver('1.0.0-rc.1', '2.0.0')).toBeLessThan(0);
+    });
+});
+
+describe('listValidTipFiles', () => {
+    it('returns empty array when no files exist', () => {
+        const settings = tipsSettings(tmpDir);
+        expect(listValidTipFiles(settings)).toEqual([]);
+    });
+
+    it('returns non-expired tip files', () => {
+        const settings = tipsSettings(tmpDir, { expiryDays: 7 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1'], 3), settings);
+        writeTipFile(makeTipFile('2.2.0', '2.1.0', ['tip2'], 1), settings);
+        const valid = listValidTipFiles(settings);
+        expect(valid).toHaveLength(2);
+    });
+
+    it('excludes expired tip files', () => {
+        const settings = tipsSettings(tmpDir, { expiryDays: 7 });
+        writeTipFile(makeTipFile('2.0.0', '1.9.0', ['old'], 10), settings);
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['new'], 1), settings);
+        const valid = listValidTipFiles(settings);
+        expect(valid).toHaveLength(1);
+        expect(valid[0]!.version).toBe('2.1.0');
+    });
+});
+
+describe('getLatestTipFile', () => {
+    it('returns null when no files exist', () => {
+        const settings = tipsSettings(tmpDir);
+        expect(getLatestTipFile(settings)).toBeNull();
+    });
+
+    it('returns highest semver tip file', () => {
+        const settings = tipsSettings(tmpDir, { expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['a']), settings);
+        writeTipFile(makeTipFile('2.3.0', '2.2.0', ['c']), settings);
+        writeTipFile(makeTipFile('2.2.0', '2.1.0', ['b']), settings);
+        const latest = getLatestTipFile(settings);
+        expect(latest).not.toBeNull();
+        expect(latest!.version).toBe('2.3.0');
+    });
+});
+
+describe('getMergedTipPool', () => {
+    it('returns empty array when no files exist', () => {
+        const settings = tipsSettings(tmpDir);
+        expect(getMergedTipPool(settings)).toEqual([]);
+    });
+
+    it('merges tips from all valid files', () => {
+        const settings = tipsSettings(tmpDir, { expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['a', 'b']), settings);
+        writeTipFile(makeTipFile('2.2.0', '2.1.0', ['c', 'd']), settings);
+        const pool = getMergedTipPool(settings);
+        expect(pool).toEqual(['a', 'b', 'c', 'd']);
+    });
+});
+
+describe('advanceTipRotation', () => {
+    it('returns null when pool is empty', () => {
+        const settings = tipsSettings(tmpDir);
+        expect(advanceTipRotation(settings)).toBeNull();
+    });
+
+    it('returns first tip on first call', () => {
+        const settings = tipsSettings(tmpDir, { rotateEvery: 3, expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2', 'tip3']), settings);
+        const tip = advanceTipRotation(settings);
+        expect(tip).toBe('tip1');
+    });
+
+    it('advances tip after rotateEvery renders', () => {
+        const settings = tipsSettings(tmpDir, { rotateEvery: 2, expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2', 'tip3']), settings);
+
+        expect(advanceTipRotation(settings)).toBe('tip1'); // render 1
+        expect(advanceTipRotation(settings)).toBe('tip1'); // render 2 → hits threshold
+        expect(advanceTipRotation(settings)).toBe('tip2'); // render 3 → advanced
+        expect(advanceTipRotation(settings)).toBe('tip2'); // render 4
+        expect(advanceTipRotation(settings)).toBe('tip3'); // render 5 → advanced
+    });
+
+    it('wraps around when reaching end of pool', () => {
+        const settings = tipsSettings(tmpDir, { rotateEvery: 1, expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2']), settings);
+
+        expect(advanceTipRotation(settings)).toBe('tip1');
+        expect(advanceTipRotation(settings)).toBe('tip2');
+        expect(advanceTipRotation(settings)).toBe('tip1'); // wrap
+    });
+
+    it('only writes to disk on rotation, not every render', () => {
+        const settings = tipsSettings(tmpDir, { rotateEvery: 3, expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2']), settings);
+
+        advanceTipRotation(settings); // render 1 — no disk write
+        const indexAfter1 = readTipIndex();
+        expect(indexAfter1.renderCount).toBe(0); // not persisted
+
+        advanceTipRotation(settings); // render 2 — no disk write
+        advanceTipRotation(settings); // render 3 — rotation, disk write
+        const indexAfter3 = readTipIndex();
+        expect(indexAfter3.index).toBe(1);
+        expect(indexAfter3.renderCount).toBe(0);
+    });
+});
+
+describe('cleanupExpiredTipFiles', () => {
+    it('deletes expired files', () => {
+        const settings = tipsSettings(tmpDir, { expiryDays: 7 });
+        writeTipFile(makeTipFile('2.0.0', '1.9.0', ['old'], 10), settings);
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['new'], 1), settings);
+
+        cleanupExpiredTipFiles(settings);
+
+        expect(readTipFile('2.0.0', settings)).toBeNull();
+        expect(readTipFile('2.1.0', settings)).not.toBeNull();
+    });
+});
+
+describe('fetchChangelog', () => {
+    it('returns null for non-existent version', async () => {
+        const result = await fetchChangelog('0.0.0-nonexistent');
+        expect(result).toBeNull();
+    });
+});
+
+describe('generateTips', () => {
+    it('returns empty array when changelog is empty', async () => {
+        const settings = tipsSettings(tmpDir);
+        const tips = await generateTips('', settings);
+        expect(tips).toEqual([]);
+    });
+});
+
+describe('checkVersionAndGenerateTips', () => {
+    it('returns early when version unchanged', async () => {
+        const settings = tipsSettings(tmpDir);
+        writeLastVersion('2.1.0');
+        await checkVersionAndGenerateTips('2.1.0', settings);
+        // Should not create a tip file
+        expect(readTipFile('2.1.0', settings)).toBeNull();
+    });
+
+    it('returns early when tip file already exists', async () => {
+        const settings = tipsSettings(tmpDir);
+        const tipFile = makeTipFile('2.2.0', '2.1.0', ['existing']);
+        writeTipFile(tipFile, settings);
+        writeLastVersion('2.1.0');
+        await checkVersionAndGenerateTips('2.2.0', settings);
+        // Last version should be updated
+        const lv = readLastVersion();
+        expect(lv!.version).toBe('2.2.0');
+    });
+});

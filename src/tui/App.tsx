@@ -53,6 +53,7 @@ import {
     StatusLinePreview,
     TerminalOptionsMenu,
     TerminalWidthMenu,
+    TipsMenu,
     type MainMenuOption
 } from './components';
 
@@ -71,6 +72,7 @@ type AppScreen = 'main'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
+    | 'tips'
     | 'confirm'
     | 'powerline'
     | 'install';
@@ -263,6 +265,9 @@ export const App: React.FC = () => {
                 break;
             case 'powerline':
                 setScreen('powerline');
+                break;
+            case 'tips':
+                setScreen('tips');
                 break;
             case 'install':
                 handleInstallUninstall();
@@ -471,6 +476,16 @@ export const App: React.FC = () => {
                         onBack={() => {
                             // Save that we came from 'globalOverrides' menu (index 4)
                             setMenuSelections(prev => ({ ...prev, main: 4 }));
+                            setScreen('main');
+                        }}
+                    />
+                )}
+                {screen === 'tips' && (
+                    <TipsMenu
+                        settings={settings}
+                        onUpdate={(updatedSettings) => { setSettings(updatedSettings); }}
+                        onBack={() => {
+                            setMenuSelections(prev => ({ ...prev, main: 5 }));
                             setScreen('main');
                         }}
                     />

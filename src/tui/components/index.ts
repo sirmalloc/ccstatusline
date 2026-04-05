@@ -10,3 +10,4 @@ export * from './PowerlineSetup';
 export * from './StatusLinePreview';
 export * from './TerminalOptionsMenu';
 export * from './TerminalWidthMenu';
+export * from './TipsMenu';
