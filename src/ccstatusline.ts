@@ -18,6 +18,7 @@ import {
     loadSettings,
     saveSettings
 } from './utils/config';
+import { countEnvironment } from './utils/environment-counter';
 import {
     getSessionDuration,
     getSpeedMetricsCollection,
@@ -156,6 +157,11 @@ async function renderMultipleLines(data: StatusJSON) {
         ? getActivitySnapshot(data.transcript_path)
         : null;
 
+    const hasEnvironmentWidget = lines.some(line => line.some(item => item.type === 'environment'));
+    const environmentData = hasEnvironmentWidget
+        ? countEnvironment(data.cwd)
+        : null;
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -166,6 +172,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration,
         skillsMetrics,
         activity,
+        environmentData,
         isPreview: false
     };
 

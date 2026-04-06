@@ -48,7 +48,8 @@ const widgetRegistry = new Map<WidgetItemType, Widget>([
     ['total-speed', new widgets.TotalSpeedWidget()],
     ['skills', new widgets.SkillsWidget()],
     ['thinking-effort', new widgets.ThinkingEffortWidget()],
-    ['vim-mode', new widgets.VimModeWidget()]
+    ['vim-mode', new widgets.VimModeWidget()],
+    ['environment', new widgets.EnvironmentWidget()]
 ]);
 
 export function getWidget(type: WidgetItemType): Widget | null {

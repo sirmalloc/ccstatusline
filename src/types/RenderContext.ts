@@ -2,6 +2,7 @@ import type {
     BlockMetrics,
     SkillsMetrics
 } from '../types';
+import type { EnvironmentData } from '../utils/environment-counter';
 
 import type { ActivitySnapshot } from './Activity';
 import type { SpeedMetrics } from './SpeedMetrics';
@@ -30,6 +31,7 @@ export interface RenderContext {
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     activity?: ActivitySnapshot | null;
+    environmentData?: EnvironmentData | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
