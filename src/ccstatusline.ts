@@ -38,6 +38,7 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import { getTerminalWidth } from './utils/terminal';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -173,6 +174,7 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics,
         activity,
         environmentData,
+        terminalWidth: getTerminalWidth(),
         isPreview: false
     };
 

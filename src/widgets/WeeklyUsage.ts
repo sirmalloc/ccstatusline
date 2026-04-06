@@ -13,17 +13,19 @@ import {
     makeUsageProgressBar
 } from '../utils/usage';
 
-import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
-import {
-    cycleUsageDisplayMode,
-    getUsageDisplayMode,
-    getUsageDisplayModifierText,
-    getUsagePercentCustomKeybinds,
-    getUsageProgressBarWidth,
-    isUsageInverted,
-    isUsageProgressMode,
-    toggleUsageInverted
-} from './shared/usage-display';
+type DisplayMode = 'time' | 'progress' | 'progress-short';
+
+function getDisplayMode(item: WidgetItem): DisplayMode {
+    const mode = item.metadata?.display;
+    if (mode === 'progress' || mode === 'progress-short') {
+        return mode;
+    }
+    return 'time';
+}
+
+function isInverted(item: WidgetItem): boolean {
+    return item.metadata?.invert === 'true';
+}
 
 export class WeeklyUsageWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
@@ -32,65 +34,108 @@ export class WeeklyUsageWidget implements Widget {
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const mode = getDisplayMode(item);
+        const modifiers: string[] = [];
+
+        if (mode === 'progress') {
+            modifiers.push('progress bar');
+        } else if (mode === 'progress-short') {
+            modifiers.push('short bar');
+        }
+
+        if (isInverted(item)) {
+            modifiers.push('inverted');
+        }
+
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item)
+            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item);
+            const currentMode = getDisplayMode(item);
+            let nextMode: DisplayMode;
+
+            if (currentMode === 'time') {
+                nextMode = 'progress';
+            } else if (currentMode === 'progress') {
+                nextMode = 'progress-short';
+            } else {
+                nextMode = 'time';
+            }
+
+            const nextMetadata: Record<string, string> = {
+                ...(item.metadata ?? {}),
+                display: nextMode
+            };
+
+            if (nextMode === 'time') {
+                delete nextMetadata.invert;
+            }
+
+            return {
+                ...item,
+                metadata: nextMetadata
+            };
         }
 
         if (action === 'toggle-invert') {
-            return toggleUsageInverted(item);
+            return {
+                ...item,
+                metadata: {
+                    ...item.metadata,
+                    invert: (!isInverted(item)).toString()
+                }
+            };
         }
 
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const displayMode = getUsageDisplayMode(item);
-        const inverted = isUsageInverted(item);
+        const displayMode = getDisplayMode(item);
+        const inverted = isInverted(item);
 
         if (context.isPreview) {
             const previewPercent = 12;
             const renderedPercent = inverted ? 100 - previewPercent : previewPercent;
 
-            if (isUsageProgressMode(displayMode)) {
-                const width = getUsageProgressBarWidth(displayMode);
+            if (displayMode === 'progress' || displayMode === 'progress-short') {
+                const width = displayMode === 'progress' ? 32 : 16;
                 const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
-                return formatRawOrLabeledValue(item, 'Weekly: ', progressDisplay);
+                return item.rawValue ? progressDisplay : `Weekly: ${progressDisplay}`;
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly: ', `${previewPercent.toFixed(1)}%`);
+            return item.rawValue ? `${previewPercent.toFixed(1)}%` : `Weekly: ${previewPercent.toFixed(1)}%`;
         }
 
         const data = context.usageData ?? {};
 
-        // Try prefetched data first, fall back to stdin rate_limits
+        // Try API data first, fall back to stdin rate_limits for percentage
         let percent: number | undefined;
-        let resetSuffix = '';
 
         if (data.error || data.weeklyUsage === undefined) {
             const stdinPercent = context.data?.rate_limits?.seven_day?.used_percentage;
             if (stdinPercent != null) {
                 percent = Math.max(0, Math.min(100, stdinPercent));
-                const resetsAt = context.data?.rate_limits?.seven_day?.resets_at;
-                if (resetsAt != null) {
-                    const remainingMs = resetsAt * 1000 - Date.now();
-                    if (remainingMs > 0) {
-                        resetSuffix = ` (resets ${formatUsageDuration(remainingMs)})`;
-                    }
-                }
             } else {
-                // No stdin data either — show API error or null
                 if (data.error) return getUsageErrorMessage(data.error);
                 return null;
             }
         } else {
             percent = Math.max(0, Math.min(100, data.weeklyUsage));
+        }
+
+        // Always check stdin for reset timer
+        let resetSuffix = '';
+        const resetsAt = context.data?.rate_limits?.seven_day?.resets_at;
+        if (resetsAt != null) {
+            const remainingMs = resetsAt * 1000 - Date.now();
+            if (remainingMs > 0) {
+                resetSuffix = ` (resets ${formatUsageDuration(remainingMs)})`;
+            }
         }
 
         if (displayMode === 'progress' || displayMode === 'progress-short') {
@@ -116,8 +161,11 @@ export class WeeklyUsageWidget implements Widget {
         return item.rawValue ? `${percent.toFixed(1)}%${resetSuffix}` : `Weekly: ${percent.toFixed(1)}%${resetSuffix}`;
     }
 
-    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return getUsagePercentCustomKeybinds(item);
+    getCustomKeybinds(): CustomKeybind[] {
+        return [
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+        ];
     }
 
     supportsRawValue(): boolean { return true; }
