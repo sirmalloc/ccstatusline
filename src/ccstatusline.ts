@@ -163,10 +163,7 @@ async function renderMultipleLines(data: StatusJSON) {
         ? countEnvironment(data.cwd)
         : null;
 
-    // Calculate effective terminal width for widget detail levels
-    // Use ~75% of raw width to account for Claude Code's UI chrome
-    const rawWidth = getTerminalWidth();
-    const effectiveWidth = rawWidth ? Math.floor(rawWidth * 0.75) : null;
+    const effectiveWidth = getTerminalWidth();
 
     // Create render context
     const context: RenderContext = {
