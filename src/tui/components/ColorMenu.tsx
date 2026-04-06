@@ -48,7 +48,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         // Include unknown widgets (they might support colors, we just don't know)
         return widgetInstance ? widgetInstance.supportsColors(widget) : true;
     });
-    const [highlightedItemId, setHighlightedItemId] = useState<string | null>(colorableWidgets[0]?.id ?? null);
+    const [highlightedItemId, setHighlightedItemId] = useState(colorableWidgets[0]?.id ?? null);
     const [editingBackground, setEditingBackground] = useState(false);
 
     // Handle keyboard input

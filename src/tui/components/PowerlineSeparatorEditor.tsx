@@ -28,12 +28,12 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     // Get the appropriate array based on mode
     const getItems = () => {
         switch (mode) {
-        case 'separator':
-            return powerlineConfig.separators;
-        case 'startCap':
-            return powerlineConfig.startCaps;
-        case 'endCap':
-            return powerlineConfig.endCaps;
+            case 'separator':
+                return powerlineConfig.separators;
+            case 'startCap':
+                return powerlineConfig.startCaps;
+            case 'endCap':
+                return powerlineConfig.endCaps;
         }
     };
 
@@ -91,16 +91,16 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
         const updatedPowerline = { ...powerlineConfig };
 
         switch (mode) {
-        case 'separator':
-            updatedPowerline.separators = newSeparators;
-            updatedPowerline.separatorInvertBackground = newInvertBgs ?? newSeparators.map((_, i) => invertBgs[i] ?? false);
-            break;
-        case 'startCap':
-            updatedPowerline.startCaps = newSeparators;
-            break;
-        case 'endCap':
-            updatedPowerline.endCaps = newSeparators;
-            break;
+            case 'separator':
+                updatedPowerline.separators = newSeparators;
+                updatedPowerline.separatorInvertBackground = newInvertBgs ?? newSeparators.map((_, i) => invertBgs[i] ?? false);
+                break;
+            case 'startCap':
+                updatedPowerline.startCaps = newSeparators;
+                break;
+            case 'endCap':
+                updatedPowerline.endCaps = newSeparators;
+                break;
         }
 
         onUpdate({
@@ -257,12 +257,12 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
 
     const getTitle = () => {
         switch (mode) {
-        case 'separator':
-            return 'Powerline Separator Configuration';
-        case 'startCap':
-            return 'Powerline Start Cap Configuration';
-        case 'endCap':
-            return 'Powerline End Cap Configuration';
+            case 'separator':
+                return 'Powerline Separator Configuration';
+            case 'startCap':
+                return 'Powerline Start Cap Configuration';
+            case 'endCap':
+                return 'Powerline End Cap Configuration';
         }
     };
 

@@ -204,56 +204,56 @@ export const App: React.FC = () => {
 
     const handleMainMenuSelect = async (value: string) => {
         switch (value) {
-        case 'lines':
-            setScreen('lines');
-            break;
-        case 'colors':
-            setScreen('colorLines');
-            break;
-        case 'terminalConfig':
-            setScreen('terminalConfig');
-            break;
-        case 'globalOverrides':
-            setScreen('globalOverrides');
-            break;
-        case 'powerline':
-            setScreen('powerline');
-            break;
-        case 'install':
-            handleInstallUninstall();
-            break;
-        case 'starGithub':
-            setConfirmDialog({
-                message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
-                action: () => {
-                    const result = openExternalUrl(GITHUB_REPO_URL);
-                    if (result.success) {
-                        setFlashMessage({
-                            text: '✓ Opened GitHub repository in browser',
-                            color: 'green'
-                        });
-                    } else {
-                        setFlashMessage({
-                            text: `✗ Could not open browser. Visit: ${GITHUB_REPO_URL}`,
-                            color: 'red'
-                        });
+            case 'lines':
+                setScreen('lines');
+                break;
+            case 'colors':
+                setScreen('colorLines');
+                break;
+            case 'terminalConfig':
+                setScreen('terminalConfig');
+                break;
+            case 'globalOverrides':
+                setScreen('globalOverrides');
+                break;
+            case 'powerline':
+                setScreen('powerline');
+                break;
+            case 'install':
+                handleInstallUninstall();
+                break;
+            case 'starGithub':
+                setConfirmDialog({
+                    message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
+                    action: () => {
+                        const result = openExternalUrl(GITHUB_REPO_URL);
+                        if (result.success) {
+                            setFlashMessage({
+                                text: '✓ Opened GitHub repository in browser',
+                                color: 'green'
+                            });
+                        } else {
+                            setFlashMessage({
+                                text: `✗ Could not open browser. Visit: ${GITHUB_REPO_URL}`,
+                                color: 'red'
+                            });
+                        }
+                        setScreen('main');
+                        setConfirmDialog(null);
+                        return Promise.resolve();
                     }
-                    setScreen('main');
-                    setConfirmDialog(null);
-                    return Promise.resolve();
-                }
-            });
-            setScreen('confirm');
-            break;
-        case 'save':
-            await saveSettings(settings);
-            setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
-            setHasChanges(false);
-            exit();
-            break;
-        case 'exit':
-            exit();
-            break;
+                });
+                setScreen('confirm');
+                break;
+            case 'save':
+                await saveSettings(settings);
+                setOriginalSettings(JSON.parse(JSON.stringify(settings)) as Settings); // Update original after save
+                setHasChanges(false);
+                exit();
+                break;
+            case 'exit':
+                exit();
+                break;
         }
     };
 

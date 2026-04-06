@@ -68,34 +68,34 @@ function extractToolTarget(name: string, input?: Record<string, unknown>): strin
     }
 
     switch (name) {
-    case 'Read':
-    case 'Write':
-    case 'Edit': {
-        const filePath = input.file_path;
-        if (typeof filePath === 'string' && filePath.length > 0) {
-            return filePath;
-        }
+        case 'Read':
+        case 'Write':
+        case 'Edit': {
+            const filePath = input.file_path;
+            if (typeof filePath === 'string' && filePath.length > 0) {
+                return filePath;
+            }
 
-        const pathValue = input.path;
-        if (typeof pathValue === 'string' && pathValue.length > 0) {
-            return pathValue;
-        }
-        return undefined;
-    }
-    case 'Glob':
-    case 'Grep': {
-        const pattern = input.pattern;
-        return typeof pattern === 'string' && pattern.length > 0 ? pattern : undefined;
-    }
-    case 'Bash': {
-        const command = input.command;
-        if (typeof command !== 'string' || command.length === 0) {
+            const pathValue = input.path;
+            if (typeof pathValue === 'string' && pathValue.length > 0) {
+                return pathValue;
+            }
             return undefined;
         }
-        return truncate(command, 30);
-    }
-    default:
-        return undefined;
+        case 'Glob':
+        case 'Grep': {
+            const pattern = input.pattern;
+            return typeof pattern === 'string' && pattern.length > 0 ? pattern : undefined;
+        }
+        case 'Bash': {
+            const command = input.command;
+            if (typeof command !== 'string' || command.length === 0) {
+                return undefined;
+            }
+            return truncate(command, 30);
+        }
+        default:
+            return undefined;
     }
 }
 
@@ -105,18 +105,18 @@ function normalizeTodoStatus(status: unknown): ActivityTodoStatus | null {
     }
 
     switch (status) {
-    case 'pending':
-    case 'not_started':
-        return 'pending';
-    case 'in_progress':
-    case 'running':
-        return 'in_progress';
-    case 'completed':
-    case 'complete':
-    case 'done':
-        return 'completed';
-    default:
-        return null;
+        case 'pending':
+        case 'not_started':
+            return 'pending';
+        case 'in_progress':
+        case 'running':
+            return 'in_progress';
+        case 'completed':
+        case 'complete':
+        case 'done':
+            return 'completed';
+        default:
+            return null;
     }
 }
 
@@ -355,8 +355,7 @@ export function getActivitySnapshot(transcriptPath?: string, options: ActivityPa
 
     const cached = activityCacheEntry;
     if (
-        cached
-        && cached.path === resolvedPath
+        cached?.path === resolvedPath
         && cached.mtimeMs === stats.mtimeMs
         && cached.size === stats.size
     ) {
