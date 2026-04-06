@@ -7,6 +7,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextWindowMetrics } from '../utils/context-window';
+import { getDetailLevel } from '../utils/detail-level';
 import { getContextConfig } from '../utils/model-context';
 import { makeUsageProgressBar } from '../utils/usage';
 
@@ -83,6 +84,17 @@ export class ContextBarWidget implements Widget {
 
         const percent = (used / total) * 100;
         const clampedPercent = Math.max(0, Math.min(100, percent));
+        const detail = getDetailLevel(context.terminalWidth);
+
+        if (detail === 'narrow') {
+            const text = `Ctx ${Math.round(clampedPercent)}%`;
+            return item.rawValue ? text : text;
+        }
+
+        if (detail === 'medium') {
+            const display = `${makeUsageProgressBar(clampedPercent, 8)} ${Math.round(clampedPercent)}%`;
+            return item.rawValue ? display : display;
+        }
 
         const usedK = Math.round(used / 1000);
         const totalK = Math.round(total / 1000);

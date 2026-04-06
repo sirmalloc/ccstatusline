@@ -114,28 +114,29 @@ export class WeeklyUsageWidget implements Widget {
 
         const data = fetchUsageData();
 
-        // Try API data first, fall back to stdin rate_limits
+        // Try API data first, fall back to stdin rate_limits for percentage
         let percent: number | undefined;
-        let resetSuffix = '';
 
         if (data.error || data.weeklyUsage === undefined) {
             const stdinPercent = context.data?.rate_limits?.seven_day?.used_percentage;
             if (stdinPercent != null) {
                 percent = Math.max(0, Math.min(100, stdinPercent));
-                const resetsAt = context.data?.rate_limits?.seven_day?.resets_at;
-                if (resetsAt != null) {
-                    const remainingMs = resetsAt * 1000 - Date.now();
-                    if (remainingMs > 0) {
-                        resetSuffix = ` (resets ${formatUsageDuration(remainingMs)})`;
-                    }
-                }
             } else {
-                // No stdin data either — show API error or null
                 if (data.error) return getUsageErrorMessage(data.error);
                 return null;
             }
         } else {
             percent = Math.max(0, Math.min(100, data.weeklyUsage));
+        }
+
+        // Always check stdin for reset timer
+        let resetSuffix = '';
+        const resetsAt = context.data?.rate_limits?.seven_day?.resets_at;
+        if (resetsAt != null) {
+            const remainingMs = resetsAt * 1000 - Date.now();
+            if (remainingMs > 0) {
+                resetSuffix = ` (resets ${formatUsageDuration(remainingMs)})`;
+            }
         }
 
         if (displayMode === 'progress' || displayMode === 'progress-short') {

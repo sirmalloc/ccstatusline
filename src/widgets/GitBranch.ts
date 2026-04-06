@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getDetailLevel } from '../utils/detail-level';
 import {
     isInsideGitWorkTree,
     runGit
@@ -56,8 +57,12 @@ export class GitBranchWidget implements Widget {
         }
 
         const branch = this.getGitBranch(context);
-        if (branch)
-            return item.rawValue ? branch : `⎇ ${branch}`;
+        if (branch) {
+            const detail = getDetailLevel(context.terminalWidth);
+            const maxLen = detail === 'narrow' ? 10 : detail === 'medium' ? 15 : Infinity;
+            const truncated = branch.length > maxLen ? `${branch.slice(0, maxLen)}...` : branch;
+            return item.rawValue ? truncated : `⎇ ${truncated}`;
+        }
 
         return hideNoGit ? null : '⎇ no git';
     }

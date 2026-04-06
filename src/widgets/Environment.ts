@@ -9,6 +9,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { getDetailLevel } from '../utils/detail-level';
 
 import { ActivityWidthEditor } from './ActivityWidthEditor';
 import {
@@ -39,6 +40,29 @@ function formatEnvironmentParts(counts: { claudeMdCount: number; rulesCount: num
     return parts.join(' | ');
 }
 
+function formatEnvironmentCompact(counts: { claudeMdCount: number; rulesCount: number; mcpCount: number; hooksCount: number }): string | null {
+    const parts: string[] = [];
+
+    if (counts.claudeMdCount > 0) {
+        parts.push(`${counts.claudeMdCount}md`);
+    }
+    if (counts.mcpCount > 0) {
+        parts.push(`${counts.mcpCount}mcp`);
+    }
+    if (counts.rulesCount > 0) {
+        parts.push(`${counts.rulesCount}r`);
+    }
+    if (counts.hooksCount > 0) {
+        parts.push(`${counts.hooksCount}h`);
+    }
+
+    if (parts.length === 0) {
+        return null;
+    }
+
+    return parts.join(' ');
+}
+
 export class EnvironmentWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }
     getDescription(): string { return 'Shows counts of CLAUDE.md files, MCP servers, rules, and hooks'; }
@@ -65,12 +89,18 @@ export class EnvironmentWidget implements Widget {
             return null;
         }
 
-        const rendered = formatEnvironmentParts(envData);
+        const detail = getDetailLevel(context.terminalWidth);
+        const rendered = detail === 'wide'
+            ? formatEnvironmentParts(envData)
+            : formatEnvironmentCompact(envData);
+
         if (!rendered) {
             return null;
         }
 
-        const output = item.rawValue ? rendered : `Env: ${rendered}`;
+        const output = detail === 'wide'
+            ? (item.rawValue ? rendered : `Env: ${rendered}`)
+            : rendered;
         return applyMaxWidth(output, item);
     }
 

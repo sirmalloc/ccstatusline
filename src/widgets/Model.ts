@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getDetailLevel } from '../utils/detail-level';
 
 export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -26,7 +27,16 @@ export class ModelWidget implements Widget {
             : (model?.display_name ?? model?.id);
 
         if (modelDisplayName) {
-            return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
+            const detail = getDetailLevel(context.terminalWidth);
+            let name = modelDisplayName;
+
+            if (detail === 'narrow') {
+                name = modelDisplayName.split(' ')[0] ?? modelDisplayName;
+            } else if (detail === 'medium') {
+                name = modelDisplayName.replace(/\s*\([^)]*\)\s*$/, '');
+            }
+
+            return item.rawValue ? name : `Model: ${name}`;
         }
         return null;
     }

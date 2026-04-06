@@ -23,6 +23,7 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
+import { getTerminalWidth } from './utils/terminal';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
@@ -123,6 +124,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration,
         activity,
         environmentData,
+        terminalWidth: getTerminalWidth(),
         isPreview: false
     };
 
