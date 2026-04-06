@@ -47,6 +47,7 @@ describe('CurrentWorkingDirWidget', () => {
         defaultPadding: ' ',
         inheritSeparatorColors: false,
         globalBold: false,
+        autoWrap: true,
         powerline: {
             enabled: false,
             separators: [],

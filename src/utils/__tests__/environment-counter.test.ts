@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-
 import {
     afterEach,
     beforeEach,
@@ -14,7 +13,7 @@ import {
 import { countEnvironment } from '../environment-counter';
 
 vi.mock('os', async () => {
-    const actual = await vi.importActual<typeof import('os')>('os');
+    const actual = await vi.importActual<typeof os>('os');
     return { ...actual, homedir: vi.fn(actual.homedir) };
 });
 
@@ -29,7 +28,7 @@ function writeJson(filePath: string, data: unknown): void {
     fs.writeFileSync(filePath, JSON.stringify(data));
 }
 
-function writeFile(filePath: string, content: string = ''): void {
+function writeFile(filePath: string, content = ''): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, content);
 }
@@ -93,14 +92,10 @@ describe('countEnvironment', () => {
             const claudeDir = path.join(homeDir, '.claude');
 
             // Settings with 3 MCP servers
-            writeJson(path.join(claudeDir, 'settings.json'), {
-                mcpServers: { serverA: {}, serverB: {}, serverC: {} }
-            });
+            writeJson(path.join(claudeDir, 'settings.json'), { mcpServers: { serverA: {}, serverB: {}, serverC: {} } });
 
             // ~/.claude.json disables one of them
-            writeJson(path.join(homeDir, '.claude.json'), {
-                disabledMcpServers: ['serverB']
-            });
+            writeJson(path.join(homeDir, '.claude.json'), { disabledMcpServers: ['serverB'] });
 
             const result = countEnvironment(cwd);
 
