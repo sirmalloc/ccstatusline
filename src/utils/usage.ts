@@ -408,14 +408,23 @@ export function resolveUsageWindowWithFallback(
 
 export function formatUsageDuration(durationMs: number): string {
     const clampedMs = Math.max(0, durationMs);
-    const elapsedHours = Math.floor(clampedMs / (1000 * 60 * 60));
+    const totalHours = Math.floor(clampedMs / (1000 * 60 * 60));
     const elapsedMinutes = Math.floor((clampedMs % (1000 * 60 * 60)) / (1000 * 60));
 
-    if (elapsedMinutes === 0) {
-        return `${elapsedHours}hr`;
+    if (totalHours >= 24) {
+        const days = Math.floor(totalHours / 24);
+        const remainingHours = totalHours % 24;
+        if (remainingHours === 0) {
+            return `${days}d`;
+        }
+        return `${days}d ${remainingHours}hr`;
     }
 
-    return `${elapsedHours}hr ${elapsedMinutes}m`;
+    if (elapsedMinutes === 0) {
+        return `${totalHours}hr`;
+    }
+
+    return `${totalHours}hr ${elapsedMinutes}m`;
 }
 
 export function getUsageErrorMessage(error: UsageError): string {
