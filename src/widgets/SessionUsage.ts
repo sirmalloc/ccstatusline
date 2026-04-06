@@ -6,7 +6,9 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getDetailLevel } from '../utils/detail-level';
 import {
+    formatUsageDuration,
     getUsageErrorMessage,
     makeUsageProgressBar
 } from '../utils/usage';
@@ -66,20 +68,52 @@ export class SessionUsageWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (data.sessionUsage === undefined)
-            return null;
 
-        const percent = Math.max(0, Math.min(100, data.sessionUsage));
-        if (isUsageProgressMode(displayMode)) {
-            const width = getUsageProgressBarWidth(displayMode);
-            const renderedPercent = inverted ? 100 - percent : percent;
-            const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
-            return formatRawOrLabeledValue(item, 'Session: ', progressDisplay);
+        // Try prefetched data first, fall back to stdin rate_limits
+        let percent: number | undefined;
+        let resetSuffix = '';
+
+        if (data.error || data.sessionUsage === undefined) {
+            const stdinPercent = context.data?.rate_limits?.five_hour?.used_percentage;
+            if (stdinPercent != null) {
+                percent = Math.max(0, Math.min(100, stdinPercent));
+                const resetsAt = context.data?.rate_limits?.five_hour?.resets_at;
+                if (resetsAt != null) {
+                    const remainingMs = resetsAt * 1000 - Date.now();
+                    if (remainingMs > 0) {
+                        resetSuffix = ` (resets ${formatUsageDuration(remainingMs)})`;
+                    }
+                }
+            } else {
+                // No stdin data either — show API error or null
+                if (data.error) return getUsageErrorMessage(data.error);
+                return null;
+            }
+        } else {
+            percent = Math.max(0, Math.min(100, data.sessionUsage));
         }
 
-        return formatRawOrLabeledValue(item, 'Session: ', `${percent.toFixed(1)}%`);
+        if (displayMode === 'progress' || displayMode === 'progress-short') {
+            const renderedPercent = inverted ? 100 - percent : percent;
+            const detail = getDetailLevel(context.terminalWidth);
+
+            if (detail === 'narrow') {
+                const text = `${Math.round(renderedPercent)}%`;
+                return item.rawValue ? text : text;
+            }
+
+            if (detail === 'medium') {
+                const compactReset = resetSuffix.replace(/\s*\(resets\s+/, ' (').replace(/hr /g, 'h').replace(/(\d+)m/, '$1m');
+                const progressDisplay = `${makeUsageProgressBar(renderedPercent, 8)} ${Math.round(renderedPercent)}%${compactReset}`;
+                return item.rawValue ? progressDisplay : progressDisplay;
+            }
+
+            const width = displayMode === 'progress' ? 32 : 16;
+            const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%${resetSuffix}`;
+            return item.rawValue ? progressDisplay : `Session: ${progressDisplay}`;
+        }
+
+        return item.rawValue ? `${percent.toFixed(1)}%${resetSuffix}` : `Session: ${percent.toFixed(1)}%${resetSuffix}`;
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
