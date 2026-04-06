@@ -362,7 +362,7 @@ export function getActivitySnapshot(transcriptPath?: string, options: ActivityPa
         return cached.snapshot;
     }
 
-    let content = '';
+    let content: string;
     try {
         content = fs.readFileSync(resolvedPath, 'utf-8');
     } catch {

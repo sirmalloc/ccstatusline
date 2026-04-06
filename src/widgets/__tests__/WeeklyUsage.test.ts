@@ -12,13 +12,14 @@ import type { WidgetItem } from '../../types/Widget';
 import { WeeklyUsageWidget } from '../WeeklyUsage';
 
 vi.mock('../../utils/usage', async () => {
-    const actual = await vi.importActual<typeof import('../../utils/usage')>('../../utils/usage');
+    const actual = await vi.importActual('../../utils/usage');
     return {
         ...actual,
         formatUsageDuration: vi.fn((ms: number) => {
             const hours = Math.floor(ms / (1000 * 60 * 60));
             const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-            if (minutes === 0) return `${hours}hr`;
+            if (minutes === 0)
+                return `${hours}hr`;
             return `${hours}hr ${minutes}m`;
         }),
         getUsageErrorMessage: vi.fn((error: string) => {
@@ -117,11 +118,7 @@ describe('WeeklyUsageWidget', () => {
 
         const context: RenderContext = {
             usageData: {},
-            data: {
-                rate_limits: {
-                    seven_day: { used_percentage: 12.0, resets_at: null }
-                }
-            }
+            data: { rate_limits: { seven_day: { used_percentage: 12.0, resets_at: null } } }
         };
 
         expect(render(widget, { id: 'weekly', type: 'weekly-usage' }, context)).toBe('Weekly: 12.0%');
@@ -132,11 +129,7 @@ describe('WeeklyUsageWidget', () => {
 
         const context: RenderContext = {
             usageData: { error: 'no-credentials' },
-            data: {
-                rate_limits: {
-                    seven_day: { used_percentage: 25.3, resets_at: null }
-                }
-            }
+            data: { rate_limits: { seven_day: { used_percentage: 25.3, resets_at: null } } }
         };
 
         expect(render(widget, { id: 'weekly', type: 'weekly-usage' }, context)).toBe('Weekly: 25.3%');
@@ -149,11 +142,7 @@ describe('WeeklyUsageWidget', () => {
         const context: RenderContext = {
             usageData: {},
             terminalWidth: 160,
-            data: {
-                rate_limits: {
-                    seven_day: { used_percentage: 12.0, resets_at: futureEpoch }
-                }
-            }
+            data: { rate_limits: { seven_day: { used_percentage: 12.0, resets_at: futureEpoch } } }
         };
 
         const result = render(widget, {

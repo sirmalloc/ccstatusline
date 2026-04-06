@@ -935,7 +935,6 @@ function wrapElements(elements: string[], maxWidth: number): string {
             const currentLine = lines[lines.length - 1];
             if (currentLine)
                 currentLine.push(truncateStyledText(elem, maxWidth, { ellipsis: true }));
-            currentLineWidth = maxWidth;
             continue;
         }
 
