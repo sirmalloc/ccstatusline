@@ -49,19 +49,19 @@ describe('EnvironmentWidget', () => {
             rulesCount: 3,
             hooksCount: 0
         };
-        const output = renderWithContext(widget, { id: 'env', type: 'environment' }, { environmentData: partialData });
+        const output = renderWithContext(widget, { id: 'env', type: 'environment' }, { environmentData: partialData, terminalWidth: 160 });
         expect(output).toBe('Env: 2 CLAUDE.md | 3 rules');
     });
 
     it('renders labeled mode with Env: prefix', () => {
         const widget = new EnvironmentWidget();
-        const output = renderWithContext(widget, { id: 'env', type: 'environment' }, { environmentData: fullEnvData });
+        const output = renderWithContext(widget, { id: 'env', type: 'environment' }, { environmentData: fullEnvData, terminalWidth: 160 });
         expect(output).toBe('Env: 3 CLAUDE.md | 2 MCP | 5 rules | 1 hook');
     });
 
     it('renders rawValue mode without Env: prefix', () => {
         const widget = new EnvironmentWidget();
-        const output = renderWithContext(widget, { id: 'env', type: 'environment', rawValue: true }, { environmentData: fullEnvData });
+        const output = renderWithContext(widget, { id: 'env', type: 'environment', rawValue: true }, { environmentData: fullEnvData, terminalWidth: 160 });
         expect(output).toBe('3 CLAUDE.md | 2 MCP | 5 rules | 1 hook');
     });
 
@@ -80,7 +80,7 @@ describe('EnvironmentWidget', () => {
         const output = renderWithContext(
             widget,
             { id: 'env', type: 'environment', maxWidth: 20 },
-            { environmentData: fullEnvData }
+            { environmentData: fullEnvData, terminalWidth: 160 }
         );
         expect(output).not.toBeNull();
         expect(output?.endsWith('...')).toBe(true);
@@ -89,7 +89,7 @@ describe('EnvironmentWidget', () => {
     it('pluralizes hooks correctly', () => {
         const widget = new EnvironmentWidget();
         const multiHooks: EnvironmentData = { claudeMdCount: 0, mcpCount: 0, rulesCount: 0, hooksCount: 3 };
-        const output = renderWithContext(widget, { id: 'env', type: 'environment' }, { environmentData: multiHooks });
+        const output = renderWithContext(widget, { id: 'env', type: 'environment' }, { environmentData: multiHooks, terminalWidth: 160 });
         expect(output).toBe('Env: 3 hooks');
     });
 
