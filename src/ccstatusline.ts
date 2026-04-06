@@ -117,6 +117,18 @@ async function renderMultipleLines(data: StatusJSON) {
         ? countEnvironment(data.cwd)
         : null;
 
+    // Calculate effective terminal width (matching renderer's flex adjustment)
+    const rawWidth = getTerminalWidth();
+    let effectiveWidth = rawWidth;
+    if (rawWidth) {
+        const flexMode = settings.flexMode as string;
+        if (flexMode === 'full-minus-40') {
+            effectiveWidth = rawWidth - 40;
+        } else {
+            effectiveWidth = rawWidth - 6;
+        }
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -124,7 +136,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration,
         activity,
         environmentData,
-        terminalWidth: getTerminalWidth(),
+        terminalWidth: effectiveWidth,
         isPreview: false
     };
 
