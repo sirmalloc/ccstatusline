@@ -910,17 +910,95 @@ export function renderStatusLine(
         }
     }
 
-    // Truncate if the line exceeds the terminal width
+    // Truncate or wrap if the line exceeds the terminal width
     // Use terminalWidth if available (already accounts for flex mode adjustments), otherwise use detectedWidth
     const maxWidth = terminalWidth ?? detectedWidth;
+    const autoWrap = settings.autoWrap !== false;
+
     if (maxWidth && maxWidth > 0) {
-        // Remove ANSI escape codes to get actual length
         const plainLength = getVisibleWidth(statusLine);
 
         if (plainLength > maxWidth) {
-            statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
+            if (autoWrap && !hasFlexSeparator) {
+                // Auto-wrap: split finalElements across multiple output lines at widget/separator boundaries
+                statusLine = wrapElements(finalElements, maxWidth);
+            } else {
+                // Fallback: truncate to single line
+                statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
+            }
         }
     }
 
     return statusLine;
+}
+
+/**
+ * Wraps an array of rendered elements across multiple output lines,
+ * splitting at separator boundaries when possible.
+ * Drops separators at the start/end of each wrapped line.
+ */
+function wrapElements(elements: string[], maxWidth: number): string {
+    const RESET = '\x1b[0m';
+    const lines: string[][] = [[]];
+
+    let currentLineWidth = 0;
+
+    for (let i = 0; i < elements.length; i++) {
+        const elem = elements[i];
+        if (elem === undefined) continue;
+
+        // Skip FLEX markers in wrap mode (shouldn't appear but guard anyway)
+        if (elem === 'FLEX') continue;
+
+        const elemWidth = getVisibleWidth(elem);
+
+        // If this single element is wider than maxWidth, truncate it individually
+        if (elemWidth > maxWidth) {
+            // Start it on a new line if current line has content
+            if (currentLineWidth > 0) {
+                lines.push([]);
+                currentLineWidth = 0;
+            }
+            lines[lines.length - 1].push(truncateStyledText(elem, maxWidth, { ellipsis: true }));
+            currentLineWidth = maxWidth;
+            continue;
+        }
+
+        // Would adding this element exceed the width?
+        if (currentLineWidth + elemWidth > maxWidth && currentLineWidth > 0) {
+            // Start a new line
+            lines.push([]);
+            currentLineWidth = 0;
+        }
+
+        lines[lines.length - 1].push(elem);
+        currentLineWidth += elemWidth;
+    }
+
+    // Clean up each line: drop leading/trailing separators
+    const isSeparatorElement = (s: string): boolean => {
+        // Separators are typically styled " | " or similar short strings with a pipe
+        // Detect by stripping ANSI and checking if it's purely separator-like
+        const plain = stripSgrCodes(s).trim();
+        // A separator is typically just punctuation like |, ·, •, /, etc. with optional spaces
+        return plain.length <= 3 && /^[|·•\/\\:~\-–—]+$/.test(plain);
+    };
+
+    const outputLines: string[] = [];
+    for (const lineElems of lines) {
+        // Drop leading separators
+        while (lineElems.length > 0 && isSeparatorElement(lineElems[0] ?? '')) {
+            lineElems.shift();
+        }
+        // Drop trailing separators
+        while (lineElems.length > 0 && isSeparatorElement(lineElems[lineElems.length - 1] ?? '')) {
+            lineElems.pop();
+        }
+
+        if (lineElems.length > 0) {
+            outputLines.push(RESET + lineElems.join(''));
+        }
+    }
+
+    return outputLines.join('\n');
 }
