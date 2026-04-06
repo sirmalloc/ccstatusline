@@ -1,4 +1,5 @@
 import type { BlockMetrics } from '../types';
+import type { EnvironmentData } from '../utils/environment-counter';
 
 import type { ActivitySnapshot } from './Activity';
 import type { StatusJSON } from './StatusJSON';
@@ -10,6 +11,7 @@ export interface RenderContext {
     sessionDuration?: string | null;
     blockMetrics?: BlockMetrics | null;
     activity?: ActivitySnapshot | null;
+    environmentData?: EnvironmentData | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
