@@ -36,3 +36,7 @@ export { LinkWidget } from './Link';
 export { SkillsWidget } from './Skills';
 export { ThinkingEffortWidget } from './ThinkingEffort';
 export { VimModeWidget } from './VimMode';
+export { ToolsActivityWidget } from './ToolsActivity';
+export { AgentsActivityWidget } from './AgentsActivity';
+export { TodoProgressWidget } from './TodoProgress';
+export { ActivityWidget } from './Activity';

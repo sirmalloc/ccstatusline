@@ -10,6 +10,7 @@ import type {
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
+import { getActivitySnapshot } from './utils/activity';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
@@ -41,6 +42,17 @@ import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
+}
+
+const ACTIVITY_WIDGET_TYPES = new Set([
+    'tools-activity',
+    'agents-activity',
+    'todo-progress',
+    'activity'
+]);
+
+function hasActivityWidgets(lines: { type?: string }[][]): boolean {
+    return lines.some(line => line.some(item => typeof item.type === 'string' && ACTIVITY_WIDGET_TYPES.has(item.type)));
 }
 
 async function readStdin(): Promise<string | null> {
@@ -140,6 +152,10 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
+    const activity = hasActivityWidgets(lines)
+        ? getActivitySnapshot(data.transcript_path)
+        : null;
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -149,6 +165,7 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
+        activity,
         isPreview: false
     };
 

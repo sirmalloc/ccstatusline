@@ -3,24 +3,60 @@ import type {
     Widget,
     WidgetItemType
 } from '../types/Widget';
-
-import {
-    LAYOUT_WIDGET_MANIFEST,
-    WIDGET_MANIFEST
-} from './widget-manifest';
+import * as widgets from '../widgets';
 
 // Create widget registry
-const widgetRegistry = new Map<WidgetItemType, Widget>(
-    WIDGET_MANIFEST.map((entry): [WidgetItemType, Widget] => [entry.type, entry.create()])
-);
-const layoutWidgetTypes = new Set<WidgetItemType>(LAYOUT_WIDGET_MANIFEST.map(entry => entry.type));
+const widgetRegistry = new Map<WidgetItemType, Widget>([
+    ['model', new widgets.ModelWidget()],
+    ['output-style', new widgets.OutputStyleWidget()],
+    ['git-branch', new widgets.GitBranchWidget()],
+    ['git-changes', new widgets.GitChangesWidget()],
+    ['git-insertions', new widgets.GitInsertionsWidget()],
+    ['git-deletions', new widgets.GitDeletionsWidget()],
+    ['git-root-dir', new widgets.GitRootDirWidget()],
+    ['git-worktree', new widgets.GitWorktreeWidget()],
+    ['current-working-dir', new widgets.CurrentWorkingDirWidget()],
+    ['tokens-input', new widgets.TokensInputWidget()],
+    ['tokens-output', new widgets.TokensOutputWidget()],
+    ['tokens-cached', new widgets.TokensCachedWidget()],
+    ['tokens-total', new widgets.TokensTotalWidget()],
+    ['context-length', new widgets.ContextLengthWidget()],
+    ['context-percentage', new widgets.ContextPercentageWidget()],
+    ['context-percentage-usable', new widgets.ContextPercentageUsableWidget()],
+    ['session-clock', new widgets.SessionClockWidget()],
+    ['session-cost', new widgets.SessionCostWidget()],
+    ['tools-activity', new widgets.ToolsActivityWidget()],
+    ['agents-activity', new widgets.AgentsActivityWidget()],
+    ['todo-progress', new widgets.TodoProgressWidget()],
+    ['activity', new widgets.ActivityWidget()],
+    ['block-timer', new widgets.BlockTimerWidget()],
+    ['terminal-width', new widgets.TerminalWidthWidget()],
+    ['version', new widgets.VersionWidget()],
+    ['custom-text', new widgets.CustomTextWidget()],
+    ['custom-command', new widgets.CustomCommandWidget()],
+    ['link', new widgets.LinkWidget()],
+    ['claude-session-id', new widgets.ClaudeSessionIdWidget()],
+    ['session-name', new widgets.SessionNameWidget()],
+    ['free-memory', new widgets.FreeMemoryWidget()],
+    ['session-usage', new widgets.SessionUsageWidget()],
+    ['weekly-usage', new widgets.WeeklyUsageWidget()],
+    ['block-reset-timer', new widgets.BlockResetTimerWidget()],
+    ['weekly-reset-timer', new widgets.WeeklyResetTimerWidget()],
+    ['context-bar', new widgets.ContextBarWidget()],
+    ['input-speed', new widgets.InputSpeedWidget()],
+    ['output-speed', new widgets.OutputSpeedWidget()],
+    ['total-speed', new widgets.TotalSpeedWidget()],
+    ['skills', new widgets.SkillsWidget()],
+    ['thinking-effort', new widgets.ThinkingEffortWidget()],
+    ['vim-mode', new widgets.VimModeWidget()]
+]);
 
 export function getWidget(type: WidgetItemType): Widget | null {
     return widgetRegistry.get(type) ?? null;
 }
 
 export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
-    const allTypes = WIDGET_MANIFEST.map(entry => entry.type);
+    const allTypes = Array.from(widgetRegistry.keys());
 
     // Add separator types based on settings
     if (!settings.powerline.enabled) {
@@ -41,21 +77,43 @@ export interface WidgetCatalogEntry {
     searchText: string;
 }
 
-const layoutCatalogEntries = new Map<WidgetItemType, WidgetCatalogEntry>(
-    LAYOUT_WIDGET_MANIFEST.map((entry): [WidgetItemType, WidgetCatalogEntry] => [
-        entry.type,
-        {
-            type: entry.type,
-            displayName: entry.displayName,
-            description: entry.description,
-            category: entry.category,
-            searchText: `${entry.displayName} ${entry.description} ${entry.type}`.toLowerCase()
-        }
-    ])
-);
+const LAYOUT_WIDGETS: Record<string, Omit<WidgetCatalogEntry, 'type' | 'searchText'>> = {
+    'separator': {
+        displayName: 'Separator',
+        description: 'A separator character between status line widgets',
+        category: 'Layout'
+    },
+    'flex-separator': {
+        displayName: 'Flex Separator',
+        description: 'Expands to fill available terminal width',
+        category: 'Layout'
+    }
+};
+
+const WIDGET_SORT_PRIORITY: Partial<Record<WidgetItemType, number>> = { activity: 0 };
+
+function getWidgetSortPriority(entry: WidgetCatalogEntry): number {
+    // Only apply explicit ordering within the Activity category.
+    if (entry.category !== 'Activity') {
+        return Number.MAX_SAFE_INTEGER;
+    }
+
+    return WIDGET_SORT_PRIORITY[entry.type] ?? Number.MAX_SAFE_INTEGER;
+}
 
 function getLayoutCatalogEntry(type: WidgetItemType): WidgetCatalogEntry | null {
-    return layoutCatalogEntries.get(type) ?? null;
+    const layout = LAYOUT_WIDGETS[type];
+    if (!layout) {
+        return null;
+    }
+
+    return {
+        type,
+        displayName: layout.displayName,
+        description: layout.description,
+        category: layout.category,
+        searchText: `${layout.displayName} ${layout.description} ${type}`.toLowerCase()
+    };
 }
 
 export function getWidgetCatalog(settings: Settings): WidgetCatalogEntry[] {
@@ -136,6 +194,13 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
                 return a.score - b.score;
             }
 
+            if (a.entry.category === b.entry.category) {
+                const byPriority = getWidgetSortPriority(a.entry) - getWidgetSortPriority(b.entry);
+                if (byPriority !== 0) {
+                    return byPriority;
+                }
+            }
+
             const byDisplayName = a.entry.displayName.localeCompare(b.entry.displayName);
             if (byDisplayName !== 0) {
                 return byDisplayName;
@@ -148,5 +213,6 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
 
 export function isKnownWidgetType(type: string): boolean {
     return widgetRegistry.has(type)
-        || layoutWidgetTypes.has(type);
+        || type === 'separator'
+        || type === 'flex-separator';
 }
