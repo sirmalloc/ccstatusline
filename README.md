@@ -50,7 +50,7 @@ Neither did both well. This fork combines them and adds a few things that were m
 
 **Adaptive detail levels** — widgets adjust their verbosity based on terminal width. Wide terminals get full labels and 16-char progress bars. Medium terminals get compact bars and short labels. Narrow terminals drop to percentages only. Thresholds: wide >= 100 cols, medium >= 60 cols, narrow < 60 cols.
 
-**Rate limit fallback for Claude Max** — the upstream usage widgets call Anthropic's API, which fails silently on Max plans (no API key). This fork falls back to the rate limit data that Claude Code already pipes in via stdin. Shows your 5-hour and 7-day usage with reset countdowns, no API key needed.
+**Rate limit fallback for Pro, Max, and Team plans** — the upstream usage widgets call Anthropic's API, which fails silently on subscription plans (no API key). This fork falls back to the rate limit data that Claude Code already pipes in via stdin. Shows your 5-hour and 7-day usage with reset countdowns, no API key needed.
 
 ### Install
 
@@ -474,8 +474,8 @@ bun run example
 - **Git Root Dir** - Shows the git repository root directory name
 - **Git Worktree** - Shows the name of the current git worktree
 - **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
-- **Session Usage** - Shows current 5-hour/session API usage percentage
-- **Weekly Usage** - Shows rolling 7-day API usage percentage
+- **Session Usage** - Shows 5-hour usage percentage with reset countdown. Falls back to stdin rate limits on subscription plans (Pro/Max/Team)
+- **Weekly Usage** - Shows 7-day usage percentage with reset countdown. Falls back to stdin rate limits on subscription plans (Pro/Max/Team)
 - **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
 - **Session Name** - Shows the session name set via `/rename` command in Claude Code
 - **Claude Session ID** - Shows the current Claude Code session ID from status JSON
@@ -496,6 +496,7 @@ bun run example
 - **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with `[1m]` suffix, 200k otherwise)
 - **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
+- **Environment** - Shows counts of loaded CLAUDE.md files, MCP servers, rules, and hooks. Hides when all counts are zero
 - **Terminal Width** - Shows detected terminal width (for debugging)
 - **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
 - **Custom Text** - Add your own custom text to the status line
