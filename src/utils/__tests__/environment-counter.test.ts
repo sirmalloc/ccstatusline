@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
     afterEach,
@@ -11,7 +12,7 @@ import {
 import { countEnvironment } from '../environment-counter';
 
 function createTempDir(): string {
-    return fs.mkdtempSync(path.join(require('os').tmpdir(), 'env-counter-test-'));
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'env-counter-test-'));
 }
 
 function writeJson(filePath: string, data: unknown): void {
@@ -60,9 +61,7 @@ describe('countEnvironment', () => {
         const cwd = createTempDir();
         process.env.CLAUDE_CONFIG_DIR = configDir;
 
-        writeJson(path.join(configDir, 'settings.json'), {
-            hooks: { preCommit: {}, postCommit: {}, lint: {} }
-        });
+        writeJson(path.join(configDir, 'settings.json'), { hooks: { preCommit: {}, postCommit: {}, lint: {} } });
 
         const result = countEnvironment(cwd);
 
@@ -74,9 +73,7 @@ describe('countEnvironment', () => {
         const cwd = createTempDir();
         process.env.CLAUDE_CONFIG_DIR = configDir;
 
-        writeJson(path.join(configDir, 'settings.json'), {
-            mcpServers: { server1: {}, server2: {} }
-        });
+        writeJson(path.join(configDir, 'settings.json'), { mcpServers: { server1: {}, server2: {} } });
 
         const result = countEnvironment(cwd);
 
