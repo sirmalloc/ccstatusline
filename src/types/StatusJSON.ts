@@ -41,14 +41,14 @@ export const StatusJSONSchema = z.looseObject({
     }).optional(),
     rate_limits: z.object({
         five_hour: z.object({
-            used_percentage: z.number().nullable().optional(),
-            resets_at: z.number().nullable().optional()
+            used_percentage: CoercedNumberSchema.nullable().optional(),
+            resets_at: CoercedNumberSchema.nullable().optional()
         }).optional(),
         seven_day: z.object({
-            used_percentage: z.number().nullable().optional(),
-            resets_at: z.number().nullable().optional()
+            used_percentage: CoercedNumberSchema.nullable().optional(),
+            resets_at: CoercedNumberSchema.nullable().optional()
         }).optional()
-    }).optional(),
+    }).nullable().optional(),
     context_window: z.object({
         context_window_size: CoercedNumberSchema.nullable().optional(),
         total_input_tokens: CoercedNumberSchema.nullable().optional(),
