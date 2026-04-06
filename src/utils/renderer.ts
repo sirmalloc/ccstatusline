@@ -888,7 +888,7 @@ export function renderStatusLine(
     // Truncate or wrap if the line exceeds the terminal width
     // Use terminalWidth if available (already accounts for flex mode adjustments), otherwise use detectedWidth
     const maxWidth = terminalWidth ?? detectedWidth;
-    const autoWrap = settings.autoWrap !== false;
+    const autoWrap = settings.autoWrap;
 
     if (maxWidth && maxWidth > 0) {
         const plainLength = getVisibleWidth(statusLine);
@@ -918,12 +918,10 @@ function wrapElements(elements: string[], maxWidth: number): string {
 
     let currentLineWidth = 0;
 
-    for (let i = 0; i < elements.length; i++) {
-        const elem = elements[i];
-        if (elem === undefined) continue;
-
+    for (const elem of elements) {
         // Skip FLEX markers in wrap mode (shouldn't appear but guard anyway)
-        if (elem === 'FLEX') continue;
+        if (elem === 'FLEX')
+            continue;
 
         const elemWidth = getVisibleWidth(elem);
 
@@ -934,7 +932,9 @@ function wrapElements(elements: string[], maxWidth: number): string {
                 lines.push([]);
                 currentLineWidth = 0;
             }
-            lines[lines.length - 1].push(truncateStyledText(elem, maxWidth, { ellipsis: true }));
+            const currentLine = lines[lines.length - 1];
+            if (currentLine)
+                currentLine.push(truncateStyledText(elem, maxWidth, { ellipsis: true }));
             currentLineWidth = maxWidth;
             continue;
         }
@@ -946,7 +946,9 @@ function wrapElements(elements: string[], maxWidth: number): string {
             currentLineWidth = 0;
         }
 
-        lines[lines.length - 1].push(elem);
+        const currentLine = lines[lines.length - 1];
+        if (currentLine)
+            currentLine.push(elem);
         currentLineWidth += elemWidth;
     }
 
@@ -956,7 +958,7 @@ function wrapElements(elements: string[], maxWidth: number): string {
         // Detect by stripping ANSI and checking if it's purely separator-like
         const plain = stripSgrCodes(s).trim();
         // A separator is typically just punctuation like |, ·, •, /, etc. with optional spaces
-        return plain.length <= 3 && /^[|·•\/\\:~\-–—]+$/.test(plain);
+        return plain.length <= 3 && /^[|·•/\\:~\-–—]+$/.test(plain);
     };
 
     const outputLines: string[] = [];
