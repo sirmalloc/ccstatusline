@@ -36,3 +36,6 @@ export { LinkWidget } from './Link';
 export { SkillsWidget } from './Skills';
 export { ThinkingEffortWidget } from './ThinkingEffort';
 export { VimModeWidget } from './VimMode';
+export { SessionBudgetWidget } from './SessionBudget';
+export { WeeklyBudgetWidget } from './WeeklyBudget';
+export { PeakHoursWidget } from './PeakHours';
