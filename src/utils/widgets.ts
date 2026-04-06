@@ -90,7 +90,60 @@ export function getWidgetCatalogCategories(catalog: WidgetCatalogEntry[]): strin
     return Array.from(categories);
 }
 
+function computeFuzzyScore(text: string, query: string): number | null {
+    const CONSECUTIVE_BONUS_RATE = 5;
+    const BOUNDARY_BONUS_RATE = 3;
+
+    let qi = 0;
+    const positions: number[] = [];
+
+    for (let ti = 0; ti < text.length && qi < query.length; ti++) {
+        if (text[ti] === query[qi]) {
+            positions.push(ti);
+            qi++;
+        }
+    }
+
+    if (qi < query.length) {
+        return null;
+    }
+
+    const first = positions[0];
+    const prev = positions[positions.length - 1];
+
+    if (first === undefined || prev === undefined) {
+        return null;
+    }
+
+    const span = prev - first;
+    let consecutiveBonus = 0;
+    let boundaryBonus = 0;
+
+    positions.reduce((prev, curr) => {
+        if (curr === prev + 1) {
+            consecutiveBonus += CONSECUTIVE_BONUS_RATE;
+        }
+        return curr;
+    });
+
+    for (const pos of positions) {
+        if (pos === 0 || text[pos - 1] === ' ' || text[pos - 1] === '-' || text[pos - 1] === '_') {
+            boundaryBonus += BOUNDARY_BONUS_RATE;
+        }
+    }
+
+    return Math.max(0, span + first - consecutiveBonus - boundaryBonus);
+}
+
 export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: string, query: string): WidgetCatalogEntry[] {
+    const FUZZY_RANK_PRIORITY = {
+        NAME: 1,
+        TYPE: 2,
+        SEARCH: 3
+    };
+
+    const FUZZY_TIER_SIZE = 1000;
+
     const normalizedQuery = query.trim().toLowerCase();
 
     const categoryFiltered = category === 'All'
@@ -126,6 +179,19 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
                 return { entry, score: 4 };
             }
 
+            const nameFuzzy = computeFuzzyScore(name, normalizedQuery);
+            if (nameFuzzy !== null) {
+                return { entry, score: FUZZY_RANK_PRIORITY.NAME * FUZZY_TIER_SIZE + nameFuzzy };
+            }
+            const typeFuzzy = computeFuzzyScore(type, normalizedQuery);
+            if (typeFuzzy !== null) {
+                return { entry, score: FUZZY_RANK_PRIORITY.TYPE * FUZZY_TIER_SIZE + typeFuzzy };
+            }
+            const searchFuzzy = computeFuzzyScore(entry.searchText, normalizedQuery);
+            if (searchFuzzy !== null) {
+                return { entry, score: FUZZY_RANK_PRIORITY.SEARCH * FUZZY_TIER_SIZE + searchFuzzy };
+            }
+
             return null;
         })
         .filter((item): item is { entry: WidgetCatalogEntry; score: number } => item !== null);
@@ -144,6 +210,64 @@ export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: str
             return a.entry.type.localeCompare(b.entry.type);
         })
         .map(item => item.entry);
+}
+
+export function getMatchSegments(text: string, query: string): { text: string; matched: boolean }[] {
+    if (!query.trim()) {
+        return [{ text, matched: false }];
+    }
+
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedText = text.toLowerCase();
+
+    const substringIdx = normalizedText.indexOf(normalizedQuery);
+    if (substringIdx !== -1) {
+        const end = substringIdx + normalizedQuery.length;
+        const segments: { text: string; matched: boolean }[] = [];
+        if (substringIdx > 0) {
+            segments.push({ text: text.slice(0, substringIdx), matched: false });
+        }
+        segments.push({ text: text.slice(substringIdx, end), matched: true });
+        if (end < text.length) {
+            segments.push({ text: text.slice(end), matched: false });
+        }
+        return segments;
+    }
+
+    let qi = 0;
+    const positions: number[] = [];
+    for (let ti = 0; ti < normalizedText.length && qi < normalizedQuery.length; ti++) {
+        if (normalizedText[ti] === normalizedQuery[qi]) {
+            positions.push(ti);
+            qi++;
+        }
+    }
+
+    if (qi < normalizedQuery.length) {
+        return [{ text, matched: false }];
+    }
+
+    const posSet = new Set(positions);
+    const segments: { text: string; matched: boolean }[] = [];
+    let current = '';
+    let currentMatched = posSet.has(0);
+
+    for (let i = 0; i < text.length; i++) {
+        const isMatched = posSet.has(i);
+        if (isMatched !== currentMatched && current) {
+            segments.push({ text: current, matched: currentMatched });
+            current = text[i] ?? '';
+            currentMatched = isMatched;
+        } else {
+            current += text[i] ?? '';
+        }
+    }
+
+    if (current) {
+        segments.push({ text: current, matched: currentMatched });
+    }
+
+    return segments;
 }
 
 export function isKnownWidgetType(type: string): boolean {
