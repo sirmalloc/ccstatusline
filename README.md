@@ -54,13 +54,21 @@ Neither did both well. This fork combines them and adds a few things that were m
 
 ### Install
 
+**Option A: Manual plugin install (gets you `/ccstatusline:setup` and `/ccstatusline:configure` slash commands)**
+
 ```bash
-npx renaissance-dan/ccstatusline
+# Clone into your Claude Code plugins directory
+mkdir -p ~/.claude/plugins/local
+git clone https://github.com/renaissance-dan/ccstatusline.git ~/.claude/plugins/local/ccstatusline
+cd ~/.claude/plugins/local/ccstatusline
+npm install && npm run build
 ```
 
-That launches the TUI where you can pick widgets and configure layout.
+Then in a Claude Code session, run `/ccstatusline:setup` to wire it in and `/ccstatusline:configure` to pick your widgets.
 
-To set it as your Claude Code status line, add this to `~/.claude/settings.json`:
+**Option B: Quick install (no slash commands, just the status line)**
+
+Add this to `~/.claude/settings.json`:
 
 ```json
 {
@@ -71,6 +79,8 @@ To set it as your Claude Code status line, add this to `~/.claude/settings.json`
   }
 }
 ```
+
+Run `npx renaissance-dan/ccstatusline` to open the visual TUI configurator.
 
 ### Shelf life
 

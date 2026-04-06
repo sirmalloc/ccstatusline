@@ -1,0 +1,17 @@
+{
+  "name": "ccstatusline",
+  "description": "Customizable status line for Claude Code with activity tracking, environment context, and adaptive layout",
+  "version": "2.1.5",
+  "author": {
+    "name": "Dan Snyder (fork), Matthew Breedlove (upstream)",
+    "url": "https://github.com/renaissance-dan/ccstatusline"
+  },
+  "commands": [
+    "./commands/setup.md",
+    "./commands/configure.md"
+  ],
+  "homepage": "https://github.com/renaissance-dan/ccstatusline",
+  "repository": "https://github.com/renaissance-dan/ccstatusline",
+  "license": "MIT",
+  "keywords": ["statusline", "monitoring", "context", "tools", "agents", "todos", "claude-code"]
+}

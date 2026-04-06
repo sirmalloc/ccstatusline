@@ -8,7 +8,9 @@
     "ccstatusline": "dist/ccstatusline.js"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "commands/",
+    ".claude-plugin/"
   ],
   "scripts": {
     "start": "bun run src/ccstatusline.ts",
