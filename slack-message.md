@@ -35,4 +35,4 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-PR is open upstream ([sirmalloc/ccstatusline#291](https://github.com/sirmalloc/ccstatusline/pull/291)) in case the owner wants to add this to the official package, but the fork should be good until then.
+PR is open upstream ([sirmalloc/ccstatusline#292](https://github.com/sirmalloc/ccstatusline/pull/291)) in case the owner wants to add this to the official package, but the fork should be good until then.
