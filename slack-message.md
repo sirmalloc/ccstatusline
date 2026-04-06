@@ -15,7 +15,7 @@ What I added on top:
 - **Environment widget** — shows how many CLAUDE.md files, MCP servers, rules, and hooks are loaded
 - **Auto-wrap** — widgets flow to the next line instead of getting cut off with `...`
 - **Adaptive detail** — progress bars and labels get shorter at narrow terminal widths instead of truncating
-- **Fixed: Usage on Pro/Max/Team** — the stock usage widgets needed an API key, so now falls back to the rate limit data Claude Code already provides, including reset countdowns
+- **Usage reset countdowns** — the usage widgets now show time until your rate limit resets (e.g., "resets 2hr 15m")
 
 **Install (plugin):**
 ```bash
@@ -35,4 +35,4 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-PR is open upstream ([sirmalloc/ccstatusline#290](https://github.com/sirmalloc/ccstatusline/pull/290)) in case the owner wants to add this to the official package, but the fork should be good until then.
+PR is open upstream ([sirmalloc/ccstatusline#291](https://github.com/sirmalloc/ccstatusline/pull/291)) in case the owner wants to add this to the official package, but the fork should be good until then.
