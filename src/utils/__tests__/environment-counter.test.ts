@@ -12,12 +12,7 @@ import {
 
 import { countEnvironment } from '../environment-counter';
 
-vi.mock('os', async () => {
-    const actual = await vi.importActual<typeof os>('os');
-    return { ...actual, homedir: vi.fn(actual.homedir) };
-});
-
-const mockedHomedir = vi.mocked(os.homedir);
+let mockedHomedir: ReturnType<typeof vi.spyOn<typeof os, 'homedir'>>;
 
 function createTempDir(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'env-counter-test-'));
@@ -39,6 +34,7 @@ describe('countEnvironment', () => {
     beforeEach(() => {
         savedConfigDir = process.env.CLAUDE_CONFIG_DIR;
         delete process.env.CLAUDE_CONFIG_DIR;
+        mockedHomedir = vi.spyOn(os, 'homedir');
     });
 
     afterEach(() => {

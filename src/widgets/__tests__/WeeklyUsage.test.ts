@@ -9,31 +9,8 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import * as usage from '../../utils/usage';
 import { WeeklyUsageWidget } from '../WeeklyUsage';
-
-vi.mock('../../utils/usage', async () => {
-    const actual = await vi.importActual('../../utils/usage');
-    return {
-        ...actual,
-        formatUsageDuration: vi.fn((ms: number) => {
-            const hours = Math.floor(ms / (1000 * 60 * 60));
-            const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-            if (minutes === 0)
-                return `${hours}hr`;
-            return `${hours}hr ${minutes}m`;
-        }),
-        getUsageErrorMessage: vi.fn((error: string) => {
-            switch (error) {
-                case 'no-credentials': return '[No credentials]';
-                case 'timeout': return '[Timeout]';
-                case 'api-error': return '[API Error]';
-                case 'parse-error': return '[Parse Error]';
-                default: return `[${error}]`;
-            }
-        }),
-        makeUsageProgressBar: vi.fn((percent: number, width = 15) => `[bar:${percent.toFixed(1)}:${width}]`)
-    };
-});
 
 function render(widget: WeeklyUsageWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
@@ -41,7 +18,24 @@ function render(widget: WeeklyUsageWidget, item: WidgetItem, context: RenderCont
 
 describe('WeeklyUsageWidget', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
+        vi.spyOn(usage, 'formatUsageDuration').mockImplementation((ms: number) => {
+            const hours = Math.floor(ms / (1000 * 60 * 60));
+            const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+            if (minutes === 0)
+                return `${hours}hr`;
+            return `${hours}hr ${minutes}m`;
+        });
+        vi.spyOn(usage, 'getUsageErrorMessage').mockImplementation((error: string) => {
+            switch (error) {
+                case 'no-credentials': return '[No credentials]';
+                case 'timeout': return '[Timeout]';
+                case 'api-error': return '[API Error]';
+                case 'parse-error': return '[Parse Error]';
+                default: return `[${error}]`;
+            }
+        });
+        vi.spyOn(usage, 'makeUsageProgressBar').mockImplementation((percent: number, width = 15) => `[bar:${percent.toFixed(1)}:${width}]`);
     });
 
     it('exposes progress and invert keybinds', () => {
