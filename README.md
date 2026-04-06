@@ -29,6 +29,55 @@
 
 </div>
 
+## About this fork
+
+This is a fork of [sirmalloc/ccstatusline](https://github.com/sirmalloc/ccstatusline). It builds on the upstream `feature/activityWidgets` branch, which added live tool tracking, subagent status, and todo progress.
+
+### Why it exists
+
+Two Claude Code status line projects were solving different halves of the same problem:
+
+- **ccstatusline** (sirmalloc) had 35+ widgets, a TUI configurator, powerline themes, and deep customization. But it was purely a metrics display — it didn't show what Claude was actively doing.
+- **claude-hud** (jarrodwatts) tracked live activity — running tools, subagents, task progress — and showed your environment config. But it had minimal visual customization and a fixed layout.
+
+Neither did both well. This fork combines them and adds a few things that were missing from both.
+
+### What's different from upstream
+
+**Environment widget** — shows how many CLAUDE.md files, MCP servers, rules, and hooks are loaded in your session. Ported from claude-hud's config reader. Hides when there's nothing to show.
+
+**Auto-wrap** — when your widgets don't fit the terminal width, they wrap to the next line at separator boundaries instead of getting truncated with `...`. Each wrapped line drops leading/trailing separators so it reads clean.
+
+**Adaptive detail levels** — widgets adjust their verbosity based on terminal width. Wide terminals get full labels and 16-char progress bars. Medium terminals get compact bars and short labels. Narrow terminals drop to percentages only. Thresholds: wide >= 100 cols, medium >= 60 cols, narrow < 60 cols.
+
+**Rate limit fallback for Claude Max** — the upstream usage widgets call Anthropic's API, which fails silently on Max plans (no API key). This fork falls back to the rate limit data that Claude Code already pipes in via stdin. Shows your 5-hour and 7-day usage with reset countdowns, no API key needed.
+
+### Install
+
+```bash
+npx renaissance-dan/ccstatusline
+```
+
+That launches the TUI where you can pick widgets and configure layout.
+
+To set it as your Claude Code status line, add this to `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx renaissance-dan/ccstatusline@latest",
+    "padding": 0
+  }
+}
+```
+
+### Shelf life
+
+This fork is a bridge. The upstream project is actively developing activity widgets on its own branch, and the environment widget has been submitted as a PR. Once upstream merges those features, switch back to `npx ccstatusline@latest` and retire this fork.
+
+---
+
 ## 📚 Table of Contents
 
 - [Recent Updates](#-recent-updates)
