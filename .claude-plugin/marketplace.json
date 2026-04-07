@@ -9,7 +9,7 @@
     {
       "name": "ccstatusline",
       "description": "Customizable status line for Claude Code with activity tracking, environment context, and adaptive layout",
-      "source": ".",
+      "source": "./",
       "category": "productivity",
       "homepage": "https://github.com/renaissance-dan/ccstatusline"
     }
