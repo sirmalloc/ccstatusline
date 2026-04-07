@@ -8,13 +8,16 @@
     "ccstatusline": "dist/ccstatusline.js"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "commands/",
+    ".claude-plugin/"
   ],
   "scripts": {
     "start": "bun run src/ccstatusline.ts",
     "build": "rm -rf dist/* ; bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
     "postbuild": "bun run scripts/replace-version.ts",
     "example": "cat scripts/payload.example.json | bun start",
+    "prepare": "bun run build",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit && eslint . --config eslint.config.js --max-warnings=0",
     "lint:fix": "bun tsc --noEmit && eslint . --config eslint.config.js --max-warnings=0 --fix",

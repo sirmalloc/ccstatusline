@@ -14,11 +14,6 @@ const CoercedNumberSchema = z.preprocess((value) => {
     return Number.isFinite(parsed) ? parsed : value;
 }, z.number());
 
-const RateLimitPeriodSchema = z.object({
-    used_percentage: CoercedNumberSchema.nullable().optional(),
-    resets_at: CoercedNumberSchema.nullable().optional() // Unix epoch seconds
-});
-
 export const StatusJSONSchema = z.looseObject({
     hook_event_name: z.string().optional(),
     session_id: z.string().optional(),
@@ -44,6 +39,16 @@ export const StatusJSONSchema = z.looseObject({
         total_lines_added: CoercedNumberSchema.optional(),
         total_lines_removed: CoercedNumberSchema.optional()
     }).optional(),
+    rate_limits: z.object({
+        five_hour: z.object({
+            used_percentage: CoercedNumberSchema.nullable().optional(),
+            resets_at: CoercedNumberSchema.nullable().optional()
+        }).optional(),
+        seven_day: z.object({
+            used_percentage: CoercedNumberSchema.nullable().optional(),
+            resets_at: CoercedNumberSchema.nullable().optional()
+        }).optional()
+    }).nullable().optional(),
     context_window: z.object({
         context_window_size: CoercedNumberSchema.nullable().optional(),
         total_input_tokens: CoercedNumberSchema.nullable().optional(),
@@ -60,11 +65,7 @@ export const StatusJSONSchema = z.looseObject({
         used_percentage: CoercedNumberSchema.nullable().optional(),
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
-    vim: z.object({ mode: z.string().optional() }).nullable().optional(),
-    rate_limits: z.object({
-        five_hour: RateLimitPeriodSchema.optional(),
-        seven_day: RateLimitPeriodSchema.optional()
-    }).nullable().optional()
+    vim: z.object({ mode: z.string().optional() }).nullable().optional()
 });
 
 export type StatusJSON = z.infer<typeof StatusJSONSchema>;

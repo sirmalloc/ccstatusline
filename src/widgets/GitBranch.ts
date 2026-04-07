@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getDetailLevel } from '../utils/detail-level';
 import {
     isInsideGitWorkTree,
     runGit
@@ -76,7 +77,12 @@ export class GitBranchWidget implements Widget {
             return hideNoGit ? null : '⎇ no git';
         }
 
-        const displayText = item.rawValue ? branch : `⎇ ${branch}`;
+        // Truncate branch name based on terminal width
+        const detail = getDetailLevel(context.terminalWidth);
+        const maxLen = detail === 'narrow' ? 10 : detail === 'medium' ? 15 : Infinity;
+        const truncatedBranch = branch.length > maxLen ? `${branch.slice(0, maxLen)}...` : branch;
+
+        const displayText = item.rawValue ? truncatedBranch : `⎇ ${truncatedBranch}`;
 
         if (isLink) {
             const remoteUrl = runGit('remote get-url origin', context);

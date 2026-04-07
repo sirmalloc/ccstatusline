@@ -33,6 +33,7 @@ function render(options: {
     const widget = new GitBranchWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
+        terminalWidth: 160,
         data: options.cwd ? { cwd: options.cwd } : undefined
     };
     const metadata = {

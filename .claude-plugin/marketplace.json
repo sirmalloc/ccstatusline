@@ -1,0 +1,17 @@
+{
+  "name": "ccstatusline",
+  "description": "Customizable status line for Claude Code with activity tracking, environment context, and adaptive layout",
+  "owner": {
+    "name": "Matthew Breedlove",
+    "url": "https://github.com/sirmalloc/ccstatusline"
+  },
+  "plugins": [
+    {
+      "name": "ccstatusline",
+      "description": "Customizable status line for Claude Code with activity tracking, environment context, and adaptive layout",
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/renaissance-dan/ccstatusline"
+    }
+  ]
+}

@@ -29,6 +29,65 @@
 
 </div>
 
+## About this fork
+
+This is a fork of [sirmalloc/ccstatusline](https://github.com/sirmalloc/ccstatusline). It builds on the upstream `feature/activityWidgets` branch, which added live tool tracking, subagent status, and todo progress.
+
+### Why it exists
+
+Two Claude Code status line projects were solving different halves of the same problem:
+
+- **ccstatusline** (sirmalloc) had 35+ widgets, a TUI configurator, powerline themes, and deep customization. But it was purely a metrics display — it didn't show what Claude was actively doing.
+- **claude-hud** (jarrodwatts) tracked live activity — running tools, subagents, task progress — and showed your environment config. But it had minimal visual customization and a fixed layout.
+
+Neither did both well. This fork combines them and adds a few things that were missing from both.
+
+### What's different from upstream
+
+**Environment widget** — shows how many CLAUDE.md files, MCP servers, rules, and hooks are loaded in your session. Ported from claude-hud's config reader. Hides when there's nothing to show.
+
+**Auto-wrap** — when your widgets don't fit the terminal width, they wrap to the next line at separator boundaries instead of getting truncated with `...`. Each wrapped line drops leading/trailing separators so it reads clean.
+
+**Adaptive detail levels** — widgets adjust their verbosity based on terminal width. Wide terminals get full labels and 16-char progress bars. Medium terminals get compact bars and short labels. Narrow terminals drop to percentages only. Thresholds: wide >= 100 cols, medium >= 60 cols, narrow < 60 cols.
+
+**Rate limit fallback for Pro, Max, and Team plans** — the upstream usage widgets call Anthropic's API, which fails silently on subscription plans (no API key). This fork falls back to the rate limit data that Claude Code already pipes in via stdin. Shows your 5-hour and 7-day usage with reset countdowns, no API key needed.
+
+### Install
+
+**Option A: Manual plugin install (gets you `/ccstatusline:setup` and `/ccstatusline:configure` slash commands)**
+
+```bash
+# Clone into your Claude Code plugins directory
+mkdir -p ~/.claude/plugins/local
+git clone https://github.com/renaissance-dan/ccstatusline.git ~/.claude/plugins/local/ccstatusline
+cd ~/.claude/plugins/local/ccstatusline
+npm install && npm run build
+```
+
+Then in a Claude Code session, run `/ccstatusline:setup` to wire it in and `/ccstatusline:configure` to pick your widgets.
+
+**Option B: Quick install (no slash commands, just the status line)**
+
+Add this to `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx renaissance-dan/ccstatusline@latest",
+    "padding": 0
+  }
+}
+```
+
+Run `npx renaissance-dan/ccstatusline` to open the visual TUI configurator.
+
+### Shelf life
+
+This fork is a bridge. The upstream project is actively developing activity widgets on its own branch, and the environment widget has been submitted as a PR. Once upstream merges those features, switch back to `npx ccstatusline@latest` and retire this fork.
+
+---
+
 ## 📚 Table of Contents
 
 - [Recent Updates](#-recent-updates)
@@ -46,33 +105,20 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
+### v2.1.5 - Activity widgets and transcript-driven telemetry
 
-- **🚀 New Token Speed widgets** - Added three widgets: **Input Speed**, **Output Speed**, and **Total Speed**.
-  - Each speed widget supports a configurable window of `0-120` seconds in the widget editor (`w` key).
-  - `0` disables window mode and uses a full-session average speed.
-  - `1-120` calculates recent speed over the selected rolling window.
-- **🧩 New Skills widget controls (v2.2.1)** - Added configurable Skills modes (last/count/list), optional hide-when-empty behavior, and list-size limiting with most-recent-first ordering.
-- **🌐 Usage API proxy support (v2.2.2)** - Usage widgets honor the uppercase `HTTPS_PROXY` environment variable for their direct API call to Anthropic.
-- **🧠 New Thinking Effort widget (v2.2.4)** - Added a widget that shows the current Claude Code thinking effort level.
-- **🍎 Better macOS usage lookup reliability (v2.2.5)** - Improved reliability when loading usage API tokens on macOS.
-- **⌨️ New Vim Mode widget (v2.2.5)** - Added a widget that shows the current vim mode, with ASCII and optional Nerd Font icon display.
-- **🔗 Git widget link modes (v2.2.6)** - `Git Branch` can render clickable GitHub branch links, and `Git Root Dir` can render clickable IDE links for VS Code and Cursor.
-- **🤝 Better subagent-aware speed reporting** - Token speed calculations continue to include referenced subagent activity so displayed speeds better reflect actual concurrent work.
+- **🏃 New Activity widgets (v2.1.5)** - Added **All Activity**, **Tools Activity**, **Agents Activity**, and **Todo Progress** widgets for live workflow visibility.
+- **🧠 Transcript activity parsing (v2.1.5)** - Parses `tool_use`/`tool_result`, `Task` subagent calls, and todo updates (`TodoWrite`, `TaskCreate`, `TaskUpdate`) from Claude transcript JSONL.
+- **📏 Activity widget width control (v2.1.5)** - New activity widgets now support per-widget max-width editing with **(w)**, including clearing truncation.
 
-### v2.1.0 - v2.1.10 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
+### v2.1.0 - v2.1.4 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
 
-- **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Block Reset Timer**, and **Context Bar** widgets.
+- **🧩 New Usage widgets (v2.1.0)** - Added **Session Usage**, **Weekly Usage**, **Reset Timer**, and **Context Bar** widgets.
 - **📊 More accurate counts (v2.1.0)** - Usage/context widgets now use new statusline JSON metrics when available for more accurate token and context counts.
 - **🪟 Windows empty file bug fix (v2.1.1)** - Fixed a Windows issue that could create an empty `c:\dev\null` file.
 - **🔗 New Link widget (v2.1.3)** - Added a new **Link** widget with clickable OSC8 rendering, preview parity, and raw mode support.
 - **➕ New Git Insertions widget (v2.1.4)** - Added a dedicated Git widget that shows only uncommitted insertions (e.g., `+42`).
 - **➖ New Git Deletions widget (v2.1.4)** - Added a dedicated Git widget that shows only uncommitted deletions (e.g., `-10`).
-- **🧠 Context format fallback fix (v2.1.6)** - When `context_window_size` is missing, context widgets now infer 1M models from long-context labels such as `[1m]` and `1M context` in model identifiers.
-- **⏳ Weekly reset timer split (v2.1.7)** - Added a separate `Weekly Reset Timer` widget.
-- **⚙️ Custom config file flag (v2.1.8)** - Added `--config <path>` support so ccstatusline can load/save settings from a custom file location.
-- **🔣 Unicode separator hex input upgrade (v2.1.9)** - Powerline separator hex input now supports 4-6 digits (full Unicode code points up to `U+10FFFF`).
-- **🌳 Bare repo worktree detection fix (v2.1.10)** - `Git Worktree` now correctly detects linked worktrees created from bare repositories.
 
 ### v2.0.26 - v2.0.29 - Performance, git internals, and workflow improvements
 
@@ -207,8 +253,6 @@ The interactive configuration tool provides a terminal UI where you can:
 > # Windows PowerShell
 > $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
 > ```
-
-> 🌐 **Usage API proxy:** Usage widgets honor the uppercase `HTTPS_PROXY` environment variable for their direct API call to Anthropic.
 
 ### Claude Code settings.json format
 
@@ -432,44 +476,43 @@ bun run example
 
 ### 📊 Available Widgets
 
-- **Model** - Displays the Claude model name (e.g., "Claude 3.5 Sonnet")
-- **Output Style** - Shows the current Claude Code output style
-- **Git Branch** - Shows the current git branch name
-- **Git Changes** - Shows git changes count (`+insertions`, `-deletions`)
-- **Git Insertions** - Shows git insertions count
-- **Git Deletions** - Shows git deletions count
+- **Model Name** - Shows the current Claude model (e.g., "Claude 3.5 Sonnet")
+- **Git Branch** - Displays current git branch name
+- **Git Changes** - Shows uncommitted insertions/deletions (e.g., "+42,-10")
+- **Git Insertions** - Shows uncommitted insertions only (e.g., "+42")
+- **Git Deletions** - Shows uncommitted deletions only (e.g., "-10")
 - **Git Root Dir** - Shows the git repository root directory name
-- **Git Worktree** - Shows the current git worktree name
-- **Current Working Dir** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
-- **Tokens Input** - Shows input token count for the current session
-- **Tokens Output** - Shows output token count for the current session
-- **Tokens Cached** - Shows cached token count for the current session
-- **Tokens Total** - Shows total token count (`input + output + cache`) for the current session
-- **Input Speed** - Shows session-average input token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
-- **Output Speed** - Shows session-average output token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
-- **Total Speed** - Shows session-average total token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
-- **Context Length** - Shows the current context window size in tokens
-- **Context %** - Shows percentage of context window used or remaining
-- **Context % (usable)** - Shows percentage of usable context used or remaining (80% of max before auto-compact)
-- **Session Clock** - Shows elapsed time since current session started
-- **Session Cost** - Shows the total session cost in USD
-- **Block Timer** - Shows current 5-hour block elapsed time or progress
-- **Terminal Width** - Shows current terminal width in columns
-- **Version** - Shows Claude Code CLI version number
-- **Custom Text** - Displays user-defined custom text
-- **Custom Command** - Executes a custom shell command and displays output (refreshes whenever Claude Code updates the status line)
-- **Link** - Displays a clickable terminal hyperlink using OSC 8
+- **Git Worktree** - Shows the name of the current git worktree
+- **Session Clock** - Shows elapsed time since session start (e.g., "2hr 15m")
+- **Session Usage** - Shows 5-hour usage percentage with reset countdown. Falls back to stdin rate limits on subscription plans (Pro/Max/Team)
+- **Weekly Usage** - Shows 7-day usage percentage with reset countdown. Falls back to stdin rate limits on subscription plans (Pro/Max/Team)
+- **Session Cost** - Shows total session cost in USD (e.g., "$1.23")
+- **Session Name** - Shows the session name set via `/rename` command in Claude Code
 - **Claude Session ID** - Shows the current Claude Code session ID from status JSON
-- **Session Name** - Shows the session name set via `/rename` in Claude Code
-- **Memory Usage** - Shows system memory usage (used/total)
-- **Session Usage** - Shows daily/session API usage percentage
-- **Weekly Usage** - Shows weekly API usage percentage
-- **Block Reset Timer** - Shows time remaining until current 5-hour block reset window
-- **Weekly Reset Timer** - Shows time remaining until weekly usage reset
+- **All Activity** - Compact running-first summary across tools, agents, and todos, with completion counters
+- **Tools Activity** - Shows currently running and recently completed tool operations
+- **Agents Activity** - Shows running and recently completed Claude subagent tasks
+- **Todo Progress** - Shows in-progress todo focus and completion ratio from transcript tasks
+- **Block Timer** - Shows time elapsed in current 5-hour block or progress bar
+- **Reset Timer** - Shows time remaining until the current 5-hour block resets
+- **Current Working Directory** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
+- **Version** - Shows Claude Code version
+- **Output Style** - Shows the currently set output style in Claude Code
+- **Tokens Input** - Shows input tokens used
+- **Tokens Output** - Shows output tokens used
+- **Tokens Cached** - Shows cached tokens used
+- **Tokens Total** - Shows total tokens used
+- **Context Length** - Shows current context length in tokens
+- **Context Percentage** - Shows percentage of context limit used (dynamic: 1M for model IDs with `[1m]` suffix, 200k otherwise)
+- **Context Percentage (usable)** - Shows percentage of usable context (dynamic: 800k for model IDs with `[1m]` suffix, 160k otherwise, accounting for auto-compact at 80%)
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
-- **Skills** - Shows skill activity as last used, total count, or unique list (with optional list limit and hide-when-empty toggle)
-- **Vim Mode** - Displays current vim editor mode
-- **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
+- **Environment** - Shows counts of loaded CLAUDE.md files, MCP servers, rules, and hooks. Hides when all counts are zero
+- **Terminal Width** - Shows detected terminal width (for debugging)
+- **Memory Usage** - Shows system memory usage (used/total, e.g., "Mem: 12.4G/16.0G")
+- **Custom Text** - Add your own custom text to the status line
+- **Custom Command** - Execute shell commands and display their output (refreshes whenever the statusline is updated by Claude Code)
+- **Link** - Add clickable terminal hyperlinks (OSC 8) with configurable URL and display text
+- **Separator** - Visual divider between widgets (customizable: |, -, comma, space; available when Powerline mode is off and no default separator is configured)
 - **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 
 ---
@@ -554,10 +597,9 @@ Widget-specific shortcuts:
 - **Git widgets**: `h` toggle hide `no git` output
 - **Context % widgets**: `u` toggle used vs remaining display
 - **Block Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Block Reset Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Weekly Reset Timer**: `p` cycle display mode (time/full bar/short bar)
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
+- **All Activity / Tools Activity / Agents Activity / Todo Progress**: `w` edit max width (set `0` or blank to disable truncation)
 - **Link**: `u` URL, `e` link text
 
 ---
@@ -681,11 +723,8 @@ bun run example
 # Run tests
 bun test
 
-# Run typecheck + eslint checks without modifying files
+# Run typecheck + eslint autofix
 bun run lint
-
-# Apply ESLint auto-fixes intentionally
-bun run lint:fix
 
 # Build for distribution
 bun run build

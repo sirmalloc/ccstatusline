@@ -20,3 +20,13 @@ export type { ColorEntry } from './ColorEntry';
 export type { BlockMetrics } from './BlockMetrics';
 export type { SpeedMetrics } from './SpeedMetrics';
 export type { SkillInvocation, SkillsMetrics } from './SkillsMetrics';
+export type {
+    ActivityAgentEntry,
+    ActivityAgentStatus,
+    ActivityParseOptions,
+    ActivitySnapshot,
+    ActivityTodoItem,
+    ActivityTodoStatus,
+    ActivityToolEntry,
+    ActivityToolStatus
+} from './Activity';

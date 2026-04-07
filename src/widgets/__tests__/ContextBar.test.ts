@@ -24,6 +24,7 @@ describe('ContextBarWidget', () => {
 
     it('renders from context_window data when available', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: {
                 context_window: {
                     context_window_size: 200000,
@@ -43,6 +44,7 @@ describe('ContextBarWidget', () => {
 
     it('falls back to token metrics and model context size', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: { model: { id: 'claude-3-5-sonnet-20241022' } },
             tokenMetrics: {
                 inputTokens: 0,
@@ -59,6 +61,7 @@ describe('ContextBarWidget', () => {
 
     it('uses 1M context label model IDs in fallback mode', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: { model: { id: 'Opus 4.6 (1M context)' } },
             tokenMetrics: {
                 inputTokens: 0,
@@ -75,6 +78,7 @@ describe('ContextBarWidget', () => {
 
     it('uses 1M in parentheses model IDs in fallback mode', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: { model: { id: 'Opus 4.6 (1M)' } },
             tokenMetrics: {
                 inputTokens: 0,
@@ -91,6 +95,7 @@ describe('ContextBarWidget', () => {
 
     it('clamps usage percentage to 100 when context length exceeds total', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: {
                 context_window: {
                     context_window_size: 200000,
@@ -110,6 +115,7 @@ describe('ContextBarWidget', () => {
 
     it('supports raw mode without context label', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: {
                 context_window: {
                     context_window_size: 200000,
@@ -129,6 +135,7 @@ describe('ContextBarWidget', () => {
 
     it('renders long progress bar mode when configured', () => {
         const context: RenderContext = {
+            terminalWidth: 160,
             data: {
                 context_window: {
                     context_window_size: 200000,
