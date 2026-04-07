@@ -53,6 +53,17 @@ function parseDiffShortStat(stat: string): GitChangeCounts {
 }
 
 export function getGitChangeCounts(context: RenderContext): GitChangeCounts {
+    // Prefer the counts Claude Code already provides in the status JSON
+    const added = context.data?.cost?.total_lines_added;
+    const removed = context.data?.cost?.total_lines_removed;
+    if (typeof added === 'number' || typeof removed === 'number') {
+        return {
+            insertions: typeof added === 'number' ? added : 0,
+            deletions: typeof removed === 'number' ? removed : 0
+        };
+    }
+
+    // Fall back to git diff for older Claude Code versions
     const unstagedStat = runGit('diff --shortstat', context) ?? '';
     const stagedStat = runGit('diff --cached --shortstat', context) ?? '';
     const unstagedCounts = parseDiffShortStat(unstagedStat);
