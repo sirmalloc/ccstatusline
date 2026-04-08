@@ -227,6 +227,104 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('counts the latest in-progress streaming entry once when no finalized row exists yet', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'streaming-in-progress.jsonl');
+
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 4,
+                output: 40,
+                cacheRead: 1000,
+                cacheCreate: 200,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 4,
+                output: 90,
+                cacheRead: 1000,
+                cacheCreate: 200,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 4,
+                output: 140,
+                cacheRead: 1000,
+                cacheCreate: 200,
+                stopReason: null
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 4,
+            outputTokens: 140,
+            cachedTokens: 1200,
+            totalTokens: 1344,
+            contextLength: 1204
+        });
+    });
+
+    it('counts finalized streaming entries plus the latest unfinished one during live updates', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'streaming-live-update.jsonl');
+
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 25,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 2,
+                output: 80,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: 'end_turn'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 3,
+                output: 30,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                input: 3,
+                output: 120,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 5,
+            outputTokens: 200,
+            cachedTokens: 375,
+            totalTokens: 580,
+            contextLength: 228
+        });
+    });
+
     it('falls back to counting all entries when no stop_reason data is present', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
         tempRoots.push(root);
