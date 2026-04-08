@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { clearGitCache } from '../../utils/git';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitBranchWidget } from '../GitBranch';
 
@@ -53,6 +54,7 @@ function render(options: {
 describe('GitBranchWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
     it('should render preview', () => {

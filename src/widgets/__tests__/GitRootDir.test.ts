@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { clearGitCache } from '../../utils/git';
 import {
     buildIdeFileUrl,
     renderOsc8Link
@@ -43,6 +44,7 @@ function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolea
 describe('GitRootDirWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
     it('should render preview', () => {
