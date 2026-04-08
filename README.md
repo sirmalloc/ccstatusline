@@ -783,6 +783,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 
 - [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
 - [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
+- [codachi](https://github.com/vincent-k2026/codachi) - A tamagotchi-style statusline pet that grows with your context window.
 
 ---
 
