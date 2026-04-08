@@ -46,7 +46,7 @@ export class GitConflictsWidget implements Widget {
 
         if (context.isPreview) {
             if (item.rawValue)
-                return 'true';
+                return '2';
             return '⚠ 2';
         }
 
@@ -56,12 +56,8 @@ export class GitConflictsWidget implements Widget {
 
         const count = getGitConflictCount(context);
 
-        if (count === 0) {
-            return null;
-        }
-
         if (item.rawValue) {
-            return 'true';
+            return count.toString();
         }
 
         return `⚠ ${count}`;
@@ -74,8 +70,7 @@ export class GitConflictsWidget implements Widget {
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
         if (!isInsideGitWorkTree(context))
             return null;
-        const count = getGitConflictCount(context);
-        return count > 0 ? 1 : 0;
+        return getGitConflictCount(context);
     }
 
     supportsRawValue(): boolean { return true; }

@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     buildRepoWebUrl,
-    getRemoteInfo
+    getUpstreamRemoteInfo
 } from '../utils/git-remote';
 import { renderOsc8Link } from '../utils/hyperlink';
 
@@ -46,7 +46,7 @@ export class GitUpstreamRepoWidget implements Widget {
             return linkEnabled ? renderOsc8Link('https://github.com/upstream-owner/upstream-repo', text) : text;
         }
 
-        const upstream = getRemoteInfo('upstream', context);
+        const upstream = getUpstreamRemoteInfo(context);
         if (!upstream) {
             return hideWhenEmpty ? null : 'no upstream';
         }

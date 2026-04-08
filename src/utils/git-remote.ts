@@ -107,6 +107,38 @@ export function getRemoteInfo(remoteName: string, context: RenderContext): Remot
     };
 }
 
+function getTrackingRemoteName(context: RenderContext): string | null {
+    const upstreamRef = runGit('rev-parse --abbrev-ref --symbolic-full-name @{upstream}', context);
+    if (!upstreamRef) {
+        return null;
+    }
+
+    const remotes = listRemotes(context)
+        .slice()
+        .sort((left, right) => right.length - left.length);
+
+    return remotes.find(remote => upstreamRef === remote || upstreamRef.startsWith(`${remote}/`)) ?? null;
+}
+
+/**
+ * Get upstream info for widgets.
+ * Prefer a literal "upstream" remote when it exists, otherwise fall back to the
+ * current branch's tracking remote.
+ */
+export function getUpstreamRemoteInfo(context: RenderContext): RemoteInfo | null {
+    const namedUpstream = getRemoteInfo('upstream', context);
+    if (namedUpstream) {
+        return namedUpstream;
+    }
+
+    const trackingRemoteName = getTrackingRemoteName(context);
+    if (!trackingRemoteName) {
+        return null;
+    }
+
+    return getRemoteInfo(trackingRemoteName, context);
+}
+
 /**
  * Get fork status by checking origin and upstream remotes.
  * A repository is considered a fork if:
