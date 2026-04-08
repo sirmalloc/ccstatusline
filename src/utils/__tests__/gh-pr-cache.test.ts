@@ -144,6 +144,8 @@ describe('gh-pr-cache', () => {
         const writtenCachePaths = [...harness.cacheFiles.keys()];
         expect(writtenCachePaths.length).toBe(2);
         expect(writtenCachePaths[0]).not.toBe(writtenCachePaths[1]);
+        expect(writtenCachePaths[0]).toContain('/.cache/ccstatusline/pr/pr-');
+        expect(writtenCachePaths[1]).toContain('/.cache/ccstatusline/pr/pr-');
 
         harness.setCurrentRef('feature/cache-a');
         expect(fetchPrData('/tmp/repo', harness.deps)).toEqual({

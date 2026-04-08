@@ -48,6 +48,10 @@ function getCacheDir(deps: PrCacheDeps): string {
     return path.join(deps.getHomedir(), '.cache', 'ccstatusline');
 }
 
+function getPrCacheDir(deps: PrCacheDeps): string {
+    return path.join(getCacheDir(deps), 'pr');
+}
+
 function runGitForCache(args: string[], cwd: string, deps: PrCacheDeps): string {
     try {
         return deps.execFileSync('git', args, {
@@ -82,7 +86,7 @@ function getCachePath(cwd: string, ref: string, deps: PrCacheDeps): string {
         .update(ref)
         .digest('hex')
         .slice(0, 16);
-    return path.join(getCacheDir(deps), `pr-${hash}.json`);
+    return path.join(getPrCacheDir(deps), `pr-${hash}.json`);
 }
 
 function readCache(cachePath: string, deps: PrCacheDeps): PrData | null | 'miss' {
@@ -110,7 +114,7 @@ function readCache(cachePath: string, deps: PrCacheDeps): PrData | null | 'miss'
 
 function writeCache(cachePath: string, data: PrData | null, deps: PrCacheDeps): void {
     try {
-        const cacheDir = getCacheDir(deps);
+        const cacheDir = getPrCacheDir(deps);
         if (!deps.existsSync(cacheDir)) {
             deps.mkdirSync(cacheDir, { recursive: true });
         }
