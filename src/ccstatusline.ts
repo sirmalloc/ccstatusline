@@ -149,7 +149,8 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
-        isPreview: false
+        isPreview: false,
+        minimalist: settings.minimalistMode
     };
 
     // Always pre-render all widgets once (for efficiency)
