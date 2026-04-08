@@ -57,7 +57,8 @@ export const SettingsSchema = z.object({
         startCaps: [],
         endCaps: [],
         theme: undefined,
-        autoAlign: false
+        autoAlign: false,
+        continueThemeAcrossLines: false
     }),
     updatemessage: z.object({
         message: z.string().nullable().optional(),

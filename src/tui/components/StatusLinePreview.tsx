@@ -8,6 +8,7 @@ import React from 'react';
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { advanceGlobalPowerlineThemeIndex } from '../../utils/powerline-theme-index';
 import {
     calculateMaxWidthsFromPreRendered,
     preRenderAllWidgets,
@@ -30,6 +31,7 @@ const renderSingleLine = (
     settings: Settings,
     lineIndex: number,
     globalSeparatorIndex: number,
+    globalPowerlineThemeIndex: number,
     preRenderedWidgets: PreRenderedWidget[],
     preCalculatedMaxWidths: number[]
 ): RenderResult => {
@@ -39,7 +41,8 @@ const renderSingleLine = (
         isPreview: true,
         minimalist: settings.minimalistMode,
         lineIndex,
-        globalSeparatorIndex
+        globalSeparatorIndex,
+        globalPowerlineThemeIndex
     };
 
     return renderStatusLineWithInfo(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
@@ -57,6 +60,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
         let globalSeparatorIndex = 0;
+        let globalPowerlineThemeIndex = 0;
         const result: string[] = [];
         let truncated = false;
 
@@ -64,13 +68,25 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             const lineItems = lines[i];
             if (lineItems && lineItems.length > 0) {
                 const preRenderedWidgets = preRenderedLines[i] ?? [];
-                const renderResult = renderSingleLine(lineItems, terminalWidth, settings, i, globalSeparatorIndex, preRenderedWidgets, preCalculatedMaxWidths);
+                const renderResult = renderSingleLine(
+                    lineItems,
+                    terminalWidth,
+                    settings,
+                    i,
+                    globalSeparatorIndex,
+                    globalPowerlineThemeIndex,
+                    preRenderedWidgets,
+                    preCalculatedMaxWidths
+                );
                 result.push(renderResult.line);
                 if (renderResult.wasTruncated) {
                     truncated = true;
                 }
 
                 globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
+                if (settings.powerline.enabled && settings.powerline.continueThemeAcrossLines) {
+                    globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
+                }
             }
         }
 

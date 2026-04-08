@@ -22,6 +22,7 @@ import {
     getSpeedMetricsCollection,
     getTokenMetrics
 } from './utils/jsonl';
+import { advanceGlobalPowerlineThemeIndex } from './utils/powerline-theme-index';
 import {
     calculateMaxWidthsFromPreRendered,
     preRenderAllWidgets,
@@ -159,11 +160,17 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Render each line using pre-rendered content
     let globalSeparatorIndex = 0;
+    let globalPowerlineThemeIndex = 0;
     for (let i = 0; i < lines.length; i++) {
         const lineItems = lines[i];
         if (lineItems && lineItems.length > 0) {
-            const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
             const preRenderedWidgets = preRenderedLines[i] ?? [];
+            const lineContext = {
+                ...context,
+                lineIndex: i,
+                globalSeparatorIndex,
+                globalPowerlineThemeIndex
+            };
             const line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
 
             // Only output the line if it has content (not just ANSI codes)
@@ -178,6 +185,9 @@ async function renderMultipleLines(data: StatusJSON) {
                 console.log(outputLine);
 
                 globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
+                if (settings.powerline.enabled && settings.powerline.continueThemeAcrossLines) {
+                    globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
+                }
             }
         }
     }

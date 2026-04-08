@@ -48,7 +48,8 @@ describe('CurrentWorkingDirWidget', () => {
             separatorInvertBackground: [],
             startCaps: [],
             endCaps: [],
-            autoAlign: false
+            autoAlign: false,
+            continueThemeAcrossLines: false
         }
     };
 

@@ -33,4 +33,5 @@ export interface RenderContext {
     minimalist?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
+    globalPowerlineThemeIndex?: number;  // Global powerline theme index that continues across lines
 }
