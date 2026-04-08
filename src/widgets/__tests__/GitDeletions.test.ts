@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { clearGitCache } from '../../utils/git';
 import { GitDeletionsWidget } from '../GitDeletions';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
@@ -43,6 +44,7 @@ function render(options: {
 describe('GitDeletionsWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
     it('should render preview', () => {

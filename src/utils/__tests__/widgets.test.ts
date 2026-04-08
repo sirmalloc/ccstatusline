@@ -165,11 +165,25 @@ describe('widget catalog filtering', () => {
     });
 
     it('ranks exact substring matches above fuzzy matches', () => {
-        const exactResults = filterWidgetCatalog(catalog, 'All', 'git');
-        const fuzzyResults = filterWidgetCatalog(catalog, 'All', 'gb');
-        const exactIndex = exactResults.findIndex(e => e.type === 'git-branch');
-        const fuzzyIndex = fuzzyResults.findIndex(e => e.type === 'git-branch');
-        expect(exactIndex).toBeLessThanOrEqual(fuzzyIndex);
+        const rankingCatalog: WidgetCatalogEntry[] = [
+            {
+                type: 'exact-match' as WidgetItemType,
+                displayName: 'Git Branch',
+                description: 'Exact substring match',
+                category: 'Core',
+                searchText: 'git branch exact substring match exact-match'
+            },
+            {
+                type: 'fuzzy-match' as WidgetItemType,
+                displayName: 'Global Input Timer',
+                description: 'Fuzzy-only match',
+                category: 'Core',
+                searchText: 'global input timer fuzzy-only match fuzzy-match'
+            }
+        ];
+
+        const results = filterWidgetCatalog(rankingCatalog, 'All', 'git');
+        expect(results.map(entry => entry.type)).toEqual(['exact-match', 'fuzzy-match']);
     });
 
     it('returns no results when query chars cannot form a subsequence in any entry', () => {

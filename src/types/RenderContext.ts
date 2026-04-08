@@ -33,5 +33,12 @@ export interface RenderContext {
     minimalist?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
+
+    // For git widget thresholds
+    gitData?: {
+        changedFiles?: number;
+        insertions?: number;
+        deletions?: number;
+    };
     globalPowerlineThemeIndex?: number;  // Global powerline theme index that continues across lines
 }

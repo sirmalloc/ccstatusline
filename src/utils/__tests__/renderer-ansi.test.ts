@@ -64,6 +64,12 @@ describe('renderer ANSI/OSC handling', () => {
         expect(getVisibleWidth(text)).toBe(getVisibleWidth('A click B'));
     });
 
+    it('treats text-presentation pictographs as narrow unless explicitly emoji-style', () => {
+        expect(getVisibleWidth('⚠ 2')).toBe(3);
+        expect(getVisibleWidth('⚠️ 2')).toBe(4);
+        expect(getVisibleWidth('😀 2')).toBe(4);
+    });
+
     it('closes open OSC 8 hyperlinks when truncating styled text', () => {
         const text = `${OSC8_OPEN}very-long-link-text${OSC8_CLOSE}`;
         const truncated = truncateStyledText(text, 10, { ellipsis: true });
