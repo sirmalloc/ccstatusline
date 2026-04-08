@@ -191,3 +191,34 @@ describe('renderer ANSI/OSC handling', () => {
         expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(8);
     });
 });
+
+describe('renderer minimalist mode', () => {
+    it('renders widget as raw value when minimalist mode is enabled', () => {
+        const widgets: WidgetItem[] = [{ id: 'model1', type: 'model' }];
+        const settings = createSettings();
+        const context: RenderContext = {
+            isPreview: true,
+            minimalist: true
+        };
+
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const content = preRenderedLines[0]?.[0]?.content;
+
+        // With minimalist mode, model widget should render raw value ('Claude') not 'Model: Claude'
+        expect(content).toBe('Claude');
+    });
+
+    it('renders widget with label when minimalist mode is disabled', () => {
+        const widgets: WidgetItem[] = [{ id: 'model1', type: 'model' }];
+        const settings = createSettings();
+        const context: RenderContext = {
+            isPreview: true,
+            minimalist: false
+        };
+
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const content = preRenderedLines[0]?.[0]?.content;
+
+        expect(content).toBe('Model: Claude');
+    });
+});
