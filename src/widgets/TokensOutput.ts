@@ -29,10 +29,8 @@ export class TokensOutputWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens));
         }
 
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
-        }
-        return null;
+        const outputTokens = context.tokenMetrics?.outputTokens ?? 0;
+        return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTokens));
     }
 
     supportsRawValue(): boolean { return true; }

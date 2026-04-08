@@ -20,14 +20,8 @@ export class SessionCostWidget implements Widget {
             return item.rawValue ? '$2.45' : 'Cost: $2.45';
         }
 
-        const totalCost = context.data?.cost?.total_cost_usd;
-        if (totalCost === undefined) {
-            return null;
-        }
-
-        // Format the cost to 2 decimal places
+        const totalCost = context.data?.cost?.total_cost_usd ?? 0;
         const formattedCost = `$${totalCost.toFixed(2)}`;
-
         return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
     }
 

@@ -23,12 +23,9 @@ export class ModelWidget implements Widget {
         const model = context.data?.model;
         const modelDisplayName = typeof model === 'string'
             ? model
-            : (model?.display_name ?? model?.id);
+            : (model?.display_name ?? model?.id ?? 'N/A');
 
-        if (modelDisplayName) {
-            return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
-        }
-        return null;
+        return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
     }
 
     supportsRawValue(): boolean { return true; }

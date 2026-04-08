@@ -29,10 +29,8 @@ export class TokensInputWidget implements Widget {
             return formatRawOrLabeledValue(item, 'In: ', formatTokens(inputTotalTokens));
         }
 
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'In: ', formatTokens(context.tokenMetrics.inputTokens));
-        }
-        return null;
+        const inputTokens = context.tokenMetrics?.inputTokens ?? 0;
+        return formatRawOrLabeledValue(item, 'In: ', formatTokens(inputTokens));
     }
 
     supportsRawValue(): boolean { return true; }
