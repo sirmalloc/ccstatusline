@@ -6,11 +6,11 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
-export class WorktreeModeWidget implements Widget {
+export class GitWorktreeModeWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows indicator when Claude Code is in worktree mode'; }
-    getDisplayName(): string { return 'Worktree Mode'; }
-    getCategory(): string { return 'Session'; }
+    getDisplayName(): string { return 'Git Worktree Mode'; }
+    getCategory(): string { return 'Git'; }
 
     getEditorDisplay(_item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };

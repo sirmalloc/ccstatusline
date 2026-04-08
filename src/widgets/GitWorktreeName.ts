@@ -6,11 +6,11 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
-export class WorktreeBranchWidget implements Widget {
+export class GitWorktreeNameWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Git branch name for the active worktree'; }
-    getDisplayName(): string { return 'Worktree Branch'; }
-    getCategory(): string { return 'Session'; }
+    getDescription(): string { return 'Name of the active worktree'; }
+    getDisplayName(): string { return 'Git Worktree Name'; }
+    getCategory(): string { return 'Git'; }
 
     getEditorDisplay(_item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
@@ -18,11 +18,11 @@ export class WorktreeBranchWidget implements Widget {
 
     render(_item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         if (context.isPreview) {
-            return 'wt-my-feature';
+            return 'my-feature';
         }
 
-        const branch = context.data?.worktree?.branch;
-        return branch ?? null;
+        const name = context.data?.worktree?.name;
+        return name ?? null;
     }
 
     supportsRawValue(): boolean { return false; }

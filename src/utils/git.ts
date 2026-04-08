@@ -103,8 +103,11 @@ export function getGitStatus(context: RenderContext): GitStatus {
     let untracked = false;
     let conflicts = false;
 
-    for (const line of output.split('\0')) {
-        if (line.length < 2)
+    const entries = output.split('\0');
+
+    for (let index = 0; index < entries.length; index += 1) {
+        const line = entries[index];
+        if (typeof line !== 'string' || line.length < 2)
             continue;
         // Conflict detection: DD, AU, UD, UA, DU, AA, UU
         if (!conflicts && /^(DD|AU|UD|UA|DU|AA|UU)/.test(line))
@@ -117,6 +120,11 @@ export function getGitStatus(context: RenderContext): GitStatus {
             untracked = true;
         if (staged && unstaged && untracked && conflicts)
             break;
+
+        const indexStatus = line[0];
+        if (indexStatus === 'R' || indexStatus === 'C') {
+            index += 1;
+        }
     }
 
     return { staged, unstaged, untracked, conflicts };

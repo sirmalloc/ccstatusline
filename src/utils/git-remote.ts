@@ -35,12 +35,22 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
     }
 
     // SSH format: git@host:owner/repo.git or user@host:owner/repo.git
-    const sshMatch = /^(?:[^@]+@)?([^:]+):([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(trimmed);
-    if (sshMatch?.[1] && sshMatch[2] && sshMatch[3]) {
+    const sshMatch = !trimmed.includes('://')
+        ? /^(?:[^@]+@)?([^:]+):(.+?)(?:\.git)?\/?$/.exec(trimmed)
+        : null;
+    if (sshMatch?.[1] && sshMatch[2]) {
+        const pathSegments = sshMatch[2].split('/').filter(Boolean);
+        const repo = pathSegments.at(-1);
+        const owner = pathSegments.slice(0, -1).join('/');
+
+        if (!owner || !repo) {
+            return null;
+        }
+
         return {
             host: sshMatch[1],
-            owner: sshMatch[2],
-            repo: sshMatch[3]
+            owner,
+            repo
         };
     }
 
@@ -57,8 +67,8 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
         const pathname = parsedUrl.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
         const segments = pathname.split('/').filter(Boolean);
 
-        const owner = segments[0];
-        const repo = segments[1];
+        const repo = segments.at(-1);
+        const owner = segments.slice(0, -1).join('/');
 
         if (!owner || !repo) {
             return null;

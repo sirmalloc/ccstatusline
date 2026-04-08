@@ -73,6 +73,14 @@ describe('git-remote utils', () => {
                     repo: 'project'
                 });
             });
+
+            it('parses nested GitLab SSH namespace', () => {
+                expect(parseRemoteUrl('git@gitlab.com:group/subgroup/project.git')).toEqual({
+                    host: 'gitlab.com',
+                    owner: 'group/subgroup',
+                    repo: 'project'
+                });
+            });
         });
 
         describe('HTTPS format', () => {
@@ -105,6 +113,14 @@ describe('git-remote utils', () => {
                     host: 'github.com',
                     owner: 'owner',
                     repo: 'repo'
+                });
+            });
+
+            it('parses nested HTTPS namespace', () => {
+                expect(parseRemoteUrl('https://gitlab.com/group/subgroup/project.git')).toEqual({
+                    host: 'gitlab.com',
+                    owner: 'group/subgroup',
+                    repo: 'project'
                 });
             });
         });
@@ -292,6 +308,18 @@ describe('git-remote utils', () => {
             };
 
             expect(buildRepoWebUrl(remote)).toBe('https://github.service.anz/org/project');
+        });
+
+        it('builds URL for nested namespaces', () => {
+            const remote = {
+                name: 'origin',
+                url: 'git@gitlab.com:group/subgroup/project.git',
+                host: 'gitlab.com',
+                owner: 'group/subgroup',
+                repo: 'project'
+            };
+
+            expect(buildRepoWebUrl(remote)).toBe('https://gitlab.com/group/subgroup/project');
         });
     });
 });

@@ -22,7 +22,7 @@ vi.mock('child_process', () => ({ execSync: vi.fn() }));
 const mockExecSync = execSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
-    mockReturnValueOnce: (value: string) => void;
+    mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
 
@@ -312,6 +312,24 @@ describe('git utils', () => {
 
         it('detects copied file in index (staged)', () => {
             mockExecSync.mockReturnValueOnce('C  original.txt -> copy.txt');
+
+            const result = getGitStatus({});
+            expect(result.staged).toBe(true);
+            expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
+        });
+
+        it('ignores rename source path in porcelain -z output', () => {
+            mockExecSync.mockReturnValueOnce('R  new-name.txt\0DUCK.txt\0');
+
+            const result = getGitStatus({});
+            expect(result.staged).toBe(true);
+            expect(result.unstaged).toBe(false);
+            expect(result.conflicts).toBe(false);
+        });
+
+        it('ignores copy source path in porcelain -z output', () => {
+            mockExecSync.mockReturnValueOnce('C  copy.txt\0MOUSE.txt\0');
 
             const result = getGitStatus({});
             expect(result.staged).toBe(true);

@@ -6,11 +6,11 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
-export class WorktreeOriginalBranchWidget implements Widget {
+export class GitWorktreeOriginalBranchWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Git branch checked out before entering the worktree'; }
-    getDisplayName(): string { return 'Worktree Original Branch'; }
-    getCategory(): string { return 'Session'; }
+    getDisplayName(): string { return 'Git Worktree Original Branch'; }
+    getCategory(): string { return 'Git'; }
 
     getEditorDisplay(_item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
