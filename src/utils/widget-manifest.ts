@@ -56,7 +56,10 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'context-bar', create: () => new widgets.ContextBarWidget() },
     { type: 'skills', create: () => new widgets.SkillsWidget() },
     { type: 'thinking-effort', create: () => new widgets.ThinkingEffortWidget() },
-    { type: 'vim-mode', create: () => new widgets.VimModeWidget() }
+    { type: 'vim-mode', create: () => new widgets.VimModeWidget() },
+    { type: 'session-budget', create: () => new widgets.SessionBudgetWidget() },
+    { type: 'weekly-budget', create: () => new widgets.WeeklyBudgetWidget() },
+    { type: 'peak-hours', create: () => new widgets.PeakHoursWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
