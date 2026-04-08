@@ -153,9 +153,15 @@ describe('widget catalog filtering', () => {
         expect(results[0]?.type).toBe('git-branch');
     });
 
-    it('fuzzy-matches via type when name has no subsequence match', () => {
-        const results = filterWidgetCatalog(catalog, 'All', 'tc');
-        expect(results.some(entry => entry.type === 'tokens-cached')).toBe(true);
+    it('prioritizes display-name fuzzy matches over description substring hits', () => {
+        const results = filterWidgetCatalog(catalog, 'All', 'tw');
+        expect(results[0]?.type).toBe('terminal-width');
+    });
+
+    it('prioritizes word-initial fuzzy matches over incidental subsequence matches', () => {
+        expect(filterWidgetCatalog(catalog, 'All', 'tc')[0]?.type).toBe('tokens-cached');
+        expect(filterWidgetCatalog(catalog, 'All', 'ti')[0]?.type).toBe('tokens-input');
+        expect(filterWidgetCatalog(catalog, 'All', 'to')[0]?.type).toBe('tokens-output');
     });
 
     it('ranks exact substring matches above fuzzy matches', () => {
@@ -227,6 +233,15 @@ describe('getMatchSegments', () => {
         const segments = getMatchSegments('Git Branch', 'gb');
         const matched = segments.filter(s => s.matched).map(s => s.text).join('');
         expect(matched.toLowerCase()).toBe('gb');
+    });
+
+    it('prefers word-initial fuzzy positions over incidental interior-letter matches', () => {
+        expect(getMatchSegments('Tokens Output', 'to')).toEqual([
+            { text: 'T', matched: true },
+            { text: 'okens ', matched: false },
+            { text: 'O', matched: true },
+            { text: 'utput', matched: false }
+        ]);
     });
 
     it('returns unmatched segment when query chars cannot form a subsequence', () => {
