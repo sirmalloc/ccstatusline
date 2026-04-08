@@ -1,18 +1,13 @@
+import * as childProcess from 'child_process';
+import * as fs from 'fs';
 import {
-    execFileSync,
-    execSync
-} from 'child_process';
-import {
-    existsSync,
-    readFileSync,
-    statSync
-} from 'fs';
-import {
+    afterEach,
     beforeEach,
     describe,
     expect,
     it,
-    vi
+    vi,
+    type MockInstance
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
@@ -21,23 +16,26 @@ import type { WidgetItem } from '../../types/Widget';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitPrWidget } from '../GitPr';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn(), execSync: vi.fn() }));
-vi.mock('fs', () => ({
-    existsSync: vi.fn(() => false),
-    mkdirSync: vi.fn(),
-    readFileSync: vi.fn(),
-    statSync: vi.fn(),
-    writeFileSync: vi.fn()
-}));
-
-const mockExecSync = execSync as unknown as ReturnType<typeof vi.fn>;
-const mockExecFileSync = execFileSync as unknown as ReturnType<typeof vi.fn>;
-const mockExistsSync = existsSync as unknown as ReturnType<typeof vi.fn>;
-const mockReadFileSync = readFileSync as unknown as ReturnType<typeof vi.fn>;
-const mockStatSync = statSync as unknown as ReturnType<typeof vi.fn>;
+let mockExecSync: MockInstance<typeof childProcess.execSync>;
+let mockExecFileSync: MockInstance<typeof childProcess.execFileSync>;
+let mockExistsSync: MockInstance<typeof fs.existsSync>;
+let mockMkdirSync: MockInstance<typeof fs.mkdirSync>;
+let mockReadFileSync: MockInstance<typeof fs.readFileSync>;
+let mockStatSync: MockInstance<typeof fs.statSync>;
+let mockWriteFileSync: MockInstance<typeof fs.writeFileSync>;
 
 function setupGitWorkTree(): void {
     mockExecSync.mockReturnValue('true\n');
+}
+
+function setupBranchLookup(branch = 'feature/worktree'): void {
+    mockExecFileSync.mockImplementation((cmd, args) => {
+        const commandArgs = args ?? [];
+
+        if (cmd === 'git' && commandArgs[0] === 'branch')
+            return `${branch}\n`;
+        throw new Error(`unexpected ${cmd} ${commandArgs.join(' ')}`);
+    });
 }
 
 function setupCacheMiss(): void {
@@ -46,20 +44,25 @@ function setupCacheMiss(): void {
 
 function setupCacheHit(data: Record<string, unknown>): void {
     setupGitWorkTree();
+    setupBranchLookup();
     mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 1000 });
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 1000 } as fs.Stats);
     mockReadFileSync.mockReturnValue(JSON.stringify(data));
 }
 
-function setupGhResponse(data: Record<string, unknown>): void {
+function setupGhResponse(data: Record<string, unknown>, branch = 'feature/worktree'): void {
     setupGitWorkTree();
     setupCacheMiss();
-    mockExecFileSync.mockImplementation((cmd: string, args: string[]) => {
-        if (cmd === 'gh' && args[0] === '--version')
+    mockExecFileSync.mockImplementation((cmd, args) => {
+        const commandArgs = args ?? [];
+
+        if (cmd === 'git' && commandArgs[0] === 'branch')
+            return `${branch}\n`;
+        if (cmd === 'gh' && commandArgs[0] === '--version')
             return 'gh version 2.0.0\n';
-        if (cmd === 'gh' && args[0] === 'pr')
+        if (cmd === 'gh' && commandArgs[0] === 'pr')
             return JSON.stringify(data);
-        return '';
+        throw new Error(`unexpected ${cmd} ${commandArgs.join(' ')}`);
     });
 }
 
@@ -104,7 +107,22 @@ const SAMPLE_PR = {
 
 describe('GitPrWidget', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
+        mockExecSync = vi.spyOn(childProcess, 'execSync');
+        mockExecFileSync = vi.spyOn(childProcess, 'execFileSync');
+        mockExistsSync = vi.spyOn(fs, 'existsSync');
+        mockMkdirSync = vi.spyOn(fs, 'mkdirSync');
+        mockReadFileSync = vi.spyOn(fs, 'readFileSync');
+        mockStatSync = vi.spyOn(fs, 'statSync');
+        mockWriteFileSync = vi.spyOn(fs, 'writeFileSync');
+
+        mockExistsSync.mockReturnValue(false);
+        mockMkdirSync.mockImplementation(() => undefined);
+        mockWriteFileSync.mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     it('should render preview with OSC 8 link', () => {
@@ -169,11 +187,30 @@ describe('GitPrWidget', () => {
         expect(render()).toBe('(no PR)');
     });
 
+    it('should use process cwd when repo paths are omitted', () => {
+        setupGhResponse(SAMPLE_PR);
+
+        const result = render();
+
+        expect(result).toBe(
+            `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
+        );
+        expect(mockExecFileSync).toHaveBeenCalledWith(
+            'gh',
+            ['pr', 'view', '--json', 'url,number,title,state,reviewDecision'],
+            expect.objectContaining({ cwd: process.cwd() })
+        );
+    });
+
     it('should return (no PR) when gh is not installed', () => {
         setupGitWorkTree();
         setupCacheMiss();
-        mockExecFileSync.mockImplementation((cmd: string, args: string[]) => {
-            if (cmd === 'gh' && args[0] === '--version')
+        mockExecFileSync.mockImplementation((cmd, args) => {
+            const commandArgs = args ?? [];
+
+            if (cmd === 'git' && commandArgs[0] === 'branch')
+                return 'feature/worktree\n';
+            if (cmd === 'gh' && commandArgs[0] === '--version')
                 throw new Error('not found');
             throw new Error('unexpected');
         });

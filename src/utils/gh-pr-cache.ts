@@ -23,8 +23,40 @@ const GH_TIMEOUT = 5_000;
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
 const DEFAULT_TITLE_MAX_WIDTH = 30;
 
-function getCachePath(cwd: string): string {
-    const hash = createHash('sha256').update(cwd).digest('hex').slice(0, 16);
+function runGitForCache(args: string[], cwd: string): string {
+    try {
+        return execFileSync('git', args, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd,
+            timeout: GH_TIMEOUT
+        }).trim();
+    } catch {
+        return '';
+    }
+}
+
+function getCacheRef(cwd: string): string {
+    const branch = runGitForCache(['branch', '--show-current'], cwd);
+    if (branch.length > 0) {
+        return `branch:${branch}`;
+    }
+
+    const head = runGitForCache(['rev-parse', '--short', 'HEAD'], cwd);
+    if (head.length > 0) {
+        return `head:${head}`;
+    }
+
+    return 'unknown';
+}
+
+function getCachePath(cwd: string, ref: string): string {
+    const hash = createHash('sha256')
+        .update(cwd)
+        .update('\0')
+        .update(ref)
+        .digest('hex')
+        .slice(0, 16);
     return path.join(CACHE_DIR, `pr-${hash}.json`);
 }
 
@@ -63,7 +95,7 @@ function writeCache(cachePath: string, data: PrData | null): void {
 }
 
 export function fetchPrData(cwd: string): PrData | null {
-    const cachePath = getCachePath(cwd);
+    const cachePath = getCachePath(cwd, getCacheRef(cwd));
     const cached = readCache(cachePath);
     if (cached !== 'miss') {
         return cached;
@@ -74,10 +106,8 @@ export function fetchPrData(cwd: string): PrData | null {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: GH_TIMEOUT
         });
-    } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            writeCache(cachePath, null);
-        }
+    } catch {
+        writeCache(cachePath, null);
         return null;
     }
 
@@ -100,6 +130,7 @@ export function fetchPrData(cwd: string): PrData | null {
 
         const parsed = JSON.parse(output) as Record<string, unknown>;
         if (typeof parsed.number !== 'number' || typeof parsed.url !== 'string') {
+            writeCache(cachePath, null);
             return null;
         }
         const data: PrData = {
@@ -113,6 +144,7 @@ export function fetchPrData(cwd: string): PrData | null {
         writeCache(cachePath, data);
         return data;
     } catch {
+        writeCache(cachePath, null);
         return null;
     }
 }

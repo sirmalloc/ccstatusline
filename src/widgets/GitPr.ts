@@ -111,11 +111,7 @@ export class GitPrWidget implements Widget {
             return hideNoGit ? null : '(no PR)';
         }
 
-        const cwd = resolveGitCwd(context);
-        if (!cwd) {
-            return hideNoGit ? null : '(no PR)';
-        }
-
+        const cwd = resolveGitCwd(context) ?? process.cwd();
         const prData = fetchPrData(cwd);
         if (!prData) {
             return hideNoGit ? null : '(no PR)';
