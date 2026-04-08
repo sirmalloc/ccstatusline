@@ -1,4 +1,5 @@
-import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -8,9 +9,11 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
+interface ClaudeJson { oauthAccount?: { emailAddress?: string } }
+
 export class ClaudeAccountEmailWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
-    getDescription(): string { return 'Displays your email from git config or environment'; }
+    getDescription(): string { return 'Displays the email of the currently logged-in Claude account'; }
     getDisplayName(): string { return 'Claude Account Email'; }
     getCategory(): string { return 'Session'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -23,34 +26,20 @@ export class ClaudeAccountEmailWidget implements Widget {
         }
 
         try {
-            // Try git config first (most reliable for developers)
-            try {
-                const gitEmail = execSync('git config user.email', {
-                    encoding: 'utf-8',
-                    stdio: ['pipe', 'pipe', 'ignore']
-                }).trim();
+            const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? '', '.claude');
+            const claudeJsonPath = path.join(configDir, '..', '.claude.json');
+            const resolved = path.resolve(claudeJsonPath);
 
-                if (gitEmail) {
-                    return gitEmail;
-                }
-            } catch {
-                // git config failed, try environment variables
+            if (!fs.existsSync(resolved)) {
+                return null;
             }
 
-            // Try environment variables
-            const email = process.env.GIT_AUTHOR_EMAIL
-                ?? process.env.GIT_COMMITTER_EMAIL
-                ?? process.env.EMAIL
-                ?? process.env.USER_EMAIL;
-
-            if (email) {
-                return email.trim();
-            }
+            const content = fs.readFileSync(resolved, 'utf-8');
+            const data = JSON.parse(content) as ClaudeJson;
+            return data.oauthAccount?.emailAddress ?? null;
         } catch {
-            // All fallbacks failed
+            return null;
         }
-
-        return null;
     }
 
     supportsRawValue(): boolean { return true; }
