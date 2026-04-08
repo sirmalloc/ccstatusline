@@ -37,3 +37,4 @@ export { LinkWidget } from './Link';
 export { SkillsWidget } from './Skills';
 export { ThinkingEffortWidget } from './ThinkingEffort';
 export { VimModeWidget } from './VimMode';
+export { TaskObjectiveWidget } from './TaskObjective';
