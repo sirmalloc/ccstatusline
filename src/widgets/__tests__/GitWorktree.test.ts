@@ -11,6 +11,7 @@ import type {
     RenderContext,
     WidgetItem
 } from '../../types';
+import { clearGitCache } from '../../utils/git';
 import { GitWorktreeWidget } from '../GitWorktree';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
@@ -46,6 +47,7 @@ function render(options: {
 describe('GitWorktreeWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
     it('should render preview', () => {

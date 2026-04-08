@@ -219,7 +219,8 @@ export function handlePickerInputMode({
         } else if (key.backspace || key.delete) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                categoryQuery: prev.categoryQuery.slice(0, -1)
+                categoryQuery: prev.categoryQuery.slice(0, -1),
+                selectedType: null
             }));
         } else if (
             input
@@ -229,7 +230,8 @@ export function handlePickerInputMode({
         ) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                categoryQuery: prev.categoryQuery + input
+                categoryQuery: prev.categoryQuery + input,
+                selectedType: null
             }));
         }
     } else {
@@ -270,7 +272,8 @@ export function handlePickerInputMode({
         } else if (key.backspace || key.delete) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                widgetQuery: prev.widgetQuery.slice(0, -1)
+                widgetQuery: prev.widgetQuery.slice(0, -1),
+                selectedType: null
             }));
         } else if (
             input
@@ -280,7 +283,8 @@ export function handlePickerInputMode({
         ) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                widgetQuery: prev.widgetQuery + input
+                widgetQuery: prev.widgetQuery + input,
+                selectedType: null
             }));
         }
     }
