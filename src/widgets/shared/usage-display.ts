@@ -1,12 +1,20 @@
-import type { WidgetItem } from '../../types/Widget';
+import type {
+    CustomKeybind,
+    WidgetItem
+} from '../../types/Widget';
 
 import { makeModifierText } from './editor-display';
 import {
     isMetadataFlagEnabled,
+    removeMetadataKeys,
     toggleMetadataFlag
 } from './metadata';
 
 export type UsageDisplayMode = 'time' | 'progress' | 'progress-short';
+
+const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
+const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
+const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
@@ -55,14 +63,14 @@ export function getUsageDisplayModifierText(
         modifiers.push('inverted');
     }
 
-    if (options.includeCompact && isUsageCompact(item)) {
+    if (options.includeCompact && !isUsageProgressMode(mode) && isUsageCompact(item)) {
         modifiers.push('compact');
     }
 
     return makeModifierText(modifiers);
 }
 
-export function cycleUsageDisplayMode(item: WidgetItem): WidgetItem {
+export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: string[] = []): WidgetItem {
     const currentMode = getUsageDisplayMode(item);
     const nextMode: UsageDisplayMode = currentMode === 'time'
         ? 'progress'
@@ -70,21 +78,42 @@ export function cycleUsageDisplayMode(item: WidgetItem): WidgetItem {
             ? 'progress-short'
             : 'time';
 
+    const nextItem = removeMetadataKeys(item, nextMode === 'time'
+        ? ['invert']
+        : disabledInProgressKeys);
     const nextMetadata: Record<string, string> = {
-        ...(item.metadata ?? {}),
+        ...(nextItem.metadata ?? {}),
         display: nextMode
     };
 
-    if (nextMode === 'time') {
-        delete nextMetadata.invert;
-    }
-
     return {
-        ...item,
+        ...nextItem,
         metadata: nextMetadata
     };
 }
 
 export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
+}
+
+export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+    const keybinds = [PROGRESS_TOGGLE_KEYBIND];
+
+    if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
+        keybinds.push(INVERT_TOGGLE_KEYBIND);
+    }
+
+    return keybinds;
+}
+
+export function getUsageTimerCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+    const keybinds = [PROGRESS_TOGGLE_KEYBIND];
+
+    if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
+        keybinds.push(INVERT_TOGGLE_KEYBIND);
+    } else {
+        keybinds.push(COMPACT_TOGGLE_KEYBIND);
+    }
+
+    return keybinds;
 }

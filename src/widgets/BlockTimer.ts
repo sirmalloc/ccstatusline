@@ -17,6 +17,7 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    getUsageTimerCustomKeybinds,
     isUsageCompact,
     isUsageInverted,
     isUsageProgressMode,
@@ -46,7 +47,7 @@ export class BlockTimerWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item);
+            return cycleUsageDisplayMode(item, ['compact']);
         }
 
         if (action === 'toggle-invert') {
@@ -102,12 +103,8 @@ export class BlockTimerWidget implements Widget {
         return formatRawOrLabeledValue(item, 'Block: ', elapsedTime);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getUsageTimerCustomKeybinds(item);
     }
 
     supportsRawValue(): boolean { return true; }

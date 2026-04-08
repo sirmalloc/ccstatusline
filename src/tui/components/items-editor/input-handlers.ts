@@ -219,7 +219,8 @@ export function handlePickerInputMode({
         } else if (key.backspace || key.delete) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                categoryQuery: prev.categoryQuery.slice(0, -1)
+                categoryQuery: prev.categoryQuery.slice(0, -1),
+                selectedType: null
             }));
         } else if (
             input
@@ -229,7 +230,8 @@ export function handlePickerInputMode({
         ) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                categoryQuery: prev.categoryQuery + input
+                categoryQuery: prev.categoryQuery + input,
+                selectedType: null
             }));
         }
     } else {
@@ -270,7 +272,8 @@ export function handlePickerInputMode({
         } else if (key.backspace || key.delete) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                widgetQuery: prev.widgetQuery.slice(0, -1)
+                widgetQuery: prev.widgetQuery.slice(0, -1),
+                selectedType: null
             }));
         } else if (
             input
@@ -280,7 +283,8 @@ export function handlePickerInputMode({
         ) {
             setPickerState(setWidgetPicker, normalizeState, prev => ({
                 ...prev,
-                widgetQuery: prev.widgetQuery + input
+                widgetQuery: prev.widgetQuery + input,
+                selectedType: null
             }));
         }
     }
@@ -338,7 +342,7 @@ export interface HandleNormalInputModeArgs {
     setMoveMode: (moveMode: boolean) => void;
     setShowClearConfirm: (show: boolean) => void;
     openWidgetPicker: (action: WidgetPickerAction) => void;
-    getVisibleCustomKeybinds: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
+    getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
 }
 
@@ -354,7 +358,7 @@ export function handleNormalInputMode({
     setMoveMode,
     setShowClearConfirm,
     openWidgetPicker,
-    getVisibleCustomKeybinds,
+    getCustomKeybindsForWidget,
     setCustomEditorWidget
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
@@ -436,7 +440,7 @@ export function handleNormalInputMode({
                 return;
             }
 
-            const customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
+            const customKeybinds = getCustomKeybindsForWidget(widgetImpl, currentWidget);
             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
 
             if (matchedKeybind && !key.ctrl) {

@@ -46,7 +46,7 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.0 - v2.2.4 - Token Speed + Skills widget updates
+### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
 
 - **🚀 New Token Speed widgets** - Added three widgets: **Input Speed**, **Output Speed**, and **Total Speed**.
   - Each speed widget supports a configurable window of `0-120` seconds in the widget editor (`w` key).
@@ -55,6 +55,9 @@
 - **🧩 New Skills widget controls (v2.2.1)** - Added configurable Skills modes (last/count/list), optional hide-when-empty behavior, and list-size limiting with most-recent-first ordering.
 - **🌐 Usage API proxy support (v2.2.2)** - Usage widgets honor the uppercase `HTTPS_PROXY` environment variable for their direct API call to Anthropic.
 - **🧠 New Thinking Effort widget (v2.2.4)** - Added a widget that shows the current Claude Code thinking effort level.
+- **🍎 Better macOS usage lookup reliability (v2.2.5)** - Improved reliability when loading usage API tokens on macOS.
+- **⌨️ New Vim Mode widget (v2.2.5)** - Added a widget that shows the current vim mode, with ASCII and optional Nerd Font icon display.
+- **🔗 Git widget link modes (v2.2.6)** - `Git Branch` can render clickable GitHub branch links, and `Git Root Dir` can render clickable IDE links for VS Code and Cursor.
 - **🤝 Better subagent-aware speed reporting** - Token speed calculations continue to include referenced subagent activity so displayed speeds better reflect actual concurrent work.
 
 ### v2.1.0 - v2.1.10 - Usage widgets, links, new git insertions / deletions widgets, and reliability fixes
@@ -465,6 +468,7 @@ bun run example
 - **Weekly Reset Timer** - Shows time remaining until weekly usage reset
 - **Context Bar** - Shows context usage as a progress bar with short/full display modes
 - **Skills** - Shows skill activity as last used, total count, or unique list (with optional list limit and hide-when-empty toggle)
+- **Vim Mode** - Displays current vim editor mode
 - **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
 - **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
 
@@ -779,6 +783,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 
 - [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
 - [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
+- [codachi](https://github.com/vincent-k2026/codachi) - A tamagotchi-style statusline pet that grows with your context window.
 
 ---
 

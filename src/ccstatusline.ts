@@ -121,7 +121,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
-    const usageData = await prefetchUsageDataIfNeeded(lines);
+    const usageData = await prefetchUsageDataIfNeeded(lines, data);
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
@@ -251,7 +251,7 @@ async function handleHook(): Promise<void> {
         if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
             skillName = data.tool_input?.skill ?? '';
         } else if (data.hook_event_name === 'UserPromptSubmit') {
-            const match = /^\/([a-zA-Z0-9_:-]+)/.exec(data.prompt ?? '');
+            const match = /^\/([a-zA-Z0-9_:-]+)(?:\s|$)/.exec(data.prompt ?? '');
             if (match) {
                 skillName = match[1] ?? '';
             }

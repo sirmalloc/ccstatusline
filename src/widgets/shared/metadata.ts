@@ -13,3 +13,14 @@ export function toggleMetadataFlag(item: WidgetItem, key: string): WidgetItem {
         }
     };
 }
+
+export function removeMetadataKeys(item: WidgetItem, keys: string[]): WidgetItem {
+    const nextMetadata = Object.fromEntries(
+        Object.entries(item.metadata ?? {}).filter(([key]) => !keys.includes(key))
+    );
+
+    return {
+        ...item,
+        metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined
+    };
+}

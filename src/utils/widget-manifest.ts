@@ -24,6 +24,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'git-insertions', create: () => new widgets.GitInsertionsWidget() },
     { type: 'git-deletions', create: () => new widgets.GitDeletionsWidget() },
     { type: 'git-root-dir', create: () => new widgets.GitRootDirWidget() },
+    { type: 'git-pr', create: () => new widgets.GitPrWidget() },
     { type: 'git-worktree', create: () => new widgets.GitWorktreeWidget() },
     { type: 'current-working-dir', create: () => new widgets.CurrentWorkingDirWidget() },
     { type: 'tokens-input', create: () => new widgets.TokensInputWidget() },
@@ -53,7 +54,8 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'weekly-reset-timer', create: () => new widgets.WeeklyResetTimerWidget() },
     { type: 'context-bar', create: () => new widgets.ContextBarWidget() },
     { type: 'skills', create: () => new widgets.SkillsWidget() },
-    { type: 'thinking-effort', create: () => new widgets.ThinkingEffortWidget() }
+    { type: 'thinking-effort', create: () => new widgets.ThinkingEffortWidget() },
+    { type: 'vim-mode', create: () => new widgets.VimModeWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [

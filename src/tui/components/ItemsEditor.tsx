@@ -17,6 +17,7 @@ import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
+    getMatchSegments,
     getWidget,
     getWidgetCatalog,
     getWidgetCatalogCategories
@@ -32,7 +33,6 @@ import {
     type WidgetPickerAction,
     type WidgetPickerState
 } from './items-editor/input-handlers';
-import { shouldShowCustomKeybind } from './items-editor/keybind-visibility';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -95,12 +95,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         setCustomEditorWidget(null);
     };
 
-    const getVisibleCustomKeybinds = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
+    const getCustomKeybindsForWidget = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
         if (!widgetImpl.getCustomKeybinds) {
             return [];
         }
 
-        return widgetImpl.getCustomKeybinds().filter(keybind => shouldShowCustomKeybind(widget, keybind));
+        return widgetImpl.getCustomKeybinds(widget);
     };
 
     const openWidgetPicker = (action: WidgetPickerAction) => {
@@ -200,7 +200,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             setMoveMode,
             setShowClearConfirm,
             openWidgetPicker,
-            getVisibleCustomKeybinds,
+            getCustomKeybindsForWidget,
             setCustomEditorWidget
         });
     });
@@ -263,7 +263,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         if (widgetImpl) {
             canToggleRaw = widgetImpl.supportsRawValue();
             // Get custom keybinds from the widget
-            customKeybinds = getVisibleCustomKeybinds(widgetImpl, currentWidget);
+            customKeybinds = getCustomKeybindsForWidget(widgetImpl, currentWidget);
         } else {
             canToggleRaw = false;
         }
@@ -421,6 +421,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 <>
                                     {topLevelSearchEntries.map((entry, index) => {
                                         const isSelected = entry.type === selectedTopLevelSearchEntry?.type;
+                                        const segments = getMatchSegments(entry.displayName, widgetPicker.categoryQuery);
                                         return (
                                             <Box key={entry.type} flexDirection='row' flexWrap='nowrap'>
                                                 <Box width={3}>
@@ -428,9 +429,16 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                         {isSelected ? '▶ ' : '  '}
                                                     </Text>
                                                 </Box>
-                                                <Text color={isSelected ? 'green' : undefined}>
-                                                    {`${index + 1}. ${entry.displayName}`}
-                                                </Text>
+                                                <Text color={isSelected ? 'green' : undefined}>{`${index + 1}. `}</Text>
+                                                {segments.map((seg, i) => (
+                                                    <Text
+                                                        key={i}
+                                                        color={isSelected ? 'green' : seg.matched ? 'yellowBright' : undefined}
+                                                        bold={isSelected ? true : seg.matched}
+                                                    >
+                                                        {seg.text}
+                                                    </Text>
+                                                ))}
                                             </Box>
                                         );
                                     })}
@@ -476,6 +484,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                             <>
                                 {pickerEntries.map((entry, index) => {
                                     const isSelected = entry.type === selectedPickerEntry?.type;
+                                    const segments = getMatchSegments(entry.displayName, widgetPicker.widgetQuery);
                                     return (
                                         <Box key={entry.type} flexDirection='row' flexWrap='nowrap'>
                                             <Box width={3}>
@@ -483,9 +492,16 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                     {isSelected ? '▶ ' : '  '}
                                                 </Text>
                                             </Box>
-                                            <Text color={isSelected ? 'green' : undefined}>
-                                                {`${index + 1}. ${entry.displayName}`}
-                                            </Text>
+                                            <Text color={isSelected ? 'green' : undefined}>{`${index + 1}. `}</Text>
+                                            {segments.map((seg, i) => (
+                                                <Text
+                                                    key={i}
+                                                    color={isSelected ? 'green' : (seg.matched ? 'yellowBright' : undefined)}
+                                                    bold={seg.matched}
+                                                >
+                                                    {seg.text}
+                                                </Text>
+                                            ))}
                                         </Box>
                                     );
                                 })}

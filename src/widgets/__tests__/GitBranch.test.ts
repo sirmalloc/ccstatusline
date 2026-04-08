@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitBranchWidget } from '../GitBranch';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
@@ -25,6 +26,8 @@ function render(options: {
     cwd?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
+    linkToGitHub?: boolean;
+    metadata?: Record<string, string>;
     rawValue?: boolean;
 } = {}) {
     const widget = new GitBranchWidget();
@@ -32,11 +35,16 @@ function render(options: {
         isPreview: options.isPreview,
         data: options.cwd ? { cwd: options.cwd } : undefined
     };
+    const metadata = {
+        ...options.metadata,
+        ...(options.hideNoGit ? { hideNoGit: 'true' } : {}),
+        ...(options.linkToGitHub ? { linkToGitHub: 'true' } : {})
+    };
     const item: WidgetItem = {
         id: 'git-branch',
         type: 'git-branch',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
@@ -79,6 +87,17 @@ describe('GitBranchWidget', () => {
         expect(render({ rawValue: true })).toBe('feature/worktree');
     });
 
+    it('should render encoded GitHub branch links', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('feature/issue#1');
+        mockExecSync.mockReturnValueOnce('ssh://git@github.com/owner/repo.git');
+
+        expect(render({ linkToGitHub: true })).toBe(renderOsc8Link(
+            'https://github.com/owner/repo/tree/feature/issue%231',
+            '⎇ feature/issue#1'
+        ));
+    });
+
     it('should render no git when probe returns false', () => {
         mockExecSync.mockReturnValue('false\n');
 
@@ -102,5 +121,13 @@ describe('GitBranchWidget', () => {
         mockExecSync.mockImplementation(() => { throw new Error('No git'); });
 
         expect(render()).toBe('⎇ no git');
+    });
+
+    it('should keep plain text when GitHub remote cannot be parsed', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce('feature/worktree');
+        mockExecSync.mockReturnValueOnce('https://gitlab.com/owner/repo.git');
+
+        expect(render({ linkToGitHub: true })).toBe('⎇ feature/worktree');
     });
 });

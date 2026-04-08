@@ -16,6 +16,7 @@ import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
+    getUsagePercentCustomKeybinds,
     getUsageProgressBarWidth,
     isUsageInverted,
     isUsageProgressMode,
@@ -81,11 +82,8 @@ export class WeeklyUsageWidget implements Widget {
         return formatRawOrLabeledValue(item, 'Weekly: ', `${percent.toFixed(1)}%`);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getUsagePercentCustomKeybinds(item);
     }
 
     supportsRawValue(): boolean { return true; }

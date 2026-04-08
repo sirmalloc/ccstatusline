@@ -95,6 +95,62 @@ describe('items-editor input handlers', () => {
         expect(applySelection).toHaveBeenCalledWith('git-branch');
     });
 
+    it('resets selection to best match when typing in category search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'vim-mode', displayName: 'Vim Mode', category: 'Core' },
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Core' }
+        ]);
+        const widgetCategories = ['All', 'Core'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: 'v',
+            key: {},
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('vim-mode');
+    });
+
+    it('resets selection to best match when typing in widget search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'vim-mode', displayName: 'Vim Mode', category: 'Core' },
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Core' }
+        ]);
+        const widgetCategories = ['All', 'Core'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'widget',
+            selectedCategory: 'Core',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: 'v',
+            key: {},
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('vim-mode');
+    });
+
     it('returns to category level from widget picker on escape when widget query is empty', () => {
         const widgetCatalog = createCatalog([
             { type: 'git-branch', displayName: 'Git Branch', category: 'Git' }
@@ -166,7 +222,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -192,7 +248,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -218,7 +274,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -244,7 +300,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
@@ -271,7 +327,7 @@ describe('items-editor input handlers', () => {
             setMoveMode: vi.fn(),
             setShowClearConfirm: vi.fn(),
             openWidgetPicker: vi.fn(),
-            getVisibleCustomKeybinds: widgetImpl => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds() : [],
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget
         });
 

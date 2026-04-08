@@ -132,9 +132,7 @@ describe('GlobalOverridesMenu', () => {
             stdin.write('m');
             await flushInk();
 
-            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
-                minimalistMode: true
-            }));
+            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ minimalistMode: true }));
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -172,9 +170,7 @@ describe('GlobalOverridesMenu', () => {
             stdin.write('m');
             await flushInk();
 
-            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
-                minimalistMode: false
-            }));
+            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ minimalistMode: false }));
         } finally {
             instance.unmount();
             instance.cleanup();

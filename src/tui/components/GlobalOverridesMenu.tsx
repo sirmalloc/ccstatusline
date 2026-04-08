@@ -233,7 +233,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     </Box>
 
                     <Box>
-                        <Text>Minimalist Mode: </Text>
+                        <Text>  Minimalist Mode: </Text>
                         <Text color={minimalistMode ? 'green' : 'red'}>{minimalistMode ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (m) to toggle</Text>
                     </Box>
