@@ -1,83 +1,52 @@
-import * as childProcess from 'child_process';
-import * as fs from 'fs';
 import {
-    afterEach,
-    beforeEach,
     describe,
     expect,
     it,
-    vi,
-    type MockInstance
+    vi
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { renderOsc8Link } from '../../utils/hyperlink';
-import { GitPrWidget } from '../GitPr';
+import {
+    GitPrWidget,
+    type GitPrWidgetDeps
+} from '../GitPr';
 
-let mockExecSync: MockInstance<typeof childProcess.execSync>;
-let mockExecFileSync: MockInstance<typeof childProcess.execFileSync>;
-let mockExistsSync: MockInstance<typeof fs.existsSync>;
-let mockMkdirSync: MockInstance<typeof fs.mkdirSync>;
-let mockReadFileSync: MockInstance<typeof fs.readFileSync>;
-let mockStatSync: MockInstance<typeof fs.statSync>;
-let mockWriteFileSync: MockInstance<typeof fs.writeFileSync>;
+const SAMPLE_PR = {
+    number: 123,
+    reviewDecision: '',
+    state: 'OPEN',
+    title: 'Fix authentication bug',
+    url: 'https://github.com/owner/repo/pull/123'
+};
 
-function setupGitWorkTree(): void {
-    mockExecSync.mockReturnValue('true\n');
+function createDeps(overrides: Partial<GitPrWidgetDeps> = {}): GitPrWidgetDeps {
+    return {
+        fetchPrData: () => SAMPLE_PR,
+        getProcessCwd: () => '/tmp/process-cwd',
+        isInsideGitWorkTree: () => true,
+        resolveGitCwd: context => context.data?.cwd,
+        ...overrides
+    };
 }
 
-function setupBranchLookup(branch = 'feature/worktree'): void {
-    mockExecFileSync.mockImplementation((cmd, args) => {
-        const commandArgs = args ?? [];
-
-        if (cmd === 'git' && commandArgs[0] === 'branch')
-            return `${branch}\n`;
-        throw new Error(`unexpected ${cmd} ${commandArgs.join(' ')}`);
-    });
-}
-
-function setupCacheMiss(): void {
-    mockExistsSync.mockReturnValue(false);
-}
-
-function setupCacheHit(data: Record<string, unknown>): void {
-    setupGitWorkTree();
-    setupBranchLookup();
-    mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 1000 } as fs.Stats);
-    mockReadFileSync.mockReturnValue(JSON.stringify(data));
-}
-
-function setupGhResponse(data: Record<string, unknown>, branch = 'feature/worktree'): void {
-    setupGitWorkTree();
-    setupCacheMiss();
-    mockExecFileSync.mockImplementation((cmd, args) => {
-        const commandArgs = args ?? [];
-
-        if (cmd === 'git' && commandArgs[0] === 'branch')
-            return `${branch}\n`;
-        if (cmd === 'gh' && commandArgs[0] === '--version')
-            return 'gh version 2.0.0\n';
-        if (cmd === 'gh' && commandArgs[0] === 'pr')
-            return JSON.stringify(data);
-        throw new Error(`unexpected ${cmd} ${commandArgs.join(' ')}`);
-    });
-}
-
-function render(options: {
-    cwd?: string;
-    hideNoGit?: boolean;
-    hideStatus?: boolean;
-    hideTitle?: boolean;
-    isPreview?: boolean;
-    rawValue?: boolean;
-} = {}): string | null {
-    const widget = new GitPrWidget();
+function render(
+    options: {
+        cwd?: string;
+        hideNoGit?: boolean;
+        hideStatus?: boolean;
+        hideTitle?: boolean;
+        isPreview?: boolean;
+        rawValue?: boolean;
+    } = {},
+    depOverrides: Partial<GitPrWidgetDeps> = {}
+): string | null {
+    const widget = new GitPrWidget(createDeps(depOverrides));
     const context: RenderContext = {
-        isPreview: options.isPreview,
-        data: options.cwd ? { cwd: options.cwd } : undefined
+        data: options.cwd ? { cwd: options.cwd } : undefined,
+        isPreview: options.isPreview
     };
     const metadata: Record<string, string> = {};
     if (options.hideNoGit)
@@ -89,42 +58,15 @@ function render(options: {
 
     const item: WidgetItem = {
         id: 'git-pr',
-        type: 'git-pr',
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         rawValue: options.rawValue,
-        metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+        type: 'git-pr'
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
-const SAMPLE_PR = {
-    number: 123,
-    url: 'https://github.com/owner/repo/pull/123',
-    title: 'Fix authentication bug',
-    state: 'OPEN',
-    reviewDecision: ''
-};
-
 describe('GitPrWidget', () => {
-    beforeEach(() => {
-        vi.restoreAllMocks();
-        mockExecSync = vi.spyOn(childProcess, 'execSync');
-        mockExecFileSync = vi.spyOn(childProcess, 'execFileSync');
-        mockExistsSync = vi.spyOn(fs, 'existsSync');
-        mockMkdirSync = vi.spyOn(fs, 'mkdirSync');
-        mockReadFileSync = vi.spyOn(fs, 'readFileSync');
-        mockStatSync = vi.spyOn(fs, 'statSync');
-        mockWriteFileSync = vi.spyOn(fs, 'writeFileSync');
-
-        mockExistsSync.mockReturnValue(false);
-        mockMkdirSync.mockImplementation(() => undefined);
-        mockWriteFileSync.mockImplementation(() => undefined);
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
     it('should render preview with OSC 8 link', () => {
         const result = render({ isPreview: true });
         expect(result).toBe(
@@ -153,18 +95,7 @@ describe('GitPrWidget', () => {
         );
     });
 
-    it('should render full PR display from cache', () => {
-        setupCacheHit(SAMPLE_PR);
-
-        const result = render({ cwd: '/tmp/repo' });
-        expect(result).toBe(
-            `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
-        );
-    });
-
-    it('should render full PR display from gh CLI', () => {
-        setupGhResponse(SAMPLE_PR);
-
+    it('should render full PR display when PR data is available', () => {
         const result = render({ cwd: '/tmp/repo' });
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
@@ -172,50 +103,33 @@ describe('GitPrWidget', () => {
     });
 
     it('should return (no PR) when not in git repo', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a git repo'); });
-
-        expect(render({ cwd: '/tmp/not-a-repo' })).toBe('(no PR)');
+        expect(render({ cwd: '/tmp/not-a-repo' }, { isInsideGitWorkTree: () => false })).toBe('(no PR)');
     });
 
     it('should return null when hideNoGit and not in git repo', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a git repo'); });
-
-        expect(render({ cwd: '/tmp/not-a-repo', hideNoGit: true })).toBeNull();
+        expect(render({ cwd: '/tmp/not-a-repo', hideNoGit: true }, { isInsideGitWorkTree: () => false })).toBeNull();
     });
 
-    it('should return (no PR) when no cwd', () => {
-        expect(render()).toBe('(no PR)');
+    it('should return (no PR) when PR lookup returns null', () => {
+        expect(render({}, {
+            fetchPrData: () => null,
+            resolveGitCwd: () => undefined
+        })).toBe('(no PR)');
     });
 
     it('should use process cwd when repo paths are omitted', () => {
-        setupGhResponse(SAMPLE_PR);
+        const fetchPrData = vi.fn(() => SAMPLE_PR);
 
-        const result = render();
+        const result = render({}, {
+            fetchPrData,
+            getProcessCwd: () => '/tmp/process-cwd',
+            resolveGitCwd: () => undefined
+        });
 
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} OPEN Fix authentication bug`
         );
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'gh',
-            ['pr', 'view', '--json', 'url,number,title,state,reviewDecision'],
-            expect.objectContaining({ cwd: process.cwd() })
-        );
-    });
-
-    it('should return (no PR) when gh is not installed', () => {
-        setupGitWorkTree();
-        setupCacheMiss();
-        mockExecFileSync.mockImplementation((cmd, args) => {
-            const commandArgs = args ?? [];
-
-            if (cmd === 'git' && commandArgs[0] === 'branch')
-                return 'feature/worktree\n';
-            if (cmd === 'gh' && commandArgs[0] === '--version')
-                throw new Error('not found');
-            throw new Error('unexpected');
-        });
-
-        expect(render({ cwd: '/tmp/repo' })).toBe('(no PR)');
+        expect(fetchPrData).toHaveBeenCalledWith('/tmp/process-cwd');
     });
 
     it('should truncate long titles', () => {
@@ -223,27 +137,32 @@ describe('GitPrWidget', () => {
             ...SAMPLE_PR,
             title: 'This is a very long pull request title that exceeds the default limit'
         };
-        setupCacheHit(longPr);
 
-        const result = render({ cwd: '/tmp/repo' });
+        const result = render({ cwd: '/tmp/repo' }, { fetchPrData: () => longPr });
         expect(result).toContain('This is a very long pull requ\u2026');
     });
 
     it('should render MERGED status', () => {
-        setupCacheHit({ ...SAMPLE_PR, state: 'MERGED' });
-
-        expect(render({ cwd: '/tmp/repo' })).toContain('MERGED');
+        expect(render({ cwd: '/tmp/repo' }, { fetchPrData: () => ({ ...SAMPLE_PR, state: 'MERGED' }) })).toContain('MERGED');
     });
 
     it('should render APPROVED status', () => {
-        setupCacheHit({ ...SAMPLE_PR, state: 'OPEN', reviewDecision: 'APPROVED' });
-
-        expect(render({ cwd: '/tmp/repo' })).toContain('APPROVED');
+        expect(render({ cwd: '/tmp/repo' }, {
+            fetchPrData: () => ({
+                ...SAMPLE_PR,
+                reviewDecision: 'APPROVED',
+                state: 'OPEN'
+            })
+        })).toContain('APPROVED');
     });
 
     it('should render CHANGES_REQ status', () => {
-        setupCacheHit({ ...SAMPLE_PR, state: 'OPEN', reviewDecision: 'CHANGES_REQUESTED' });
-
-        expect(render({ cwd: '/tmp/repo' })).toContain('CHANGES_REQ');
+        expect(render({ cwd: '/tmp/repo' }, {
+            fetchPrData: () => ({
+                ...SAMPLE_PR,
+                reviewDecision: 'CHANGES_REQUESTED',
+                state: 'OPEN'
+            })
+        })).toContain('CHANGES_REQ');
     });
 });

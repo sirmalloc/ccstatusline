@@ -35,6 +35,20 @@ const HIDE_TITLE_KEY = 'hideTitle';
 const TOGGLE_STATUS_ACTION = 'toggle-status';
 const TOGGLE_TITLE_ACTION = 'toggle-title';
 
+export interface GitPrWidgetDeps {
+    fetchPrData: typeof fetchPrData;
+    getProcessCwd: typeof process.cwd;
+    isInsideGitWorkTree: typeof isInsideGitWorkTree;
+    resolveGitCwd: typeof resolveGitCwd;
+}
+
+const DEFAULT_GIT_PR_WIDGET_DEPS: GitPrWidgetDeps = {
+    fetchPrData,
+    getProcessCwd: () => process.cwd(),
+    isInsideGitWorkTree,
+    resolveGitCwd
+};
+
 const PREVIEW_PR: PrData = {
     number: 42,
     url: 'https://github.com/owner/repo/pull/42',
@@ -67,6 +81,8 @@ function buildDisplay(
 }
 
 export class GitPrWidget implements Widget {
+    constructor(private readonly deps: GitPrWidgetDeps = DEFAULT_GIT_PR_WIDGET_DEPS) {}
+
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows PR info for the current branch (clickable link, status, title)'; }
     getDisplayName(): string { return 'Git PR'; }
@@ -107,12 +123,12 @@ export class GitPrWidget implements Widget {
             return buildDisplay(item, PREVIEW_PR, showStatus, showTitle);
         }
 
-        if (!isInsideGitWorkTree(context)) {
+        if (!this.deps.isInsideGitWorkTree(context)) {
             return hideNoGit ? null : '(no PR)';
         }
 
-        const cwd = resolveGitCwd(context) ?? process.cwd();
-        const prData = fetchPrData(cwd);
+        const cwd = this.deps.resolveGitCwd(context) ?? this.deps.getProcessCwd();
+        const prData = this.deps.fetchPrData(cwd);
         if (!prData) {
             return hideNoGit ? null : '(no PR)';
         }

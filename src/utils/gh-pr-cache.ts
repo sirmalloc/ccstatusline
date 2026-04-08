@@ -20,12 +20,37 @@ export interface PrData {
 
 const PR_CACHE_TTL = 30_000;
 const GH_TIMEOUT = 5_000;
-const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
 const DEFAULT_TITLE_MAX_WIDTH = 30;
 
-function runGitForCache(args: string[], cwd: string): string {
+export interface PrCacheDeps {
+    execFileSync: typeof execFileSync;
+    existsSync: typeof existsSync;
+    mkdirSync: typeof mkdirSync;
+    readFileSync: typeof readFileSync;
+    statSync: typeof statSync;
+    writeFileSync: typeof writeFileSync;
+    getHomedir: typeof os.homedir;
+    now: typeof Date.now;
+}
+
+const DEFAULT_PR_CACHE_DEPS: PrCacheDeps = {
+    execFileSync,
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    statSync,
+    writeFileSync,
+    getHomedir: os.homedir,
+    now: Date.now
+};
+
+function getCacheDir(deps: PrCacheDeps): string {
+    return path.join(deps.getHomedir(), '.cache', 'ccstatusline');
+}
+
+function runGitForCache(args: string[], cwd: string, deps: PrCacheDeps): string {
     try {
-        return execFileSync('git', args, {
+        return deps.execFileSync('git', args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
@@ -36,13 +61,13 @@ function runGitForCache(args: string[], cwd: string): string {
     }
 }
 
-function getCacheRef(cwd: string): string {
-    const branch = runGitForCache(['branch', '--show-current'], cwd);
+function getCacheRef(cwd: string, deps: PrCacheDeps): string {
+    const branch = runGitForCache(['branch', '--show-current'], cwd, deps);
     if (branch.length > 0) {
         return `branch:${branch}`;
     }
 
-    const head = runGitForCache(['rev-parse', '--short', 'HEAD'], cwd);
+    const head = runGitForCache(['rev-parse', '--short', 'HEAD'], cwd, deps);
     if (head.length > 0) {
         return `head:${head}`;
     }
@@ -50,26 +75,26 @@ function getCacheRef(cwd: string): string {
     return 'unknown';
 }
 
-function getCachePath(cwd: string, ref: string): string {
+function getCachePath(cwd: string, ref: string, deps: PrCacheDeps): string {
     const hash = createHash('sha256')
         .update(cwd)
         .update('\0')
         .update(ref)
         .digest('hex')
         .slice(0, 16);
-    return path.join(CACHE_DIR, `pr-${hash}.json`);
+    return path.join(getCacheDir(deps), `pr-${hash}.json`);
 }
 
-function readCache(cachePath: string): PrData | null | 'miss' {
+function readCache(cachePath: string, deps: PrCacheDeps): PrData | null | 'miss' {
     try {
-        if (!existsSync(cachePath)) {
+        if (!deps.existsSync(cachePath)) {
             return 'miss';
         }
-        const age = Date.now() - statSync(cachePath).mtimeMs;
+        const age = deps.now() - deps.statSync(cachePath).mtimeMs;
         if (age > PR_CACHE_TTL) {
             return 'miss';
         }
-        const content = readFileSync(cachePath, 'utf-8').trim();
+        const content = deps.readFileSync(cachePath, 'utf-8').trim();
         if (content.length === 0) {
             return null;
         }
@@ -83,36 +108,37 @@ function readCache(cachePath: string): PrData | null | 'miss' {
     }
 }
 
-function writeCache(cachePath: string, data: PrData | null): void {
+function writeCache(cachePath: string, data: PrData | null, deps: PrCacheDeps): void {
     try {
-        if (!existsSync(CACHE_DIR)) {
-            mkdirSync(CACHE_DIR, { recursive: true });
+        const cacheDir = getCacheDir(deps);
+        if (!deps.existsSync(cacheDir)) {
+            deps.mkdirSync(cacheDir, { recursive: true });
         }
-        writeFileSync(cachePath, data ? JSON.stringify(data) : '', 'utf-8');
+        deps.writeFileSync(cachePath, data ? JSON.stringify(data) : '', 'utf-8');
     } catch {
         // Best-effort caching
     }
 }
 
-export function fetchPrData(cwd: string): PrData | null {
-    const cachePath = getCachePath(cwd, getCacheRef(cwd));
-    const cached = readCache(cachePath);
+export function fetchPrData(cwd: string, deps: PrCacheDeps = DEFAULT_PR_CACHE_DEPS): PrData | null {
+    const cachePath = getCachePath(cwd, getCacheRef(cwd, deps), deps);
+    const cached = readCache(cachePath, deps);
     if (cached !== 'miss') {
         return cached;
     }
 
     try {
-        execFileSync('gh', ['--version'], {
+        deps.execFileSync('gh', ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: GH_TIMEOUT
         });
     } catch {
-        writeCache(cachePath, null);
+        writeCache(cachePath, null, deps);
         return null;
     }
 
     try {
-        const output = execFileSync(
+        const output = deps.execFileSync(
             'gh',
             ['pr', 'view', '--json', 'url,number,title,state,reviewDecision'],
             {
@@ -124,13 +150,13 @@ export function fetchPrData(cwd: string): PrData | null {
         ).trim();
 
         if (output.length === 0) {
-            writeCache(cachePath, null);
+            writeCache(cachePath, null, deps);
             return null;
         }
 
         const parsed = JSON.parse(output) as Record<string, unknown>;
         if (typeof parsed.number !== 'number' || typeof parsed.url !== 'string') {
-            writeCache(cachePath, null);
+            writeCache(cachePath, null, deps);
             return null;
         }
         const data: PrData = {
@@ -141,10 +167,10 @@ export function fetchPrData(cwd: string): PrData | null {
             reviewDecision: typeof parsed.reviewDecision === 'string' ? parsed.reviewDecision : ''
         };
 
-        writeCache(cachePath, data);
+        writeCache(cachePath, data, deps);
         return data;
     } catch {
-        writeCache(cachePath, null);
+        writeCache(cachePath, null, deps);
         return null;
     }
 }

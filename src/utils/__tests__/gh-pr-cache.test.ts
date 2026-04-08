@@ -1,150 +1,162 @@
-import * as childProcess from 'child_process';
-import * as fs from 'fs';
 import {
-    afterEach,
-    beforeEach,
     describe,
     expect,
-    it,
-    vi,
-    type MockInstance
+    it
 } from 'vitest';
 
-import { fetchPrData } from '../gh-pr-cache';
+import {
+    fetchPrData,
+    type PrCacheDeps
+} from '../gh-pr-cache';
 
-let mockExecFileSync: MockInstance<typeof childProcess.execFileSync>;
-let mockExistsSync: MockInstance<typeof fs.existsSync>;
-let mockMkdirSync: MockInstance<typeof fs.mkdirSync>;
-let mockReadFileSync: MockInstance<typeof fs.readFileSync>;
-let mockStatSync: MockInstance<typeof fs.statSync>;
-let mockWriteFileSync: MockInstance<typeof fs.writeFileSync>;
-
-const cacheFiles = new Map<string, string>();
-let currentRef = 'feature/cache-a';
-const ghResponses: (string | Error)[] = [];
-
-function mockGitAndGh(): void {
-    mockExecFileSync.mockImplementation((cmd, args) => {
-        const commandArgs = args ?? [];
-
-        if (cmd === 'git' && commandArgs[0] === 'branch')
-            return `${currentRef}\n`;
-        if (cmd === 'git' && commandArgs[0] === 'rev-parse')
-            return 'abc123\n';
-        if (cmd === 'gh' && commandArgs[0] === '--version')
-            return 'gh version 2.0.0\n';
-        if (cmd === 'gh' && commandArgs[0] === 'pr') {
-            const response = ghResponses.shift();
-            if (response instanceof Error)
-                throw response;
-            return response ?? '';
-        }
-
-        throw new Error(`Unexpected command: ${cmd} ${commandArgs.join(' ')}`);
-    });
+interface FakeCacheFile {
+    content: string;
+    mtimeMs: number;
 }
 
-describe('gh-pr-cache', () => {
-    beforeEach(() => {
-        vi.restoreAllMocks();
-        cacheFiles.clear();
-        ghResponses.length = 0;
-        currentRef = 'feature/cache-a';
+interface PrCacheHarness {
+    cacheFiles: Map<string, FakeCacheFile>;
+    deps: PrCacheDeps;
+    execCalls: { args: string[]; cmd: string; cwd?: string }[];
+    ghResponses: (Error | string)[];
+    setCurrentRef: (ref: string) => void;
+}
 
-        mockExecFileSync = vi.spyOn(childProcess, 'execFileSync');
-        mockExistsSync = vi.spyOn(fs, 'existsSync');
-        mockMkdirSync = vi.spyOn(fs, 'mkdirSync');
-        mockReadFileSync = vi.spyOn(fs, 'readFileSync');
-        mockStatSync = vi.spyOn(fs, 'statSync');
-        mockWriteFileSync = vi.spyOn(fs, 'writeFileSync');
+function createHarness(): PrCacheHarness {
+    const cacheFiles = new Map<string, FakeCacheFile>();
+    const execCalls: { args: string[]; cmd: string; cwd?: string }[] = [];
+    const ghResponses: (Error | string)[] = [];
+    const now = 1_700_000_000_000;
+    let currentRef = 'feature/cache-a';
 
-        mockExistsSync.mockImplementation(filePath => cacheFiles.has(String(filePath)));
-        mockMkdirSync.mockImplementation(() => undefined);
-        mockReadFileSync.mockImplementation(filePath => cacheFiles.get(String(filePath)) ?? '');
-        mockStatSync.mockImplementation(() => ({ mtimeMs: Date.now() }) as fs.Stats);
-        mockWriteFileSync.mockImplementation((filePath, content) => {
+    const deps: PrCacheDeps = {
+        execFileSync: ((cmd, args, options) => {
+            const commandArgs = Array.isArray(args)
+                ? args.map(arg => String(arg))
+                : [];
+            execCalls.push({
+                args: commandArgs,
+                cmd,
+                cwd: typeof options === 'object' && 'cwd' in options
+                    ? String(options.cwd)
+                    : undefined
+            });
+
+            if (cmd === 'git' && commandArgs[0] === 'branch')
+                return `${currentRef}\n`;
+            if (cmd === 'git' && commandArgs[0] === 'rev-parse')
+                return 'abc123\n';
+            if (cmd === 'gh' && commandArgs[0] === '--version')
+                return 'gh version 2.0.0\n';
+            if (cmd === 'gh' && commandArgs[0] === 'pr') {
+                const response = ghResponses.shift();
+                if (response instanceof Error)
+                    throw response;
+                return response ?? '';
+            }
+
+            throw new Error(`Unexpected command: ${cmd} ${commandArgs.join(' ')}`);
+        }) as PrCacheDeps['execFileSync'],
+        existsSync: (filePath => cacheFiles.has(String(filePath))) as PrCacheDeps['existsSync'],
+        getHomedir: () => '/tmp/home',
+        mkdirSync: (() => undefined) as PrCacheDeps['mkdirSync'],
+        now: () => now,
+        readFileSync: (filePath => cacheFiles.get(String(filePath))?.content ?? '') as PrCacheDeps['readFileSync'],
+        statSync: (filePath => ({ mtimeMs: cacheFiles.get(String(filePath))?.mtimeMs ?? now })) as PrCacheDeps['statSync'],
+        writeFileSync: ((filePath, content) => {
             const normalizedContent = typeof content === 'string'
                 ? content
                 : Buffer.isBuffer(content)
                     ? content.toString('utf8')
                     : '';
-            cacheFiles.set(String(filePath), normalizedContent);
-        });
-    });
+            cacheFiles.set(String(filePath), {
+                content: normalizedContent,
+                mtimeMs: now
+            });
+        }) as PrCacheDeps['writeFileSync']
+    };
 
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
+    return {
+        cacheFiles,
+        deps,
+        execCalls,
+        ghResponses,
+        setCurrentRef: (ref: string) => {
+            currentRef = ref;
+        }
+    };
+}
 
+describe('gh-pr-cache', () => {
     it('negative-caches failed gh PR lookups', () => {
-        mockGitAndGh();
-        ghResponses.push(new Error('no pull request found'));
+        const harness = createHarness();
+        harness.ghResponses.push(new Error('no pull request found'));
 
-        expect(fetchPrData('/tmp/repo')).toBeNull();
+        expect(fetchPrData('/tmp/repo', harness.deps)).toBeNull();
 
-        const ghCallsAfterFirstRender = mockExecFileSync.mock.calls.filter(
-            ([cmd]) => cmd === 'gh'
-        );
+        const ghCallsAfterFirstRender = harness.execCalls.filter(call => call.cmd === 'gh');
         expect(ghCallsAfterFirstRender).toHaveLength(2);
-        expect(mockWriteFileSync).toHaveBeenCalledWith(expect.any(String), '', 'utf-8');
 
-        expect(fetchPrData('/tmp/repo')).toBeNull();
+        const cachedMissEntry = [...harness.cacheFiles.values()].at(0);
+        expect(cachedMissEntry?.content).toBe('');
 
-        const ghCallsAfterSecondRender = mockExecFileSync.mock.calls.filter(
-            ([cmd]) => cmd === 'gh'
-        );
+        expect(fetchPrData('/tmp/repo', harness.deps)).toBeNull();
+
+        const ghCallsAfterSecondRender = harness.execCalls.filter(call => call.cmd === 'gh');
         expect(ghCallsAfterSecondRender).toHaveLength(2);
     });
 
     it('uses a different cache entry for each checked-out branch', () => {
-        mockGitAndGh();
-        ghResponses.push(JSON.stringify({
+        const harness = createHarness();
+        harness.ghResponses.push(JSON.stringify({
             number: 123,
-            url: 'https://github.com/owner/repo/pull/123',
-            title: 'First PR',
+            reviewDecision: '',
             state: 'OPEN',
-            reviewDecision: ''
+            title: 'First PR',
+            url: 'https://github.com/owner/repo/pull/123'
         }));
 
-        expect(fetchPrData('/tmp/repo')).toEqual({
+        expect(fetchPrData('/tmp/repo', harness.deps)).toEqual({
             number: 123,
-            url: 'https://github.com/owner/repo/pull/123',
-            title: 'First PR',
+            reviewDecision: '',
             state: 'OPEN',
-            reviewDecision: ''
+            title: 'First PR',
+            url: 'https://github.com/owner/repo/pull/123'
         });
 
-        currentRef = 'feature/cache-b';
-        ghResponses.push(JSON.stringify({
+        harness.setCurrentRef('feature/cache-b');
+        harness.ghResponses.push(JSON.stringify({
             number: 456,
-            url: 'https://github.com/owner/repo/pull/456',
-            title: 'Second PR',
+            reviewDecision: 'APPROVED',
             state: 'OPEN',
-            reviewDecision: 'APPROVED'
+            title: 'Second PR',
+            url: 'https://github.com/owner/repo/pull/456'
         }));
 
-        expect(fetchPrData('/tmp/repo')).toEqual({
+        expect(fetchPrData('/tmp/repo', harness.deps)).toEqual({
             number: 456,
-            url: 'https://github.com/owner/repo/pull/456',
-            title: 'Second PR',
+            reviewDecision: 'APPROVED',
             state: 'OPEN',
-            reviewDecision: 'APPROVED'
+            title: 'Second PR',
+            url: 'https://github.com/owner/repo/pull/456'
         });
 
-        const writtenCachePaths = mockWriteFileSync.mock.calls.map(call => String(call[0]));
+        const writtenCachePaths = [...harness.cacheFiles.keys()];
+        expect(writtenCachePaths.length).toBe(2);
         expect(writtenCachePaths[0]).not.toBe(writtenCachePaths[1]);
 
-        currentRef = 'feature/cache-a';
-        expect(fetchPrData('/tmp/repo')).toEqual({
+        harness.setCurrentRef('feature/cache-a');
+        expect(fetchPrData('/tmp/repo', harness.deps)).toEqual({
             number: 123,
-            url: 'https://github.com/owner/repo/pull/123',
-            title: 'First PR',
+            reviewDecision: '',
             state: 'OPEN',
-            reviewDecision: ''
+            title: 'First PR',
+            url: 'https://github.com/owner/repo/pull/123'
         });
+        expect(harness.cacheFiles.size).toBe(2);
 
-        const ghPrCalls = mockExecFileSync.mock.calls.filter(
-            ([cmd, args]) => cmd === 'gh' && Array.isArray(args) && args[0] === 'pr'
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
         );
         expect(ghPrCalls).toHaveLength(2);
     });
