@@ -33,6 +33,7 @@
 
 - [Recent Updates](#-recent-updates)
 - [Features](#-features)
+- [Localizations](#-localizations)
 - [Quick Start](#-quick-start)
 - [Windows Support](#-windows-support)
 - [Usage](#-usage)
@@ -171,6 +172,14 @@
 - **🔧 Flexible Configuration** - Supports custom Claude Code config directory via `CLAUDE_CONFIG_DIR` environment variable
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
 - **⚡ Zero Config** - Sensible defaults that work out of the box
+
+---
+
+## 🌐 Localizations
+
+The localizations in this section are third-party forks maintained outside this repository. They are not maintained, reviewed, or endorsed by this repository, so review their code and releases before using them.
+
+- 🌏 **中文版 (Chinese):** [ccstatusline-zh](https://github.com/huangguang1999/ccstatusline-zh)
 
 ---
 
