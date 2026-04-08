@@ -58,6 +58,10 @@ export const SettingsSchema = z.object({
         theme: undefined,
         autoAlign: false
     }),
+    terminalTitle: z.object({
+        enabled: z.boolean().default(false),
+        template: z.string().default('{task} | {repo}/{branch}')
+    }).default({ enabled: false, template: '{task} | {repo}/{branch}' }),
     updatemessage: z.object({
         message: z.string().nullable().optional(),
         remaining: z.number().nullable().optional()

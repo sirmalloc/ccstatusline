@@ -28,6 +28,7 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
+import { resolveTerminalTitle } from './utils/terminal-title';
 import {
     getSkillsFilePath,
     getSkillsMetrics
@@ -178,6 +179,16 @@ async function renderMultipleLines(data: StatusJSON) {
 
                 globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
             }
+        }
+    }
+
+    // Emit terminal tab title if configured
+    if (settings.terminalTitle.enabled) {
+        const title = resolveTerminalTitle(settings.terminalTitle.template, context);
+        if (title) {
+            // OSC 1 sets the terminal tab title; write to stderr to avoid
+            // interfering with the status line output on stdout
+            process.stderr.write(`\x1b]1;${title}\x07`);
         }
     }
 
