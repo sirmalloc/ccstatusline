@@ -24,6 +24,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'git-insertions', create: () => new widgets.GitInsertionsWidget() },
     { type: 'git-deletions', create: () => new widgets.GitDeletionsWidget() },
     { type: 'git-root-dir', create: () => new widgets.GitRootDirWidget() },
+    { type: 'git-pr', create: () => new widgets.GitPrWidget() },
     { type: 'git-worktree', create: () => new widgets.GitWorktreeWidget() },
     { type: 'current-working-dir', create: () => new widgets.CurrentWorkingDirWidget() },
     { type: 'tokens-input', create: () => new widgets.TokensInputWidget() },
