@@ -15,6 +15,7 @@ export type MainMenuOption = 'lines'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'install'
+    | 'configureStatusLine'
     | 'starGithub'
     | 'save'
     | 'exit';
@@ -75,15 +76,27 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 'Set global padding, separators, and color overrides that apply to all widgets'
         },
         '-' as const,
-        {
-            label: isClaudeInstalled
-                ? '🔌 Uninstall from Claude Code'
-                : '📦 Install to Claude Code',
-            value: 'install',
-            description: isClaudeInstalled
-                ? 'Remove ccstatusline from your Claude Code settings'
-                : 'Add ccstatusline to your Claude Code settings for automatic status line rendering'
-        }
+        ...(isClaudeInstalled
+            ? [
+                {
+                    label: '🔧 Configure Status Line',
+                    value: 'configureStatusLine' as MainMenuOption,
+                    description: 'Configure Claude Code status line settings like refresh interval'
+                },
+                {
+                    label: '🔌 Uninstall from Claude Code',
+                    value: 'install' as MainMenuOption,
+                    description: 'Remove ccstatusline from your Claude Code settings'
+                }
+            ]
+            : [
+                {
+                    label: '📦 Install to Claude Code',
+                    value: 'install' as MainMenuOption,
+                    description: 'Add ccstatusline to your Claude Code settings for automatic status line rendering'
+                }
+            ]
+        )
     ];
 
     if (hasChanges) {
