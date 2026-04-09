@@ -58,14 +58,13 @@ function getClaudeVersion(): string | null {
 interface FieldConfig {
     label: string;
     min: number;
-    settingsKey: 'rotateEvery' | 'expiryDays' | 'maxTipLength' | 'minTips';
+    settingsKey: 'rotateEvery' | 'expiryDays' | 'maxTipLength';
 }
 
 const FIELD_CONFIGS: Record<string, FieldConfig> = {
     rotateEvery: { label: 'Rotate Every', min: 1, settingsKey: 'rotateEvery' },
     expiryDays: { label: 'Expiry Days', min: 1, settingsKey: 'expiryDays' },
-    maxTipLength: { label: 'Max Tip Length', min: 10, settingsKey: 'maxTipLength' },
-    minTips: { label: 'Min Tips', min: 1, settingsKey: 'minTips' }
+    maxTipLength: { label: 'Max Tip Length', min: 10, settingsKey: 'maxTipLength' }
 };
 
 export interface TipsMenuProps {
@@ -341,11 +340,6 @@ export const TipsMenu: React.FC<TipsMenuProps> = ({
             value: 'maxTipLength',
             label: `Max Tip Length: ${settings.tips.maxTipLength} chars`,
             description: 'Maximum character length for generated tips'
-        },
-        {
-            value: 'minTips',
-            label: `Min Tips: ${settings.tips.minTips}`,
-            description: 'Minimum number of tips to generate per version'
         },
         '-',
         {

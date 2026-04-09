@@ -54,8 +54,7 @@ describe('CurrentWorkingDirWidget', () => {
             tipDir: '',
             rotateEvery: 5,
             expiryDays: 7,
-            maxTipLength: 47,
-            minTips: 5
+            maxTipLength: 47
         }
     };
 

@@ -18,6 +18,7 @@ import {
     compareSemver,
     fetchChangelog,
     generateTips,
+    parseChangelog,
     getLatestTipFile,
     getMergedTipPool,
     getTipIndexPath,
@@ -302,10 +303,63 @@ describe('fetchChangelog', () => {
     });
 });
 
+describe('parseChangelog', () => {
+    it('returns empty array for empty input', () => {
+        expect(parseChangelog('')).toEqual([]);
+    });
+
+    it('extracts and cleans bullets from a representative changelog', () => {
+        const changelog = `## What's Changed
+
+### Features
+- Added **new** \`--print\` flag for non-interactive mode (#123)
+- 💡 [Tips system](https://example.com/tips) now supports rotation (by @alice)
+- Support  for   multiple    lines of whitespace
+
+### Bug Fixes
+* Fix crash when config is missing (#456)
+* Fix  memory leak in session handler
+
+### Dependencies
+- Bump zod from 3.22.0 to 3.23.0
+- Bump typescript from 5.2.0 to 5.3.0 (#789)
+
+### Other
+- v2.1.0
+- See CHANGELOG for details
+- ok
+- Internal: refactor tip pipeline
+`;
+        const result = parseChangelog(changelog);
+        expect(result).toEqual([
+            'Added new --print flag for non-interactive mode',
+            '💡 Tips system now supports rotation',
+            'Support for multiple lines of whitespace',
+            'Fix crash when config is missing',
+            'Fix memory leak in session handler',
+            'Internal: refactor tip pipeline'
+        ]);
+    });
+
+    it('is deterministic — same input yields same output', () => {
+        const changelog = '- Feature A (#1)\n- Feature B (#2)\n- Bump x from 1 to 2\n';
+        const a = parseChangelog(changelog);
+        const b = parseChangelog(changelog);
+        expect(a).toEqual(b);
+        expect(a).toEqual(['Feature A', 'Feature B']);
+    });
+});
+
 describe('generateTips', () => {
     it('returns empty array when changelog is empty', async () => {
         const settings = tipsSettings(tmpDir);
         const tips = await generateTips('', settings);
+        expect(tips).toEqual([]);
+    });
+
+    it('returns empty array when changelog has no parseable bullets', async () => {
+        const settings = tipsSettings(tmpDir);
+        const tips = await generateTips('# Only a header\n\nSome prose with no bullets.\n', settings);
         expect(tips).toEqual([]);
     });
 });
