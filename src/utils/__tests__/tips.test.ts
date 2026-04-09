@@ -189,12 +189,17 @@ describe('getMergedTipPool', () => {
         expect(getMergedTipPool(settings)).toEqual([]);
     });
 
-    it('merges tips from all valid files', () => {
+    it('merges tips from all valid files, tagging each with its source version', () => {
         const settings = tipsSettings(tmpDir, { expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['a', 'b']), settings);
         writeTipFile(makeTipFile('2.2.0', '2.1.0', ['c', 'd']), settings);
         const pool = getMergedTipPool(settings);
-        expect(pool).toEqual(['a', 'b', 'c', 'd']);
+        expect(pool).toEqual([
+            { text: 'a', version: '2.1.0' },
+            { text: 'b', version: '2.1.0' },
+            { text: 'c', version: '2.2.0' },
+            { text: 'd', version: '2.2.0' }
+        ]);
     });
 });
 
@@ -208,27 +213,27 @@ describe('advanceTipRotation', () => {
         const settings = tipsSettings(tmpDir, { rotateEvery: 3, expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2', 'tip3']), settings);
         const tip = advanceTipRotation(settings);
-        expect(tip).toBe('tip1');
+        expect(tip).toEqual({ text: 'tip1', version: '2.1.0' });
     });
 
     it('advances tip after rotateEvery renders', () => {
         const settings = tipsSettings(tmpDir, { rotateEvery: 2, expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2', 'tip3']), settings);
 
-        expect(advanceTipRotation(settings)).toBe('tip1'); // render 1
-        expect(advanceTipRotation(settings)).toBe('tip1'); // render 2 → hits threshold
-        expect(advanceTipRotation(settings)).toBe('tip2'); // render 3 → advanced
-        expect(advanceTipRotation(settings)).toBe('tip2'); // render 4
-        expect(advanceTipRotation(settings)).toBe('tip3'); // render 5 → advanced
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip1', version: '2.1.0' }); // render 1
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip1', version: '2.1.0' }); // render 2 → hits threshold
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip2', version: '2.1.0' }); // render 3 → advanced
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip2', version: '2.1.0' }); // render 4
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip3', version: '2.1.0' }); // render 5 → advanced
     });
 
     it('wraps around when reaching end of pool', () => {
         const settings = tipsSettings(tmpDir, { rotateEvery: 1, expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2']), settings);
 
-        expect(advanceTipRotation(settings)).toBe('tip1');
-        expect(advanceTipRotation(settings)).toBe('tip2');
-        expect(advanceTipRotation(settings)).toBe('tip1'); // wrap
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip1', version: '2.1.0' });
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip2', version: '2.1.0' });
+        expect(advanceTipRotation(settings)).toEqual({ text: 'tip1', version: '2.1.0' }); // wrap
     });
 
     it('only writes to disk on rotation, not every render', () => {

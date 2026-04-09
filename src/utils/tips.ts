@@ -161,17 +161,24 @@ export function getLatestTipFile(settings: Settings): TipFile | null {
     return valid[valid.length - 1]!;
 }
 
-export function getMergedTipPool(settings: Settings): string[] {
+export interface TaggedTip {
+    text: string;
+    version: string;
+}
+
+export function getMergedTipPool(settings: Settings): TaggedTip[] {
     const valid = listValidTipFiles(settings);
     valid.sort((a, b) => compareSemver(a.version, b.version));
-    const pool: string[] = [];
+    const pool: TaggedTip[] = [];
     for (const file of valid) {
-        pool.push(...file.tips);
+        for (const tip of file.tips) {
+            pool.push({ text: tip, version: file.version });
+        }
     }
     return pool;
 }
 
-let _cachedPool: string[] | null = null;
+let _cachedPool: TaggedTip[] | null = null;
 let _cachedIndex = 0;
 let _renderCount = 0;
 let _cacheInitialized = false;
@@ -183,7 +190,7 @@ export function resetTipRotationCache(): void {
     _cacheInitialized = false;
 }
 
-export function advanceTipRotation(settings: Settings): string | null {
+export function advanceTipRotation(settings: Settings): TaggedTip | null {
     if (!_cacheInitialized) {
         _cachedPool = getMergedTipPool(settings);
         const state = readTipIndex();

@@ -60,6 +60,10 @@ export class TipWidget implements Widget {
             return item.rawValue ? '(no tips)' : '\uD83D\uDCA1 (no tips)';
         }
 
-        return item.rawValue ? tip : `\uD83D\uDCA1 ${tip}`;
+        if (item.rawValue) {
+            return `${tip.text} · v${tip.version}`;
+        }
+        // Dim (SGR 2) the version suffix so it reads as metadata. 22 resets dim/bold.
+        return `\uD83D\uDCA1 ${tip.text} \x1b[2m· v${tip.version}\x1b[22m`;
     }
 }
