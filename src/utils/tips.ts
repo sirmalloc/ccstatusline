@@ -178,41 +178,42 @@ export function getMergedTipPool(settings: Settings): TaggedTip[] {
     return pool;
 }
 
+// Pool is an in-process cache only — cheap to recompute, but avoiding the
+// filesystem scan per render is a nice-to-have. Rotation state (index +
+// renderCount), however, MUST round-trip through disk on every render: ccstatusline
+// is spawned as a fresh Node process for every statusline refresh, so any
+// module-scope counter is lost between renders and the threshold can never
+// be crossed. See plan_statusline_tips.md Phase 5.3.
 let _cachedPool: TaggedTip[] | null = null;
-let _cachedIndex = 0;
-let _renderCount = 0;
-let _cacheInitialized = false;
 
 export function resetTipRotationCache(): void {
     _cachedPool = null;
-    _cachedIndex = 0;
-    _renderCount = 0;
-    _cacheInitialized = false;
 }
 
 export function advanceTipRotation(settings: Settings): TaggedTip | null {
-    if (!_cacheInitialized) {
+    if (_cachedPool === null) {
         _cachedPool = getMergedTipPool(settings);
-        const state = readTipIndex();
-        _cachedIndex = state.index;
-        _renderCount = state.renderCount;
-        _cacheInitialized = true;
     }
 
-    if (!_cachedPool || _cachedPool.length === 0) {
+    if (_cachedPool.length === 0) {
         return null;
     }
 
-    const currentIndex = _cachedIndex % _cachedPool.length;
+    const state = readTipIndex();
+    const currentIndex = state.index % _cachedPool.length;
     const tip = _cachedPool[currentIndex]!;
 
-    _renderCount++;
-    if (_renderCount >= settings.tips.rotateEvery) {
-        _cachedIndex = (currentIndex + 1) % _cachedPool.length;
-        _renderCount = 0;
+    const nextRenderCount = state.renderCount + 1;
+    if (nextRenderCount >= settings.tips.rotateEvery) {
         writeTipIndex({
-            index: _cachedIndex,
+            index: (currentIndex + 1) % _cachedPool.length,
             renderCount: 0,
+            updatedAt: new Date().toISOString()
+        });
+    } else {
+        writeTipIndex({
+            index: currentIndex,
+            renderCount: nextRenderCount,
             updatedAt: new Date().toISOString()
         });
     }
@@ -221,6 +222,71 @@ export function advanceTipRotation(settings: Settings): TaggedTip | null {
 }
 
 // --- Changelog ---
+
+export async function listReleasesBetween(
+    previousVersion: string,
+    currentVersion: string,
+    cap: number = 10
+): Promise<string[]> {
+    try {
+        const https = await import('https');
+        const body = await new Promise<string | null>((resolve) => {
+            const url = 'https://api.github.com/repos/anthropics/claude-code/releases?per_page=100';
+            const req = https.get(url, {
+                headers: {
+                    'User-Agent': 'ccstatusline',
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                timeout: 5000
+            }, (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    resolve(null);
+                    return;
+                }
+                const chunks: Buffer[] = [];
+                res.on('data', (chunk: Buffer) => chunks.push(chunk));
+                res.on('end', () => {
+                    resolve(Buffer.concat(chunks).toString('utf-8'));
+                });
+            });
+            req.on('error', () => resolve(null));
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+        });
+
+        if (!body) {
+            return [];
+        }
+
+        const parsed: unknown = JSON.parse(body);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        const versions: string[] = [];
+        for (const release of parsed) {
+            if (typeof release !== 'object' || release === null) continue;
+            const tagName = (release as { tag_name?: unknown }).tag_name;
+            if (typeof tagName !== 'string') continue;
+            const version = tagName.startsWith('v') ? tagName.slice(1) : tagName;
+            // Strict > previousVersion, <= currentVersion
+            if (compareSemver(version, previousVersion) > 0 && compareSemver(version, currentVersion) <= 0) {
+                versions.push(version);
+            }
+        }
+
+        // Sort ascending by semver
+        versions.sort(compareSemver);
+
+        // Cap at the newest N if we exceed the limit
+        if (versions.length > cap) {
+            return versions.slice(versions.length - cap);
+        }
+        return versions;
+    } catch {
+        return [];
+    }
+}
 
 export async function fetchChangelog(version: string): Promise<string | null> {
     try {
@@ -318,32 +384,61 @@ export async function checkVersionAndGenerateTips(currentVersion: string, settin
         return;
     }
 
-    const previousVersion = lastVersion?.version ?? '';
+    const lastVersionStr = lastVersion?.version ?? '';
 
-    // Check if tip file already exists for this version
-    if (readTipFile(currentVersion, settings)) {
-        writeLastVersion(currentVersion);
-        return;
+    // Build the list of versions to generate tips for. On a fresh install
+    // (no lastVersion), only generate tips for the current version. Otherwise
+    // fetch the release list and include every release strictly > lastVersion
+    // and <= currentVersion, so users who skipped several releases get the
+    // intermediate tips too.
+    let versionsToGenerate: string[];
+    if (!lastVersionStr) {
+        versionsToGenerate = [currentVersion];
+    } else {
+        const releases = await listReleasesBetween(lastVersionStr, currentVersion, 10);
+        // Ensure currentVersion is present even if the releases API didn't
+        // return it (e.g. 404, empty page, rate limit).
+        if (releases.length === 0) {
+            versionsToGenerate = [currentVersion];
+        } else {
+            versionsToGenerate = releases.includes(currentVersion)
+                ? releases
+                : [...releases, currentVersion];
+        }
     }
 
-    // Fetch changelog
-    const changelog = await fetchChangelog(currentVersion);
-    if (!changelog) {
-        writeLastVersion(currentVersion);
-        return;
-    }
+    // Chain previousVersion through the generated versions so the version-update
+    // widget can walk the history correctly. The first entry's previousVersion
+    // is the stored lastVersion; each subsequent entry chains off its predecessor.
+    let previousVersion = lastVersionStr;
+    for (const version of versionsToGenerate) {
+        // Idempotent: skip versions that already have tip files
+        if (readTipFile(version, settings)) {
+            previousVersion = version;
+            continue;
+        }
 
-    // Generate tips
-    const tips = await generateTips(changelog, settings);
-    if (tips.length > 0) {
-        const tipFile: TipFile = {
-            version: currentVersion,
-            previousVersion,
-            generatedAt: new Date().toISOString(),
-            tips,
-            changelog
-        };
-        writeTipFile(tipFile, settings);
+        const changelog = await fetchChangelog(version);
+        if (!changelog) {
+            // One version failing shouldn't abort the chain — the next release
+            // may still have a valid changelog. We intentionally do not update
+            // previousVersion here so the next generated tipFile links back
+            // to the most recent version that actually produced tips.
+            continue;
+        }
+
+        const tips = await generateTips(changelog, settings);
+        if (tips.length > 0) {
+            const tipFile: TipFile = {
+                version,
+                previousVersion,
+                generatedAt: new Date().toISOString(),
+                tips,
+                changelog
+            };
+            writeTipFile(tipFile, settings);
+            previousVersion = version;
+        }
     }
 
     writeLastVersion(currentVersion);

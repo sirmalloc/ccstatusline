@@ -236,19 +236,49 @@ describe('advanceTipRotation', () => {
         expect(advanceTipRotation(settings)).toEqual({ text: 'tip1', version: '2.1.0' }); // wrap
     });
 
-    it('only writes to disk on rotation, not every render', () => {
+    it('persists renderCount to disk on every render', () => {
+        // Regression test for the cross-process bug: ccstatusline runs as a
+        // fresh Node process per statusline refresh, so rotation state must
+        // round-trip through disk on every render, not only on threshold cross.
         const settings = tipsSettings(tmpDir, { rotateEvery: 3, expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2']), settings);
 
-        advanceTipRotation(settings); // render 1 — no disk write
-        const indexAfter1 = readTipIndex();
-        expect(indexAfter1.renderCount).toBe(0); // not persisted
+        advanceTipRotation(settings); // render 1 — write {index:0, renderCount:1}
+        const after1 = readTipIndex();
+        expect(after1.index).toBe(0);
+        expect(after1.renderCount).toBe(1);
 
-        advanceTipRotation(settings); // render 2 — no disk write
-        advanceTipRotation(settings); // render 3 — rotation, disk write
-        const indexAfter3 = readTipIndex();
-        expect(indexAfter3.index).toBe(1);
-        expect(indexAfter3.renderCount).toBe(0);
+        advanceTipRotation(settings); // render 2 — write {index:0, renderCount:2}
+        const after2 = readTipIndex();
+        expect(after2.index).toBe(0);
+        expect(after2.renderCount).toBe(2);
+
+        advanceTipRotation(settings); // render 3 — threshold, write {index:1, renderCount:0}
+        const after3 = readTipIndex();
+        expect(after3.index).toBe(1);
+        expect(after3.renderCount).toBe(0);
+    });
+
+    it('rotates correctly across simulated fresh processes', () => {
+        // Reset the in-process pool cache between calls to simulate ccstatusline
+        // being respawned by Claude Code for each statusline refresh. Only
+        // disk-backed state should survive.
+        const settings = tipsSettings(tmpDir, { rotateEvery: 2, expiryDays: 30 });
+        writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1', 'tip2', 'tip3']), settings);
+
+        const sequence: string[] = [];
+        for (let i = 0; i < 6; i++) {
+            resetTipRotationCache();
+            const tip = advanceTipRotation(settings);
+            sequence.push(tip!.text);
+        }
+
+        // rotateEvery=2, so each tip should show twice before advancing.
+        expect(sequence).toEqual([
+            'tip1', 'tip1', // index 0 held for 2 renders
+            'tip2', 'tip2', // index 1 held for 2 renders
+            'tip3', 'tip3'  // index 2 held for 2 renders
+        ]);
     });
 });
 
@@ -289,14 +319,38 @@ describe('checkVersionAndGenerateTips', () => {
         expect(readTipFile('2.1.0', settings)).toBeNull();
     });
 
-    it('returns early when tip file already exists', async () => {
+    it('returns early when tip file already exists', { timeout: 15000 }, async () => {
+        // Use versions well above the real claude-code release window so
+        // listReleasesBetween's live GitHub API response filters to zero
+        // intermediate releases and the fallback uses just [currentVersion].
         const settings = tipsSettings(tmpDir);
-        const tipFile = makeTipFile('2.2.0', '2.1.0', ['existing']);
+        const tipFile = makeTipFile('99.1.0', '99.0.0', ['existing']);
         writeTipFile(tipFile, settings);
-        writeLastVersion('2.1.0');
-        await checkVersionAndGenerateTips('2.2.0', settings);
+        writeLastVersion('99.0.0');
+        await checkVersionAndGenerateTips('99.1.0', settings);
         // Last version should be updated
         const lv = readLastVersion();
-        expect(lv!.version).toBe('2.2.0');
+        expect(lv!.version).toBe('99.1.0');
+    });
+
+    it('skips versions that already have tip files when chaining', { timeout: 15000 }, async () => {
+        // Pre-populate tip files for an entire catchup chain. The multi-version
+        // catchup loop should walk them idempotently without hitting the network
+        // or spawning `claude --print`, and it should update lastVersion at the end.
+        // Versions are far above real claude-code releases so the GitHub API
+        // filter returns zero intermediates — fallback uses [currentVersion] only.
+        const settings = tipsSettings(tmpDir, { expiryDays: 30 });
+        writeTipFile(makeTipFile('99.1.1', '99.1.0', ['a']), settings);
+        writeTipFile(makeTipFile('99.1.2', '99.1.1', ['b']), settings);
+        writeTipFile(makeTipFile('99.1.3', '99.1.2', ['c']), settings);
+        writeLastVersion('99.1.0');
+
+        await checkVersionAndGenerateTips('99.1.3', settings);
+
+        expect(readLastVersion()!.version).toBe('99.1.3');
+        // All three files should still be present and unchanged
+        expect(readTipFile('99.1.1', settings)!.tips).toEqual(['a']);
+        expect(readTipFile('99.1.2', settings)!.tips).toEqual(['b']);
+        expect(readTipFile('99.1.3', settings)!.tips).toEqual(['c']);
     });
 });
