@@ -1,7 +1,12 @@
+import * as fs from 'fs';
+
 import type { Settings } from '../types/Settings';
 import type { Widget } from '../types/Widget';
 
 import {
+    getActiveClaudeSettingsPath,
+    getClaudeLocalSettingsPath,
+    getClaudeSettingsPath,
     getExistingStatusLine,
     loadClaudeSettings,
     saveClaudeSettings
@@ -54,7 +59,28 @@ function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
 
 export async function syncWidgetHooks(settings: Settings): Promise<void> {
     const needed = getActiveHookDefs(settings);
-    const claudeSettings = await loadClaudeSettings({ logErrors: false });
+    const activePath = getActiveClaudeSettingsPath();
+
+    // Clean stale managed hooks from the non-active file to prevent duplicates
+    const globalPath = getClaudeSettingsPath();
+    const localPath = getClaudeLocalSettingsPath();
+    const nonActivePath = activePath === localPath ? globalPath : localPath;
+    if (fs.existsSync(nonActivePath)) {
+        try {
+            const otherSettings = await loadClaudeSettings({ logErrors: false, filePath: nonActivePath });
+            if (Object.keys(otherSettings).length > 0) {
+                const otherHooks = (otherSettings.hooks ?? {}) as Record<string, HookEntry[]>;
+                if (Object.values(otherHooks).some(entries => entries.some(e => e._tag === HOOK_TAG))) {
+                    stripManagedHooks(otherHooks);
+                    otherSettings.hooks = Object.keys(otherHooks).length > 0 ? otherHooks : undefined;
+                    await saveClaudeSettings(otherSettings, nonActivePath);
+                }
+            }
+        } catch { /* ignore cleanup errors */ }
+    }
+
+    // Load, strip, and re-add hooks on the active file
+    const claudeSettings = await loadClaudeSettings({ logErrors: false, filePath: activePath });
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
 
     // Remove all ccstatusline-managed hooks
@@ -63,7 +89,7 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     const statusCommand = await getExistingStatusLine();
     if (!statusCommand) {
         claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-        await saveClaudeSettings(claudeSettings);
+        await saveClaudeSettings(claudeSettings, activePath);
         return;
     }
     const hookCommand = `${statusCommand} --hook`;
@@ -82,15 +108,23 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     }
 
     claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-    await saveClaudeSettings(claudeSettings);
+    await saveClaudeSettings(claudeSettings, activePath);
 }
 
 export async function removeManagedHooks(): Promise<void> {
-    const claudeSettings = await loadClaudeSettings({ logErrors: false });
-    const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
-
-    stripManagedHooks(hooks);
-
-    claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-    await saveClaudeSettings(claudeSettings);
+    // Clean managed hooks from both settings files
+    for (const filePath of [getClaudeSettingsPath(), getClaudeLocalSettingsPath()]) {
+        if (!fs.existsSync(filePath)) {
+            continue;
+        }
+        try {
+            const claudeSettings = await loadClaudeSettings({ logErrors: false, filePath });
+            const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
+            if (Object.values(hooks).some(entries => entries.some(e => e._tag === HOOK_TAG))) {
+                stripManagedHooks(hooks);
+                claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
+                await saveClaudeSettings(claudeSettings, filePath);
+            }
+        } catch { /* ignore cleanup errors */ }
+    }
 }

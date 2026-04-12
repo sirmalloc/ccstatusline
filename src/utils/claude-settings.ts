@@ -312,14 +312,10 @@ export async function installStatusLine(useBunx = false, targetPath?: string): P
 
     await saveClaudeSettings(settings, settingsPath);
 
-    // Sync hooks — when installing to a non-default target, defer to Task 6's
-    // file-aware hook sync which will correctly target the active file.
-    if (!targetPath) {
-        const savedSettings = await loadSavedSettingsForHookSync();
-        if (savedSettings) {
-            const { syncWidgetHooks } = await import('./hooks');
-            await syncWidgetHooks(savedSettings);
-        }
+    const savedSettings = await loadSavedSettingsForHookSync();
+    if (savedSettings) {
+        const { syncWidgetHooks } = await import('./hooks');
+        await syncWidgetHooks(savedSettings);
     }
 }
 
