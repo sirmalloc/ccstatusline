@@ -379,3 +379,44 @@ describe('backup and error handling behavior', () => {
         await expect(isInstalled()).resolves.toBe(true);
     });
 });
+
+describe('file-path-aware load/save', () => {
+    it('loadClaudeSettings should load from specified filePath', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.writeFileSync(localPath, JSON.stringify({
+            statusLine: { type: 'command', command: 'local-command', padding: 0 }
+        }), 'utf-8');
+
+        const settings = await loadClaudeSettings({ filePath: localPath });
+        expect(settings.statusLine?.command).toBe('local-command');
+    });
+
+    it('loadClaudeSettings should return empty object when specified filePath does not exist', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        const settings = await loadClaudeSettings({ filePath: localPath });
+        expect(settings).toEqual({});
+    });
+
+    it('saveClaudeSettings should save to specified filePath', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        await saveClaudeSettings({
+            statusLine: { type: 'command', command: 'test-cmd', padding: 0 }
+        }, localPath);
+
+        const content = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(content.statusLine?.command).toBe('test-cmd');
+    });
+
+    it('saveClaudeSettings should create backup for specified filePath', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.writeFileSync(localPath, JSON.stringify({ existing: true }), 'utf-8');
+
+        await saveClaudeSettings({
+            statusLine: { type: 'command', command: 'new-cmd', padding: 0 }
+        }, localPath);
+
+        expect(fs.existsSync(`${localPath}.bak`)).toBe(true);
+        const backup = JSON.parse(fs.readFileSync(`${localPath}.bak`, 'utf-8')) as { existing?: boolean };
+        expect(backup.existing).toBe(true);
+    });
+});

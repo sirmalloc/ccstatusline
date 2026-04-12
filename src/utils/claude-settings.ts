@@ -109,10 +109,9 @@ export function hasLocalSettings(): boolean {
 }
 
 /**
- * Creates a backup of the current Claude settings file.
+ * Creates a backup of the given Claude settings file.
  */
-async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
-    const settingsPath = getClaudeSettingsPath();
+async function backupClaudeSettings(settingsPath: string, suffix = '.bak'): Promise<string | null> {
     const backupPath = settingsPath + suffix;
     try {
         if (fs.existsSync(settingsPath)) {
@@ -127,11 +126,11 @@ async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
     return null;
 }
 
-interface LoadClaudeSettingsOptions { logErrors?: boolean }
+interface LoadClaudeSettingsOptions { logErrors?: boolean; filePath?: string }
 
 export function loadClaudeSettingsSync(options: LoadClaudeSettingsOptions = {}): ClaudeSettings {
-    const { logErrors = true } = options;
-    const settingsPath = getClaudeSettingsPath();
+    const { logErrors = true, filePath } = options;
+    const settingsPath = filePath ?? getClaudeSettingsPath();
 
     // File doesn't exist - return empty object
     if (!fs.existsSync(settingsPath)) {
@@ -150,8 +149,8 @@ export function loadClaudeSettingsSync(options: LoadClaudeSettingsOptions = {}):
 }
 
 export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}): Promise<ClaudeSettings> {
-    const { logErrors = true } = options;
-    const settingsPath = getClaudeSettingsPath();
+    const { logErrors = true, filePath } = options;
+    const settingsPath = filePath ?? getClaudeSettingsPath();
 
     // File doesn't exist - return empty object
     if (!fs.existsSync(settingsPath)) {
@@ -170,13 +169,14 @@ export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}
 }
 
 export async function saveClaudeSettings(
-    settings: ClaudeSettings
+    settings: ClaudeSettings,
+    filePath?: string
 ): Promise<void> {
-    const settingsPath = getClaudeSettingsPath();
+    const settingsPath = filePath ?? getClaudeSettingsPath();
     const dir = path.dirname(settingsPath);
 
     // Backup settings before overwriting
-    await backupClaudeSettings();
+    await backupClaudeSettings(settingsPath);
 
     await mkdir(dir, { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
@@ -239,7 +239,7 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
 export async function installStatusLine(useBunx = false): Promise<void> {
     let settings: ClaudeSettings;
 
-    const backupPath = await backupClaudeSettings('.orig');
+    const backupPath = await backupClaudeSettings(getClaudeSettingsPath(), '.orig');
     try {
         settings = await loadClaudeSettings({ logErrors: false });
     } catch {
