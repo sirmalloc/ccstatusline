@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-
 import {
     Box,
     Text,

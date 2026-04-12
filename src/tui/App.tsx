@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import * as fs from 'fs';
 import {
     Box,
     Text,
@@ -17,8 +18,11 @@ import type { Settings } from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
 import {
     CCSTATUSLINE_COMMANDS,
+    getActiveClaudeSettingsPath,
+    getClaudeLocalSettingsPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
+    hasLocalSettings,
     installStatusLine,
     isBunxAvailable,
     isInstalled,
@@ -44,6 +48,7 @@ import { getPackageVersion } from '../utils/terminal';
 import {
     ColorMenu,
     ConfirmDialog,
+    FileTargetSelect,
     GlobalOverridesMenu,
     InstallMenu,
     ItemsEditor,
@@ -73,7 +78,8 @@ type AppScreen = 'main'
     | 'globalOverrides'
     | 'confirm'
     | 'powerline'
-    | 'install';
+    | 'install'
+    | 'fileTarget';
 
 interface ConfirmDialogState {
     message: string;
@@ -112,6 +118,13 @@ export const App: React.FC = () => {
     const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
     const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
     const [previewIsTruncated, setPreviewIsTruncated] = useState(false);
+    const [localSettingsDetected, setLocalSettingsDetected] = useState(false);
+    const [pendingInstall, setPendingInstall] = useState<{
+        command: string;
+        displayName: string;
+        useBunx: boolean;
+        targetPath?: string;
+    } | null>(null);
 
     useEffect(() => {
         // Load existing status line
@@ -124,6 +137,7 @@ export const App: React.FC = () => {
             setOriginalSettings(cloneSettings(loadedSettings));
         });
         void isInstalled().then(setIsClaudeInstalled);
+        setLocalSettingsDetected(hasLocalSettings());
 
         // Check for Powerline fonts on startup (use sync version that doesn't call execSync)
         const fontStatus = checkPowerlineFonts();
@@ -180,24 +194,39 @@ export const App: React.FC = () => {
         }
     });
 
-    const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean) => {
+    const handleInstallSelection = useCallback((command: string, displayName: string, useBunx: boolean, targetPath?: string) => {
+        const effectiveTarget = targetPath ?? getClaudeSettingsPath();
+
         void getExistingStatusLine().then((existing) => {
             const isAlreadyInstalled = isKnownCommand(existing ?? '');
             let message: string;
 
             if (existing && !isAlreadyInstalled) {
-                message = `This will modify ${getClaudeSettingsPath()}\n\nA status line is already configured: "${existing}"\nReplace it with ${command}?`;
+                message = `This will modify ${effectiveTarget}\n\nA status line is already configured: "${existing}"\nReplace it with ${command}?`;
             } else if (isAlreadyInstalled) {
-                message = `ccstatusline is already installed in ${getClaudeSettingsPath()}\nUpdate it with ${command}?`;
+                message = `ccstatusline is already installed in ${getActiveClaudeSettingsPath()}\nUpdate it with ${command} in ${effectiveTarget}?`;
             } else {
-                message = `This will modify ${getClaudeSettingsPath()} to add ccstatusline with ${displayName}.\nContinue?`;
+                message = `This will modify ${effectiveTarget} to add ccstatusline with ${displayName}.\nContinue?`;
+            }
+
+            // Warn if installing to global while local has a statusLine (install won't take effect)
+            if (targetPath !== getClaudeLocalSettingsPath() && hasLocalSettings()) {
+                try {
+                    const localContent = fs.readFileSync(getClaudeLocalSettingsPath(), 'utf-8');
+                    const localData = JSON.parse(localContent) as { statusLine?: { command?: string } };
+                    if (localData.statusLine?.command) {
+                        message += '\n\n\u26a0 settings.local.json has a statusLine entry that will take precedence over this file. The install may not take effect.';
+                    }
+                } catch {
+                    // Can't read local — skip warning
+                }
             }
 
             setConfirmDialog({
                 message,
                 cancelScreen: 'install',
                 action: async () => {
-                    await installStatusLine(useBunx);
+                    await installStatusLine(useBunx, targetPath);
                     setIsClaudeInstalled(true);
                     setExistingStatusLine(command);
                     setScreen('main');
@@ -210,13 +239,23 @@ export const App: React.FC = () => {
 
     const handleNpxInstall = useCallback(() => {
         setMenuSelections(prev => ({ ...prev, install: 0 }));
-        handleInstallSelection(CCSTATUSLINE_COMMANDS.NPM, 'npx', false);
-    }, [handleInstallSelection]);
+        if (localSettingsDetected) {
+            setPendingInstall({ command: CCSTATUSLINE_COMMANDS.NPM, displayName: 'npx', useBunx: false });
+            setScreen('fileTarget');
+        } else {
+            handleInstallSelection(CCSTATUSLINE_COMMANDS.NPM, 'npx', false);
+        }
+    }, [handleInstallSelection, localSettingsDetected]);
 
     const handleBunxInstall = useCallback(() => {
         setMenuSelections(prev => ({ ...prev, install: 1 }));
-        handleInstallSelection(CCSTATUSLINE_COMMANDS.BUNX, 'bunx', true);
-    }, [handleInstallSelection]);
+        if (localSettingsDetected) {
+            setPendingInstall({ command: CCSTATUSLINE_COMMANDS.BUNX, displayName: 'bunx', useBunx: true });
+            setScreen('fileTarget');
+        } else {
+            handleInstallSelection(CCSTATUSLINE_COMMANDS.BUNX, 'bunx', true);
+        }
+    }, [handleInstallSelection, localSettingsDetected]);
 
     const handleInstallMenuCancel = useCallback(() => {
         setMenuSelections(clearInstallMenuSelection);
@@ -231,7 +270,7 @@ export const App: React.FC = () => {
         if (isClaudeInstalled) {
             // Uninstall
             setConfirmDialog({
-                message: `This will remove ccstatusline from ${getClaudeSettingsPath()}. Continue?`,
+                message: `This will remove ccstatusline from ${getActiveClaudeSettingsPath()}. Continue?`,
                 action: async () => {
                     await uninstallStatusLine();
                     setIsClaudeInstalled(false);
@@ -493,6 +532,24 @@ export const App: React.FC = () => {
                         onSelectBunx={handleBunxInstall}
                         onCancel={handleInstallMenuCancel}
                         initialSelection={menuSelections.install}
+                        localSettingsDetected={localSettingsDetected}
+                    />
+                )}
+                {screen === 'fileTarget' && pendingInstall && (
+                    <FileTargetSelect
+                        onSelect={(targetPath) => {
+                            handleInstallSelection(
+                                pendingInstall.command,
+                                pendingInstall.displayName,
+                                pendingInstall.useBunx,
+                                targetPath
+                            );
+                            setPendingInstall(null);
+                        }}
+                        onCancel={() => {
+                            setPendingInstall(null);
+                            setScreen('install');
+                        }}
                     />
                 )}
                 {screen === 'powerline' && (

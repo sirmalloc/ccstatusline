@@ -16,6 +16,7 @@ export interface InstallMenuProps {
     onSelectBunx: () => void;
     onCancel: () => void;
     initialSelection?: number;
+    localSettingsDetected?: boolean;
 }
 
 export const InstallMenu: React.FC<InstallMenuProps> = ({
@@ -24,7 +25,8 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
     onSelectNpx,
     onSelectBunx,
     onCancel,
-    initialSelection = 0
+    initialSelection = 0,
+    localSettingsDetected = false
 }) => {
     useInput((_, key) => {
         if (key.escape) {
@@ -97,9 +99,9 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
 
             <Box marginTop={2}>
                 <Text dimColor>
-                    The selected command will be written to
-                    {' '}
-                    {getClaudeSettingsPath()}
+                    {localSettingsDetected
+                        ? 'You will be asked which settings file to target next.'
+                        : `The selected command will be written to ${getClaudeSettingsPath()}`}
                 </Text>
             </Box>
 
