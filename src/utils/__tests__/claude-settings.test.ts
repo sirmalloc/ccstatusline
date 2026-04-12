@@ -515,3 +515,33 @@ describe('dual-file detection', () => {
         await expect(getExistingStatusLine()).resolves.toBe('some-other-tool');
     });
 });
+
+describe('file-targeted installStatusLine', () => {
+    it('should install to settings.local.json when targetPath specified', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        await installStatusLine(false, localPath);
+
+        const content = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(content.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
+
+        // settings.json should not have been created
+        const globalPath = getClaudeSettingsPath();
+        expect(fs.existsSync(globalPath)).toBe(false);
+    });
+
+    it('should create .orig backup for targeted file', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.writeFileSync(localPath, JSON.stringify({ existing: 'data' }), 'utf-8');
+
+        await installStatusLine(false, localPath);
+
+        expect(fs.existsSync(`${localPath}.orig`)).toBe(true);
+        const orig = JSON.parse(fs.readFileSync(`${localPath}.orig`, 'utf-8')) as { existing?: string };
+        expect(orig.existing).toBe('data');
+    });
+
+    it('should still install to settings.json by default', async () => {
+        await installStatusLine(false);
+        expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
+    });
+});

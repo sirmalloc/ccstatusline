@@ -286,14 +286,15 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     }
 }
 
-export async function installStatusLine(useBunx = false): Promise<void> {
-    let settings: ClaudeSettings;
+export async function installStatusLine(useBunx = false, targetPath?: string): Promise<void> {
+    const settingsPath = targetPath ?? getClaudeSettingsPath();
 
-    const backupPath = await backupClaudeSettings(getClaudeSettingsPath(), '.orig');
+    const backupPath = await backupClaudeSettings(settingsPath, '.orig');
+    let settings: ClaudeSettings;
     try {
-        settings = await loadClaudeSettings({ logErrors: false });
+        settings = await loadClaudeSettings({ logErrors: false, filePath: settingsPath });
     } catch {
-        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
+        const fallbackBackupPath = `${settingsPath}.orig`;
         console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
         settings = {};
     }
@@ -309,12 +310,16 @@ export async function installStatusLine(useBunx = false): Promise<void> {
         padding: 0
     };
 
-    await saveClaudeSettings(settings);
+    await saveClaudeSettings(settings, settingsPath);
 
-    const savedSettings = await loadSavedSettingsForHookSync();
-    if (savedSettings) {
-        const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(savedSettings);
+    // Sync hooks — when installing to a non-default target, defer to Task 6's
+    // file-aware hook sync which will correctly target the active file.
+    if (!targetPath) {
+        const savedSettings = await loadSavedSettingsForHookSync();
+        if (savedSettings) {
+            const { syncWidgetHooks } = await import('./hooks');
+            await syncWidgetHooks(savedSettings);
+        }
     }
 }
 
