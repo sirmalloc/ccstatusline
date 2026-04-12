@@ -41,13 +41,15 @@ describe('CurrentWorkingDirWidget', () => {
         defaultPadding: ' ',
         inheritSeparatorColors: false,
         globalBold: false,
+        minimalistMode: false,
         powerline: {
             enabled: false,
             separators: [],
             separatorInvertBackground: [],
             startCaps: [],
             endCaps: [],
-            autoAlign: false
+            autoAlign: false,
+            continueThemeAcrossLines: false
         },
         tips: {
             enabled: true,

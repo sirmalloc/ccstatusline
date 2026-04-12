@@ -57,6 +57,7 @@ export const SettingsSchema = z.object({
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
     globalBold: z.boolean().default(false),
+    minimalistMode: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,
         separators: ['\uE0B0'],
@@ -64,7 +65,8 @@ export const SettingsSchema = z.object({
         startCaps: [],
         endCaps: [],
         theme: undefined,
-        autoAlign: false
+        autoAlign: false,
+        continueThemeAcrossLines: false
     }),
     tips: TipsSettingsSchema.default({}),
     updatemessage: z.object({

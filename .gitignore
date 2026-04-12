@@ -4,7 +4,7 @@ node_modules
 # output
 out
 dist
-docs
+typedoc
 *.tgz
 
 # code coverage

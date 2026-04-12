@@ -211,6 +211,14 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         autoAlign: !powerlineConfig.autoAlign
                     }
                 });
+            } else if ((input === 'c' || input === 'C') && powerlineConfig.enabled) {
+                onUpdate({
+                    ...settings,
+                    powerline: {
+                        ...powerlineConfig,
+                        continueThemeAcrossLines: !powerlineConfig.continueThemeAcrossLines
+                    }
+                });
             }
         }
     });
@@ -405,9 +413,20 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                 <Text dimColor> - Press (a) to toggle</Text>
                             </Box>
 
+                            <Box>
+                                <Text> Continue Theme: </Text>
+                                <Text color={powerlineConfig.continueThemeAcrossLines ? 'green' : 'red'}>
+                                    {powerlineConfig.continueThemeAcrossLines ? '✓ Enabled  ' : '✗ Disabled '}
+                                </Text>
+                                <Text dimColor> - Press (c) to toggle</Text>
+                            </Box>
+
                             <Box flexDirection='column' marginTop={1}>
                                 <Text dimColor>
                                     When enabled, global overrides are disabled and powerline separators are used
+                                </Text>
+                                <Text dimColor>
+                                    Continue Theme keeps the Powerline color sequence running across lines
                                 </Text>
                             </Box>
                         </>
