@@ -94,6 +94,21 @@ export function getClaudeSettingsPath(): string {
 }
 
 /**
+ * Gets the full path to the Claude settings.local.json file.
+ * Claude Code merges this file on top of settings.json.
+ */
+export function getClaudeLocalSettingsPath(): string {
+    return path.join(getClaudeConfigDir(), 'settings.local.json');
+}
+
+/**
+ * Checks whether a settings.local.json file exists in the Claude config directory.
+ */
+export function hasLocalSettings(): boolean {
+    return fs.existsSync(getClaudeLocalSettingsPath());
+}
+
+/**
  * Creates a backup of the current Claude settings file.
  */
 async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {

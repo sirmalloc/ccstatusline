@@ -14,8 +14,10 @@ import {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
+    getClaudeLocalSettingsPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
+    hasLocalSettings,
     installStatusLine,
     isInstalled,
     isKnownCommand,
@@ -105,6 +107,27 @@ describe('isKnownCommand', () => {
 
     it('should not match prefix that is a substring', () => {
         expect(isKnownCommand('npx -y ccstatusline@latestFOO')).toBe(false);
+    });
+});
+
+describe('local settings path helpers', () => {
+    it('getClaudeLocalSettingsPath should return settings.local.json in config dir', () => {
+        expect(getClaudeLocalSettingsPath()).toBe(
+            path.join(testClaudeConfigDir, 'settings.local.json')
+        );
+    });
+
+    it('hasLocalSettings should return false when file does not exist', () => {
+        expect(hasLocalSettings()).toBe(false);
+    });
+
+    it('hasLocalSettings should return true when file exists', () => {
+        fs.writeFileSync(
+            path.join(testClaudeConfigDir, 'settings.local.json'),
+            '{}',
+            'utf-8'
+        );
+        expect(hasLocalSettings()).toBe(true);
     });
 });
 
