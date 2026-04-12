@@ -354,6 +354,6 @@ export async function uninstallStatusLine(): Promise<void> {
     }
 }
 
-export async function getExistingStatusLine(): Promise<string | null> {
-    return resolveStatusLine().command;
+export function getExistingStatusLine(): Promise<string | null> {
+    return Promise.resolve(resolveStatusLine().command);
 }

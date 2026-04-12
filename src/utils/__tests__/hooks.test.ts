@@ -133,7 +133,7 @@ describe('syncWidgetHooks', () => {
         if (fs.existsSync(globalPath)) {
             const globalSaved = JSON.parse(fs.readFileSync(globalPath, 'utf-8')) as { hooks?: Record<string, unknown[]> };
             const hasManagedHooks = Object.values(globalSaved.hooks ?? {}).some(
-                (entries: unknown[]) => (entries as Array<{ _tag?: string }>).some(e => e._tag === 'ccstatusline-managed')
+                (entries: unknown[]) => (entries as { _tag?: string }[]).some(e => e._tag === 'ccstatusline-managed')
             );
             expect(hasManagedHooks).toBe(false);
         }
