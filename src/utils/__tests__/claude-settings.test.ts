@@ -14,6 +14,7 @@ import {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
+    getActiveClaudeSettingsPath,
     getClaudeLocalSettingsPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
@@ -41,6 +42,11 @@ function writeRawClaudeSettings(content: string): void {
     const settingsPath = getClaudeSettingsPath();
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, content, 'utf-8');
+}
+
+function writeLocalClaudeSettings(content: string): void {
+    const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+    fs.writeFileSync(localPath, content, 'utf-8');
 }
 
 beforeEach(() => {
@@ -418,5 +424,94 @@ describe('file-path-aware load/save', () => {
         expect(fs.existsSync(`${localPath}.bak`)).toBe(true);
         const backup = JSON.parse(fs.readFileSync(`${localPath}.bak`, 'utf-8')) as { existing?: boolean };
         expect(backup.existing).toBe(true);
+    });
+});
+
+describe('dual-file detection', () => {
+    it('isInstalled should detect installation in settings.local.json', async () => {
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        await expect(isInstalled()).resolves.toBe(true);
+    });
+
+    it('isInstalled should prefer local over global', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'other-command', padding: 0 }
+        }));
+        // Local has non-ccstatusline command, so isInstalled should be false
+        await expect(isInstalled()).resolves.toBe(false);
+    });
+
+    it('isInstalled should fall back to global when local has no statusLine', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({}));
+        await expect(isInstalled()).resolves.toBe(true);
+    });
+
+    it('getExistingStatusLine should return command from local first', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'global-command' }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'local-command' }
+        }));
+        await expect(getExistingStatusLine()).resolves.toBe('local-command');
+    });
+
+    it('getExistingStatusLine should fall back to global', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'global-command' }
+        }));
+        await expect(getExistingStatusLine()).resolves.toBe('global-command');
+    });
+
+    it('getActiveClaudeSettingsPath should return local path when local has statusLine', () => {
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'local-command' }
+        }));
+        expect(getActiveClaudeSettingsPath()).toBe(
+            path.join(testClaudeConfigDir, 'settings.local.json')
+        );
+    });
+
+    it('getActiveClaudeSettingsPath should return global path when local has no statusLine', () => {
+        writeLocalClaudeSettings(JSON.stringify({}));
+        expect(getActiveClaudeSettingsPath()).toBe(
+            path.join(testClaudeConfigDir, 'settings.json')
+        );
+    });
+
+    it('getActiveClaudeSettingsPath should return global path when no local file', () => {
+        expect(getActiveClaudeSettingsPath()).toBe(
+            path.join(testClaudeConfigDir, 'settings.json')
+        );
+    });
+
+    it('should fall through to global when local file is malformed JSON', async () => {
+        writeLocalClaudeSettings('{ invalid json');
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        await expect(isInstalled()).resolves.toBe(true);
+        await expect(getExistingStatusLine()).resolves.toBe(CCSTATUSLINE_COMMANDS.NPM);
+    });
+
+    it('should treat ccstatusline as inactive when local has a different statusLine', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'some-other-tool' }
+        }));
+        // Local wins — and local is not ccstatusline
+        await expect(isInstalled()).resolves.toBe(false);
+        // But getExistingStatusLine returns whatever is effective
+        await expect(getExistingStatusLine()).resolves.toBe('some-other-tool');
     });
 });

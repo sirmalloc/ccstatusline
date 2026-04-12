@@ -109,6 +109,53 @@ export function hasLocalSettings(): boolean {
 }
 
 /**
+ * Private resolver — single source of truth for dual-file statusLine precedence.
+ * Checks settings.local.json first (matching Claude Code's merge semantics),
+ * falls back to settings.json.
+ */
+interface ResolvedStatusLine {
+    command: string | null;
+    sourcePath: string;
+    isLocal: boolean;
+}
+
+function resolveStatusLine(): ResolvedStatusLine {
+    const localPath = getClaudeLocalSettingsPath();
+    if (fs.existsSync(localPath)) {
+        try {
+            const content = fs.readFileSync(localPath, 'utf-8');
+            const data = JSON.parse(content) as ClaudeSettings;
+            if (data.statusLine?.command) {
+                return { command: data.statusLine.command, sourcePath: localPath, isLocal: true };
+            }
+        } catch {
+            // Malformed local file — fall through to global
+        }
+    }
+    // Check global file
+    const globalPath = getClaudeSettingsPath();
+    if (fs.existsSync(globalPath)) {
+        try {
+            const content = fs.readFileSync(globalPath, 'utf-8');
+            const data = JSON.parse(content) as ClaudeSettings;
+            if (data.statusLine?.command) {
+                return { command: data.statusLine.command, sourcePath: globalPath, isLocal: false };
+            }
+        } catch {
+            // fall through
+        }
+    }
+    return { command: null, sourcePath: globalPath, isLocal: false };
+}
+
+/**
+ * Returns the path to the Claude settings file that currently contains a statusLine entry.
+ */
+export function getActiveClaudeSettingsPath(): string {
+    return resolveStatusLine().sourcePath;
+}
+
+/**
  * Creates a backup of the given Claude settings file.
  */
 async function backupClaudeSettings(settingsPath: string, suffix = '.bak'): Promise<string | null> {
@@ -183,20 +230,23 @@ export async function saveClaudeSettings(
 }
 
 export async function isInstalled(): Promise<boolean> {
-    let settings: ClaudeSettings;
-
-    try {
-        settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        return false; // Can't determine if installed, assume not
+    const resolved = resolveStatusLine();
+    if (!resolved.command) {
+        return false;
     }
-    const command = settings.statusLine?.command ?? '';
 
-    return (
-        isKnownCommand(command)
-        && (settings.statusLine?.padding === 0
-            || settings.statusLine?.padding === undefined)
-    );
+    // Load the full settings from the resolved file to check padding
+    try {
+        const settings = await loadClaudeSettings({ logErrors: false, filePath: resolved.sourcePath });
+        const command = settings.statusLine?.command ?? '';
+        return (
+            isKnownCommand(command)
+            && (settings.statusLine?.padding === 0
+                || settings.statusLine?.padding === undefined)
+        );
+    } catch {
+        return false;
+    }
 }
 
 export function isBunxAvailable(): boolean {
@@ -292,10 +342,5 @@ export async function uninstallStatusLine(): Promise<void> {
 }
 
 export async function getExistingStatusLine(): Promise<string | null> {
-    try {
-        const settings = await loadClaudeSettings({ logErrors: false });
-        return settings.statusLine?.command ?? null;
-    } catch {
-        return null; // Can't read settings, return null
-    }
+    return resolveStatusLine().command;
 }
