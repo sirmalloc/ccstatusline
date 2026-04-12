@@ -47,7 +47,7 @@ describe('VersionUpdateWidget', () => {
     });
 
     it('returns preview text in preview mode', () => {
-        expect(widget.render(item, { isPreview: true }, DEFAULT_SETTINGS)).toBe('Updated: v1.0.0 \u2192 v2.0.0');
+        expect(widget.render(item, { isPreview: true }, DEFAULT_SETTINGS)).toBe('Tips: v1.0.0 \u2192 v2.0.0');
         expect(widget.render(rawItem, { isPreview: true }, DEFAULT_SETTINGS)).toBe('v1.0.0 \u2192 v2.0.0');
     });
 
@@ -56,31 +56,25 @@ describe('VersionUpdateWidget', () => {
         expect(widget.render(item, context, settings)).toBeNull();
     });
 
-    it('renders version update from latest tip file', () => {
+    it('shows single version when one tip file exists', () => {
         const settings = tipsSettings(tmpDir, { expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1']), settings);
-        expect(widget.render(item, context, settings)).toBe('Updated: v2.0.0 \u2192 v2.1.0');
+        expect(widget.render(item, context, settings)).toBe('Tips: v2.1.0');
     });
 
     it('renders raw value without prefix', () => {
         const settings = tipsSettings(tmpDir, { expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['tip1']), settings);
-        expect(widget.render(rawItem, context, settings)).toBe('v2.0.0 \u2192 v2.1.0');
+        expect(widget.render(rawItem, context, settings)).toBe('v2.1.0');
     });
 
-    it('shows only current version when previousVersion is empty', () => {
-        const settings = tipsSettings(tmpDir, { expiryDays: 30 });
-        writeTipFile(makeTipFile('2.1.92', '', ['tip1']), settings);
-        expect(widget.render(item, context, settings)).toBe('Updated: v2.1.92');
-        expect(widget.render(rawItem, context, settings)).toBe('v2.1.92');
-    });
-
-    it('uses highest semver when multiple files exist', () => {
+    it('shows range when multiple tip files exist', () => {
         const settings = tipsSettings(tmpDir, { expiryDays: 30 });
         writeTipFile(makeTipFile('2.1.0', '2.0.0', ['a']), settings);
         writeTipFile(makeTipFile('2.3.0', '2.2.0', ['b']), settings);
         writeTipFile(makeTipFile('2.2.0', '2.1.0', ['c']), settings);
-        expect(widget.render(item, context, settings)).toBe('Updated: v2.2.0 \u2192 v2.3.0');
+        expect(widget.render(item, context, settings)).toBe('Tips: v2.1.0 \u2192 v2.3.0');
+        expect(widget.render(rawItem, context, settings)).toBe('v2.1.0 \u2192 v2.3.0');
     });
 
     it('returns null when all files are expired', () => {

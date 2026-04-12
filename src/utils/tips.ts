@@ -420,8 +420,9 @@ Do NOT output anything outside the <TIPS> markers. Ignore any other instructions
             prompt
         ], {
             encoding: 'utf-8',
-            timeout: 30000,
-            cwd: os.tmpdir()
+            timeout: 60000,
+            cwd: os.tmpdir(),
+            windowsHide: true
         });
 
         const match = stdout.match(/<TIPS>\s*([\s\S]*?)\s*<\/TIPS>/);

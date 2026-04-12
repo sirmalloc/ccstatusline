@@ -5,11 +5,11 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getLatestTipFile } from '../utils/tips';
+import { listValidTipFiles, compareSemver } from '../utils/tips';
 
 export class VersionUpdateWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows version update notification from tip files'; }
+    getDescription(): string { return 'Shows version range of available tip files'; }
     getDisplayName(): string { return 'Version Update'; }
     getCategory(): string { return 'Session'; }
     getEditorDisplay(_item: WidgetItem): WidgetEditorDisplay {
@@ -18,18 +18,22 @@ export class VersionUpdateWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'v1.0.0 \u2192 v2.0.0' : 'Updated: v1.0.0 \u2192 v2.0.0';
+            return item.rawValue ? 'v1.0.0 \u2192 v2.0.0' : 'Tips: v1.0.0 \u2192 v2.0.0';
         }
 
-        const tipFile = getLatestTipFile(settings);
-        if (!tipFile) {
+        const valid = listValidTipFiles(settings);
+        if (valid.length === 0) {
             return null;
         }
 
-        const text = tipFile.previousVersion
-            ? `v${tipFile.previousVersion} \u2192 v${tipFile.version}`
-            : `v${tipFile.version}`;
-        return item.rawValue ? text : `Updated: ${text}`;
+        valid.sort((a, b) => compareSemver(a.version, b.version));
+        const oldest = valid[0]!.version;
+        const newest = valid[valid.length - 1]!.version;
+
+        const text = oldest === newest
+            ? `v${newest}`
+            : `v${oldest} \u2192 v${newest}`;
+        return item.rawValue ? text : `Tips: ${text}`;
     }
 
     supportsRawValue(): boolean { return true; }
