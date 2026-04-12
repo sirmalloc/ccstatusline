@@ -545,3 +545,86 @@ describe('file-targeted installStatusLine', () => {
         expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
 });
+
+describe('dual-file uninstallStatusLine', () => {
+    it('should remove statusLine from settings.local.json', async () => {
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+
+        await uninstallStatusLine();
+
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        const content = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: unknown };
+        expect(content.statusLine).toBeUndefined();
+    });
+
+    it('should remove statusLine from both files when both have it', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.BUNX, padding: 0 }
+        }));
+
+        await uninstallStatusLine();
+
+        const globalContent = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { statusLine?: unknown };
+        expect(globalContent.statusLine).toBeUndefined();
+
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        const localContent = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: unknown };
+        expect(localContent.statusLine).toBeUndefined();
+    });
+
+    it('should not error when local file does not exist', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+
+        await expect(uninstallStatusLine()).resolves.toBeUndefined();
+
+        const content = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { statusLine?: unknown };
+        expect(content.statusLine).toBeUndefined();
+    });
+
+    it('should preserve non-ccstatusline statusLine in settings.json', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'company-managed-tool', padding: 0 }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+
+        await uninstallStatusLine();
+
+        // Our entry in local should be removed
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        const localContent = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: unknown };
+        expect(localContent.statusLine).toBeUndefined();
+
+        // Company's entry in global should survive
+        const globalContent = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { statusLine?: { command?: string } };
+        expect(globalContent.statusLine?.command).toBe('company-managed-tool');
+    });
+
+    it('should preserve non-ccstatusline statusLine in settings.local.json', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
+        }));
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: { type: 'command', command: 'user-custom-tool' }
+        }));
+
+        await uninstallStatusLine();
+
+        // Our entry in global should be removed
+        const globalContent = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { statusLine?: unknown };
+        expect(globalContent.statusLine).toBeUndefined();
+
+        // User's custom entry in local should survive
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        const localContent = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(localContent.statusLine?.command).toBe('user-custom-tool');
+    });
+});

@@ -324,20 +324,32 @@ export async function installStatusLine(useBunx = false, targetPath?: string): P
 }
 
 export async function uninstallStatusLine(): Promise<void> {
-    let settings: ClaudeSettings;
-
+    // Remove from settings.json — only if it's ours
     try {
-        settings = await loadClaudeSettings({ logErrors: false });
+        const settings = await loadClaudeSettings({ logErrors: false });
+        if (settings.statusLine?.command && isKnownCommand(settings.statusLine.command)) {
+            delete settings.statusLine;
+            await saveClaudeSettings(settings);
+        }
     } catch {
         console.error('Warning: Could not read existing Claude settings.');
-        return; // if we can't read, return... what are we uninstalling?
     }
 
-    if (settings.statusLine) {
-        delete settings.statusLine;
-        await saveClaudeSettings(settings);
+    // Also remove from settings.local.json — only if it's ours
+    const localPath = getClaudeLocalSettingsPath();
+    if (fs.existsSync(localPath)) {
+        try {
+            const localSettings = await loadClaudeSettings({ logErrors: false, filePath: localPath });
+            if (localSettings.statusLine?.command && isKnownCommand(localSettings.statusLine.command)) {
+                delete localSettings.statusLine;
+                await saveClaudeSettings(localSettings, localPath);
+            }
+        } catch {
+            // Ignore errors with local file during uninstall
+        }
     }
 
+    // Clean managed hooks from both files (stripManagedHooks already only removes _tag: ccstatusline-managed)
     try {
         const { removeManagedHooks } = await import('./hooks');
         await removeManagedHooks();
