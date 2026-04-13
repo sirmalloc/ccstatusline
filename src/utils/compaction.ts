@@ -4,6 +4,7 @@ import {
     readFileSync,
     writeFileSync
 } from 'node:fs';
+import * as os from 'node:os';
 import { join } from 'node:path';
 
 import { z } from 'zod';
@@ -26,7 +27,8 @@ const CompactionStateSchema = z.object({
  *
  * Context only grows until compaction — any drop in used_percentage beyond
  * the threshold indicates Claude Code compacted the conversation. The threshold
- * filters rounding noise and cache accounting wobble (±1 point).
+ * filters rounding noise and cache accounting wobble — a drop must exceed
+ * the threshold (default: more than 2 points) to count.
  *
  * @param currentCtxPct - Current used_percentage from StatusJSON
  * @param state - Previous compaction state
@@ -49,12 +51,16 @@ export function detectCompaction(
 }
 
 function getCacheDir(): string {
-    const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
     return join(home, '.cache', 'ccstatusline', CACHE_SUBDIR);
 }
 
+function sanitizeSessionId(sessionId: string): string {
+    return sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 function getStatePath(sessionId: string): string {
-    return join(getCacheDir(), `compaction-${sessionId}.json`);
+    return join(getCacheDir(), `compaction-${sanitizeSessionId(sessionId)}.json`);
 }
 
 /**
@@ -77,9 +83,13 @@ export function loadCompactionState(sessionId: string): CompactionState {
  * Save compaction state for a session.
  */
 export function saveCompactionState(sessionId: string, state: CompactionState): void {
-    const dir = getCacheDir();
-    if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
+    try {
+        const dir = getCacheDir();
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+        }
+        writeFileSync(getStatePath(sessionId), JSON.stringify(state) + '\n');
+    } catch {
+        // Best-effort — cache write failure should not break status line rendering
     }
-    writeFileSync(getStatePath(sessionId), JSON.stringify(state) + '\n');
 }

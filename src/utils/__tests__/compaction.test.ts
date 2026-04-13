@@ -1,4 +1,9 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
@@ -6,6 +11,8 @@ import {
 
 import {
     detectCompaction,
+    loadCompactionState,
+    saveCompactionState,
     type CompactionState
 } from '../compaction';
 
@@ -77,5 +84,54 @@ describe('detectCompaction', () => {
         // 1-point drop with threshold=1 should detect
         const result = detectCompaction(8, prev, 1);
         expect(result.count).toBe(1);
+    });
+});
+
+describe('persistence', () => {
+    let testCacheDir: string;
+    const origHome = process.env.HOME;
+
+    beforeEach(() => {
+        testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compaction-test-'));
+        process.env.HOME = testCacheDir;
+    });
+
+    afterEach(() => {
+        process.env.HOME = origHome;
+        fs.rmSync(testCacheDir, { recursive: true, force: true });
+    });
+
+    it('round-trips state through save and load', () => {
+        const state: CompactionState = { count: 5, prevCtxPct: 42 };
+        saveCompactionState('test-session', state);
+        const loaded = loadCompactionState('test-session');
+        expect(loaded).toEqual(state);
+    });
+
+    it('returns fresh state for unknown session', () => {
+        const loaded = loadCompactionState('nonexistent');
+        expect(loaded).toEqual({ count: 0, prevCtxPct: 0 });
+    });
+
+    it('sanitizes path traversal in session ID', () => {
+        const malicious = '../../../../../../tmp/pwn';
+        saveCompactionState(malicious, { count: 1, prevCtxPct: 50 });
+
+        // File should be inside the cache dir, not at /tmp/pwn
+        const cacheDir = path.join(testCacheDir, '.cache', 'ccstatusline', 'compaction');
+        const files = fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : [];
+        expect(files.length).toBe(1);
+        expect(files[0]).toMatch(/^compaction-[a-zA-Z0-9_-]+\.json$/);
+
+        // /tmp/pwn.json should not exist
+        expect(fs.existsSync('/tmp/pwn.json')).toBe(false);
+    });
+
+    it('does not throw on write failure', () => {
+        // Point HOME at a non-writable path
+        process.env.HOME = '/nonexistent/readonly';
+        expect(() => {
+            saveCompactionState('test', { count: 1, prevCtxPct: 50 });
+        }).not.toThrow();
     });
 });
