@@ -15,6 +15,7 @@ export type UsageDisplayMode = 'time' | 'progress' | 'progress-short';
 const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
 const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
+const THRESHOLD_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)hreshold colors', action: 'toggle-threshold' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
@@ -63,6 +64,10 @@ export function getUsageDisplayModifierText(
         modifiers.push('inverted');
     }
 
+    if (isUsageProgressMode(mode) && !isThresholdColorsEnabled(item)) {
+        modifiers.push('no threshold');
+    }
+
     if (options.includeCompact && !isUsageProgressMode(mode) && isUsageCompact(item)) {
         modifiers.push('compact');
     }
@@ -96,11 +101,28 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
+export function isThresholdColorsEnabled(item: WidgetItem): boolean {
+    // Threshold colors are ON by default (no entry or any value other than 'false')
+    return item.metadata?.thresholdColors !== 'false';
+}
+
+export function toggleThresholdColors(item: WidgetItem): WidgetItem {
+    const enabled = isThresholdColorsEnabled(item);
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            thresholdColors: enabled ? 'false' : 'true'
+        }
+    };
+}
+
 export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
     const keybinds = [PROGRESS_TOGGLE_KEYBIND];
 
     if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
         keybinds.push(INVERT_TOGGLE_KEYBIND);
+        keybinds.push(THRESHOLD_TOGGLE_KEYBIND);
     }
 
     return keybinds;
