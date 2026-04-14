@@ -206,4 +206,42 @@ describe('ThinkingEffortWidget', () => {
             expect(result).toBe('Thinking: medium');
         });
     });
+
+    describe('getDiscreteValues()', () => {
+        it('returns all thinking effort levels', () => {
+            const widget = new ThinkingEffortWidget();
+            expect(widget.getDiscreteValues()).toEqual(['low', 'medium', 'high', 'max']);
+        });
+    });
+
+    describe('getEffectiveColor()', () => {
+        const baseItem: WidgetItem = { id: 'thinking-effort', type: 'thinking-effort' };
+
+        it('returns null when colorMode is not dynamic', () => {
+            const widget = new ThinkingEffortWidget();
+            const ctx: RenderContext = { isPreview: true };
+            expect(widget.getEffectiveColor(ctx, baseItem)).toBeNull();
+        });
+
+        it('returns default color for effort level in dynamic mode', () => {
+            const widget = new ThinkingEffortWidget();
+            const item: WidgetItem = {
+                ...baseItem,
+                metadata: { colorMode: 'dynamic' }
+            };
+            // Preview always shows 'high'
+            const ctx: RenderContext = { isPreview: true };
+            expect(widget.getEffectiveColor(ctx, item)).toBe('brightRed');
+        });
+
+        it('returns mapped color from colorMap metadata', () => {
+            const widget = new ThinkingEffortWidget();
+            const item: WidgetItem = {
+                ...baseItem,
+                metadata: { 'colorMode': 'dynamic', 'colorMap:high': 'cyan' }
+            };
+            const ctx: RenderContext = { isPreview: true };
+            expect(widget.getEffectiveColor(ctx, item)).toBe('cyan');
+        });
+    });
 });

@@ -2,6 +2,7 @@ import chalk from 'chalk';
 
 import type {
     RenderContext,
+    Widget,
     WidgetItem
 } from '../types';
 import { getColorLevelString } from '../types/ColorLevel';
@@ -21,6 +22,22 @@ import {
 import { calculateContextPercentage } from './context-percentage';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
+
+// Resolve the foreground color for a widget, checking dynamic color first
+function resolveWidgetFgColor(
+    widget: WidgetItem,
+    widgetImpl: Widget | null | undefined,
+    context: RenderContext
+): string {
+    if (widgetImpl?.getEffectiveColor) {
+        const dynamicColor = widgetImpl.getEffectiveColor(context, widget);
+        if (dynamicColor) {
+            return dynamicColor;
+        }
+    }
+    const defaultColor = widgetImpl?.getDefaultColor() ?? 'white';
+    return widget.color ?? defaultColor;
+}
 
 // Helper function to format token counts
 export function formatTokens(count: number): string {
@@ -146,7 +163,6 @@ function renderPowerlineStatusLine(
         if (!widget)
             continue;
         let widgetText = '';
-        let defaultColor = 'white';
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator' || widget.type === 'flex-separator') {
@@ -160,10 +176,6 @@ function renderPowerlineStatusLine(
         const widgetImpl = getWidget(widget.type);
         if (preRendered?.content) {
             widgetText = preRendered.content;
-            // Get default color from widget impl for consistency
-            if (widgetImpl) {
-                defaultColor = widgetImpl.getDefaultColor();
-            }
         }
 
         if (widgetText) {
@@ -189,7 +201,7 @@ function renderPowerlineStatusLine(
             const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
 
             // Determine colors
-            let fgColor = widget.color ?? defaultColor;
+            let fgColor = resolveWidgetFgColor(widget, widgetImpl, context);
             let bgColor = widget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
@@ -721,17 +733,12 @@ export function renderStatusLine(
         // Use widget registry for regular widgets
         try {
             let widgetText: string | undefined;
-            let defaultColor = 'white';
+            const widgetImpl = getWidget(widget.type);
 
             // Use pre-rendered content
             const preRendered = preRenderedWidgets[i];
             if (preRendered?.content) {
                 widgetText = preRendered.content;
-                // Get default color from widget impl for consistency
-                const widgetImpl = getWidget(widget.type);
-                if (widgetImpl) {
-                    defaultColor = widgetImpl.getDefaultColor();
-                }
             }
 
             if (widgetText) {
@@ -749,8 +756,9 @@ export function renderStatusLine(
                     elements.push({ content: finalOutput, type: widget.type, widget });
                 } else {
                     // Normal widget rendering with colors
+                    const fgColor = resolveWidgetFgColor(widget, widgetImpl, context);
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, fgColor, widget.backgroundColor, widget.bold),
                         type: widget.type,
                         widget
                     });

@@ -447,3 +447,30 @@ export function getPowerlineTheme(name: string): PowerlineTheme | undefined {
 export function getDefaultPowerlineTheme(): string {
     return 'nord-aurora';
 }
+
+// Palette of visually distinct colors for discrete value mapping (excludes black/white/gray)
+export const DISCRETE_COLOR_PALETTE: string[] = [
+    'red', 'green', 'yellow', 'blue', 'magenta', 'cyan',
+    'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan'
+];
+
+export function getThresholdColor(percent: number, lowThreshold = 50, highThreshold = 80): string {
+    if (percent < lowThreshold) {
+        return 'green';
+    }
+    if (percent < highThreshold) {
+        return 'yellow';
+    }
+    return 'red';
+}
+
+export function hashStringToColor(value: string, palette: string[]): string {
+    // Strip version/numeric suffixes to get the model family
+    const family = value.replace(/[-\s]*\d[\d.-]*/g, '').trim().toLowerCase();
+    let hash = 5381;
+    for (const char of family) {
+        hash = ((hash << 5) + hash + char.charCodeAt(0)) | 0;
+    }
+    const index = Math.abs(hash) % palette.length;
+    return palette[index] ?? 'cyan';
+}
