@@ -49,7 +49,26 @@ export interface Widget {
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
-    getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
+    /**
+     * Declares the value type this widget provides for rule evaluation.
+     * If not implemented, the widget has no evaluable value and will fall back to string extraction from rendered output.
+     *
+     * IMPORTANT: The return type of getValue() must align with what getValueType() declares:
+     * - If getValueType() returns 'number', getValue() must return number | null
+     * - If getValueType() returns 'string', getValue() must return string | null
+     * - If getValueType() returns 'boolean', getValue() must return boolean | null
+     *
+     * This is a convention that must be followed by implementations, though not enforced by TypeScript
+     * (since getValue()'s return type is a union of all possible value types).
+     */
+    getValueType?(): 'string' | 'number' | 'boolean';
+    /**
+     * Extracts the typed value from this widget for rule evaluation.
+     * Returns null if the widget cannot provide a value in the current context.
+     *
+     * The returned type MUST match what getValueType() declares (see getValueType documentation).
+     */
+    getValue?(context: RenderContext, item: WidgetItem): number | string | boolean | null;
 }
 
 export interface WidgetEditorProps {

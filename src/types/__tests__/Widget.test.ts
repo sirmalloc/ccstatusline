@@ -84,4 +84,91 @@ describe('WidgetItemSchema', () => {
             expect(result.data.rules?.[0]?.stop).toBeUndefined();
         }
     });
+
+    test('accepts rule with numeric comparison for number-valued widgets', () => {
+        const widget = {
+            id: 'test-5',
+            type: 'context-percentage',
+            color: 'white',
+            rules: [
+                {
+                    when: { greaterThan: 75, lessThanOrEqual: 100 },
+                    apply: { color: 'red', bold: true }
+                }
+            ]
+        };
+
+        const result = WidgetItemSchema.safeParse(widget);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.rules?.[0]?.when.greaterThan).toBe(75);
+            expect(result.data.rules?.[0]?.when.lessThanOrEqual).toBe(100);
+        }
+    });
+
+    test('accepts rule with string comparison for string-valued widgets', () => {
+        const widget = {
+            id: 'test-6',
+            type: 'git-branch',
+            color: 'cyan',
+            rules: [
+                {
+                    when: { equals: 'main' },
+                    apply: { color: 'green', bold: true }
+                },
+                {
+                    when: { contains: 'feature/' },
+                    apply: { color: 'blue' }
+                }
+            ]
+        };
+
+        const result = WidgetItemSchema.safeParse(widget);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.rules?.[0]?.when.equals).toBe('main');
+            expect(result.data.rules?.[1]?.when.contains).toBe('feature/');
+        }
+    });
+
+    test('accepts rule with boolean comparison for boolean-valued widgets', () => {
+        const widget = {
+            id: 'test-7',
+            type: 'git-changes',
+            color: 'yellow',
+            rules: [
+                {
+                    when: { equals: true },
+                    apply: { color: 'red', bold: true }
+                }
+            ]
+        };
+
+        const result = WidgetItemSchema.safeParse(widget);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.rules?.[0]?.when.equals).toBe(true);
+        }
+    });
+
+    test('accepts rule with negation flag', () => {
+        const widget = {
+            id: 'test-8',
+            type: 'git-branch',
+            color: 'cyan',
+            rules: [
+                {
+                    when: { equals: 'main', not: true },
+                    apply: { color: 'yellow' }
+                }
+            ]
+        };
+
+        const result = WidgetItemSchema.safeParse(widget);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.rules?.[0]?.when.equals).toBe('main');
+            expect(result.data.rules?.[0]?.when.not).toBe(true);
+        }
+    });
 });
