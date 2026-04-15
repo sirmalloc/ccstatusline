@@ -13,11 +13,16 @@ import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 const TTL_SECONDS = 300;
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
 
+interface TranscriptEntry {
+    type?: string;
+    timestamp?: string;
+}
+
 /**
  * Read the last N bytes of a file and return as string.
  * Avoids loading large transcript files entirely.
  */
-function readFileTail(filePath: string, bytes: number = 32768): string {
+function readFileTail(filePath: string, bytes = 32768): string {
     try {
         const fd = fs.openSync(filePath, 'r');
         const stat = fs.fstatSync(fd);
@@ -34,27 +39,35 @@ function readFileTail(filePath: string, bytes: number = 32768): string {
 }
 
 /**
- * Find the timestamp of the last assistant message in the transcript.
- * Returns null if not found.
+ * Find the last user/assistant entry in the transcript.
+ * Returns { isWorking: true } when the last entry is a user message (Claude is processing).
+ * Returns { isWorking: false, lastAssistant: Date } when the last entry is an assistant message.
  */
-function getLastAssistantTimestamp(transcriptPath: string): Date | null {
+function getTranscriptState(transcriptPath: string): { isWorking: true } | { isWorking: false; lastAssistant: Date | null } {
     const tail = readFileTail(transcriptPath);
-    if (!tail) return null;
+    if (!tail) {
+        return { isWorking: false, lastAssistant: null };
+    }
 
     const lines = tail.split('\n').reverse();
     for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (!trimmed) {
+            continue;
+        }
         try {
-            const entry = JSON.parse(trimmed);
+            const entry = JSON.parse(trimmed) as TranscriptEntry;
+            if (entry.type === 'user') {
+                return { isWorking: true };
+            }
             if (entry.type === 'assistant' && entry.timestamp) {
-                return new Date(entry.timestamp);
+                return { isWorking: false, lastAssistant: new Date(entry.timestamp) };
             }
         } catch {
             continue;
         }
     }
-    return null;
+    return { isWorking: false, lastAssistant: null };
 }
 
 function getRemainingSeconds(lastAssistant: Date): number {
@@ -63,17 +76,25 @@ function getRemainingSeconds(lastAssistant: Date): number {
 }
 
 function formatCountdown(remaining: number): string {
-    if (remaining <= 0) return 'COLD';
+    if (remaining <= 0) {
+        return 'COLD';
+    }
     const m = Math.floor(remaining / 60);
     const s = Math.floor(remaining % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function getIcon(remaining: number): string {
-    if (remaining <= 0) return '❄️';
+    if (remaining <= 0) {
+        return '❄️';
+    }
     const pct = remaining / (TTL_SECONDS - SAFETY_MARGIN);
-    if (pct > 0.5) return '🟢';
-    if (pct > 0.2) return '🟡';
+    if (pct > 0.5) {
+        return '🟢';
+    }
+    if (pct > 0.2) {
+        return '🟡';
+    }
     return '🔴';
 }
 
@@ -93,10 +114,20 @@ export class CacheTimerWidget implements Widget {
         }
 
         const transcriptPath = context.data?.transcript_path;
-        if (!transcriptPath) return null;
+        if (!transcriptPath) {
+            return null;
+        }
 
-        const lastAssistant = getLastAssistantTimestamp(transcriptPath);
-        if (!lastAssistant) return null;
+        const state = getTranscriptState(transcriptPath);
+
+        if (state.isWorking) {
+            return formatRawOrLabeledValue(item, 'Cache: ', '🔥 HOT');
+        }
+
+        const { lastAssistant } = state;
+        if (!lastAssistant) {
+            return null;
+        }
 
         const remaining = getRemainingSeconds(lastAssistant);
         const icon = getIcon(remaining);
