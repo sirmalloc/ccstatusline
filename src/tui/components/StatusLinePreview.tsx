@@ -26,10 +26,10 @@ function createPreviewContextData(): RenderContext['data'] {
     return {
         context_window: {
             context_window_size: 200000,
-            total_input_tokens: 18600,  // Results in ~9.3% used
+            total_input_tokens: 18600,  // 18600/200000 = 9.3% (used by context-percentage widget)
             total_output_tokens: 0,
             current_usage: 18600,
-            used_percentage: 11.6,  // Matches context-percentage-usable preview
+            used_percentage: 11.6,  // 18600/160000 = 11.6% at 80% usable (used by context-percentage-usable widget)
             remaining_percentage: 88.4
         },
         cost: { total_cost_usd: 2.45 }
