@@ -1,5 +1,6 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -7,6 +8,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { parseSpeed } from '../utils/value-parsers';
 
 import {
     getSpeedWidgetCustomKeybinds,
@@ -37,6 +39,16 @@ export class TotalSpeedWidget implements Widget {
 
     renderEditor(props: WidgetEditorProps) {
         return renderSpeedWidgetEditor(props);
+    }
+
+    getValueType(): 'number' {
+        return 'number';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+        if (!rendered) return null;
+        return parseSpeed(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

@@ -84,6 +84,39 @@ describe('OutputSpeedWidget', () => {
 
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Out: 120.0 t/s');
     });
+
+    describe('getValue', () => {
+        it('should declare number value type', () => {
+            expect(widget.getValueType()).toBe('number');
+        });
+
+        it('should extract numeric value from preview mode', () => {
+            const context: RenderContext = { isPreview: true };
+            expect(widget.getValue(context, createItem('output-speed'))).toBe(42.5);
+        });
+
+        it('should extract numeric value from preview mode (windowed)', () => {
+            const context: RenderContext = { isPreview: true };
+            const item = createItem('output-speed', { metadata: { windowSeconds: '45' } });
+            expect(widget.getValue(context, item)).toBe(26.8);
+        });
+
+        it('should extract numeric value from live session metrics', () => {
+            const context: RenderContext = { speedMetrics: createSpeedMetrics({ outputTokens: 500, totalDurationMs: 10000 }) };
+            expect(widget.getValue(context, createItem('output-speed'))).toBe(50.0);
+        });
+
+        it('should extract numeric value from live windowed metrics', () => {
+            const context: RenderContext = { windowedSpeedMetrics: { 90: createSpeedMetrics({ outputTokens: 720, totalDurationMs: 6000 }) } };
+            const item = createItem('output-speed', { metadata: { windowSeconds: '90' } });
+            expect(widget.getValue(context, item)).toBe(120.0);
+        });
+
+        it('should return null when metrics are missing', () => {
+            const context: RenderContext = {};
+            expect(widget.getValue(context, createItem('output-speed'))).toBeNull();
+        });
+    });
 });
 
 describe('InputSpeedWidget', () => {
@@ -117,6 +150,39 @@ describe('InputSpeedWidget', () => {
 
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('In: 100.0 t/s');
     });
+
+    describe('getValue', () => {
+        it('should declare number value type', () => {
+            expect(widget.getValueType()).toBe('number');
+        });
+
+        it('should extract numeric value from preview mode', () => {
+            const context: RenderContext = { isPreview: true };
+            expect(widget.getValue(context, createItem('input-speed'))).toBe(85.2);
+        });
+
+        it('should extract numeric value from preview mode (windowed)', () => {
+            const context: RenderContext = { isPreview: true };
+            const item = createItem('input-speed', { metadata: { windowSeconds: '45' } });
+            expect(widget.getValue(context, item)).toBe(31.5);
+        });
+
+        it('should extract numeric value from live session metrics', () => {
+            const context: RenderContext = { speedMetrics: createSpeedMetrics({ inputTokens: 800, totalDurationMs: 4000 }) };
+            expect(widget.getValue(context, createItem('input-speed'))).toBe(200.0);
+        });
+
+        it('should extract numeric value from live windowed metrics', () => {
+            const context: RenderContext = { windowedSpeedMetrics: { 45: createSpeedMetrics({ inputTokens: 450, totalDurationMs: 3000 }) } };
+            const item = createItem('input-speed', { metadata: { windowSeconds: '45' } });
+            expect(widget.getValue(context, item)).toBe(150.0);
+        });
+
+        it('should return null when metrics are missing', () => {
+            const context: RenderContext = {};
+            expect(widget.getValue(context, createItem('input-speed'))).toBeNull();
+        });
+    });
 });
 
 describe('TotalSpeedWidget', () => {
@@ -149,5 +215,38 @@ describe('TotalSpeedWidget', () => {
         const item = createItem('total-speed', { metadata: { windowSeconds: '15' } });
 
         expect(widget.render(item, context, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    describe('getValue', () => {
+        it('should declare number value type', () => {
+            expect(widget.getValueType()).toBe('number');
+        });
+
+        it('should extract numeric value from preview mode (session avg)', () => {
+            const context: RenderContext = { isPreview: true };
+            expect(widget.getValue(context, createItem('total-speed'))).toBe(127.7);
+        });
+
+        it('should extract numeric value from preview mode (windowed)', () => {
+            const context: RenderContext = { isPreview: true };
+            const item = createItem('total-speed', { metadata: { windowSeconds: '30' } });
+            expect(widget.getValue(context, item)).toBe(58.3);
+        });
+
+        it('should extract numeric value from live session metrics', () => {
+            const context: RenderContext = { speedMetrics: createSpeedMetrics({ totalTokens: 750, totalDurationMs: 5000 }) };
+            expect(widget.getValue(context, createItem('total-speed'))).toBe(150.0);
+        });
+
+        it('should extract numeric value from live windowed metrics', () => {
+            const context: RenderContext = { windowedSpeedMetrics: { 60: createSpeedMetrics({ totalTokens: 600, totalDurationMs: 4000 }) } };
+            const item = createItem('total-speed', { metadata: { windowSeconds: '60' } });
+            expect(widget.getValue(context, item)).toBe(150.0);
+        });
+
+        it('should return null when metrics are missing', () => {
+            const context: RenderContext = {};
+            expect(widget.getValue(context, createItem('total-speed'))).toBeNull();
+        });
     });
 });
