@@ -39,9 +39,7 @@ function render(options: {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
-function getValue(options: {
-    isPreview?: boolean;
-} = {}) {
+function getValue(options: { isPreview?: boolean } = {}) {
     const widget = new GitConflictsWidget();
     const context: RenderContext = { isPreview: options.isPreview };
     const item: WidgetItem = {

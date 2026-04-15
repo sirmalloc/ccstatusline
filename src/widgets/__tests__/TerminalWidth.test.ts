@@ -13,9 +13,7 @@ import { TerminalWidthWidget } from '../TerminalWidth';
 
 function createItem(
     type: string,
-    options: {
-        rawValue?: boolean;
-    } = {}
+    options: { rawValue?: boolean } = {}
 ): WidgetItem {
     return {
         id: type,

@@ -40,11 +40,7 @@ describe('SessionCostWidget', () => {
     });
 
     it('should render actual cost when available', () => {
-        const context: RenderContext = {
-            data: {
-                cost: { total_cost_usd: 3.75 }
-            }
-        };
+        const context: RenderContext = { data: { cost: { total_cost_usd: 3.75 } } };
         expect(widget.render(createItem('session-cost'), context, DEFAULT_SETTINGS)).toBe('Cost: $3.75');
         expect(widget.render(createItem('session-cost', { rawValue: true }), context, DEFAULT_SETTINGS)).toBe('$3.75');
     });
@@ -55,9 +51,7 @@ describe('SessionCostWidget', () => {
     });
 
     it('should return null when cost data is undefined', () => {
-        const context: RenderContext = {
-            data: { cost: { total_cost_usd: undefined } }
-        };
+        const context: RenderContext = { data: { cost: { total_cost_usd: undefined } } };
         expect(widget.render(createItem('session-cost'), context, DEFAULT_SETTINGS)).toBeNull();
     });
 
@@ -72,11 +66,7 @@ describe('SessionCostWidget', () => {
         });
 
         it('should extract numeric value from live data', () => {
-            const context: RenderContext = {
-                data: {
-                    cost: { total_cost_usd: 12.99 }
-                }
-            };
+            const context: RenderContext = { data: { cost: { total_cost_usd: 12.99 } } };
             expect(widget.getValue(context, createItem('session-cost'))).toBe(12.99);
         });
 
@@ -86,11 +76,7 @@ describe('SessionCostWidget', () => {
         });
 
         it('should parse currency symbol correctly', () => {
-            const context: RenderContext = {
-                data: {
-                    cost: { total_cost_usd: 0.50 }
-                }
-            };
+            const context: RenderContext = { data: { cost: { total_cost_usd: 0.50 } } };
             expect(widget.getValue(context, createItem('session-cost'))).toBe(0.50);
         });
     });

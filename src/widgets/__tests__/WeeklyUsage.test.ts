@@ -80,9 +80,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('returns percentage from usageData.weeklyUsage', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { weeklyUsage: 35.7 }
-            };
+            const context: RenderContext = { usageData: { weeklyUsage: 35.7 } };
             const item: WidgetItem = { id: 'weekly', type: 'weekly-usage' };
 
             expect(widget.getValue(context, item)).toBe(35.7);
@@ -90,9 +88,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('clamps percentage to 0-100 range for values below 0', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { weeklyUsage: -5 }
-            };
+            const context: RenderContext = { usageData: { weeklyUsage: -5 } };
             const item: WidgetItem = { id: 'weekly', type: 'weekly-usage' };
 
             expect(widget.getValue(context, item)).toBe(0);
@@ -100,9 +96,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('clamps percentage to 0-100 range for values above 100', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { weeklyUsage: 120 }
-            };
+            const context: RenderContext = { usageData: { weeklyUsage: 120 } };
             const item: WidgetItem = { id: 'weekly', type: 'weekly-usage' };
 
             expect(widget.getValue(context, item)).toBe(100);
@@ -126,9 +120,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('returns null when weeklyUsage is undefined', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { sessionUsage: 50 }
-            };
+            const context: RenderContext = { usageData: { sessionUsage: 50 } };
             const item: WidgetItem = { id: 'weekly', type: 'weekly-usage' };
 
             expect(widget.getValue(context, item)).toBe(null);
@@ -136,9 +128,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('returns null when usageData has error', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { error: 'timeout' }
-            };
+            const context: RenderContext = { usageData: { error: 'timeout' } };
             const item: WidgetItem = { id: 'weekly', type: 'weekly-usage' };
 
             expect(widget.getValue(context, item)).toBe(null);
@@ -146,9 +136,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('ignores invert metadata - returns actual percentage', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { weeklyUsage: 25 }
-            };
+            const context: RenderContext = { usageData: { weeklyUsage: 25 } };
             const item: WidgetItem = {
                 id: 'weekly',
                 type: 'weekly-usage',
@@ -160,9 +148,7 @@ describe('WeeklyUsageWidget', () => {
 
         it('ignores display mode - returns percentage not progress bar', () => {
             const widget = new WeeklyUsageWidget();
-            const context: RenderContext = {
-                usageData: { weeklyUsage: 60 }
-            };
+            const context: RenderContext = { usageData: { weeklyUsage: 60 } };
             const item: WidgetItem = {
                 id: 'weekly',
                 type: 'weekly-usage',

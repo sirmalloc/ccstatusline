@@ -1,5 +1,8 @@
 import type { RenderContext } from '../types/RenderContext';
-import { DEFAULT_SETTINGS, type Settings } from '../types/Settings';
+import {
+    DEFAULT_SETTINGS,
+    type Settings
+} from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -46,7 +49,8 @@ export class OutputSpeedWidget implements Widget {
 
     getValue(context: RenderContext, item: WidgetItem): number | null {
         const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
-        if (!rendered) return null;
+        if (!rendered)
+            return null;
         return parseSpeed(rendered);
     }
 

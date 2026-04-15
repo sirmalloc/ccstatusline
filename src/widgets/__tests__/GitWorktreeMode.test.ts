@@ -20,9 +20,7 @@ describe('GitWorktreeModeWidget', () => {
 
     describe('getValue', () => {
         it('returns true when in worktree mode', () => {
-            const context: RenderContext = {
-                data: { worktree: { name: 'feature', original_branch: 'main', branch: 'feature-branch' } }
-            };
+            const context: RenderContext = { data: { worktree: { name: 'feature', original_branch: 'main', branch: 'feature-branch' } } };
 
             expect(widget.getValue(context, item)).toBe(true);
         });

@@ -65,8 +65,8 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
         }
         return String(initialValue);
     });
-    const [selectedWidget, setSelectedWidget] = useState<string>(initialWidget);
-    const [notFlag, setNotFlag] = useState<boolean>(initialNot);
+    const [selectedWidget, setSelectedWidget] = useState(initialWidget);
+    const [notFlag, setNotFlag] = useState(initialNot);
     const [mode, setMode] = useState<'widget' | 'operator' | 'value'>('widget');
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [operatorPicker, setOperatorPicker] = useState<{

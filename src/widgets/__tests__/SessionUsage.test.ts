@@ -80,9 +80,7 @@ describe('SessionUsageWidget', () => {
 
         it('returns percentage from usageData.sessionUsage', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { sessionUsage: 42.5 }
-            };
+            const context: RenderContext = { usageData: { sessionUsage: 42.5 } };
             const item: WidgetItem = { id: 'session', type: 'session-usage' };
 
             expect(widget.getValue(context, item)).toBe(42.5);
@@ -90,9 +88,7 @@ describe('SessionUsageWidget', () => {
 
         it('clamps percentage to 0-100 range for values below 0', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { sessionUsage: -10 }
-            };
+            const context: RenderContext = { usageData: { sessionUsage: -10 } };
             const item: WidgetItem = { id: 'session', type: 'session-usage' };
 
             expect(widget.getValue(context, item)).toBe(0);
@@ -100,9 +96,7 @@ describe('SessionUsageWidget', () => {
 
         it('clamps percentage to 0-100 range for values above 100', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { sessionUsage: 150 }
-            };
+            const context: RenderContext = { usageData: { sessionUsage: 150 } };
             const item: WidgetItem = { id: 'session', type: 'session-usage' };
 
             expect(widget.getValue(context, item)).toBe(100);
@@ -126,9 +120,7 @@ describe('SessionUsageWidget', () => {
 
         it('returns null when sessionUsage is undefined', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { weeklyUsage: 50 }
-            };
+            const context: RenderContext = { usageData: { weeklyUsage: 50 } };
             const item: WidgetItem = { id: 'session', type: 'session-usage' };
 
             expect(widget.getValue(context, item)).toBe(null);
@@ -136,9 +128,7 @@ describe('SessionUsageWidget', () => {
 
         it('returns null when usageData has error', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { error: 'timeout' }
-            };
+            const context: RenderContext = { usageData: { error: 'timeout' } };
             const item: WidgetItem = { id: 'session', type: 'session-usage' };
 
             expect(widget.getValue(context, item)).toBe(null);
@@ -146,9 +136,7 @@ describe('SessionUsageWidget', () => {
 
         it('ignores invert metadata - returns actual percentage', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { sessionUsage: 30 }
-            };
+            const context: RenderContext = { usageData: { sessionUsage: 30 } };
             const item: WidgetItem = {
                 id: 'session',
                 type: 'session-usage',
@@ -160,9 +148,7 @@ describe('SessionUsageWidget', () => {
 
         it('ignores display mode - returns percentage not progress bar', () => {
             const widget = new SessionUsageWidget();
-            const context: RenderContext = {
-                usageData: { sessionUsage: 45 }
-            };
+            const context: RenderContext = { usageData: { sessionUsage: 45 } };
             const item: WidgetItem = {
                 id: 'session',
                 type: 'session-usage',

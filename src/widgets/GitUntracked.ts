@@ -1,5 +1,8 @@
 import type { RenderContext } from '../types/RenderContext';
-import { DEFAULT_SETTINGS, type Settings } from '../types/Settings';
+import {
+    DEFAULT_SETTINGS,
+    type Settings
+} from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
