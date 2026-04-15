@@ -1,5 +1,6 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     Widget,
     WidgetEditorDisplay,
@@ -7,6 +8,7 @@ import type {
 } from '../types/Widget';
 import { getContextWindowContextLengthTokens } from '../utils/context-window';
 import { formatTokens } from '../utils/renderer';
+import { parseTokenCount } from '../utils/value-parsers';
 
 export class ContextLengthWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }
@@ -31,6 +33,16 @@ export class ContextLengthWidget implements Widget {
             return item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
         }
         return null;
+    }
+
+    getValueType(): 'number' {
+        return 'number';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+        if (!rendered) return null;
+        return parseTokenCount(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

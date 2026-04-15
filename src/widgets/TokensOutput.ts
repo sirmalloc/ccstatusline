@@ -1,5 +1,6 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     Widget,
     WidgetEditorDisplay,
@@ -7,6 +8,7 @@ import type {
 } from '../types/Widget';
 import { getContextWindowOutputTotalTokens } from '../utils/context-window';
 import { formatTokens } from '../utils/renderer';
+import { parseTokenCount } from '../utils/value-parsers';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
@@ -33,6 +35,16 @@ export class TokensOutputWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
         }
         return null;
+    }
+
+    getValueType(): 'number' {
+        return 'number';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+        if (!rendered) return null;
+        return parseTokenCount(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

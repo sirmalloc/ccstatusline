@@ -1,11 +1,13 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 import { formatTokens } from '../utils/renderer';
+import { parseTokenCount } from '../utils/value-parsers';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
@@ -27,6 +29,16 @@ export class TokensCachedWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(context.tokenMetrics.cachedTokens));
         }
         return null;
+    }
+
+    getValueType(): 'number' {
+        return 'number';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+        if (!rendered) return null;
+        return parseTokenCount(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

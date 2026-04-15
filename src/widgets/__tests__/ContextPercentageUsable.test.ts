@@ -149,4 +149,88 @@ describe('ContextPercentageUsableWidget', () => {
             expect(result).toBe('Ctx(u): 26.3%');
         });
     });
+
+    describe('getValue', () => {
+        it('returns number value type', () => {
+            const widget = new ContextPercentageUsableWidget();
+            expect(widget.getValueType()).toBe('number');
+        });
+
+        it('returns numeric value from context_window data', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = {
+                data: {
+                    model: { id: 'claude-sonnet-4-5-20250929[1m]' },
+                    context_window: {
+                        current_usage: {
+                            input_tokens: 40000,
+                            output_tokens: 10000,
+                            cache_creation_input_tokens: 0,
+                            cache_read_input_tokens: 0
+                        }
+                    }
+                }
+            };
+            const item: WidgetItem = { id: 'ctx', type: 'context-percentage-usable' };
+
+            expect(widget.getValue(context, item)).toBe(5.0);
+        });
+
+        it('returns numeric value from tokenMetrics fallback', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = {
+                data: { model: { id: 'claude-3-5-sonnet-20241022' } },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 42000
+                }
+            };
+            const item: WidgetItem = { id: 'ctx', type: 'context-percentage-usable' };
+
+            expect(widget.getValue(context, item)).toBe(26.3);
+        });
+
+        it('returns numeric value in preview mode', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = { id: 'ctx', type: 'context-percentage-usable' };
+
+            expect(widget.getValue(context, item)).toBe(11.6);
+        });
+
+        it('returns inverse value when metadata.inverse is true', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = {
+                data: {
+                    model: { id: 'claude-sonnet-4-5-20250929[1m]' },
+                    context_window: {
+                        current_usage: {
+                            input_tokens: 40000,
+                            output_tokens: 10000,
+                            cache_creation_input_tokens: 0,
+                            cache_read_input_tokens: 0
+                        }
+                    }
+                }
+            };
+            const item: WidgetItem = {
+                id: 'ctx',
+                type: 'context-percentage-usable',
+                metadata: { inverse: 'true' }
+            };
+
+            expect(widget.getValue(context, item)).toBe(95.0);
+        });
+
+        it('returns null when data is missing', () => {
+            const widget = new ContextPercentageUsableWidget();
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'ctx', type: 'context-percentage-usable' };
+
+            expect(widget.getValue(context, item)).toBe(null);
+        });
+    });
 });

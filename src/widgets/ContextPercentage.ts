@@ -1,5 +1,6 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -11,6 +12,7 @@ import {
     getContextConfig,
     getModelContextIdentifier
 } from '../utils/model-context';
+import { parsePercentage } from '../utils/value-parsers';
 
 import {
     getContextInverseModifierText,
@@ -58,6 +60,16 @@ export class ContextPercentageWidget implements Widget {
         }
 
         return null;
+    }
+
+    getValueType(): 'number' {
+        return 'number';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+        if (!rendered) return null;
+        return parsePercentage(rendered);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
