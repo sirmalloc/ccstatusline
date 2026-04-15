@@ -88,4 +88,20 @@ export class WeeklyUsageWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        if (context.isPreview) {
+            return 12;
+        }
+
+        const data = context.usageData ?? {};
+        if (data.error)
+            return null;
+        if (data.weeklyUsage === undefined)
+            return null;
+
+        return Math.max(0, Math.min(100, data.weeklyUsage));
+    }
 }
