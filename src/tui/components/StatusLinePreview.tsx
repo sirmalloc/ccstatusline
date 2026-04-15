@@ -61,12 +61,7 @@ const renderSingleLine = (
         minimalist: settings.minimalistMode,
         lineIndex,
         globalSeparatorIndex,
-        globalPowerlineThemeIndex,
-        gitData: {
-            changedFiles: 3,
-            insertions: 42,
-            deletions: 18
-        }
+        globalPowerlineThemeIndex
     };
 
     return renderStatusLineWithInfo(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
@@ -85,12 +80,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             data: createPreviewContextData(),
             terminalWidth,
             isPreview: true,
-            minimalist: settings.minimalistMode,
-            gitData: {
-                changedFiles: 3,
-                insertions: 42,
-                deletions: 18
-            }
+            minimalist: settings.minimalistMode
         };
         const preRenderedLines = preRenderAllWidgets(lines, settings, previewContext);
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
