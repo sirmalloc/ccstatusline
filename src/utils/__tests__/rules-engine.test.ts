@@ -242,7 +242,7 @@ describe('Rules Engine', () => {
 
     // Cross-widget condition tests
     test('cross-widget condition: references other widget value', () => {
-        // Mock git commands to return 10 insertions
+        // Mock git commands to return changes (git-changes is a boolean widget)
         mockExecSync.mockReturnValueOnce('true\n');
         mockExecSync.mockReturnValueOnce('1 file changed, 10 insertions(+)');
         mockExecSync.mockReturnValueOnce('');
@@ -259,7 +259,7 @@ describe('Rules Engine', () => {
             color: 'white',
             rules: [
                 {
-                    when: { widget: 'git-changes', greaterThan: 5 },
+                    when: { widget: 'git-changes', isTrue: true },
                     apply: { color: 'red' }
                 }
             ]
@@ -269,10 +269,10 @@ describe('Rules Engine', () => {
         expect(result.color).toBe('red');
     });
 
-    test('cross-widget condition: does not match when value too low', () => {
-        // Mock git commands to return 3 insertions (below threshold of 5)
+    test('cross-widget condition: does not match when boolean is false', () => {
+        // Mock git commands to return no changes (git-changes returns false)
         mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('1 file changed, 3 insertions(+)');
+        mockExecSync.mockReturnValueOnce('');
         mockExecSync.mockReturnValueOnce('');
 
         const gitChangesWidget = {
@@ -287,7 +287,7 @@ describe('Rules Engine', () => {
             color: 'white',
             rules: [
                 {
-                    when: { widget: 'git-changes', greaterThan: 5 },
+                    when: { widget: 'git-changes', isTrue: true },
                     apply: { color: 'red' }
                 }
             ]
@@ -710,7 +710,7 @@ describe('Rules Engine', () => {
 
     // Boolean operator tests
     describe('Boolean Operators', () => {
-        test('isTrue operator matches when widget has changes (numeric to boolean coercion)', () => {
+        test('isTrue operator matches boolean widget with true value', () => {
             // Mock git commands to return changes
             mockExecSync.mockReturnValueOnce('true\n');
             mockExecSync.mockReturnValueOnce('1 file changed, 10 insertions(+)');
@@ -729,7 +729,7 @@ describe('Rules Engine', () => {
             };
 
             const result = applyRules(item, {}, [item]);
-            // git-changes returns 10 (numeric), which is coerced to true (non-zero = true)
+            // git-changes is a boolean widget, returns true when changes exist
             expect(result.color).toBe('red');
         });
 
@@ -785,6 +785,100 @@ describe('Rules Engine', () => {
 
             const result = applyRules(item, {}, [item]);
             expect(result.color).toBe('green');
+        });
+
+        test('isFalse on boolean widget with no changes', () => {
+            // Mock git commands to return no changes
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('');
+            mockExecSync.mockReturnValueOnce('');
+
+            const item = {
+                id: 'test',
+                type: 'git-changes',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isTrue: false },
+                        apply: { color: 'green' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            // git-changes returns false (no changes), isTrue: false matches
+            expect(result.color).toBe('green');
+        });
+
+        test('git-staged boolean widget with isTrue', () => {
+            // Mock git commands - git-staged checks for staged files
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('A  file.txt\n');
+
+            const item = {
+                id: 'test',
+                type: 'git-staged',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isTrue: true },
+                        apply: { color: 'yellow' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, {}, [item]);
+            // git-staged is a boolean widget, returns true when staged files exist
+            expect(result.color).toBe('yellow');
+        });
+
+        test('isTrue with numeric coercion: non-zero number is true', () => {
+            const item = {
+                id: 'test',
+                type: 'context-percentage',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isTrue: true },
+                        apply: { color: 'green' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, mockContext, [item]);
+            // context-percentage returns 80 (number), coerced to true (non-zero)
+            expect(result.color).toBe('green');
+        });
+
+        test('isTrue with numeric coercion: zero is false', () => {
+            const zeroContext: RenderContext = {
+                data: {
+                    context_window: {
+                        context_window_size: 200000,
+                        total_input_tokens: 0,
+                        total_output_tokens: 0,
+                        current_usage: null,
+                        used_percentage: 0,
+                        remaining_percentage: 100
+                    }
+                }
+            };
+
+            const item = {
+                id: 'test',
+                type: 'context-percentage',
+                color: 'white',
+                rules: [
+                    {
+                        when: { isTrue: true },
+                        apply: { color: 'red' }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, zeroContext, [item]);
+            // context-percentage returns 0 (number), coerced to false, isTrue: true does not match
+            expect(result.color).toBe('white');
         });
     });
 
@@ -912,6 +1006,49 @@ describe('Rules Engine', () => {
             const result = applyRules(item, mockContext, [item]);
             expect(result.color).toBe('red');
             expect(result.bold).toBe(true);
+        });
+
+        test('cross-widget boolean condition with typed value', () => {
+            // Mock git commands to return changes (git-changes is boolean)
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('2 files changed, 5 insertions(+)');
+            mockExecSync.mockReturnValueOnce('');
+
+            const item = {
+                id: 'context-1',
+                type: 'context-percentage',
+                color: 'white',
+                rules: [
+                    {
+                        when: { widget: 'git-changes', isTrue: true },
+                        apply: { color: 'yellow', bold: true }
+                    }
+                ]
+            };
+
+            const result = applyRules(item, mockContext, [item]);
+            // git-changes returns true (boolean), isTrue: true matches
+            expect(result.color).toBe('yellow');
+            expect(result.bold).toBe(true);
+        });
+
+        test('cross-widget numeric condition with typed value', () => {
+            const item = {
+                id: 'test',
+                type: 'git-branch',
+                color: 'white',
+                rules: [
+                    {
+                        // Reference context-percentage which returns a number
+                        when: { widget: 'context-percentage', greaterThan: 50 },
+                        apply: { color: 'red' }
+                    }
+                ]
+            };
+
+            // mockContext has used_percentage: 80 which is > 50
+            const result = applyRules(item, mockContext, [item]);
+            expect(result.color).toBe('red');
         });
 
         test('cross-widget set condition', () => {
