@@ -96,6 +96,49 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
     const applyWidgetPickerSelection = (selectedType: string) => {
         setSelectedWidget(selectedType);
         setWidgetPicker(null);
+
+        // Reset operator if current one is incompatible with the new widget's value type
+        const widgetImpl = getWidget(selectedType);
+        const valueType = widgetImpl?.getValueType?.();
+        if (valueType) {
+            const currentCategory = getOperatorCategory(operator);
+            const primaryCategory = valueType === 'number' ? 'Numeric' : valueType === 'string' ? 'String' : 'Boolean';
+            const relevantForType = valueType === 'number'
+                ? ['Numeric', 'Set']
+                : valueType === 'string'
+                    ? ['String', 'Set']
+                    : ['Boolean'];
+            if (!relevantForType.includes(currentCategory)) {
+                const defaultOps = getOperatorsInCategory(primaryCategory);
+                const firstOp = defaultOps[0];
+                if (firstOp && !(firstOp in DISPLAY_OPERATOR_CONFIG)) {
+                    setOperator(firstOp as Operator);
+                    setNotFlag(false);
+                }
+            }
+        }
+    };
+
+    // Determine which operator categories are relevant for the selected widget's value type
+    const getRelevantCategories = (): ('Numeric' | 'String' | 'Boolean' | 'Set')[] => {
+        const allCategories: ('Numeric' | 'String' | 'Boolean' | 'Set')[] = ['Numeric', 'String', 'Boolean', 'Set'];
+        const targetType = selectedWidget === 'self' ? widgetType : selectedWidget;
+        const widgetImpl = getWidget(targetType);
+        const valueType = widgetImpl?.getValueType?.();
+
+        if (!valueType) {
+            // Widget has no declared type — show all categories
+            return allCategories;
+        }
+
+        switch (valueType) {
+            case 'number':
+                return ['Numeric', 'Set'];
+            case 'string':
+                return ['String', 'Set'];
+            case 'boolean':
+                return ['Boolean'];
+        }
     };
 
     // Operator picker helpers
@@ -134,14 +177,17 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
         const displayOp = getDisplayOperator(condition);
         const currentOp = displayOp ?? operator;
 
+        const relevantCategories = getRelevantCategories();
         const currentCategory = getOperatorCategory(currentOp);
-        const operatorsInCategory = getOperatorsInCategory(currentCategory);
-        const selectedIndex = operatorsInCategory.indexOf(currentOp);
+        // Use current category if it's relevant, otherwise default to first relevant category
+        const category = relevantCategories.includes(currentCategory) ? currentCategory : relevantCategories[0] ?? 'Numeric';
+        const operatorsInCategory = getOperatorsInCategory(category);
+        const selectedIndex = category === currentCategory ? operatorsInCategory.indexOf(currentOp) : 0;
 
         setOperatorPicker({
             selectedIndex: Math.max(0, selectedIndex),
-            category: currentCategory,
-            selectedItem: currentOp
+            category,
+            selectedItem: operatorsInCategory[Math.max(0, selectedIndex)] ?? operatorsInCategory[0] ?? currentOp
         });
     };
 
@@ -201,7 +247,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
 
         // Handle operator picker input
         if (operatorPicker) {
-            const categories: ('Numeric' | 'String' | 'Boolean' | 'Set')[] = ['Numeric', 'String', 'Boolean', 'Set'];
+            const categories = getRelevantCategories();
             const operatorsInCategory = getOperatorsInCategory(operatorPicker.category);
 
             if (key.escape) {
@@ -397,7 +443,7 @@ export const ConditionEditor: React.FC<ConditionEditorProps> = ({
 
     // Render operator picker if open
     if (operatorPicker) {
-        const categories: ('Numeric' | 'String' | 'Boolean' | 'Set')[] = ['Numeric', 'String', 'Boolean', 'Set'];
+        const categories = getRelevantCategories();
         const operatorsInCategory = getOperatorsInCategory(operatorPicker.category);
 
         return (
