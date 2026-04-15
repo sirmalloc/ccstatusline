@@ -1,5 +1,6 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -10,6 +11,7 @@ import {
     getGitConflictCount,
     isInsideGitWorkTree
 } from '../utils/git';
+import { parseIntSafe } from '../utils/value-parsers';
 
 import { makeModifierText } from './shared/editor-display';
 import {
@@ -67,10 +69,14 @@ export class GitConflictsWidget implements Widget {
         return getHideNoGitKeybinds();
     }
 
-    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context))
-            return null;
-        return getGitConflictCount(context);
+    getValueType(): 'number' {
+        return 'number';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): number | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+        if (!rendered) return null;
+        return parseIntSafe(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

@@ -81,16 +81,6 @@ export class GitAheadBehindWidget implements Widget {
         return getHideNoGitKeybinds();
     }
 
-    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context))
-            return null;
-        const result = getGitAheadBehind(context);
-        if (!result)
-            return null;
-        // Return total divergence (ahead + behind)
-        return result.ahead + result.behind;
-    }
-
     supportsRawValue(): boolean { return true; }
     supportsColors(_item: WidgetItem): boolean { return true; }
 }

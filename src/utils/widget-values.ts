@@ -104,9 +104,10 @@ export function getWidgetNumericValue(
     if (!widget)
         return null;
 
-    // Try explicit numeric value method first
-    if (widget.getNumericValue) {
-        return widget.getNumericValue(context, item);
+    // Try explicit value method first (new pattern)
+    if (widget.getValue && widget.getValueType?.() === 'number') {
+        const value = widget.getValue(context, item);
+        return typeof value === 'number' ? value : null;
     }
 
     // Default: render and parse

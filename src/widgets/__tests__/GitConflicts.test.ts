@@ -39,6 +39,19 @@ function render(options: {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
+function getValue(options: {
+    isPreview?: boolean;
+} = {}) {
+    const widget = new GitConflictsWidget();
+    const context: RenderContext = { isPreview: options.isPreview };
+    const item: WidgetItem = {
+        id: 'git-conflicts',
+        type: 'git-conflicts'
+    };
+
+    return widget.getValue(context, item);
+}
+
 describe('GitConflictsWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -102,5 +115,29 @@ describe('GitConflictsWidget', () => {
         ].join('\n'));
 
         expect(render({ rawValue: true })).toBe('1');
+    });
+
+    it('getValue returns conflict count as number', () => {
+        mockExecSync.mockReturnValueOnce('true\n');
+        mockExecSync.mockReturnValueOnce([
+            '100644 hash 1\tconflict-a',
+            '100644 hash 2\tconflict-a',
+            '100644 hash 3\tconflict-a',
+            '100644 hash 1\tconflict-b',
+            '100644 hash 2\tconflict-b',
+            '100644 hash 3\tconflict-b'
+        ].join('\n'));
+
+        expect(getValue()).toBe(2);
+    });
+
+    it('getValue returns expected value in preview mode', () => {
+        expect(getValue({ isPreview: true })).toBe(2);
+    });
+
+    it('getValue returns null when not in git repo', () => {
+        mockExecSync.mockReturnValue('false\n');
+
+        expect(getValue()).toBeNull();
     });
 });
