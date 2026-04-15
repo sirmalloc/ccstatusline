@@ -389,9 +389,7 @@ describe('backup and error handling behavior', () => {
 describe('file-path-aware load/save', () => {
     it('loadClaudeSettings should load from specified filePath', async () => {
         const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
-        fs.writeFileSync(localPath, JSON.stringify({
-            statusLine: { type: 'command', command: 'local-command', padding: 0 }
-        }), 'utf-8');
+        fs.writeFileSync(localPath, JSON.stringify({ statusLine: { type: 'command', command: 'local-command', padding: 0 } }), 'utf-8');
 
         const settings = await loadClaudeSettings({ filePath: localPath });
         expect(settings.statusLine?.command).toBe('local-command');
@@ -405,9 +403,7 @@ describe('file-path-aware load/save', () => {
 
     it('saveClaudeSettings should save to specified filePath', async () => {
         const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
-        await saveClaudeSettings({
-            statusLine: { type: 'command', command: 'test-cmd', padding: 0 }
-        }, localPath);
+        await saveClaudeSettings({ statusLine: { type: 'command', command: 'test-cmd', padding: 0 } }, localPath);
 
         const content = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { statusLine?: { command?: string } };
         expect(content.statusLine?.command).toBe('test-cmd');
@@ -417,9 +413,7 @@ describe('file-path-aware load/save', () => {
         const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
         fs.writeFileSync(localPath, JSON.stringify({ existing: true }), 'utf-8');
 
-        await saveClaudeSettings({
-            statusLine: { type: 'command', command: 'new-cmd', padding: 0 }
-        }, localPath);
+        await saveClaudeSettings({ statusLine: { type: 'command', command: 'new-cmd', padding: 0 } }, localPath);
 
         expect(fs.existsSync(`${localPath}.bak`)).toBe(true);
         const backup = JSON.parse(fs.readFileSync(`${localPath}.bak`, 'utf-8')) as { existing?: boolean };
@@ -429,52 +423,36 @@ describe('file-path-aware load/save', () => {
 
 describe('dual-file detection', () => {
     it('isInstalled should detect installation in settings.local.json', async () => {
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
         await expect(isInstalled()).resolves.toBe(true);
     });
 
     it('isInstalled should prefer local over global', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'other-command', padding: 0 }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'other-command', padding: 0 } }));
         // Local has non-ccstatusline command, so isInstalled should be false
         await expect(isInstalled()).resolves.toBe(false);
     });
 
     it('isInstalled should fall back to global when local has no statusLine', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
         writeLocalClaudeSettings(JSON.stringify({}));
         await expect(isInstalled()).resolves.toBe(true);
     });
 
     it('getExistingStatusLine should return command from local first', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'global-command' }
-        }));
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'local-command' }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'global-command' } }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'local-command' } }));
         await expect(getExistingStatusLine()).resolves.toBe('local-command');
     });
 
     it('getExistingStatusLine should fall back to global', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'global-command' }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'global-command' } }));
         await expect(getExistingStatusLine()).resolves.toBe('global-command');
     });
 
     it('getActiveClaudeSettingsPath should return local path when local has statusLine', () => {
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'local-command' }
-        }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'local-command' } }));
         expect(getActiveClaudeSettingsPath()).toBe(
             path.join(testClaudeConfigDir, 'settings.local.json')
         );
@@ -495,20 +473,14 @@ describe('dual-file detection', () => {
 
     it('should fall through to global when local file is malformed JSON', async () => {
         writeLocalClaudeSettings('{ invalid json');
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
         await expect(isInstalled()).resolves.toBe(true);
         await expect(getExistingStatusLine()).resolves.toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
 
     it('should treat ccstatusline as inactive when local has a different statusLine', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'some-other-tool' }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'some-other-tool' } }));
         // Local wins — and local is not ccstatusline
         await expect(isInstalled()).resolves.toBe(false);
         // But getExistingStatusLine returns whatever is effective
@@ -548,9 +520,7 @@ describe('file-targeted installStatusLine', () => {
 
 describe('dual-file uninstallStatusLine', () => {
     it('should remove statusLine from settings.local.json', async () => {
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
 
         await uninstallStatusLine();
 
@@ -560,12 +530,8 @@ describe('dual-file uninstallStatusLine', () => {
     });
 
     it('should remove statusLine from both files when both have it', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.BUNX, padding: 0 }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.BUNX, padding: 0 } }));
 
         await uninstallStatusLine();
 
@@ -578,9 +544,7 @@ describe('dual-file uninstallStatusLine', () => {
     });
 
     it('should not error when local file does not exist', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
 
         await expect(uninstallStatusLine()).resolves.toBeUndefined();
 
@@ -589,12 +553,8 @@ describe('dual-file uninstallStatusLine', () => {
     });
 
     it('should preserve non-ccstatusline statusLine in settings.json', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'company-managed-tool', padding: 0 }
-        }));
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'company-managed-tool', padding: 0 } }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
 
         await uninstallStatusLine();
 
@@ -609,12 +569,8 @@ describe('dual-file uninstallStatusLine', () => {
     });
 
     it('should preserve non-ccstatusline statusLine in settings.local.json', async () => {
-        writeRawClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 }
-        }));
-        writeLocalClaudeSettings(JSON.stringify({
-            statusLine: { type: 'command', command: 'user-custom-tool' }
-        }));
+        writeRawClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 } }));
+        writeLocalClaudeSettings(JSON.stringify({ statusLine: { type: 'command', command: 'user-custom-tool' } }));
 
         await uninstallStatusLine();
 
