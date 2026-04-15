@@ -1,6 +1,4 @@
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -12,30 +10,56 @@ import type {
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
-const TTL_SECONDS = 295; // 5 min minus 5s safety margin
-const STATE_DIR = path.join(os.homedir(), '.claude', 'state');
+const TTL_SECONDS = 300;
+const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
 
-interface TimerFile {
-    timestamp: string;
-    session_id: string;
-    stopped: boolean | null;
-}
-
-function readTimerFile(sessionId: string): TimerFile | null {
-    const filePath = path.join(STATE_DIR, `cache-timer-${sessionId}.json`);
+/**
+ * Read the last N bytes of a file and return as string.
+ * Avoids loading large transcript files entirely.
+ */
+function readFileTail(filePath: string, bytes: number = 32768): string {
     try {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        return JSON.parse(raw) as TimerFile;
+        const fd = fs.openSync(filePath, 'r');
+        const stat = fs.fstatSync(fd);
+        const size = stat.size;
+        const readSize = Math.min(bytes, size);
+        const offset = size - readSize;
+        const buf = Buffer.alloc(readSize);
+        fs.readSync(fd, buf, 0, readSize, offset);
+        fs.closeSync(fd);
+        return buf.toString('utf-8');
     } catch {
-        return null;
+        return '';
     }
 }
 
-function getRemainingSeconds(timestamp: string): number {
-    const ts = new Date(timestamp).getTime();
-    const now = Date.now();
-    const elapsedSeconds = (now - ts) / 1000;
-    return TTL_SECONDS - elapsedSeconds;
+/**
+ * Find the timestamp of the last assistant message in the transcript.
+ * Returns null if not found.
+ */
+function getLastAssistantTimestamp(transcriptPath: string): Date | null {
+    const tail = readFileTail(transcriptPath);
+    if (!tail) return null;
+
+    const lines = tail.split('\n').reverse();
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+            const entry = JSON.parse(trimmed);
+            if (entry.type === 'assistant' && entry.timestamp) {
+                return new Date(entry.timestamp);
+            }
+        } catch {
+            continue;
+        }
+    }
+    return null;
+}
+
+function getRemainingSeconds(lastAssistant: Date): number {
+    const elapsedSeconds = (Date.now() - lastAssistant.getTime()) / 1000;
+    return TTL_SECONDS - SAFETY_MARGIN - elapsedSeconds;
 }
 
 function formatCountdown(remaining: number): string {
@@ -47,7 +71,7 @@ function formatCountdown(remaining: number): string {
 
 function getIcon(remaining: number): string {
     if (remaining <= 0) return '❄️';
-    const pct = remaining / TTL_SECONDS;
+    const pct = remaining / (TTL_SECONDS - SAFETY_MARGIN);
     if (pct > 0.5) return '🟢';
     if (pct > 0.2) return '🟡';
     return '🔴';
@@ -68,19 +92,13 @@ export class CacheTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Cache: ', '🟢 4:52');
         }
 
-        const sessionId = context.data?.session_id;
-        if (!sessionId) return null;
+        const transcriptPath = context.data?.transcript_path;
+        if (!transcriptPath) return null;
 
-        const timer = readTimerFile(sessionId);
-        if (!timer) return null;
+        const lastAssistant = getLastAssistantTimestamp(transcriptPath);
+        if (!lastAssistant) return null;
 
-        if (timer.stopped === false) {
-            return formatRawOrLabeledValue(item, 'Cache: ', '🔥 HOT');
-        }
-
-        if (!timer.timestamp) return null;
-
-        const remaining = getRemainingSeconds(timer.timestamp);
+        const remaining = getRemainingSeconds(lastAssistant);
         const icon = getIcon(remaining);
         const countdown = formatCountdown(remaining);
 
