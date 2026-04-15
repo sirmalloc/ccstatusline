@@ -1,5 +1,5 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS, type Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -11,8 +11,6 @@ import {
     isInsideGitWorkTree
 } from '../utils/git';
 import { parseBooleanString } from '../utils/value-parsers';
-
-import { DEFAULT_SETTINGS } from '../types/Settings';
 
 import { makeModifierText } from './shared/editor-display';
 import {

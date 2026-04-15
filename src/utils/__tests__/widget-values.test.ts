@@ -9,6 +9,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import { clearGitCache } from '../git';
+import * as gitRemote from '../git-remote';
 import { getWidgetValue } from '../widget-values';
 
 // Mock child_process
@@ -19,10 +20,6 @@ const mockExecSync = execSync as unknown as {
     mockReturnValueOnce: (value: string) => void;
     mockImplementation: (impl: () => never) => void;
 };
-
-// Mock git-remote module
-const mockGetForkStatus = vi.fn();
-vi.mock('../git-remote', () => ({ getForkStatus: mockGetForkStatus }));
 
 describe('Widget Values - Typed Dispatch', () => {
     beforeEach(() => {
@@ -138,7 +135,7 @@ describe('Widget Values - Typed Dispatch', () => {
 
         test('returns boolean from git-is-fork (is a fork)', () => {
             const context: RenderContext = {};
-            mockGetForkStatus.mockReturnValueOnce({
+            vi.spyOn(gitRemote, 'getForkStatus').mockReturnValueOnce({
                 isFork: true,
                 origin: null,
                 upstream: null
@@ -151,7 +148,7 @@ describe('Widget Values - Typed Dispatch', () => {
 
         test('returns boolean from git-is-fork (not a fork)', () => {
             const context: RenderContext = {};
-            mockGetForkStatus.mockReturnValueOnce({
+            vi.spyOn(gitRemote, 'getForkStatus').mockReturnValueOnce({
                 isFork: false,
                 origin: null,
                 upstream: null

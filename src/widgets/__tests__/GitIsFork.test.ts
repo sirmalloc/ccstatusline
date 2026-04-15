@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -9,18 +8,10 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import type { WidgetItem } from '../../types/Widget';
-import { clearGitCache } from '../../utils/git';
 import * as gitRemote from '../../utils/git-remote';
 import { GitIsForkWidget } from '../GitIsFork';
 
 vi.mock('child_process', () => ({ execSync: vi.fn() }));
-vi.mock('../../utils/git-remote', () => ({
-    getForkStatus: vi.fn()
-}));
-
-const mockGetForkStatus = gitRemote.getForkStatus as unknown as {
-    mockReturnValue: (value: gitRemote.ForkStatus) => void;
-};
 
 describe('GitIsForkWidget', () => {
     const widget = new GitIsForkWidget();
@@ -28,7 +19,7 @@ describe('GitIsForkWidget', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        clearGitCache();
+        vi.restoreAllMocks();
     });
 
     describe('getValueType', () => {
@@ -39,7 +30,7 @@ describe('GitIsForkWidget', () => {
 
     describe('getValue', () => {
         it('returns true when repo is a fork', () => {
-            mockGetForkStatus.mockReturnValue({
+            vi.spyOn(gitRemote, 'getForkStatus').mockReturnValue({
                 isFork: true,
                 origin: { name: 'origin', url: 'git@github.com:user/repo.git', host: 'github.com', owner: 'user', repo: 'repo' },
                 upstream: { name: 'upstream', url: 'git@github.com:org/repo.git', host: 'github.com', owner: 'org', repo: 'repo' }
@@ -50,7 +41,7 @@ describe('GitIsForkWidget', () => {
         });
 
         it('returns false when repo is not a fork', () => {
-            mockGetForkStatus.mockReturnValue({
+            vi.spyOn(gitRemote, 'getForkStatus').mockReturnValue({
                 isFork: false,
                 origin: { name: 'origin', url: 'git@github.com:org/repo.git', host: 'github.com', owner: 'org', repo: 'repo' },
                 upstream: null
