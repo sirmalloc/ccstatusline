@@ -10,6 +10,9 @@ import {
     getGitStatus,
     isInsideGitWorkTree
 } from '../utils/git';
+import { parseBooleanString } from '../utils/value-parsers';
+
+import { DEFAULT_SETTINGS } from '../types/Settings';
 
 import { makeModifierText } from './shared/editor-display';
 import {
@@ -67,11 +70,22 @@ export class GitUnstagedWidget implements Widget {
         return getHideNoGitKeybinds();
     }
 
-    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context))
+    getValueType(): 'boolean' {
+        return 'boolean';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): boolean | null {
+        if (!context.isPreview && !isInsideGitWorkTree(context)) {
             return null;
-        const status = getGitStatus(context);
-        return status.unstaged ? 1 : 0;
+        }
+
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+
+        if (rendered === null) {
+            return false;
+        }
+
+        return parseBooleanString(rendered) ?? false;
     }
 
     supportsRawValue(): boolean { return true; }

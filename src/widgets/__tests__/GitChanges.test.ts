@@ -99,4 +99,55 @@ describe('GitChangesWidget', () => {
 
         expect(render()).toBe('(no git)');
     });
+
+    describe('getValueType', () => {
+        it('returns boolean', () => {
+            const widget = new GitChangesWidget();
+            expect(widget.getValueType()).toBe('boolean');
+        });
+    });
+
+    describe('getValue', () => {
+        it('returns true when there are changes', () => {
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('1 file changed, 5 insertions(+), 3 deletions(-)');
+            mockExecSync.mockReturnValueOnce('');
+
+            const widget = new GitChangesWidget();
+            const context: RenderContext = { data: { cwd: '/tmp/repo' } };
+            const item: WidgetItem = { id: 'changes', type: 'git-changes' };
+
+            expect(widget.getValue(context, item)).toBe(true);
+        });
+
+        it('returns false when there are no changes', () => {
+            mockExecSync.mockReturnValueOnce('true\n');
+            mockExecSync.mockReturnValueOnce('');
+            mockExecSync.mockReturnValueOnce('');
+
+            const widget = new GitChangesWidget();
+            const context: RenderContext = { data: { cwd: '/tmp/repo' } };
+            const item: WidgetItem = { id: 'changes', type: 'git-changes' };
+
+            expect(widget.getValue(context, item)).toBe(false);
+        });
+
+        it('returns null when not in a git repo', () => {
+            mockExecSync.mockImplementation(() => { throw new Error('Not a git repo'); });
+
+            const widget = new GitChangesWidget();
+            const context: RenderContext = { data: { cwd: '/tmp/not-a-repo' } };
+            const item: WidgetItem = { id: 'changes', type: 'git-changes' };
+
+            expect(widget.getValue(context, item)).toBe(null);
+        });
+
+        it('returns true in preview mode', () => {
+            const widget = new GitChangesWidget();
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = { id: 'changes', type: 'git-changes' };
+
+            expect(widget.getValue(context, item)).toBe(true);
+        });
+    });
 });

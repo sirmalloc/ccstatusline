@@ -1,5 +1,6 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -7,6 +8,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getForkStatus } from '../utils/git-remote';
+import { parseBooleanString } from '../utils/value-parsers';
 
 import { makeModifierText } from './shared/editor-display';
 import {
@@ -69,6 +71,20 @@ export class GitIsForkWidget implements Widget {
         return [
             { key: 'h', label: '(h)ide when not fork', action: TOGGLE_HIDE_ACTION }
         ];
+    }
+
+    getValueType(): 'boolean' {
+        return 'boolean';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): boolean | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+
+        if (rendered === null) {
+            return null;
+        }
+
+        return parseBooleanString(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

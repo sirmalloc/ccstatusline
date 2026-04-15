@@ -1,10 +1,12 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { parseBooleanString } from '../utils/value-parsers';
 
 export class GitWorktreeModeWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -29,6 +31,20 @@ export class GitWorktreeModeWidget implements Widget {
         }
 
         return '⎇';
+    }
+
+    getValueType(): 'boolean' {
+        return 'boolean';
+    }
+
+    getValue(context: RenderContext, item: WidgetItem): boolean | null {
+        const rendered = this.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS);
+
+        if (rendered === null) {
+            return null;
+        }
+
+        return parseBooleanString(rendered);
     }
 
     supportsRawValue(): boolean { return true; }

@@ -53,6 +53,23 @@ export class GitChangesWidget implements Widget {
         return getHideNoGitKeybinds();
     }
 
+    getValueType(): 'boolean' {
+        return 'boolean';
+    }
+
+    getValue(context: RenderContext, _item: WidgetItem): boolean | null {
+        if (context.isPreview) {
+            return true;
+        }
+
+        if (!isInsideGitWorkTree(context)) {
+            return null;
+        }
+
+        const changes = getGitChangeCounts(context);
+        return (changes.insertions + changes.deletions) > 0;
+    }
+
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
