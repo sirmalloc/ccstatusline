@@ -37,25 +37,26 @@ export class ContextPercentageUsableWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
+        const label = isInverse ? 'Ctx(u) Left: ' : 'Ctx(u) Used: ';
         const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
         const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
 
         if (context.isPreview) {
             const previewValue = isInverse ? '88.4%' : '11.6%';
-            return formatRawOrLabeledValue(item, 'Ctx(u): ', previewValue);
+            return formatRawOrLabeledValue(item, label, previewValue);
         }
 
         if (contextWindowMetrics.contextLengthTokens !== null) {
             const usedPercentage = Math.min(100, (contextWindowMetrics.contextLengthTokens / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return formatRawOrLabeledValue(item, 'Ctx(u): ', `${displayPercentage.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, label, `${displayPercentage.toFixed(1)}%`);
         }
 
         if (context.tokenMetrics) {
             const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.usableTokens) * 100);
             const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return formatRawOrLabeledValue(item, 'Ctx(u): ', `${displayPercentage.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, label, `${displayPercentage.toFixed(1)}%`);
         }
         return null;
     }
