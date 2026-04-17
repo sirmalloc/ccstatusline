@@ -14,6 +14,10 @@ import {
 
 type ConfigureStatusLineValue = 'refreshInterval';
 
+function getRefreshInputValue(interval: number | null): string {
+    return interval === null ? '' : String(interval);
+}
+
 function getRefreshIntervalSublabel(interval: number | null, supported: boolean): string {
     if (!supported) {
         return '(requires Claude Code >=2.1.97)';
@@ -79,7 +83,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     onBack
 }) => {
     const [editingRefreshInterval, setEditingRefreshInterval] = useState(false);
-    const [refreshInput, setRefreshInput] = useState(currentInterval !== null ? String(currentInterval) : '10');
+    const [refreshInput, setRefreshInput] = useState(() => getRefreshInputValue(currentInterval));
     const [validationError, setValidationError] = useState<string | null>(null);
 
     useInput((input, key) => {
@@ -103,7 +107,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                     setValidationError(null);
                 }
             } else if (key.escape) {
-                setRefreshInput(currentInterval !== null ? String(currentInterval) : '10');
+                setRefreshInput(getRefreshInputValue(currentInterval));
                 setEditingRefreshInterval(false);
                 setValidationError(null);
             } else if (key.backspace) {
@@ -155,7 +159,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                             return;
                         }
 
-                        setRefreshInput(currentInterval !== null ? String(currentInterval) : '10');
+                        setRefreshInput(getRefreshInputValue(currentInterval));
                         setEditingRefreshInterval(true);
                     }}
                     showBackButton={true}

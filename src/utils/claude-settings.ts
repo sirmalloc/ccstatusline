@@ -32,7 +32,7 @@ export function isKnownCommand(command: string): boolean {
     const prefixes = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED];
     // Also match local development commands (e.g., "bun run /path/to/ccstatusline.ts")
     return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `))
-        || /(?:^|\s|\/|\\)ccstatusline\.ts(?:\s|$)/.test(command);
+        || /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command);
 }
 
 function needsQuoting(filePath: string): boolean {

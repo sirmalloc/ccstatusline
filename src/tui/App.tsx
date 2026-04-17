@@ -19,7 +19,6 @@ import {
     CCSTATUSLINE_COMMANDS,
     getClaudeSettingsPath,
     getExistingStatusLine,
-    getRefreshInterval,
     installStatusLine,
     isBunxAvailable,
     isClaudeCodeVersionAtLeast,
@@ -44,6 +43,7 @@ import {
 } from '../utils/powerline';
 import { getPackageVersion } from '../utils/terminal';
 
+import { loadClaudeStatusLineState } from './claude-status';
 import {
     ColorMenu,
     ConfirmDialog,
@@ -121,9 +121,10 @@ export const App: React.FC = () => {
     const [supportsRefreshInterval] = useState(() => isClaudeCodeVersionAtLeast('2.1.97'));
 
     useEffect(() => {
-        // Load existing status line
-        void getExistingStatusLine().then(setExistingStatusLine);
-
+        void loadClaudeStatusLineState().then((statusLineState) => {
+            setExistingStatusLine(statusLineState.existingStatusLine);
+            setCurrentRefreshInterval(statusLineState.refreshInterval);
+        });
         void loadSettings().then((loadedSettings) => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
@@ -131,7 +132,6 @@ export const App: React.FC = () => {
             setOriginalSettings(cloneSettings(loadedSettings));
         });
         void isInstalled().then(setIsClaudeInstalled);
-        void getRefreshInterval().then(setCurrentRefreshInterval);
 
         // Check for Powerline fonts on startup (use sync version that doesn't call execSync)
         const fontStatus = checkPowerlineFonts();
@@ -206,8 +206,10 @@ export const App: React.FC = () => {
                 cancelScreen: 'install',
                 action: async () => {
                     await installStatusLine(useBunx, supportsRefreshInterval);
+                    const installedStatusLineState = await loadClaudeStatusLineState();
                     setIsClaudeInstalled(true);
-                    setExistingStatusLine(command);
+                    setExistingStatusLine(installedStatusLineState.existingStatusLine ?? command);
+                    setCurrentRefreshInterval(installedStatusLineState.refreshInterval);
                     setScreen('main');
                     setConfirmDialog(null);
                 }

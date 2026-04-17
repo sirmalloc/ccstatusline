@@ -122,6 +122,10 @@ describe('isKnownCommand', () => {
     it('should match command containing ccstatusline.ts', () => {
         expect(isKnownCommand('bun run /home/user/ccstatusline/src/ccstatusline.ts')).toBe(true);
     });
+
+    it('should match command containing a quoted ccstatusline.ts path', () => {
+        expect(isKnownCommand('bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"')).toBe(true);
+    });
 });
 
 describe('buildCommand via installStatusLine', () => {
@@ -462,6 +466,17 @@ describe('backup and error handling behavior', () => {
             statusLine: {
                 type: 'command',
                 command: `${CCSTATUSLINE_COMMANDS.NPM} --config /tmp/settings.json`
+            }
+        });
+
+        await expect(isInstalled()).resolves.toBe(true);
+    });
+
+    it('isInstalled should accept quoted local development commands when padding is undefined', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: 'bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"'
             }
         });
 
