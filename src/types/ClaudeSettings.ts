@@ -10,6 +10,7 @@ export interface ClaudeSettings {
         type: string;
         command: string;
         padding?: number;
+        refreshInterval?: number;
     };
     [key: string]: unknown;
 }
