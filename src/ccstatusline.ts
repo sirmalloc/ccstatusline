@@ -12,6 +12,7 @@ import type { AgentActivityMetrics } from './types/AgentActivityMetrics';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
+import type { TodoProgressMetrics } from './types/TodoProgressMetrics';
 import {
     getAgentActivityFilePath,
     getAgentActivityMetrics
@@ -44,7 +45,12 @@ import {
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
 import {
+    getTodoProgressFilePath,
+    getTodoProgressMetrics
+} from './utils/todo-progress';
+import {
     classifyTool,
+    extractTarget,
     getToolCountFilePath,
     getToolCountMetrics
 } from './utils/tool-count';
@@ -164,6 +170,12 @@ async function renderMultipleLines(data: StatusJSON) {
         agentActivityMetrics = getAgentActivityMetrics(data.session_id);
     }
 
+    const hasTodoProgress = lines.some(line => line.some(item => item.type === 'todo-progress'));
+    let todoProgressMetrics: TodoProgressMetrics | null = null;
+    if (hasTodoProgress && data.session_id) {
+        todoProgressMetrics = getTodoProgressMetrics(data.session_id);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -175,6 +187,7 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics,
         toolCountMetrics,
         agentActivityMetrics,
+        todoProgressMetrics,
         isPreview: false,
         minimalist: settings.minimalistMode
     };
@@ -270,6 +283,12 @@ interface HookInput {
         subagent_type?: string;
         model?: string;
         description?: string;
+        todos?: unknown;
+        file_path?: string;
+        path?: string;
+        pattern?: string;
+        url?: string;
+        command?: string;
     };
     prompt?: string;
 }
@@ -319,11 +338,38 @@ async function handleHook(): Promise<void> {
             && data.tool_name !== 'Skill') {
             const toolCountPath = getToolCountFilePath(sessionId);
             fs.mkdirSync(path.dirname(toolCountPath), { recursive: true });
+            const target = extractTarget(data.tool_name, data.tool_input);
+            const record: Record<string, unknown> = {
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                tool_name: data.tool_name,
+                category: classifyTool(data.tool_name),
+                event: 'start'
+            };
+            if (typeof data.tool_use_id === 'string' && data.tool_use_id.length > 0) {
+                record.tool_use_id = data.tool_use_id;
+            }
+            if (target) {
+                record.target = target;
+            }
+            fs.appendFileSync(toolCountPath, JSON.stringify(record) + '\n');
+        }
+
+        // Tool Count — end event (paired with PreToolUse start; enables `activity` mode)
+        if (data.hook_event_name === 'PostToolUse'
+            && data.tool_name
+            && data.tool_name !== 'Skill'
+            && typeof data.tool_use_id === 'string'
+            && data.tool_use_id.length > 0) {
+            const toolCountPath = getToolCountFilePath(sessionId);
+            fs.mkdirSync(path.dirname(toolCountPath), { recursive: true });
             const entry = JSON.stringify({
                 timestamp: new Date().toISOString(),
                 session_id: sessionId,
                 tool_name: data.tool_name,
-                category: classifyTool(data.tool_name)
+                category: classifyTool(data.tool_name),
+                event: 'end',
+                tool_use_id: data.tool_use_id
             });
             fs.appendFileSync(toolCountPath, entry + '\n');
         }
@@ -363,6 +409,36 @@ async function handleHook(): Promise<void> {
                 id: data.tool_use_id
             });
             fs.appendFileSync(agentPath, entry + '\n');
+        }
+
+        // Todo Progress — snapshot on TodoWrite
+        if (data.hook_event_name === 'PostToolUse'
+            && data.tool_name === 'TodoWrite'
+            && Array.isArray(data.tool_input?.todos)) {
+            const todos: { content: string; status: string; activeForm?: string }[] = [];
+            for (const raw of data.tool_input.todos) {
+                if (typeof raw !== 'object' || raw === null)
+                    continue;
+                const rec = raw as Record<string, unknown>;
+                if (typeof rec.content !== 'string' || typeof rec.status !== 'string')
+                    continue;
+                const entry: { content: string; status: string; activeForm?: string } = {
+                    content: rec.content,
+                    status: rec.status
+                };
+                if (typeof rec.activeForm === 'string') {
+                    entry.activeForm = rec.activeForm;
+                }
+                todos.push(entry);
+            }
+            const todoPath = getTodoProgressFilePath(sessionId);
+            fs.mkdirSync(path.dirname(todoPath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                todos
+            });
+            fs.appendFileSync(todoPath, entry + '\n');
         }
     } catch { /* ignore parse errors */ }
     console.log('{}');

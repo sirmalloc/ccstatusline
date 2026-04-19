@@ -20,10 +20,22 @@ export type { ColorEntry } from './ColorEntry';
 export type { BlockMetrics } from './BlockMetrics';
 export type { SpeedMetrics } from './SpeedMetrics';
 export type { SkillInvocation, SkillsMetrics } from './SkillsMetrics';
-export type { ToolCategory, ToolCountMetrics, ToolInvocation } from './ToolCountMetrics';
+export type {
+    ToolActivityEntry,
+    ToolActivityStatus,
+    ToolCategory,
+    ToolCountMetrics,
+    ToolInvocation
+} from './ToolCountMetrics';
 export type {
     AgentActivityEvent,
     AgentActivityMetrics,
     AgentEntry,
     AgentStatus
 } from './AgentActivityMetrics';
+export type {
+    TodoItem,
+    TodoProgressMetrics,
+    TodoProgressSnapshot,
+    TodoStatus
+} from './TodoProgressMetrics';

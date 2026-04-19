@@ -7,6 +7,7 @@ import type {
 import type { AgentActivityMetrics } from './AgentActivityMetrics';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
+import type { TodoProgressMetrics } from './TodoProgressMetrics';
 import type { TokenMetrics } from './TokenMetrics';
 
 export interface RenderUsageData {
@@ -32,6 +33,7 @@ export interface RenderContext {
     skillsMetrics?: SkillsMetrics | null;
     toolCountMetrics?: ToolCountMetrics | null;
     agentActivityMetrics?: AgentActivityMetrics | null;
+    todoProgressMetrics?: TodoProgressMetrics | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     minimalist?: boolean;
