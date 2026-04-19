@@ -41,6 +41,7 @@ const HIDE_ELAPSED_KEY = 'hideElapsed';
 const HIDE_COMPLETED_KEY = 'hideCompleted';
 const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
 const LIMIT_KEY = 'limit';
+const STALE_MINUTES_KEY = 'staleMinutes';
 
 const CYCLE_MODE_ACTION = 'cycle-mode';
 const TOGGLE_HIDE_MODEL_ACTION = 'toggle-hide-model';
@@ -49,6 +50,7 @@ const TOGGLE_HIDE_ELAPSED_ACTION = 'toggle-hide-elapsed';
 const TOGGLE_HIDE_COMPLETED_ACTION = 'toggle-hide-completed';
 const TOGGLE_HIDE_EMPTY_ACTION = 'toggle-hide-empty';
 const EDIT_LIMIT_ACTION = 'edit-limit';
+const EDIT_STALE_ACTION = 'edit-stale-minutes';
 
 export function formatElapsed(startTime: Date, endTime: Date | undefined, now: Date = new Date()): string {
     const endMs = (endTime ?? now).getTime();
@@ -122,6 +124,21 @@ export function applyLimit(agents: AgentEntry[], limit: number): AgentEntry[] {
     return agents.slice(-limit);
 }
 
+// Staleness pruning (fallback for when D's turn-boundary purge doesn't catch
+// a long-running single-turn session). Running agents always survive; only
+// completed agents with endTime older than `staleMinutes` are dropped.
+export function dropStaleCompleted(agents: AgentEntry[], staleMinutes: number, now: Date = new Date()): AgentEntry[] {
+    if (staleMinutes <= 0)
+        return agents;
+    const cutoff = now.getTime() - staleMinutes * 60_000;
+    return agents.filter((a) => {
+        if (a.status === 'running')
+            return true;
+        const endMs = a.endTime?.getTime() ?? a.startTime.getTime();
+        return endMs >= cutoff;
+    });
+}
+
 export class AgentActivityWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
     getDescription(): string {
@@ -136,7 +153,8 @@ export class AgentActivityWidget implements Widget {
     getHooks(): WidgetHookDef[] {
         return [
             { event: 'PreToolUse', matcher: 'Agent' },
-            { event: 'PostToolUse', matcher: 'Agent' }
+            { event: 'PostToolUse', matcher: 'Agent' },
+            { event: 'UserPromptSubmit' }
         ];
     }
 
@@ -154,6 +172,11 @@ export class AgentActivityWidget implements Widget {
 
         if (mode === 'activity' && this.shouldHideCompleted(item)) {
             modifiers.push('running only');
+        }
+
+        const stale = this.parseStaleMinutes(item);
+        if (stale > 0) {
+            modifiers.push(`stale: ${stale}m`);
         }
 
         if (this.shouldHideModel(item)) {
@@ -197,6 +220,7 @@ export class AgentActivityWidget implements Widget {
                 keybinds.push({ key: 'u', label: 'r(u)nning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
             }
         }
+        keybinds.push({ key: 's', label: '(s)tale min', action: EDIT_STALE_ACTION });
 
         return keybinds;
     }
@@ -236,7 +260,8 @@ export class AgentActivityWidget implements Widget {
             return this.renderPreview(mode, rawValue, hideCompleted);
         }
 
-        const allAgents = context.agentActivityMetrics?.agents ?? [];
+        const allAgentsRaw = context.agentActivityMetrics?.agents ?? [];
+        const allAgents = dropStaleCompleted(allAgentsRaw, this.parseStaleMinutes(item));
 
         if (mode === 'count') {
             const total = allAgents.length;
@@ -353,29 +378,45 @@ export class AgentActivityWidget implements Widget {
         return isMetadataFlagEnabled(item, HIDE_COMPLETED_KEY);
     }
 
+    parseStaleMinutes(item: WidgetItem): number {
+        const raw = item.metadata?.[STALE_MINUTES_KEY];
+        if (raw === undefined)
+            return 0;
+        const parsed = parseInt(raw, 10);
+        if (Number.isNaN(parsed) || parsed < 0)
+            return 0;
+        return parsed;
+    }
+
     private isHideWhenEmptyEnabled(item: WidgetItem): boolean {
         return isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY);
     }
 }
 
 const AgentActivityEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
-    const currentLimit = (() => {
-        const raw = widget.metadata?.[LIMIT_KEY];
+    const editingStale = action === EDIT_STALE_ACTION;
+    const metadataKey = editingStale ? STALE_MINUTES_KEY : LIMIT_KEY;
+
+    const initialValue = (() => {
+        const raw = widget.metadata?.[metadataKey];
         if (raw === undefined) {
-            return LIMIT_DEFAULT;
+            return editingStale ? '0' : LIMIT_DEFAULT.toString();
         }
         const parsed = parseInt(raw, 10);
-        return Number.isNaN(parsed) || parsed < 0 ? LIMIT_DEFAULT : parsed;
+        if (Number.isNaN(parsed) || parsed < 0) {
+            return editingStale ? '0' : LIMIT_DEFAULT.toString();
+        }
+        return parsed.toString();
     })();
-    const [limitInput, setLimitInput] = useState(currentLimit.toString());
+    const [value, setValue] = useState(initialValue);
 
     useInput((input, key) => {
-        if (action !== EDIT_LIMIT_ACTION) {
+        if (action !== EDIT_LIMIT_ACTION && action !== EDIT_STALE_ACTION) {
             return;
         }
 
         if (key.return) {
-            const parsed = parseInt(limitInput, 10);
+            const parsed = parseInt(value, 10);
             if (Number.isNaN(parsed) || parsed < 0) {
                 onCancel();
                 return;
@@ -384,15 +425,15 @@ const AgentActivityEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 ...widget,
                 metadata: {
                     ...widget.metadata,
-                    [LIMIT_KEY]: parsed.toString()
+                    [metadataKey]: parsed.toString()
                 }
             });
         } else if (key.escape) {
             onCancel();
         } else if (key.backspace) {
-            setLimitInput(limitInput.slice(0, -1));
+            setValue(value.slice(0, -1));
         } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
-            setLimitInput(limitInput + input);
+            setValue(value + input);
         }
     });
 
@@ -401,7 +442,20 @@ const AgentActivityEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
             <Box flexDirection='column'>
                 <Box>
                     <Text>Enter max agents to show (0 for unlimited): </Text>
-                    <Text>{limitInput}</Text>
+                    <Text>{value}</Text>
+                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                </Box>
+                <Text dimColor>Press Enter to save, ESC to cancel</Text>
+            </Box>
+        );
+    }
+
+    if (action === EDIT_STALE_ACTION) {
+        return (
+            <Box flexDirection='column'>
+                <Box>
+                    <Text>Stale minutes — drop completed agents this old (0 disables): </Text>
+                    <Text>{value}</Text>
                     <Text backgroundColor='gray' color='black'>{' '}</Text>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>

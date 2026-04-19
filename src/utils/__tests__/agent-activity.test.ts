@@ -272,4 +272,64 @@ describe('agent-activity', () => {
             expect(agents[9]?.id).toBe('tool-14');
         });
     });
+
+    describe('getAgentActivityMetrics — turn boundary purge', () => {
+        it('drops completed agents that ended before the last turn marker', () => {
+            writeEvents('s-turn', [
+                { timestamp: '2026-04-19T10:00:00.000Z', session_id: 's-turn', event: 'start', id: 'old', type: 'explore' },
+                { timestamp: '2026-04-19T10:00:10.000Z', session_id: 's-turn', event: 'end', id: 'old' },
+                { timestamp: '2026-04-19T10:05:00.000Z', session_id: 's-turn', event: 'turn' },
+                { timestamp: '2026-04-19T10:06:00.000Z', session_id: 's-turn', event: 'start', id: 'new', type: 'reviewer' },
+                { timestamp: '2026-04-19T10:06:30.000Z', session_id: 's-turn', event: 'end', id: 'new' }
+            ]);
+
+            const agents = getAgentActivityMetrics('s-turn').agents;
+            expect(agents.map(a => a.id)).toEqual(['new']);
+        });
+
+        it('keeps running agents across turn boundaries', () => {
+            writeEvents('s-running-spans-turn', [
+                { timestamp: '2026-04-19T10:00:00.000Z', session_id: 's-running-spans-turn', event: 'start', id: 'long', type: 'explore' },
+                { timestamp: '2026-04-19T10:05:00.000Z', session_id: 's-running-spans-turn', event: 'turn' }
+            ]);
+
+            const agents = getAgentActivityMetrics('s-running-spans-turn').agents;
+            expect(agents).toHaveLength(1);
+            expect(agents[0]?.status).toBe('running');
+        });
+
+        it('no purge when no turn marker present (legacy files)', () => {
+            writeEvents('s-no-turn', [
+                { timestamp: '2026-04-19T10:00:00.000Z', session_id: 's-no-turn', event: 'start', id: 'a', type: 'explore' },
+                { timestamp: '2026-04-19T10:00:10.000Z', session_id: 's-no-turn', event: 'end', id: 'a' }
+            ]);
+
+            expect(getAgentActivityMetrics('s-no-turn').agents).toHaveLength(1);
+        });
+
+        it('uses the most recent of multiple turn markers', () => {
+            writeEvents('s-multi-turn', [
+                { timestamp: '2026-04-19T10:00:00.000Z', session_id: 's-multi-turn', event: 'start', id: 'mid', type: 'x' },
+                { timestamp: '2026-04-19T10:00:10.000Z', session_id: 's-multi-turn', event: 'end', id: 'mid' },
+                { timestamp: '2026-04-19T10:01:00.000Z', session_id: 's-multi-turn', event: 'turn' },
+                { timestamp: '2026-04-19T10:02:00.000Z', session_id: 's-multi-turn', event: 'start', id: 'between', type: 'y' },
+                { timestamp: '2026-04-19T10:02:10.000Z', session_id: 's-multi-turn', event: 'end', id: 'between' },
+                { timestamp: '2026-04-19T10:03:00.000Z', session_id: 's-multi-turn', event: 'turn' }
+            ]);
+
+            // Both completed agents ended before the latest turn → purged.
+            expect(getAgentActivityMetrics('s-multi-turn').agents).toEqual([]);
+        });
+
+        it('ignores turn markers from other sessions', () => {
+            writeEvents('s-cross', [
+                { timestamp: '2026-04-19T10:00:00.000Z', session_id: 's-cross', event: 'start', id: 'a', type: 'x' },
+                { timestamp: '2026-04-19T10:00:10.000Z', session_id: 's-cross', event: 'end', id: 'a' },
+                { timestamp: '2026-04-19T10:05:00.000Z', session_id: 'other-session', event: 'turn' }
+            ]);
+
+            // Foreign-session turn marker should not purge our agents.
+            expect(getAgentActivityMetrics('s-cross').agents).toHaveLength(1);
+        });
+    });
 });

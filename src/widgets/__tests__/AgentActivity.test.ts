@@ -11,6 +11,7 @@ import type { WidgetItem } from '../../types/Widget';
 import {
     AgentActivityWidget,
     applyLimit,
+    dropStaleCompleted,
     filterByMode,
     formatAgent,
     formatElapsed,
@@ -30,10 +31,11 @@ describe('AgentActivityWidget — identity', () => {
         )).toBe(true);
     });
 
-    it('registers PreToolUse and PostToolUse hooks for Agent', () => {
+    it('registers Agent Pre/Post hooks plus UserPromptSubmit turn marker', () => {
         expect(widget.getHooks()).toEqual([
             { event: 'PreToolUse', matcher: 'Agent' },
-            { event: 'PostToolUse', matcher: 'Agent' }
+            { event: 'PostToolUse', matcher: 'Agent' },
+            { event: 'UserPromptSubmit' }
         ]);
     });
 });
@@ -195,6 +197,41 @@ describe('applyLimit', () => {
 
     it('returns all entries when agents.length <= limit', () => {
         expect(applyLimit(agents(2), 5).map(a => a.id)).toEqual(['a0', 'a1']);
+    });
+});
+
+describe('dropStaleCompleted', () => {
+    const now = new Date('2026-04-19T10:30:00.000Z');
+
+    it('returns input unchanged when staleMinutes=0', () => {
+        const input: AgentEntry[] = [
+            { id: 'a', type: 't', status: 'completed', startTime: new Date(0), endTime: new Date(0) }
+        ];
+        expect(dropStaleCompleted(input, 0, now)).toEqual(input);
+    });
+
+    it('drops completed agents older than staleMinutes', () => {
+        const input: AgentEntry[] = [
+            { id: 'old', type: 't', status: 'completed', startTime: new Date('2026-04-19T09:00:00Z'), endTime: new Date('2026-04-19T09:05:00Z') },
+            { id: 'new', type: 't', status: 'completed', startTime: new Date('2026-04-19T10:20:00Z'), endTime: new Date('2026-04-19T10:25:00Z') }
+        ];
+        // 30 minute threshold: 'old' ended ~85 min ago → purged; 'new' ended 5 min ago → kept
+        expect(dropStaleCompleted(input, 30, now).map(a => a.id)).toEqual(['new']);
+    });
+
+    it('always keeps running agents regardless of age', () => {
+        const input: AgentEntry[] = [
+            { id: 'old-running', type: 't', status: 'running', startTime: new Date('2026-04-19T00:00:00Z') }
+        ];
+        expect(dropStaleCompleted(input, 30, now)).toEqual(input);
+    });
+
+    it('uses startTime fallback when endTime undefined', () => {
+        const input: AgentEntry[] = [
+            // completed but missing endTime — treat startTime as the reference
+            { id: 'malformed', type: 't', status: 'completed', startTime: new Date('2026-04-19T09:00:00Z') }
+        ];
+        expect(dropStaleCompleted(input, 30, now)).toEqual([]);
     });
 });
 
@@ -411,30 +448,33 @@ describe('AgentActivityWidget.getCustomKeybinds', () => {
         }
     });
 
-    it('includes l and u keys in activity mode (default)', () => {
+    it('includes l, u, and s keys in activity mode (default)', () => {
         const keys = widget.getCustomKeybinds(base).map(k => k.key);
-        expect(keys).toEqual(['v', 'o', 't', 'e', 'h', 'l', 'u']);
+        expect(keys).toEqual(['v', 'o', 't', 'e', 'h', 'l', 'u', 's']);
     });
 
-    it('includes l but not u key in list mode', () => {
+    it('includes l and s but not u key in list mode', () => {
         const item = { ...base, metadata: { mode: 'list' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).toContain('l');
+        expect(keys).toContain('s');
         expect(keys).not.toContain('u');
     });
 
-    it('omits l and u keys in current mode', () => {
+    it('omits l and u but keeps s in current mode', () => {
         const item = { ...base, metadata: { mode: 'current' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).not.toContain('l');
         expect(keys).not.toContain('u');
+        expect(keys).toContain('s');
     });
 
-    it('omits l and u keys in count mode', () => {
+    it('omits l and u but keeps s in count mode', () => {
         const item = { ...base, metadata: { mode: 'count' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).not.toContain('l');
         expect(keys).not.toContain('u');
+        expect(keys).toContain('s');
     });
 
     it('includes expected actions', () => {

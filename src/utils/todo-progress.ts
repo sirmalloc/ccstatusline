@@ -41,6 +41,24 @@ function normalizeTodo(entry: unknown): TodoItem | null {
     return item;
 }
 
+function extractTurnTimestamp(line: string, sessionId: string): string | null {
+    try {
+        const parsed: unknown = JSON.parse(line);
+        if (typeof parsed !== 'object' || parsed === null)
+            return null;
+        const record = parsed as Record<string, unknown>;
+        if (record.event !== 'turn')
+            return null;
+        if (record.session_id !== sessionId)
+            return null;
+        if (typeof record.timestamp !== 'string')
+            return null;
+        return record.timestamp;
+    } catch {
+        return null;
+    }
+}
+
 function parseSnapshot(line: string, sessionId: string): TodoProgressMetrics | null {
     try {
         const parsed: unknown = JSON.parse(line);
@@ -80,17 +98,39 @@ export function getTodoProgressMetrics(sessionId: string): TodoProgressMetrics {
         const content = fs.readFileSync(filePath, 'utf-8');
         const lines = content.split('\n').filter(line => line.trim().length > 0);
 
-        for (let i = lines.length - 1; i >= 0; i -= 1) {
-            const line = lines[i];
-            if (line === undefined) {
+        let lastTurnMs = 0;
+        let lastSnapshot: TodoProgressMetrics | null = null;
+
+        for (const line of lines) {
+            const turnTs = extractTurnTimestamp(line, sessionId);
+            if (turnTs !== null) {
+                const ms = new Date(turnTs).getTime();
+                if (!Number.isNaN(ms) && ms > lastTurnMs) {
+                    lastTurnMs = ms;
+                }
                 continue;
             }
             const snapshot = parseSnapshot(line, sessionId);
             if (snapshot !== null) {
-                return snapshot;
+                lastSnapshot = snapshot;
             }
         }
-        return { todos: [], timestamp: null };
+
+        if (lastSnapshot === null) {
+            return { todos: [], timestamp: null };
+        }
+
+        // Turn-boundary purge: if the last snapshot predates the most recent
+        // UserPromptSubmit turn marker, treat it as empty — the user has moved
+        // on to a new conversation turn and the old todos are stale.
+        if (lastTurnMs > 0 && lastSnapshot.timestamp !== null) {
+            const snapshotMs = new Date(lastSnapshot.timestamp).getTime();
+            if (!Number.isNaN(snapshotMs) && snapshotMs < lastTurnMs) {
+                return { todos: [], timestamp: lastSnapshot.timestamp };
+            }
+        }
+
+        return lastSnapshot;
     } catch {
         return { todos: [], timestamp: null };
     }

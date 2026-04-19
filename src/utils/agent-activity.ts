@@ -49,6 +49,25 @@ function parseEvent(line: string, sessionId: string): AgentActivityEvent | null 
     }
 }
 
+function extractTurnTimestamp(line: string, sessionId: string): string | null {
+    try {
+        const parsed: unknown = JSON.parse(line);
+        if (typeof parsed !== 'object' || parsed === null) {
+            return null;
+        }
+        const record = parsed as Record<string, unknown>;
+        if (record.event !== 'turn')
+            return null;
+        if (record.session_id !== sessionId)
+            return null;
+        if (typeof record.timestamp !== 'string')
+            return null;
+        return record.timestamp;
+    } catch {
+        return null;
+    }
+}
+
 function buildAgentEntry(event: AgentActivityEvent): AgentEntry {
     return {
         id: event.id,
@@ -71,8 +90,17 @@ export function getAgentActivityMetrics(sessionId: string): AgentActivityMetrics
         const lines = content.split('\n').filter(line => line.trim().length > 0);
 
         const agentMap = new Map<string, AgentEntry>();
+        let lastTurnMs = 0;
 
         for (const line of lines) {
+            const turnTs = extractTurnTimestamp(line, sessionId);
+            if (turnTs !== null) {
+                const ms = new Date(turnTs).getTime();
+                if (!Number.isNaN(ms) && ms > lastTurnMs) {
+                    lastTurnMs = ms;
+                }
+                continue;
+            }
             const event = parseEvent(line, sessionId);
             if (!event) {
                 continue;
@@ -91,7 +119,18 @@ export function getAgentActivityMetrics(sessionId: string): AgentActivityMetrics
             }
         }
 
+        // Turn-boundary purge: drop completed agents that finished before the
+        // last UserPromptSubmit turn marker. Running agents are always kept —
+        // they span turns by definition.
         const agents = Array.from(agentMap.values())
+            .filter((a) => {
+                if (a.status === 'running')
+                    return true;
+                if (lastTurnMs === 0)
+                    return true;
+                const endMs = a.endTime?.getTime() ?? a.startTime.getTime();
+                return endMs >= lastTurnMs;
+            })
             .sort((a, b) => {
                 const delta = a.startTime.getTime() - b.startTime.getTime();
                 if (delta !== 0) {

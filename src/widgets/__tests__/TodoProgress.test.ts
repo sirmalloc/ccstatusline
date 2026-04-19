@@ -116,8 +116,11 @@ describe('TodoProgressWidget', () => {
         expect(widget.supportsRawValue()).toBe(true);
     });
 
-    it('registers a PostToolUse+TodoWrite hook', () => {
-        expect(widget.getHooks()).toEqual([{ event: 'PostToolUse', matcher: 'TodoWrite' }]);
+    it('registers PostToolUse+TodoWrite and UserPromptSubmit (turn marker) hooks', () => {
+        expect(widget.getHooks()).toEqual([
+            { event: 'PostToolUse', matcher: 'TodoWrite' },
+            { event: 'UserPromptSubmit' }
+        ]);
     });
 
     it('returns preview output in preview mode', () => {
@@ -177,5 +180,46 @@ describe('TodoProgressWidget', () => {
 
     it('returns no modifiers when flags clean', () => {
         expect(widget.getEditorDisplay(makeItem()).modifierText).toBeUndefined();
+    });
+
+    it('surfaces stale minutes in editor modifier when configured', () => {
+        const item = makeItem({ metadata: { staleMinutes: '30' } });
+        expect(widget.getEditorDisplay(item).modifierText).toBe('(stale: 30m)');
+    });
+
+    it('treats snapshot as empty when staleMinutes exceeded', () => {
+        const oldTimestamp = new Date(Date.now() - 60 * 60_000).toISOString();  // 60 min ago
+        const ctx: RenderContext = {
+            todoProgressMetrics: {
+                todos: [{ content: 'Stale task', status: 'in_progress' }],
+                timestamp: oldTimestamp
+            }
+        };
+        const item = makeItem({ metadata: { staleMinutes: '30' } });  // 30 min threshold
+        expect(widget.render(item, ctx, settings)).toBe('Todo: none');
+    });
+
+    it('keeps snapshot when within staleMinutes window', () => {
+        const recent = new Date(Date.now() - 10 * 60_000).toISOString();  // 10 min ago
+        const ctx: RenderContext = {
+            todoProgressMetrics: {
+                todos: [{ content: 'Fresh task', status: 'in_progress' }],
+                timestamp: recent
+            }
+        };
+        const item = makeItem({ metadata: { staleMinutes: '30' } });
+        expect(widget.render(item, ctx, settings)).toBe('▸ Fresh task (0/1)');
+    });
+
+    it('staleMinutes=0 disables the check', () => {
+        const ancient = new Date(2020, 0, 1).toISOString();
+        const ctx: RenderContext = {
+            todoProgressMetrics: {
+                todos: [{ content: 'Old but not stale', status: 'in_progress' }],
+                timestamp: ancient
+            }
+        };
+        const item = makeItem({ metadata: { staleMinutes: '0' } });
+        expect(widget.render(item, ctx, settings)).toBe('▸ Old but not stale (0/1)');
     });
 });

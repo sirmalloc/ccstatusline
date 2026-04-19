@@ -332,6 +332,27 @@ async function handleHook(): Promise<void> {
             fs.appendFileSync(skillsPath, entry + '\n');
         }
 
+        // Turn boundary marker — appended to agent-activity and todo-progress
+        // jsonls on every new user prompt. getAgentActivityMetrics /
+        // getTodoProgressMetrics read the last turn timestamp and purge
+        // completed agents / stale todo snapshots that predate it. Running
+        // agents are always kept; they span turns by definition.
+        if (data.hook_event_name === 'UserPromptSubmit') {
+            const turnMarker = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                event: 'turn'
+            });
+            const agentPath = getAgentActivityFilePath(sessionId);
+            if (fs.existsSync(agentPath)) {
+                fs.appendFileSync(agentPath, turnMarker + '\n');
+            }
+            const todoPath = getTodoProgressFilePath(sessionId);
+            if (fs.existsSync(todoPath)) {
+                fs.appendFileSync(todoPath, turnMarker + '\n');
+            }
+        }
+
         // Skill is logged above; don't double-count it here.
         if (data.hook_event_name === 'PreToolUse'
             && data.tool_name

@@ -186,4 +186,61 @@ describe('todo-progress', () => {
             expect(getTodoProgressMetrics('s-nonarr')).toEqual({ todos: [], timestamp: null });
         });
     });
+
+    describe('getTodoProgressMetrics — turn boundary purge', () => {
+        it('returns empty todos when latest snapshot predates the last turn marker', () => {
+            writeLines('s-stale', [
+                {
+                    timestamp: '2026-04-19T10:00:00.000Z',
+                    session_id: 's-stale',
+                    todos: [{ content: 'Old task', status: 'in_progress' }]
+                },
+                { timestamp: '2026-04-19T10:05:00.000Z', session_id: 's-stale', event: 'turn' }
+            ]);
+
+            const metrics = getTodoProgressMetrics('s-stale');
+            expect(metrics.todos).toEqual([]);
+            // timestamp is still preserved so callers can tell "had data once"
+            expect(metrics.timestamp).toBe('2026-04-19T10:00:00.000Z');
+        });
+
+        it('keeps snapshot when it is newer than the last turn marker', () => {
+            writeLines('s-fresh', [
+                { timestamp: '2026-04-19T10:00:00.000Z', session_id: 's-fresh', event: 'turn' },
+                {
+                    timestamp: '2026-04-19T10:01:00.000Z',
+                    session_id: 's-fresh',
+                    todos: [{ content: 'Current task', status: 'in_progress' }]
+                }
+            ]);
+
+            const metrics = getTodoProgressMetrics('s-fresh');
+            expect(metrics.todos.map(t => t.content)).toEqual(['Current task']);
+        });
+
+        it('no purge when no turn marker present (legacy files)', () => {
+            writeLines('s-no-turn', [
+                {
+                    timestamp: '2026-04-19T10:00:00.000Z',
+                    session_id: 's-no-turn',
+                    todos: [{ content: 'Still here', status: 'pending' }]
+                }
+            ]);
+
+            expect(getTodoProgressMetrics('s-no-turn').todos).toHaveLength(1);
+        });
+
+        it('ignores turn markers from other sessions', () => {
+            writeLines('s-own', [
+                {
+                    timestamp: '2026-04-19T10:00:00.000Z',
+                    session_id: 's-own',
+                    todos: [{ content: 'Mine', status: 'pending' }]
+                },
+                { timestamp: '2026-04-19T10:05:00.000Z', session_id: 'other-session', event: 'turn' }
+            ]);
+
+            expect(getTodoProgressMetrics('s-own').todos).toHaveLength(1);
+        });
+    });
 });
