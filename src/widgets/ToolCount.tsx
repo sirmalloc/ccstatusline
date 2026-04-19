@@ -170,7 +170,7 @@ export class ToolCountWidget implements Widget {
                 const preview = '◐ Edit: auth.ts | ✓ Read ×3 | ✓ Bash ×2';
                 return raw ? preview : `Tools: ${preview}`;
             }
-            const preview = 'Bash * 5, Edit * 4, Read * 2, MCP * 1';
+            const preview = 'Bash ×5, Edit ×4, Read ×2, MCP ×1';
             return raw ? preview : `Tools: ${preview}`;
         }
 
@@ -317,7 +317,7 @@ export class ToolCountWidget implements Widget {
             return a.name.localeCompare(b.name);
         });
 
-        return entries.map(e => `${e.name} * ${e.count}`);
+        return entries.map(e => `${e.name} ×${e.count}`);
     }
 
     private getMode(item: WidgetItem): Mode {
