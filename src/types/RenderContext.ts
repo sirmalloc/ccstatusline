@@ -4,6 +4,7 @@ import type {
     ToolCountMetrics
 } from '../types';
 
+import type { AgentActivityMetrics } from './AgentActivityMetrics';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
@@ -30,6 +31,7 @@ export interface RenderContext {
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     toolCountMetrics?: ToolCountMetrics | null;
+    agentActivityMetrics?: AgentActivityMetrics | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     minimalist?: boolean;

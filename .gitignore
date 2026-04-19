@@ -36,3 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # graphify knowledge graph outputs
 graphify-out/
+
+# superpowers planning docs (local only)
+docs/superpowers/

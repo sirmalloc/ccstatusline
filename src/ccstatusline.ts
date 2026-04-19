@@ -8,9 +8,14 @@ import type {
     TokenMetrics,
     ToolCountMetrics
 } from './types';
+import type { AgentActivityMetrics } from './types/AgentActivityMetrics';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
+import {
+    getAgentActivityFilePath,
+    getAgentActivityMetrics
+} from './utils/agent-activity';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
@@ -153,6 +158,12 @@ async function renderMultipleLines(data: StatusJSON) {
         toolCountMetrics = getToolCountMetrics(data.session_id);
     }
 
+    const hasAgentActivity = lines.some(line => line.some(item => item.type === 'agent-activity'));
+    let agentActivityMetrics: AgentActivityMetrics | null = null;
+    if (hasAgentActivity && data.session_id) {
+        agentActivityMetrics = getAgentActivityMetrics(data.session_id);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -163,6 +174,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration,
         skillsMetrics,
         toolCountMetrics,
+        agentActivityMetrics,
         isPreview: false,
         minimalist: settings.minimalistMode
     };
@@ -252,7 +264,13 @@ interface HookInput {
     session_id?: string;
     hook_event_name?: string;
     tool_name?: string;
-    tool_input?: { skill?: string };
+    tool_use_id?: string;
+    tool_input?: {
+        skill?: string;
+        subagent_type?: string;
+        model?: string;
+        description?: string;
+    };
     prompt?: string;
 }
 
@@ -308,6 +326,43 @@ async function handleHook(): Promise<void> {
                 category: classifyTool(data.tool_name)
             });
             fs.appendFileSync(toolCountPath, entry + '\n');
+        }
+
+        // Agent Activity — start event (Task subagent began)
+        if (data.hook_event_name === 'PreToolUse'
+            && data.tool_name === 'Task'
+            && typeof data.tool_use_id === 'string'
+            && data.tool_use_id.length > 0) {
+            const agentPath = getAgentActivityFilePath(sessionId);
+            fs.mkdirSync(path.dirname(agentPath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                event: 'start',
+                id: data.tool_use_id,
+                type: typeof data.tool_input?.subagent_type === 'string'
+                    ? data.tool_input.subagent_type
+                    : 'unknown',
+                model: typeof data.tool_input?.model === 'string' ? data.tool_input.model : undefined,
+                description: typeof data.tool_input?.description === 'string' ? data.tool_input.description : undefined
+            });
+            fs.appendFileSync(agentPath, entry + '\n');
+        }
+
+        // Agent Activity — end event (Task subagent finished)
+        if (data.hook_event_name === 'PostToolUse'
+            && data.tool_name === 'Task'
+            && typeof data.tool_use_id === 'string'
+            && data.tool_use_id.length > 0) {
+            const agentPath = getAgentActivityFilePath(sessionId);
+            fs.mkdirSync(path.dirname(agentPath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                event: 'end',
+                id: data.tool_use_id
+            });
+            fs.appendFileSync(agentPath, entry + '\n');
         }
     } catch { /* ignore parse errors */ }
     console.log('{}');
