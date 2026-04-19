@@ -183,7 +183,6 @@ describe('buildCommand via installStatusLine', () => {
         expect(hooks.PreToolUse).toEqual([
             {
                 _tag: 'ccstatusline-managed',
-                matcher: 'Skill',
                 hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
             }
         ]);

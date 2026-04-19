@@ -27,10 +27,17 @@ import {
 type Mode = 'current' | 'count' | 'list';
 const MODES: Mode[] = ['current', 'count', 'list'];
 const MODE_LABELS: Record<Mode, string> = { current: 'last used', count: 'total count', list: 'unique list' };
+
+type Scope = 'all' | 'builtin' | 'mcp';
+const SCOPES: Scope[] = ['all', 'builtin', 'mcp'];
+const SCOPE_LABELS: Record<Scope, string> = { all: 'all', builtin: 'builtin', mcp: 'mcp' };
+
 const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
 const LIST_LIMIT_KEY = 'listLimit';
+const SCOPE_KEY = 'scope';
 const TOGGLE_HIDE_EMPTY_ACTION = 'toggle-hide-empty';
 const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
+const CYCLE_SCOPE_ACTION = 'cycle-scope';
 
 function parseListLimit(item: WidgetItem): number {
     const parsed = parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
@@ -59,26 +66,24 @@ function setListLimit(item: WidgetItem, limit: number): WidgetItem {
     };
 }
 
-export class SkillsWidget implements Widget {
-    getDefaultColor(): string { return 'magenta'; }
-    getDescription(): string { return 'Shows Claude Code skill invocations from hook data'; }
-    getDisplayName(): string { return 'Skills'; }
+export class ToolCountWidget implements Widget {
+    getDefaultColor(): string { return 'cyan'; }
+    getDescription(): string { return 'Counts Claude Code tool invocations (built-in + MCP) per session'; }
+    getDisplayName(): string { return 'Tool Count'; }
     getCategory(): string { return 'Session'; }
     supportsRawValue(): boolean { return true; }
     supportsColors(): boolean { return true; }
 
-    // No PreToolUse matcher so this hook can be shared with other widgets
-    // (e.g. ToolCount); handleHook routes by tool_name.
+    // PreToolUse (not PostToolUse) so the count updates before the next render.
+    // Shared/deduped with Skills' PreToolUse hook; handleHook routes by tool_name.
     getHooks(): WidgetHookDef[] {
-        return [
-            { event: 'PreToolUse' },
-            { event: 'UserPromptSubmit' }
-        ];
+        return [{ event: 'PreToolUse' }];
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
             { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
+            { key: 's', label: '(s)cope: all/builtin/mcp', action: CYCLE_SCOPE_ACTION },
             { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
 
@@ -91,6 +96,10 @@ export class SkillsWidget implements Widget {
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers = [MODE_LABELS[this.getMode(item)]];
+        const scope = this.getScope(item);
+        if (scope !== 'all') {
+            modifiers.push(`scope: ${SCOPE_LABELS[scope]}`);
+        }
         if (this.getMode(item) === 'list') {
             const limit = parseListLimit(item);
             if (limit > 0) {
@@ -100,7 +109,7 @@ export class SkillsWidget implements Widget {
         if (this.isHideWhenEmptyEnabled(item)) {
             modifiers.push('hide when empty');
         }
-        return { displayText: 'Skills', modifierText: makeModifierText(modifiers) };
+        return { displayText: 'Tools', modifierText: makeModifierText(modifiers) };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -109,6 +118,13 @@ export class SkillsWidget implements Widget {
             const nextItem = next === 'list' ? item : removeMetadataKeys(item, [LIST_LIMIT_KEY]);
             return { ...nextItem, metadata: { ...nextItem.metadata, mode: next } };
         }
+        if (action === CYCLE_SCOPE_ACTION) {
+            const next = SCOPES[(SCOPES.indexOf(this.getScope(item)) + 1) % SCOPES.length] ?? 'all';
+            if (next === 'all') {
+                return removeMetadataKeys(item, [SCOPE_KEY]);
+            }
+            return { ...item, metadata: { ...item.metadata, [SCOPE_KEY]: next } };
+        }
         if (action === TOGGLE_HIDE_EMPTY_ACTION) {
             return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);
         }
@@ -116,54 +132,110 @@ export class SkillsWidget implements Widget {
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement {
-        return <SkillsEditor {...props} />;
+        return <ToolCountEditor {...props} />;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const mode = this.getMode(item);
+        const scope = this.getScope(item);
         const raw = item.rawValue;
         const hideWhenEmpty = this.isHideWhenEmptyEnabled(item);
 
         if (context.isPreview) {
             if (mode === 'current') {
-                return raw ? 'commit' : 'Skill: commit';
+                return raw ? 'Edit' : 'Tool: Edit';
             }
             if (mode === 'count') {
-                return raw ? '5' : 'Skills: 5';
+                return raw ? '42' : 'Tools: 42';
             }
-            return raw ? 'commit, review-pr' : 'Skills: commit, review-pr';
+            const preview = 'Bash * 5, Edit * 4, Read * 2, MCP * 1';
+            return raw ? preview : `Tools: ${preview}`;
         }
 
         if (mode === 'current') {
-            const currentSkill = context.skillsMetrics?.lastSkill;
-            if (!currentSkill) {
+            const lastTool = context.toolCountMetrics?.lastTool;
+            if (!lastTool) {
                 if (hideWhenEmpty) {
                     return null;
                 }
-                return raw ? 'none' : 'Skill: none';
+                return raw ? 'none' : 'Tool: none';
             }
-            return raw ? currentSkill : `Skill: ${currentSkill}`;
+            return raw ? lastTool : `Tool: ${lastTool}`;
         }
+
         if (mode === 'count') {
-            const total = context.skillsMetrics?.totalInvocations ?? 0;
+            const total = this.getScopedTotal(context, scope);
             if (hideWhenEmpty && total === 0) {
                 return null;
             }
-            return raw ? String(total) : `Skills: ${total}`;
+            return raw ? String(total) : `Tools: ${total}`;
         }
 
-        const uniqueSkills = context.skillsMetrics?.uniqueSkills ?? [];
-        if (uniqueSkills.length === 0) {
+        const filtered = this.getScopedUniqueTools(context, scope);
+        if (filtered.length === 0) {
             if (hideWhenEmpty) {
                 return null;
             }
-            return raw ? 'none' : 'Skills: none';
+            return raw ? 'none' : 'Tools: none';
         }
 
         const limit = parseListLimit(item);
-        const visibleSkills = limit > 0 ? uniqueSkills.slice(0, limit) : uniqueSkills;
-        const list = visibleSkills.join(', ');
-        return raw ? list : `Skills: ${list}`;
+        const visibleTools = limit > 0 ? filtered.slice(0, limit) : filtered;
+        const list = visibleTools.join(', ');
+        return raw ? list : `Tools: ${list}`;
+    }
+
+    private getScopedTotal(context: RenderContext, scope: Scope): number {
+        const metrics = context.toolCountMetrics;
+        if (!metrics) {
+            return 0;
+        }
+        if (scope === 'all') {
+            return metrics.totalInvocations;
+        }
+        return metrics.byCategory[scope];
+    }
+
+    private getScopedUniqueTools(context: RenderContext, scope: Scope): string[] {
+        const metrics = context.toolCountMetrics;
+        if (!metrics) {
+            return [];
+        }
+
+        interface Entry {
+            name: string;
+            count: number;
+            isMcp: boolean;
+        }
+        const builtinEntries: Entry[] = Object.entries(metrics.byTool)
+            .filter(([name]) => !name.startsWith('mcp__'))
+            .map(([name, count]) => ({ name, count, isMcp: false }));
+
+        const mcpCount = metrics.byCategory.mcp;
+        const mcpEntry: Entry | null = mcpCount > 0
+            ? { name: 'MCP', count: mcpCount, isMcp: true }
+            : null;
+
+        let entries: Entry[];
+        if (scope === 'builtin') {
+            entries = builtinEntries;
+        } else if (scope === 'mcp') {
+            entries = mcpEntry ? [mcpEntry] : [];
+        } else {
+            entries = mcpEntry ? [...builtinEntries, mcpEntry] : builtinEntries;
+        }
+
+        entries.sort((a, b) => {
+            if (b.count !== a.count) {
+                return b.count - a.count;
+            }
+            if (a.isMcp !== b.isMcp) {
+                return a.isMcp ? 1 : -1;
+            }
+            return a.name.localeCompare(b.name);
+        });
+
+        return entries.map(e => `${e.name} * ${e.count}`);
     }
 
     private getMode(item: WidgetItem): Mode {
@@ -171,12 +243,17 @@ export class SkillsWidget implements Widget {
         return mode && MODES.includes(mode as Mode) ? mode as Mode : 'current';
     }
 
+    private getScope(item: WidgetItem): Scope {
+        const scope = item.metadata?.[SCOPE_KEY];
+        return scope && SCOPES.includes(scope as Scope) ? scope as Scope : 'all';
+    }
+
     private isHideWhenEmptyEnabled(item: WidgetItem): boolean {
         return isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY);
     }
 }
 
-const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
+const ToolCountEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const [limitInput, setLimitInput] = useState(() => parseListLimit(widget).toString());
 
     useInput((input, key) => {
@@ -201,7 +278,7 @@ const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCance
         return (
             <Box flexDirection='column'>
                 <Box>
-                    <Text>Enter max skills to show (0 for unlimited): </Text>
+                    <Text>Enter max tools to show (0 for unlimited): </Text>
                     <Text>{limitInput}</Text>
                     <Text backgroundColor='gray' color='black'>{' '}</Text>
                 </Box>

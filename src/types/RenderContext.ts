@@ -1,6 +1,7 @@
 import type {
     BlockMetrics,
-    SkillsMetrics
+    SkillsMetrics,
+    ToolCountMetrics
 } from '../types';
 
 import type { SpeedMetrics } from './SpeedMetrics';
@@ -28,6 +29,7 @@ export interface RenderContext {
     sessionDuration?: string | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
+    toolCountMetrics?: ToolCountMetrics | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
     minimalist?: boolean;

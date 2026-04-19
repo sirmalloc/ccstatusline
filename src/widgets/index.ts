@@ -51,6 +51,7 @@ export { WeeklyResetTimerWidget } from './WeeklyResetTimer';
 export { ContextBarWidget } from './ContextBar';
 export { LinkWidget } from './Link';
 export { SkillsWidget } from './Skills';
+export { ToolCountWidget } from './ToolCount';
 export { ThinkingEffortWidget } from './ThinkingEffort';
 export { VimModeWidget } from './VimMode';
 export { GitWorktreeModeWidget } from './GitWorktreeMode';

@@ -5,7 +5,8 @@ import { runTUI } from './tui';
 import type {
     SkillsMetrics,
     SpeedMetrics,
-    TokenMetrics
+    TokenMetrics,
+    ToolCountMetrics
 } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
@@ -37,6 +38,11 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import {
+    classifyTool,
+    getToolCountFilePath,
+    getToolCountMetrics
+} from './utils/tool-count';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -141,6 +147,12 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
+    const hasToolCount = lines.some(line => line.some(item => item.type === 'tool-count'));
+    let toolCountMetrics: ToolCountMetrics | null = null;
+    if (hasToolCount && data.session_id) {
+        toolCountMetrics = getToolCountMetrics(data.session_id);
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -150,6 +162,7 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
+        toolCountMetrics,
         isPreview: false,
         minimalist: settings.minimalistMode
     };
@@ -257,6 +270,9 @@ async function handleHook(): Promise<void> {
             return;
         }
 
+        const fs = await import('fs');
+        const path = await import('path');
+
         let skillName = '';
         if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
             skillName = data.tool_input?.skill ?? '';
@@ -266,22 +282,33 @@ async function handleHook(): Promise<void> {
                 skillName = match[1] ?? '';
             }
         }
-        if (!skillName) {
-            console.log('{}');
-            return;
+
+        if (skillName) {
+            const skillsPath = getSkillsFilePath(sessionId);
+            fs.mkdirSync(path.dirname(skillsPath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                skill: skillName,
+                source: data.hook_event_name
+            });
+            fs.appendFileSync(skillsPath, entry + '\n');
         }
 
-        const filePath = getSkillsFilePath(sessionId);
-        const fs = await import('fs');
-        const path = await import('path');
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const entry = JSON.stringify({
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            skill: skillName,
-            source: data.hook_event_name
-        });
-        fs.appendFileSync(filePath, entry + '\n');
+        // Skill is logged above; don't double-count it here.
+        if (data.hook_event_name === 'PreToolUse'
+            && data.tool_name
+            && data.tool_name !== 'Skill') {
+            const toolCountPath = getToolCountFilePath(sessionId);
+            fs.mkdirSync(path.dirname(toolCountPath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                tool_name: data.tool_name,
+                category: classifyTool(data.tool_name)
+            });
+            fs.appendFileSync(toolCountPath, entry + '\n');
+        }
     } catch { /* ignore parse errors */ }
     console.log('{}');
 }
