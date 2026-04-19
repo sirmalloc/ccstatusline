@@ -97,7 +97,7 @@ export class TodoProgressWidget implements Widget {
     getCustomKeybinds(_item?: WidgetItem): CustomKeybind[] {
         return [
             { key: 'p', label: '(p)rogress', action: TOGGLE_HIDE_PROGRESS_ACTION },
-            { key: 'c', label: '(c)ontent', action: TOGGLE_HIDE_CONTENT_ACTION },
+            { key: 't', label: '(t)ext', action: TOGGLE_HIDE_CONTENT_ACTION },
             { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
     }
