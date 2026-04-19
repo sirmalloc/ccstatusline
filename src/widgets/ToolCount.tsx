@@ -108,7 +108,7 @@ export class ToolCountWidget implements Widget {
                 keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIST_LIMIT_ACTION });
             }
             if (mode === 'activity') {
-                keybinds.push({ key: 'r', label: '(r)unning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
+                keybinds.push({ key: 'u', label: 'r(u)nning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
             }
         }
 

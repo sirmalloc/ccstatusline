@@ -176,11 +176,14 @@ export class AgentActivityWidget implements Widget {
         };
     }
 
+    // ItemsEditor reserves a/i/d/c/r/m/space for built-in actions
+    // (add/insert/delete/clear/rawValue/merge/separator-cycle). Use
+    // second-letter keys with parenthesized highlights to avoid collision.
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
             { key: 'v', label: '(v)iew: current/count/list/activity', action: CYCLE_MODE_ACTION },
-            { key: 'm', label: '(m)odel', action: TOGGLE_HIDE_MODEL_ACTION },
-            { key: 'd', label: '(d)escription', action: TOGGLE_HIDE_DESCRIPTION_ACTION },
+            { key: 'o', label: 'm(o)del', action: TOGGLE_HIDE_MODEL_ACTION },
+            { key: 't', label: '(t)ext', action: TOGGLE_HIDE_DESCRIPTION_ACTION },
             { key: 'e', label: '(e)lapsed', action: TOGGLE_HIDE_ELAPSED_ACTION },
             { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
@@ -191,7 +194,7 @@ export class AgentActivityWidget implements Widget {
                 keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIMIT_ACTION });
             }
             if (mode === 'activity') {
-                keybinds.push({ key: 'r', label: '(r)unning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
+                keybinds.push({ key: 'u', label: 'r(u)nning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
             }
         }
 

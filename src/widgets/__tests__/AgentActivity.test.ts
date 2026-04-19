@@ -400,30 +400,41 @@ describe('AgentActivityWidget.getCustomKeybinds', () => {
     const widget = new AgentActivityWidget();
     const base: WidgetItem = { id: 'a', type: 'agent-activity' };
 
-    it('includes l and r keys in activity mode (default)', () => {
-        const keys = widget.getCustomKeybinds(base).map(k => k.key);
-        expect(keys).toEqual(['v', 'm', 'd', 'e', 'h', 'l', 'r']);
+    it('uses collision-free keys (avoids ItemsEditor-reserved a/i/d/c/r/m)', () => {
+        const RESERVED = new Set(['a', 'i', 'd', 'c', 'r', 'm']);
+        const modes = [undefined, 'current', 'count', 'list', 'activity'] as const;
+        for (const mode of modes) {
+            const item: WidgetItem = mode ? { ...base, metadata: { mode } } : base;
+            for (const kb of widget.getCustomKeybinds(item)) {
+                expect(RESERVED.has(kb.key)).toBe(false);
+            }
+        }
     });
 
-    it('includes l but not r key in list mode', () => {
+    it('includes l and u keys in activity mode (default)', () => {
+        const keys = widget.getCustomKeybinds(base).map(k => k.key);
+        expect(keys).toEqual(['v', 'o', 't', 'e', 'h', 'l', 'u']);
+    });
+
+    it('includes l but not u key in list mode', () => {
         const item = { ...base, metadata: { mode: 'list' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).toContain('l');
-        expect(keys).not.toContain('r');
+        expect(keys).not.toContain('u');
     });
 
-    it('omits l and r keys in current mode', () => {
+    it('omits l and u keys in current mode', () => {
         const item = { ...base, metadata: { mode: 'current' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).not.toContain('l');
-        expect(keys).not.toContain('r');
+        expect(keys).not.toContain('u');
     });
 
-    it('omits l and r keys in count mode', () => {
+    it('omits l and u keys in count mode', () => {
         const item = { ...base, metadata: { mode: 'count' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).not.toContain('l');
-        expect(keys).not.toContain('r');
+        expect(keys).not.toContain('u');
     });
 
     it('includes expected actions', () => {
