@@ -328,9 +328,9 @@ async function handleHook(): Promise<void> {
             fs.appendFileSync(toolCountPath, entry + '\n');
         }
 
-        // Agent Activity — start event (Task subagent began)
+        // Agent Activity — start event (Agent subagent began)
         if (data.hook_event_name === 'PreToolUse'
-            && data.tool_name === 'Task'
+            && data.tool_name === 'Agent'
             && typeof data.tool_use_id === 'string'
             && data.tool_use_id.length > 0) {
             const agentPath = getAgentActivityFilePath(sessionId);
@@ -349,9 +349,9 @@ async function handleHook(): Promise<void> {
             fs.appendFileSync(agentPath, entry + '\n');
         }
 
-        // Agent Activity — end event (Task subagent finished)
+        // Agent Activity — end event (Agent subagent finished)
         if (data.hook_event_name === 'PostToolUse'
-            && data.tool_name === 'Task'
+            && data.tool_name === 'Agent'
             && typeof data.tool_use_id === 'string'
             && data.tool_use_id.length > 0) {
             const agentPath = getAgentActivityFilePath(sessionId);

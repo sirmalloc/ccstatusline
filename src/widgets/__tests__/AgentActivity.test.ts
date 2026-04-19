@@ -30,10 +30,10 @@ describe('AgentActivityWidget — identity', () => {
         )).toBe(true);
     });
 
-    it('registers PreToolUse and PostToolUse hooks for Task', () => {
+    it('registers PreToolUse and PostToolUse hooks for Agent', () => {
         expect(widget.getHooks()).toEqual([
-            { event: 'PreToolUse', matcher: 'Task' },
-            { event: 'PostToolUse', matcher: 'Task' }
+            { event: 'PreToolUse', matcher: 'Agent' },
+            { event: 'PostToolUse', matcher: 'Agent' }
         ]);
     });
 });

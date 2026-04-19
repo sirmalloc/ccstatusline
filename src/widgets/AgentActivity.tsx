@@ -127,8 +127,8 @@ export class AgentActivityWidget implements Widget {
 
     getHooks(): WidgetHookDef[] {
         return [
-            { event: 'PreToolUse', matcher: 'Task' },
-            { event: 'PostToolUse', matcher: 'Task' }
+            { event: 'PreToolUse', matcher: 'Agent' },
+            { event: 'PostToolUse', matcher: 'Agent' }
         ];
     }
 
