@@ -29,9 +29,9 @@ import {
 type Mode = 'current' | 'count' | 'list' | 'activity';
 const MODES: Mode[] = ['current', 'count', 'list', 'activity'];
 const MODE_LABELS: Record<Mode, string> = {
-    current: 'last used',
-    count: 'total count',
-    list: 'unique list',
+    current: 'current',
+    count: 'count',
+    list: 'list',
     activity: 'activity'
 };
 
@@ -42,9 +42,11 @@ const SCOPES: Scope[] = ['all', 'builtin', 'mcp'];
 const SCOPE_LABELS: Record<Scope, string> = { all: 'all', builtin: 'builtin', mcp: 'mcp' };
 
 const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
+const HIDE_COMPLETED_KEY = 'hideCompleted';
 const LIST_LIMIT_KEY = 'listLimit';
 const SCOPE_KEY = 'scope';
 const TOGGLE_HIDE_EMPTY_ACTION = 'toggle-hide-empty';
+const TOGGLE_HIDE_COMPLETED_ACTION = 'toggle-hide-completed';
 const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
 const CYCLE_SCOPE_ACTION = 'cycle-scope';
 
@@ -95,7 +97,7 @@ export class ToolCountWidget implements Widget {
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
-            { key: 'v', label: '(v)iew: last/count/list/activity', action: 'cycle-mode' },
+            { key: 'v', label: '(v)iew: current/count/list/activity', action: 'cycle-mode' },
             { key: 's', label: '(s)cope: all/builtin/mcp', action: CYCLE_SCOPE_ACTION },
             { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
@@ -104,6 +106,9 @@ export class ToolCountWidget implements Widget {
             const mode = this.getMode(item);
             if (mode === 'list' || mode === 'activity') {
                 keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIST_LIMIT_ACTION });
+            }
+            if (mode === 'activity') {
+                keybinds.push({ key: 'r', label: '(r)unning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
             }
         }
 
@@ -122,6 +127,9 @@ export class ToolCountWidget implements Widget {
             if (limit > 0) {
                 modifiers.push(`limit: ${limit}`);
             }
+        }
+        if (mode === 'activity' && this.shouldHideCompleted(item)) {
+            modifiers.push('running only');
         }
         if (this.isHideWhenEmptyEnabled(item)) {
             modifiers.push('hide when empty');
@@ -142,6 +150,9 @@ export class ToolCountWidget implements Widget {
                 return removeMetadataKeys(item, [SCOPE_KEY]);
             }
             return { ...item, metadata: { ...item.metadata, [SCOPE_KEY]: next } };
+        }
+        if (action === TOGGLE_HIDE_COMPLETED_ACTION) {
+            return toggleMetadataFlag(item, HIDE_COMPLETED_KEY);
         }
         if (action === TOGGLE_HIDE_EMPTY_ACTION) {
             return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);
@@ -194,7 +205,7 @@ export class ToolCountWidget implements Widget {
         }
 
         if (mode === 'activity') {
-            const body = this.renderActivity(context, scope, parseListLimit(item));
+            const body = this.renderActivity(context, scope, parseListLimit(item), this.shouldHideCompleted(item));
             if (body === null) {
                 if (hideWhenEmpty)
                     return null;
@@ -219,7 +230,7 @@ export class ToolCountWidget implements Widget {
         return raw ? list : `Tools: ${list}`;
     }
 
-    private renderActivity(context: RenderContext, scope: Scope, configuredLimit: number): string | null {
+    private renderActivity(context: RenderContext, scope: Scope, configuredLimit: number, hideCompleted: boolean): string | null {
         const entries = context.toolCountMetrics?.activity ?? [];
         const filtered = entries.filter((e) => {
             if (e.tool_name === 'Agent')
@@ -239,7 +250,7 @@ export class ToolCountWidget implements Widget {
         for (const entry of filtered) {
             if (entry.status === 'running') {
                 running.push(entry);
-            } else {
+            } else if (!hideCompleted) {
                 completedCounts.set(entry.tool_name, (completedCounts.get(entry.tool_name) ?? 0) + 1);
                 const endMs = entry.endTime?.getTime() ?? entry.startTime.getTime();
                 lastEnd.set(entry.tool_name, Math.max(lastEnd.get(entry.tool_name) ?? 0, endMs));
@@ -332,6 +343,10 @@ export class ToolCountWidget implements Widget {
 
     private isHideWhenEmptyEnabled(item: WidgetItem): boolean {
         return isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY);
+    }
+
+    private shouldHideCompleted(item: WidgetItem): boolean {
+        return isMetadataFlagEnabled(item, HIDE_COMPLETED_KEY);
     }
 }
 

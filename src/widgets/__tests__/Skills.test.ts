@@ -19,7 +19,7 @@ describe('SkillsWidget', () => {
     it('uses v as the mode toggle keybind', () => {
         const widget = new SkillsWidget();
         expect(widget.getCustomKeybinds({ id: 'skills', type: 'skills' })).toEqual([
-            { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
+            { key: 'v', label: '(v)iew: current/count/list/activity', action: 'cycle-mode' },
             { key: 'h', label: '(h)ide when empty', action: 'toggle-hide-empty' }
         ]);
         expect(widget.getCustomKeybinds({
@@ -27,37 +27,44 @@ describe('SkillsWidget', () => {
             type: 'skills',
             metadata: { mode: 'list' }
         })).toEqual([
-            { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
+            { key: 'v', label: '(v)iew: current/count/list/activity', action: 'cycle-mode' },
             { key: 'h', label: '(h)ide when empty', action: 'toggle-hide-empty' },
             { key: 'l', label: '(l)imit', action: 'edit-list-limit' }
         ]);
+        expect(widget.getCustomKeybinds({
+            id: 'skills',
+            type: 'skills',
+            metadata: { mode: 'activity' }
+        }).some(k => k.key === 'l')).toBe(true);
     });
 
-    it('cycles mode current -> count -> list -> current', () => {
+    it('cycles mode current -> count -> list -> activity -> current', () => {
         const widget = new SkillsWidget();
         const base: WidgetItem = { id: 'skills', type: 'skills' };
         const count = widget.handleEditorAction('cycle-mode', base);
         const list = widget.handleEditorAction('cycle-mode', count ?? base);
-        const current = widget.handleEditorAction('cycle-mode', list ?? base);
+        const activity = widget.handleEditorAction('cycle-mode', list ?? base);
+        const current = widget.handleEditorAction('cycle-mode', activity ?? base);
 
         expect(count?.metadata?.mode).toBe('count');
         expect(list?.metadata?.mode).toBe('list');
+        expect(activity?.metadata?.mode).toBe('activity');
         expect(current?.metadata?.mode).toBe('current');
     });
 
-    it('clears list limit metadata when leaving list mode', () => {
+    it('keeps list limit when cycling list -> activity; drops when leaving both', () => {
         const widget = new SkillsWidget();
-        const updated = widget.handleEditorAction('cycle-mode', {
+        const afterList = widget.handleEditorAction('cycle-mode', {
             id: 'skills',
             type: 'skills',
-            metadata: {
-                mode: 'list',
-                listLimit: '2'
-            }
+            metadata: { mode: 'list', listLimit: '2' }
         });
+        expect(afterList?.metadata?.mode).toBe('activity');
+        expect(afterList?.metadata?.listLimit).toBe('2');
 
-        expect(updated?.metadata?.mode).toBe('current');
-        expect(updated?.metadata?.listLimit).toBeUndefined();
+        const afterActivity = widget.handleEditorAction('cycle-mode', afterList ?? { id: 'skills', type: 'skills' });
+        expect(afterActivity?.metadata?.mode).toBe('current');
+        expect(afterActivity?.metadata?.listLimit).toBeUndefined();
     });
 
     it('toggles hide-when-empty metadata', () => {
@@ -78,7 +85,7 @@ describe('SkillsWidget', () => {
             metadata: { hideWhenEmpty: 'true' }
         });
 
-        expect(display.modifierText).toBe('(last used, hide when empty)');
+        expect(display.modifierText).toBe('(current, hide when empty)');
     });
 
     it('shows list limit in editor modifier text when configured', () => {
@@ -89,7 +96,7 @@ describe('SkillsWidget', () => {
             metadata: { mode: 'list', listLimit: '2' }
         });
 
-        expect(display.modifierText).toBe('(unique list, limit: 2)');
+        expect(display.modifierText).toBe('(list, limit: 2)');
     });
 
     it('renders current, count, and list modes from skills metrics', () => {
@@ -97,7 +104,8 @@ describe('SkillsWidget', () => {
             skillsMetrics: {
                 totalInvocations: 3,
                 uniqueSkills: ['commit', 'review-pr'],
-                lastSkill: 'review-pr'
+                lastSkill: 'review-pr',
+                recent: ['commit', 'review-pr', 'commit']
             }
         };
 
@@ -108,12 +116,53 @@ describe('SkillsWidget', () => {
         expect(render({ id: 'skills', type: 'skills', metadata: { mode: 'list', listLimit: '0' } }, context)).toBe('Skills: commit, review-pr');
     });
 
+    it('renders activity mode as time-ordered recent invocations joined by →', () => {
+        const context: RenderContext = {
+            skillsMetrics: {
+                totalInvocations: 3,
+                uniqueSkills: ['commit', 'review-pr'],
+                lastSkill: 'commit',
+                recent: ['commit', 'review-pr', 'commit']
+            }
+        };
+        expect(render({ id: 'skills', type: 'skills', metadata: { mode: 'activity' } }, context))
+            .toBe('Skills: commit → review-pr → commit');
+    });
+
+    it('activity mode respects listLimit as a tail window', () => {
+        const context: RenderContext = {
+            skillsMetrics: {
+                totalInvocations: 5,
+                uniqueSkills: ['a', 'b', 'c'],
+                lastSkill: 'c',
+                recent: ['a', 'b', 'c', 'a', 'c']
+            }
+        };
+        expect(render({
+            id: 'skills',
+            type: 'skills',
+            metadata: { mode: 'activity', listLimit: '2' }
+        }, context)).toBe('Skills: a → c');
+    });
+
+    it('activity mode with empty recent returns "Skills: none" / null per hideWhenEmpty', () => {
+        const empty: RenderContext = { skillsMetrics: { totalInvocations: 0, uniqueSkills: [], lastSkill: null, recent: [] } };
+        expect(render({ id: 'skills', type: 'skills', metadata: { mode: 'activity' } }, empty))
+            .toBe('Skills: none');
+        expect(render({
+            id: 'skills',
+            type: 'skills',
+            metadata: { mode: 'activity', hideWhenEmpty: 'true' }
+        }, empty)).toBeNull();
+    });
+
     it('shows non-hidden empty outputs by default', () => {
         const context: RenderContext = {
             skillsMetrics: {
                 totalInvocations: 0,
                 uniqueSkills: [],
-                lastSkill: null
+                lastSkill: null,
+                recent: []
             }
         };
 
@@ -127,7 +176,8 @@ describe('SkillsWidget', () => {
             skillsMetrics: {
                 totalInvocations: 0,
                 uniqueSkills: [],
-                lastSkill: null
+                lastSkill: null,
+                recent: []
             }
         };
 

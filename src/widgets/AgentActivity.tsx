@@ -24,14 +24,21 @@ import {
     toggleMetadataFlag
 } from './shared/metadata';
 
-type Mode = 'mixed' | 'active' | 'last';
-const MODES: Mode[] = ['mixed', 'active', 'last'];
+type Mode = 'current' | 'count' | 'list' | 'activity';
+const MODES: Mode[] = ['current', 'count', 'list', 'activity'];
+const MODE_LABELS: Record<Mode, string> = {
+    current: 'current',
+    count: 'count',
+    list: 'list',
+    activity: 'activity'
+};
 
 const LIMIT_DEFAULT = 3;
 
 const HIDE_MODEL_KEY = 'hideModel';
 const HIDE_DESCRIPTION_KEY = 'hideDescription';
 const HIDE_ELAPSED_KEY = 'hideElapsed';
+const HIDE_COMPLETED_KEY = 'hideCompleted';
 const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
 const LIMIT_KEY = 'limit';
 
@@ -39,6 +46,7 @@ const CYCLE_MODE_ACTION = 'cycle-mode';
 const TOGGLE_HIDE_MODEL_ACTION = 'toggle-hide-model';
 const TOGGLE_HIDE_DESCRIPTION_ACTION = 'toggle-hide-description';
 const TOGGLE_HIDE_ELAPSED_ACTION = 'toggle-hide-elapsed';
+const TOGGLE_HIDE_COMPLETED_ACTION = 'toggle-hide-completed';
 const TOGGLE_HIDE_EMPTY_ACTION = 'toggle-hide-empty';
 const EDIT_LIMIT_ACTION = 'edit-limit';
 
@@ -97,13 +105,13 @@ export function formatAgent(
     return rawValue ? body : `${icon} ${body}`;
 }
 
-export function filterByMode(agents: AgentEntry[], mode: Mode): AgentEntry[] {
-    if (mode === 'active') {
-        return agents.filter(a => a.status === 'running');
-    }
-    if (mode === 'last') {
+export function filterByMode(agents: AgentEntry[], mode: Mode, hideCompleted = false): AgentEntry[] {
+    if (mode === 'current') {
         const last = agents[agents.length - 1];
         return last === undefined ? [] : [last];
+    }
+    if (mode === 'activity' && hideCompleted) {
+        return agents.filter(a => a.status === 'running');
     }
     return agents;
 }
@@ -133,14 +141,19 @@ export class AgentActivityWidget implements Widget {
     }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [this.getMode(item)];
+        const mode = this.getMode(item);
+        const modifiers: string[] = [MODE_LABELS[mode]];
 
         const rawLimit = item.metadata?.[LIMIT_KEY];
-        if (rawLimit !== undefined) {
+        if (rawLimit !== undefined && (mode === 'list' || mode === 'activity')) {
             const parsed = parseInt(rawLimit, 10);
             if (!Number.isNaN(parsed) && parsed >= 0 && parsed !== LIMIT_DEFAULT) {
                 modifiers.push(`limit: ${parsed === 0 ? '∞' : parsed}`);
             }
+        }
+
+        if (mode === 'activity' && this.shouldHideCompleted(item)) {
+            modifiers.push('running only');
         }
 
         if (this.shouldHideModel(item)) {
@@ -165,15 +178,21 @@ export class AgentActivityWidget implements Widget {
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
-            { key: 'v', label: '(v)iew: mixed/active/last', action: CYCLE_MODE_ACTION },
+            { key: 'v', label: '(v)iew: current/count/list/activity', action: CYCLE_MODE_ACTION },
             { key: 'm', label: '(m)odel', action: TOGGLE_HIDE_MODEL_ACTION },
             { key: 'd', label: '(d)escription', action: TOGGLE_HIDE_DESCRIPTION_ACTION },
             { key: 'e', label: '(e)lapsed', action: TOGGLE_HIDE_ELAPSED_ACTION },
             { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
 
-        if (item && this.getMode(item) !== 'last') {
-            keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIMIT_ACTION });
+        if (item) {
+            const mode = this.getMode(item);
+            if (mode === 'list' || mode === 'activity') {
+                keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIMIT_ACTION });
+            }
+            if (mode === 'activity') {
+                keybinds.push({ key: 'r', label: '(r)unning only', action: TOGGLE_HIDE_COMPLETED_ACTION });
+            }
         }
 
         return keybinds;
@@ -183,7 +202,7 @@ export class AgentActivityWidget implements Widget {
         if (action === CYCLE_MODE_ACTION) {
             const currentMode = this.getMode(item);
             const nextIndex = (MODES.indexOf(currentMode) + 1) % MODES.length;
-            const nextMode = MODES[nextIndex] ?? 'mixed';
+            const nextMode = MODES[nextIndex] ?? 'activity';
             return { ...item, metadata: { ...item.metadata, mode: nextMode } };
         }
         if (action === TOGGLE_HIDE_MODEL_ACTION) {
@@ -195,6 +214,9 @@ export class AgentActivityWidget implements Widget {
         if (action === TOGGLE_HIDE_ELAPSED_ACTION) {
             return toggleMetadataFlag(item, HIDE_ELAPSED_KEY);
         }
+        if (action === TOGGLE_HIDE_COMPLETED_ACTION) {
+            return toggleMetadataFlag(item, HIDE_COMPLETED_KEY);
+        }
         if (action === TOGGLE_HIDE_EMPTY_ACTION) {
             return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);
         }
@@ -205,13 +227,43 @@ export class AgentActivityWidget implements Widget {
         const mode = this.getMode(item);
         const rawValue = item.rawValue === true;
         const hideWhenEmpty = this.isHideWhenEmptyEnabled(item);
+        const hideCompleted = this.shouldHideCompleted(item);
 
         if (context.isPreview) {
-            return this.renderPreview(mode, rawValue);
+            return this.renderPreview(mode, rawValue, hideCompleted);
         }
 
         const allAgents = context.agentActivityMetrics?.agents ?? [];
-        const filtered = filterByMode(allAgents, mode);
+
+        if (mode === 'count') {
+            const total = allAgents.length;
+            if (hideWhenEmpty && total === 0)
+                return null;
+            return rawValue ? String(total) : `Agents: ${total}`;
+        }
+
+        if (mode === 'list') {
+            const byType = new Map<string, number>();
+            for (const a of allAgents) {
+                byType.set(a.type, (byType.get(a.type) ?? 0) + 1);
+            }
+            if (byType.size === 0) {
+                if (hideWhenEmpty)
+                    return null;
+                return rawValue ? '' : 'Agents: none';
+            }
+            const entries = [...byType.entries()].sort((a, b) => {
+                if (b[1] !== a[1])
+                    return b[1] - a[1];
+                return a[0].localeCompare(b[0]);
+            });
+            const limit = this.parseLimit(item);
+            const visible = limit > 0 ? entries.slice(0, limit) : entries;
+            const body = visible.map(([name, count]) => `${name} ×${count}`).join(', ');
+            return rawValue ? body : `Agents: ${body}`;
+        }
+
+        const filtered = filterByMode(allAgents, mode, hideCompleted);
 
         if (filtered.length === 0) {
             if (hideWhenEmpty)
@@ -219,7 +271,7 @@ export class AgentActivityWidget implements Widget {
             return rawValue ? '' : 'Agents: none';
         }
 
-        const limit = mode === 'last' ? 1 : this.parseLimit(item);
+        const limit = mode === 'current' ? 1 : this.parseLimit(item);
         const limited = applyLimit(filtered, limit);
         const now = new Date();
         const flags: AgentDisplayFlags = {
@@ -228,22 +280,29 @@ export class AgentActivityWidget implements Widget {
             hideElapsed: this.shouldHideElapsed(item)
         };
         const parts = limited.map(agent => formatAgent(agent, flags, rawValue, now));
-        const separator = mode === 'active' ? ', ' : ' | ';
+        const separator = mode === 'activity' && hideCompleted ? ', ' : ' | ';
         const joined = parts.join(separator);
 
         return rawValue ? joined : `Agents: ${joined}`;
     }
 
-    private renderPreview(mode: Mode, rawValue: boolean): string {
-        if (mode === 'active') {
-            return rawValue
-                ? 'explore [haiku]: Finding auth code (12s)'
-                : 'Agents: ◐ explore [haiku]: Finding auth code (12s)';
+    private renderPreview(mode: Mode, rawValue: boolean, hideCompleted: boolean): string {
+        if (mode === 'count') {
+            return rawValue ? '3' : 'Agents: 3';
         }
-        if (mode === 'last') {
+        if (mode === 'list') {
+            const body = 'explore ×2, code-reviewer ×1';
+            return rawValue ? body : `Agents: ${body}`;
+        }
+        if (mode === 'current') {
             return rawValue
                 ? 'code-reviewer [opus]: Review complete (2m 34s)'
                 : 'Agents: ✓ code-reviewer [opus]: Review complete (2m 34s)';
+        }
+        if (hideCompleted) {
+            return rawValue
+                ? 'explore [haiku]: Finding auth code (12s)'
+                : 'Agents: ◐ explore [haiku]: Finding auth code (12s)';
         }
         return rawValue
             ? 'explore [haiku]: Finding auth code (12s) | code-reviewer [opus]: Review complete (2m 34s)'
@@ -256,7 +315,11 @@ export class AgentActivityWidget implements Widget {
 
     private getMode(item: WidgetItem): Mode {
         const raw = item.metadata?.mode;
-        return raw !== undefined && (MODES as string[]).includes(raw) ? raw as Mode : 'mixed';
+        if (raw === 'last')
+            return 'current';
+        if (raw === 'mixed' || raw === 'active')
+            return 'activity';
+        return raw !== undefined && (MODES as string[]).includes(raw) ? raw as Mode : 'activity';
     }
 
     private parseLimit(item: WidgetItem): number {
@@ -279,6 +342,12 @@ export class AgentActivityWidget implements Widget {
 
     private shouldHideElapsed(item: WidgetItem): boolean {
         return isMetadataFlagEnabled(item, HIDE_ELAPSED_KEY);
+    }
+
+    private shouldHideCompleted(item: WidgetItem): boolean {
+        if (item.metadata?.mode === 'active')
+            return true;
+        return isMetadataFlagEnabled(item, HIDE_COMPLETED_KEY);
     }
 
     private isHideWhenEmptyEnabled(item: WidgetItem): boolean {

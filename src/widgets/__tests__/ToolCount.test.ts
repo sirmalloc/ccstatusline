@@ -200,4 +200,68 @@ describe('ToolCountWidget — keybinds & editor display across modes', () => {
         const display = widget.getEditorDisplay(makeItem({ metadata: { mode: 'activity', listLimit: '2' } }));
         expect(display.modifierText).toBe('(activity, limit: 2)');
     });
+
+    it('exposes (r)unning only only in activity mode', () => {
+        const activity = widget.getCustomKeybinds(makeItem({ metadata: activityMode }));
+        expect(activity.find(k => k.action === 'toggle-hide-completed')).toBeDefined();
+
+        const list = widget.getCustomKeybinds(makeItem({ metadata: { mode: 'list' } }));
+        expect(list.find(k => k.action === 'toggle-hide-completed')).toBeUndefined();
+    });
+
+    it('uses current label in cycle-mode keybind', () => {
+        const keybind = widget.getCustomKeybinds(makeItem()).find(k => k.action === 'cycle-mode');
+        expect(keybind?.label).toContain('current');
+        expect(keybind?.label).not.toContain('last');
+    });
+
+    it('appends running only to activity modifier when hideCompleted set', () => {
+        const display = widget.getEditorDisplay(makeItem({ metadata: { mode: 'activity', hideCompleted: 'true' } }));
+        expect(display.modifierText).toBe('(activity, running only)');
+    });
+});
+
+describe('ToolCountWidget — activity mode + hideCompleted', () => {
+    it('filters out completed entries when hideCompleted=true', () => {
+        const activity = [
+            { id: 'u0', tool_name: 'Edit', category: 'builtin' as const, status: 'running' as const, target: '/x/auth.ts', startTime: new Date('2026-04-19T10:00:00Z') },
+            { id: 'u1', tool_name: 'Read', category: 'builtin' as const, status: 'completed' as const, startTime: new Date('2026-04-19T10:01:00Z') },
+            { id: 'u2', tool_name: 'Read', category: 'builtin' as const, status: 'completed' as const, startTime: new Date('2026-04-19T10:02:00Z') }
+        ];
+        const out = widget.render(
+            makeItem({ metadata: { mode: 'activity', hideCompleted: 'true' } }),
+            makeContext({ activity }),
+            settings
+        );
+        expect(out).toBe('Tools: ◐ Edit: auth.ts');
+    });
+
+    it('keeps completed aggregation when hideCompleted unset', () => {
+        const activity = [
+            { id: 'u0', tool_name: 'Edit', category: 'builtin' as const, status: 'running' as const, target: '/x/auth.ts', startTime: new Date('2026-04-19T10:00:00Z') },
+            { id: 'u1', tool_name: 'Read', category: 'builtin' as const, status: 'completed' as const, startTime: new Date('2026-04-19T10:01:00Z') }
+        ];
+        const out = widget.render(
+            makeItem({ metadata: activityMode }),
+            makeContext({ activity }),
+            settings
+        );
+        expect(out).toBe('Tools: ◐ Edit: auth.ts | ✓ Read');
+    });
+
+    it('hideCompleted=true with only completed entries yields none/null per hideWhenEmpty', () => {
+        const activity = [
+            { id: 'u1', tool_name: 'Read', category: 'builtin' as const, status: 'completed' as const, startTime: new Date('2026-04-19T10:01:00Z') }
+        ];
+        expect(widget.render(
+            makeItem({ metadata: { mode: 'activity', hideCompleted: 'true' } }),
+            makeContext({ activity }),
+            settings
+        )).toBe('Tools: none');
+        expect(widget.render(
+            makeItem({ metadata: { mode: 'activity', hideCompleted: 'true', hideWhenEmpty: 'true' } }),
+            makeContext({ activity }),
+            settings
+        )).toBeNull();
+    });
 });

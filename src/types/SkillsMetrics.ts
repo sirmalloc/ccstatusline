@@ -9,4 +9,5 @@ export interface SkillsMetrics {
     totalInvocations: number;
     uniqueSkills: string[];
     lastSkill: string | null;
+    recent: string[];
 }

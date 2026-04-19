@@ -148,23 +148,29 @@ describe('filterByMode', () => {
         }));
     }
 
-    it('active returns only running agents', () => {
+    it('current returns a single-element array with the latest agent', () => {
         const input = agents(['running', 'completed', 'running']);
-        expect(filterByMode(input, 'active').map(a => a.id)).toEqual(['a0', 'a2']);
+        expect(filterByMode(input, 'current').map(a => a.id)).toEqual(['a2']);
     });
 
-    it('last returns a single-element array with the latest agent', () => {
-        const input = agents(['running', 'completed', 'running']);
-        expect(filterByMode(input, 'last').map(a => a.id)).toEqual(['a2']);
+    it('current returns empty array when no agents', () => {
+        expect(filterByMode([], 'current')).toEqual([]);
     });
 
-    it('last returns empty array when no agents', () => {
-        expect(filterByMode([], 'last')).toEqual([]);
+    it('activity returns the input unchanged when hideCompleted=false', () => {
+        const input = agents(['running', 'completed', 'running']);
+        expect(filterByMode(input, 'activity')).toEqual(input);
     });
 
-    it('mixed returns the input unchanged', () => {
+    it('activity with hideCompleted=true returns only running agents', () => {
         const input = agents(['running', 'completed', 'running']);
-        expect(filterByMode(input, 'mixed')).toEqual(input);
+        expect(filterByMode(input, 'activity', true).map(a => a.id)).toEqual(['a0', 'a2']);
+    });
+
+    it('count/list return all agents (aggregation handled in render)', () => {
+        const input = agents(['running', 'completed']);
+        expect(filterByMode(input, 'count')).toEqual(input);
+        expect(filterByMode(input, 'list')).toEqual(input);
     });
 });
 
@@ -221,7 +227,7 @@ describe('AgentActivityWidget.render — core modes', () => {
         endTime: new Date(Date.now() - 40_000)
     };
 
-    it('mixed mode joins with " | " and includes label', () => {
+    it('activity mode (default) joins with " | " and mixes running + completed', () => {
         const ctx = makeContext([runningAgent, completedAgent]);
         const output = widget.render(item, ctx, DEFAULT_SETTINGS);
         expect(output).toMatch(/^Agents: /);
@@ -230,21 +236,62 @@ describe('AgentActivityWidget.render — core modes', () => {
         expect(output).toContain('✓ code-reviewer');
     });
 
-    it('active mode joins with ", " and only contains running', () => {
+    it('activity mode with hideCompleted joins with ", " and only shows running', () => {
         const ctx = makeContext([runningAgent, completedAgent]);
-        const activeItem: WidgetItem = { ...item, metadata: { mode: 'active' } };
-        const output = widget.render(activeItem, ctx, DEFAULT_SETTINGS);
+        const runningOnly: WidgetItem = { ...item, metadata: { mode: 'activity', hideCompleted: 'true' } };
+        const output = widget.render(runningOnly, ctx, DEFAULT_SETTINGS);
         expect(output).toMatch(/^Agents: /);
         expect(output).not.toContain(' | ');
         expect(output).not.toContain('✓');
         expect(output).toContain('◐ explore');
     });
 
-    it('last mode shows one agent', () => {
+    it('current mode shows one agent (latest)', () => {
         const ctx = makeContext([runningAgent, completedAgent]);
-        const lastItem: WidgetItem = { ...item, metadata: { mode: 'last' } };
-        const output = widget.render(lastItem, ctx, DEFAULT_SETTINGS);
+        const currentItem: WidgetItem = { ...item, metadata: { mode: 'current' } };
+        const output = widget.render(currentItem, ctx, DEFAULT_SETTINGS);
         expect(output).toMatch(/^Agents: /);
+        expect(output).toContain('code-reviewer');
+        expect(output).not.toContain('explore');
+    });
+
+    it('count mode shows total agent count', () => {
+        const ctx = makeContext([runningAgent, completedAgent]);
+        const countItem: WidgetItem = { ...item, metadata: { mode: 'count' } };
+        expect(widget.render(countItem, ctx, DEFAULT_SETTINGS)).toBe('Agents: 2');
+    });
+
+    it('list mode aggregates by type and sorts by count desc', () => {
+        const extra: AgentEntry = { ...runningAgent, id: 'r2' };
+        const ctx = makeContext([runningAgent, completedAgent, extra]);
+        const listItem: WidgetItem = { ...item, metadata: { mode: 'list' } };
+        expect(widget.render(listItem, ctx, DEFAULT_SETTINGS))
+            .toBe('Agents: explore ×2, code-reviewer ×1');
+    });
+});
+
+describe('AgentActivityWidget.render — legacy metadata', () => {
+    const widget = new AgentActivityWidget();
+    const runningAgent: AgentEntry = { id: 'r1', type: 'explore', status: 'running', startTime: new Date(Date.now() - 1000) };
+    const completedAgent: AgentEntry = { id: 'c1', type: 'code-reviewer', status: 'completed', startTime: new Date(Date.now() - 3000), endTime: new Date(Date.now() - 2000) };
+
+    it('maps legacy mode "mixed" to activity', () => {
+        const legacy: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'mixed' } };
+        const output = widget.render(legacy, makeContext([runningAgent, completedAgent]), DEFAULT_SETTINGS);
+        expect(output).toContain('◐ explore');
+        expect(output).toContain('✓ code-reviewer');
+    });
+
+    it('maps legacy mode "active" to activity + hideCompleted', () => {
+        const legacy: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'active' } };
+        const output = widget.render(legacy, makeContext([runningAgent, completedAgent]), DEFAULT_SETTINGS);
+        expect(output).toContain('◐ explore');
+        expect(output).not.toContain('✓');
+    });
+
+    it('maps legacy mode "last" to current', () => {
+        const legacy: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'last' } };
+        const output = widget.render(legacy, makeContext([runningAgent, completedAgent]), DEFAULT_SETTINGS);
         expect(output).toContain('code-reviewer');
         expect(output).not.toContain('explore');
     });
@@ -290,12 +337,26 @@ describe('AgentActivityWidget.render — rawValue and empty', () => {
         expect(widget.render(item, makeContext([]), DEFAULT_SETTINGS))
             .toBe('');
     });
+
+    it('count mode returns "Agents: 0" when no agents (hideWhenEmpty off)', () => {
+        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'count' } };
+        expect(widget.render(item, makeContext([]), DEFAULT_SETTINGS)).toBe('Agents: 0');
+    });
+
+    it('count mode with hideWhenEmpty returns null when 0', () => {
+        const item: WidgetItem = {
+            id: 'a',
+            type: 'agent-activity',
+            metadata: { mode: 'count', hideWhenEmpty: 'true' }
+        };
+        expect(widget.render(item, makeContext([]), DEFAULT_SETTINGS)).toBeNull();
+    });
 });
 
 describe('AgentActivityWidget.render — preview', () => {
     const widget = new AgentActivityWidget();
 
-    it('mixed preview contains both running and completed samples', () => {
+    it('activity preview contains both running and completed samples', () => {
         const item: WidgetItem = { id: 'a', type: 'agent-activity' };
         const output = widget.render(item, makeContext([], true), DEFAULT_SETTINGS) ?? '';
         expect(output).toMatch(/^Agents: /);
@@ -303,18 +364,29 @@ describe('AgentActivityWidget.render — preview', () => {
         expect(output).toContain('✓ code-reviewer');
     });
 
-    it('active preview contains only running sample', () => {
-        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'active' } };
+    it('activity preview with hideCompleted contains only running sample', () => {
+        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { hideCompleted: 'true' } };
         const output = widget.render(item, makeContext([], true), DEFAULT_SETTINGS) ?? '';
         expect(output).toContain('◐ explore');
         expect(output).not.toContain('✓');
     });
 
-    it('last preview contains one completed sample', () => {
-        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'last' } };
+    it('current preview shows one completed sample', () => {
+        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'current' } };
         const output = widget.render(item, makeContext([], true), DEFAULT_SETTINGS) ?? '';
         expect(output).toContain('✓ code-reviewer');
         expect(output).not.toContain('◐');
+    });
+
+    it('count preview shows a numeric sample', () => {
+        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'count' } };
+        expect(widget.render(item, makeContext([], true), DEFAULT_SETTINGS)).toBe('Agents: 3');
+    });
+
+    it('list preview shows aggregated sample', () => {
+        const item: WidgetItem = { id: 'a', type: 'agent-activity', metadata: { mode: 'list' } };
+        expect(widget.render(item, makeContext([], true), DEFAULT_SETTINGS))
+            .toBe('Agents: explore ×2, code-reviewer ×1');
     });
 
     it('rawValue preview omits "Agents:" prefix', () => {
@@ -328,21 +400,30 @@ describe('AgentActivityWidget.getCustomKeybinds', () => {
     const widget = new AgentActivityWidget();
     const base: WidgetItem = { id: 'a', type: 'agent-activity' };
 
-    it('includes l key when mode is mixed', () => {
+    it('includes l and r keys in activity mode (default)', () => {
         const keys = widget.getCustomKeybinds(base).map(k => k.key);
-        expect(keys).toEqual(['v', 'm', 'd', 'e', 'h', 'l']);
+        expect(keys).toEqual(['v', 'm', 'd', 'e', 'h', 'l', 'r']);
     });
 
-    it('includes l key when mode is active', () => {
-        const item = { ...base, metadata: { mode: 'active' } };
+    it('includes l but not r key in list mode', () => {
+        const item = { ...base, metadata: { mode: 'list' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).toContain('l');
+        expect(keys).not.toContain('r');
     });
 
-    it('omits l key when mode is last', () => {
-        const item = { ...base, metadata: { mode: 'last' } };
+    it('omits l and r keys in current mode', () => {
+        const item = { ...base, metadata: { mode: 'current' } };
         const keys = widget.getCustomKeybinds(item).map(k => k.key);
         expect(keys).not.toContain('l');
+        expect(keys).not.toContain('r');
+    });
+
+    it('omits l and r keys in count mode', () => {
+        const item = { ...base, metadata: { mode: 'count' } };
+        const keys = widget.getCustomKeybinds(item).map(k => k.key);
+        expect(keys).not.toContain('l');
+        expect(keys).not.toContain('r');
     });
 
     it('includes expected actions', () => {
@@ -352,6 +433,7 @@ describe('AgentActivityWidget.getCustomKeybinds', () => {
         expect(actions).toContain('toggle-hide-model');
         expect(actions).toContain('toggle-hide-description');
         expect(actions).toContain('toggle-hide-elapsed');
+        expect(actions).toContain('toggle-hide-completed');
         expect(actions).toContain('toggle-hide-empty');
         expect(actions).toContain('edit-limit');
     });
@@ -361,13 +443,16 @@ describe('AgentActivityWidget.handleEditorAction', () => {
     const widget = new AgentActivityWidget();
     const base: WidgetItem = { id: 'a', type: 'agent-activity' };
 
-    it('cycle-mode progresses mixed → active → last → mixed', () => {
+    it('cycle-mode progresses activity → current → count → list → activity', () => {
+        // default mode is 'activity'
         const a = widget.handleEditorAction('cycle-mode', base);
-        expect(a?.metadata?.mode).toBe('active');
+        expect(a?.metadata?.mode).toBe('current');
         const b = widget.handleEditorAction('cycle-mode', a ?? base);
-        expect(b?.metadata?.mode).toBe('last');
+        expect(b?.metadata?.mode).toBe('count');
         const c = widget.handleEditorAction('cycle-mode', b ?? base);
-        expect(c?.metadata?.mode).toBe('mixed');
+        expect(c?.metadata?.mode).toBe('list');
+        const d = widget.handleEditorAction('cycle-mode', c ?? base);
+        expect(d?.metadata?.mode).toBe('activity');
     });
 
     it('toggle-hide-model flips flag', () => {
@@ -387,6 +472,11 @@ describe('AgentActivityWidget.handleEditorAction', () => {
         expect(a?.metadata?.hideElapsed).toBe('true');
     });
 
+    it('toggle-hide-completed flips flag', () => {
+        const a = widget.handleEditorAction('toggle-hide-completed', base);
+        expect(a?.metadata?.hideCompleted).toBe('true');
+    });
+
     it('toggle-hide-empty flips flag', () => {
         const a = widget.handleEditorAction('toggle-hide-empty', base);
         expect(a?.metadata?.hideWhenEmpty).toBe('true');
@@ -400,28 +490,48 @@ describe('AgentActivityWidget.handleEditorAction', () => {
 describe('AgentActivityWidget.getEditorDisplay', () => {
     const widget = new AgentActivityWidget();
 
-    it('shows only mode when no other modifiers', () => {
+    it('shows activity label by default', () => {
         const display = widget.getEditorDisplay({ id: 'a', type: 'agent-activity' });
         expect(display.displayText).toBe('Agent Activity');
-        expect(display.modifierText).toBe('(mixed)');
+        expect(display.modifierText).toBe('(activity)');
     });
 
-    it('shows explicit mode', () => {
+    it('shows current label for current mode', () => {
+        const display = widget.getEditorDisplay({ id: 'a', type: 'agent-activity', metadata: { mode: 'current' } });
+        expect(display.modifierText).toBe('(current)');
+    });
+
+    it('shows count label for count mode', () => {
+        const display = widget.getEditorDisplay({ id: 'a', type: 'agent-activity', metadata: { mode: 'count' } });
+        expect(display.modifierText).toBe('(count)');
+    });
+
+    it('shows list label for list mode', () => {
+        const display = widget.getEditorDisplay({ id: 'a', type: 'agent-activity', metadata: { mode: 'list' } });
+        expect(display.modifierText).toBe('(list)');
+    });
+
+    it('appends running only when hideCompleted set on activity mode', () => {
         const display = widget.getEditorDisplay({
             id: 'a',
             type: 'agent-activity',
-            metadata: { mode: 'active' }
+            metadata: { mode: 'activity', hideCompleted: 'true' }
         });
-        expect(display.modifierText).toBe('(active)');
+        expect(display.modifierText).toBe('(activity, running only)');
     });
 
-    it('appends limit when non-default', () => {
+    it('legacy mode=active resolves to activity + running only', () => {
+        const display = widget.getEditorDisplay({ id: 'a', type: 'agent-activity', metadata: { mode: 'active' } });
+        expect(display.modifierText).toBe('(activity, running only)');
+    });
+
+    it('appends limit when non-default in activity mode', () => {
         const display = widget.getEditorDisplay({
             id: 'a',
             type: 'agent-activity',
             metadata: { limit: '5' }
         });
-        expect(display.modifierText).toBe('(mixed, limit: 5)');
+        expect(display.modifierText).toBe('(activity, limit: 5)');
     });
 
     it('shows limit: ∞ when limit is 0', () => {
@@ -430,7 +540,7 @@ describe('AgentActivityWidget.getEditorDisplay', () => {
             type: 'agent-activity',
             metadata: { limit: '0' }
         });
-        expect(display.modifierText).toBe('(mixed, limit: ∞)');
+        expect(display.modifierText).toBe('(activity, limit: ∞)');
     });
 
     it('omits limit modifier when limit equals default (3)', () => {
@@ -439,7 +549,14 @@ describe('AgentActivityWidget.getEditorDisplay', () => {
             type: 'agent-activity',
             metadata: { limit: '3' }
         });
-        expect(display.modifierText).toBe('(mixed)');
+        expect(display.modifierText).toBe('(activity)');
+    });
+
+    it('omits limit modifier in count or current modes', () => {
+        const count = widget.getEditorDisplay({ id: 'a', type: 'agent-activity', metadata: { mode: 'count', limit: '5' } });
+        expect(count.modifierText).toBe('(count)');
+        const current = widget.getEditorDisplay({ id: 'a', type: 'agent-activity', metadata: { mode: 'current', limit: '5' } });
+        expect(current.modifierText).toBe('(current)');
     });
 
     it('appends hideXxx flags', () => {
@@ -452,7 +569,7 @@ describe('AgentActivityWidget.getEditorDisplay', () => {
                 hideElapsed: 'true'
             }
         });
-        expect(display.modifierText).toBe('(mixed, no model, no desc, no elapsed)');
+        expect(display.modifierText).toBe('(activity, no model, no desc, no elapsed)');
     });
 
     it('appends hide when empty', () => {
@@ -461,6 +578,6 @@ describe('AgentActivityWidget.getEditorDisplay', () => {
             type: 'agent-activity',
             metadata: { hideWhenEmpty: 'true' }
         });
-        expect(display.modifierText).toBe('(mixed, hide when empty)');
+        expect(display.modifierText).toBe('(activity, hide when empty)');
     });
 });

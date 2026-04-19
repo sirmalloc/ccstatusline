@@ -24,9 +24,10 @@ import {
     toggleMetadataFlag
 } from './shared/metadata';
 
-type Mode = 'current' | 'count' | 'list';
-const MODES: Mode[] = ['current', 'count', 'list'];
-const MODE_LABELS: Record<Mode, string> = { current: 'last used', count: 'total count', list: 'unique list' };
+type Mode = 'current' | 'count' | 'list' | 'activity';
+const MODES: Mode[] = ['current', 'count', 'list', 'activity'];
+const MODE_LABELS: Record<Mode, string> = { current: 'current', count: 'count', list: 'list', activity: 'activity' };
+const ACTIVITY_DEFAULT_LIMIT = 5;
 const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
 const LIST_LIMIT_KEY = 'listLimit';
 const TOGGLE_HIDE_EMPTY_ACTION = 'toggle-hide-empty';
@@ -78,20 +79,24 @@ export class SkillsWidget implements Widget {
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
-            { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
+            { key: 'v', label: '(v)iew: current/count/list/activity', action: 'cycle-mode' },
             { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
 
-        if (item && this.getMode(item) === 'list') {
-            keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIST_LIMIT_ACTION });
+        if (item) {
+            const mode = this.getMode(item);
+            if (mode === 'list' || mode === 'activity') {
+                keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIST_LIMIT_ACTION });
+            }
         }
 
         return keybinds;
     }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers = [MODE_LABELS[this.getMode(item)]];
-        if (this.getMode(item) === 'list') {
+        const mode = this.getMode(item);
+        const modifiers = [MODE_LABELS[mode]];
+        if (mode === 'list' || mode === 'activity') {
             const limit = parseListLimit(item);
             if (limit > 0) {
                 modifiers.push(`limit: ${limit}`);
@@ -106,7 +111,8 @@ export class SkillsWidget implements Widget {
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'cycle-mode') {
             const next = MODES[(MODES.indexOf(this.getMode(item)) + 1) % MODES.length] ?? 'current';
-            const nextItem = next === 'list' ? item : removeMetadataKeys(item, [LIST_LIMIT_KEY]);
+            const keepsLimit = next === 'list' || next === 'activity';
+            const nextItem = keepsLimit ? item : removeMetadataKeys(item, [LIST_LIMIT_KEY]);
             return { ...nextItem, metadata: { ...nextItem.metadata, mode: next } };
         }
         if (action === TOGGLE_HIDE_EMPTY_ACTION) {
@@ -131,6 +137,10 @@ export class SkillsWidget implements Widget {
             if (mode === 'count') {
                 return raw ? '5' : 'Skills: 5';
             }
+            if (mode === 'activity') {
+                const body = 'commit → review-pr → commit';
+                return raw ? body : `Skills: ${body}`;
+            }
             return raw ? 'commit, review-pr' : 'Skills: commit, review-pr';
         }
 
@@ -150,6 +160,21 @@ export class SkillsWidget implements Widget {
                 return null;
             }
             return raw ? String(total) : `Skills: ${total}`;
+        }
+
+        if (mode === 'activity') {
+            const recent = context.skillsMetrics?.recent ?? [];
+            if (recent.length === 0) {
+                if (hideWhenEmpty) {
+                    return null;
+                }
+                return raw ? '' : 'Skills: none';
+            }
+            const configuredLimit = parseListLimit(item);
+            const limit = configuredLimit > 0 ? configuredLimit : ACTIVITY_DEFAULT_LIMIT;
+            const visible = recent.slice(-limit);
+            const body = visible.join(' → ');
+            return raw ? body : `Skills: ${body}`;
         }
 
         const uniqueSkills = context.skillsMetrics?.uniqueSkills ?? [];

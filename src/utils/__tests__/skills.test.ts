@@ -53,7 +53,8 @@ describe('skills metrics', () => {
         expect(getSkillsMetrics('session-1')).toEqual({
             totalInvocations: 4,
             uniqueSkills: ['commit', 'lint', 'review-pr'],
-            lastSkill: 'commit'
+            lastSkill: 'commit',
+            recent: ['commit', 'review-pr', 'lint', 'commit']
         });
     });
 });

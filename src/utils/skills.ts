@@ -7,7 +7,8 @@ import type {
     SkillsMetrics
 } from '../types/SkillsMetrics';
 
-const EMPTY: SkillsMetrics = { totalInvocations: 0, uniqueSkills: [], lastSkill: null };
+const RECENT_CAP = 20;
+const EMPTY: SkillsMetrics = { totalInvocations: 0, uniqueSkills: [], lastSkill: null, recent: [] };
 
 function getSkillsDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline', 'skills');
@@ -47,10 +48,15 @@ export function getSkillsMetrics(sessionId: string): SkillsMetrics {
             }
         }
 
+        const recent = invocations
+            .slice(-RECENT_CAP)
+            .map(inv => inv.skill);
+
         return {
             totalInvocations: invocations.length,
             uniqueSkills,
-            lastSkill: invocations[invocations.length - 1]?.skill ?? null
+            lastSkill: invocations[invocations.length - 1]?.skill ?? null,
+            recent
         };
     } catch {
         return EMPTY;
