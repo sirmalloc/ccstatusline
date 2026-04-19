@@ -170,6 +170,17 @@ export const migrations: Migration[] = [
 
             return migrated;
         }
+    },
+    {
+        fromVersion: 3,
+        toVersion: 4,
+        description: 'Migrate from v3 to v4 — add tips settings',
+        migrate: (data) => {
+            const migrated: Record<string, unknown> = { ...data };
+            migrated.version = 4;
+            migrated.tips = {};
+            return migrated;
+        }
     }
 ];
 

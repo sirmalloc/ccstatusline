@@ -14,6 +14,7 @@ export type MainMenuOption = 'lines'
     | 'powerline'
     | 'terminalConfig'
     | 'globalOverrides'
+    | 'tips'
     | 'install'
     | 'configureStatusLine'
     | 'starGithub'
@@ -74,6 +75,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             value: 'globalOverrides',
             description:
                 'Set global padding, separators, and color overrides that apply to all widgets'
+        },
+        {
+            label: '💡 Tips',
+            value: 'tips',
+            description:
+                'Configure tip rotation settings, browse tips, and manage tip files'
         },
         '-' as const,
         ...(isClaudeInstalled

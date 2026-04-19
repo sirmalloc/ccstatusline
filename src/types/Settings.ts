@@ -6,7 +6,15 @@ import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
 
 // Current version - bump this when making breaking changes to the schema
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 5;
+
+export const TipsSettingsSchema = z.object({
+    enabled: z.boolean().default(true),
+    tipDir: z.string().default(''),
+    rotateEvery: z.number().min(1).default(5),
+    expiryDays: z.number().min(1).default(7),
+    maxTipLength: z.number().min(10).default(47)
+});
 
 // Schema for v1 settings (before version field was added)
 export const SettingsSchema_v1 = z.object({
@@ -60,6 +68,7 @@ export const SettingsSchema = z.object({
         autoAlign: false,
         continueThemeAcrossLines: false
     }),
+    tips: TipsSettingsSchema.default({}),
     updatemessage: z.object({
         message: z.string().nullable().optional(),
         remaining: z.number().nullable().optional()

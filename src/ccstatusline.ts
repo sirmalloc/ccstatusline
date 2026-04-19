@@ -89,6 +89,24 @@ async function ensureWindowsUtf8CodePage() {
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
 
+    // Trigger background tip-update pipeline if CC version changed.
+    // Sync compare only — heavy work runs detached so render is not blocked.
+    if (data.version && settings.tips.enabled) {
+        const { readLastVersion } = await import('./utils/tips');
+        const lastVersion = readLastVersion();
+        if (!lastVersion || lastVersion.version !== data.version) {
+            try {
+                const { spawn } = await import('child_process');
+                const child = spawn(
+                    process.execPath,
+                    [process.argv[1]!, '--update-tips', data.version],
+                    { detached: true, stdio: 'ignore', windowsHide: true }
+                );
+                child.unref();
+            } catch { /* swallow — render must not fail */ }
+        }
+    }
+
     // Set global chalk level based on settings
     chalk.level = settings.colorLevel;
 
@@ -241,6 +259,7 @@ interface HookInput {
     tool_name?: string;
     tool_input?: { skill?: string };
     prompt?: string;
+    version?: string;
 }
 
 async function handleHook(): Promise<void> {
@@ -257,6 +276,7 @@ async function handleHook(): Promise<void> {
             return;
         }
 
+        // Track skill invocations
         let skillName = '';
         if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
             skillName = data.tool_input?.skill ?? '';
@@ -266,22 +286,20 @@ async function handleHook(): Promise<void> {
                 skillName = match[1] ?? '';
             }
         }
-        if (!skillName) {
-            console.log('{}');
-            return;
+        if (skillName) {
+            const filePath = getSkillsFilePath(sessionId);
+            const fs = await import('fs');
+            const path = await import('path');
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            const entry = JSON.stringify({
+                timestamp: new Date().toISOString(),
+                session_id: sessionId,
+                skill: skillName,
+                source: data.hook_event_name
+            });
+            fs.appendFileSync(filePath, entry + '\n');
         }
 
-        const filePath = getSkillsFilePath(sessionId);
-        const fs = await import('fs');
-        const path = await import('path');
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const entry = JSON.stringify({
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            skill: skillName,
-            source: data.hook_event_name
-        });
-        fs.appendFileSync(filePath, entry + '\n');
     } catch { /* ignore parse errors */ }
     console.log('{}');
 }
@@ -289,6 +307,20 @@ async function handleHook(): Promise<void> {
 async function main() {
     // Parse --config before anything else
     initConfigPath(parseConfigArg());
+
+    // Handle --update-tips mode (background pipeline runner)
+    const updateIdx = process.argv.indexOf('--update-tips');
+    if (updateIdx !== -1) {
+        const version = process.argv[updateIdx + 1];
+        if (version) {
+            const settings = await loadSettings();
+            if (settings.tips.enabled) {
+                const { checkVersionAndGenerateTips } = await import('./utils/tips');
+                await checkVersionAndGenerateTips(version, settings);
+            }
+        }
+        return;
+    }
 
     // Handle --hook mode (cross-platform hook handler for widgets)
     if (process.argv.includes('--hook')) {

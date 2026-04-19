@@ -50,6 +50,13 @@ describe('CurrentWorkingDirWidget', () => {
             endCaps: [],
             autoAlign: false,
             continueThemeAcrossLines: false
+        },
+        tips: {
+            enabled: true,
+            tipDir: '',
+            rotateEvery: 5,
+            expiryDays: 7,
+            maxTipLength: 47
         }
     };
 

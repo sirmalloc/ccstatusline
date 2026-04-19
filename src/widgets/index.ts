@@ -57,3 +57,5 @@ export { GitWorktreeModeWidget } from './GitWorktreeMode';
 export { GitWorktreeNameWidget } from './GitWorktreeName';
 export { GitWorktreeBranchWidget } from './GitWorktreeBranch';
 export { GitWorktreeOriginalBranchWidget } from './GitWorktreeOriginalBranch';
+export { VersionUpdateWidget } from './VersionUpdate';
+export { TipWidget } from './Tip';
