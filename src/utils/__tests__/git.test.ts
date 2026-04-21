@@ -17,7 +17,11 @@ import {
     runGit
 } from '../git';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };

@@ -1,5 +1,6 @@
-import { execFileSync } from 'child_process';
+import type * as childProcess from 'child_process';
 import * as fs from 'fs';
+import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,6 +9,9 @@ import {
     expect,
     it
 } from 'vitest';
+
+const require = createRequire(import.meta.url);
+const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
 
 interface UsageProbeResult {
     first: Record<string, unknown>;
@@ -179,7 +183,7 @@ process.stdout.write(JSON.stringify({
     }
 
     function runProbe(options: ProbeOptions): UsageProbeResult {
-        const output = execFileSync(process.execPath, [probeScriptPath], {
+        const output = realExecFileSync(process.execPath, [probeScriptPath], {
             encoding: 'utf8',
             env: {
                 ...process.env,

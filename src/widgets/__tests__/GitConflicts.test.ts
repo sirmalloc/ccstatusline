@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -13,9 +13,13 @@ import type { WidgetItem } from '../../types/Widget';
 import { clearGitCache } from '../../utils/git';
 import { GitConflictsWidget } from '../GitConflicts';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -54,34 +58,34 @@ describe('GitConflictsWidget', () => {
     });
 
     it('renders no git when outside a repository', () => {
-        mockExecSync.mockReturnValue('false\n');
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render()).toBe('(no git)');
     });
 
     it('hides no git when configured', () => {
-        mockExecSync.mockReturnValue('false\n');
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
     it('renders zero conflicts instead of hiding the widget', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('⚠ 0');
     });
 
     it('renders raw zero conflicts as a numeric count', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render({ rawValue: true })).toBe('0');
     });
 
     it('renders the conflict count', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce([
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce([
             '100644 hash 1\tconflict-a',
             '100644 hash 2\tconflict-a',
             '100644 hash 3\tconflict-a',
@@ -94,8 +98,8 @@ describe('GitConflictsWidget', () => {
     });
 
     it('renders raw conflicts as a numeric count', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce([
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce([
             '100644 hash 1\tconflict-a',
             '100644 hash 2\tconflict-a',
             '100644 hash 3\tconflict-a'
