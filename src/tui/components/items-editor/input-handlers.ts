@@ -4,6 +4,7 @@ import type {
     WidgetItem,
     WidgetItemType
 } from '../../../types/Widget';
+import { generateGuid } from '../../../utils/guid';
 import {
     filterWidgetCatalog,
     getWidget,
@@ -344,6 +345,7 @@ export interface HandleNormalInputModeArgs {
     openWidgetPicker: (action: WidgetPickerAction) => void;
     getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
+    getUniqueBackgroundColor?: (insertIndex: number) => string | undefined;
 }
 
 export function handleNormalInputMode({
@@ -359,7 +361,8 @@ export function handleNormalInputMode({
     setShowClearConfirm,
     openWidgetPicker,
     getCustomKeybindsForWidget,
-    setCustomEditorWidget
+    setCustomEditorWidget,
+    getUniqueBackgroundColor
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(Math.max(0, selectedIndex - 1));
@@ -381,6 +384,26 @@ export function handleNormalInputMode({
         if (selectedIndex >= newWidgets.length && selectedIndex > 0) {
             setSelectedIndex(selectedIndex - 1);
         }
+    } else if (input === 'k' && widgets.length > 0) {
+        const source = widgets[selectedIndex];
+        if (!source) {
+            return;
+        }
+        const insertIndex = selectedIndex + 1;
+        const newBg = getUniqueBackgroundColor?.(insertIndex);
+        const clone: WidgetItem = {
+            ...source,
+            id: generateGuid(),
+            ...(source.metadata && { metadata: { ...source.metadata } }),
+            ...(newBg && { backgroundColor: newBg })
+        };
+        const newWidgets = [
+            ...widgets.slice(0, insertIndex),
+            clone,
+            ...widgets.slice(insertIndex)
+        ];
+        onUpdate(newWidgets);
+        setSelectedIndex(insertIndex);
     } else if (input === 'c') {
         if (widgets.length > 0) {
             setShowClearConfirm(true);
