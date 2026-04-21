@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveAutocompactPercent } from '../utils/autocompact';
 import { getContextWindowMetrics } from '../utils/context-window';
 import {
     getContextConfig,
@@ -21,7 +22,7 @@ import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
+    getDescription(): string { return 'Shows percentage of usable context window used or remaining (auto-compact threshold)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
     getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -39,10 +40,11 @@ export class ContextPercentageUsableWidget implements Widget {
         const isInverse = isContextInverse(item);
         const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
-        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
+        const autocompactPercent = resolveAutocompactPercent();
+        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize, autocompactPercent);
 
         if (context.isPreview) {
-            const previewValue = isInverse ? '88.4%' : '11.6%';
+            const previewValue = isInverse ? '88.0%' : '12.0%';
             return formatRawOrLabeledValue(item, 'Ctx(u): ', previewValue);
         }
 

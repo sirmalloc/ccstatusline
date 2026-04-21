@@ -71,11 +71,10 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
   - Detects installation status and manages settings.json updates
   - Validates config directory paths with proper error handling
 - **colors.ts**: Color definitions and ANSI code mapping
-- **model-context.ts**: Model-to-context-window mapping
+- **model-context.ts**: Model-to-context-window mapping and autocompact threshold computation
   - Maps model IDs to their context window sizes based on [1m] suffix
-  - Sonnet 4.5 WITH [1m] suffix: 1M tokens (800k usable at 80%) - requires long context beta access
-  - Sonnet 4.5 WITHOUT [1m] suffix: 200k tokens (160k usable at 80%)
-  - Legacy models: 200k tokens (160k usable at 80%)
+  - Usable tokens are computed using Claude Code's autocompact formula (effectiveWindow - buffer), not a flat percentage: 1M context yields 967k usable, 200k context yields 167k usable
+  - Supports `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` to lower the usable threshold via a percentage of the effective window
 
 ### Widgets (src/widgets/)
 Custom widgets implementing the Widget interface defined in src/types/Widget.ts:
