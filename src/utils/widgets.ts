@@ -1,6 +1,7 @@
 import type { Settings } from '../types/Settings';
 import type {
     Widget,
+    WidgetItem,
     WidgetItemType
 } from '../types/Widget';
 
@@ -15,8 +16,27 @@ const widgetRegistry = new Map<WidgetItemType, Widget>(
 );
 const layoutWidgetTypes = new Set<WidgetItemType>(LAYOUT_WIDGET_MANIFEST.map(entry => entry.type));
 
+// Legacy widget `type` strings that have since been renamed. The registry and
+// catalog only carry the canonical name; legacy strings resolve through this
+// map. loadSettings also uses it to silently rewrite stored configs on load.
+export const LEGACY_WIDGET_TYPE_ALIASES: Record<string, WidgetItemType> = { 'git-pr': 'git-review' };
+
+export function resolveLegacyWidgetType(type: WidgetItemType): WidgetItemType {
+    return LEGACY_WIDGET_TYPE_ALIASES[type] ?? type;
+}
+
+// Rewrite legacy widget `type` strings to their canonical name across the
+// provided line set. Used by loadSettings to silently upgrade stored configs
+// without bumping the config version.
+export function upgradeLegacyWidgetTypes(lines: WidgetItem[][]): WidgetItem[][] {
+    return lines.map(line => line.map((item) => {
+        const resolved = resolveLegacyWidgetType(item.type);
+        return resolved === item.type ? item : { ...item, type: resolved };
+    }));
+}
+
 export function getWidget(type: WidgetItemType): Widget | null {
-    return widgetRegistry.get(type) ?? null;
+    return widgetRegistry.get(resolveLegacyWidgetType(type)) ?? null;
 }
 
 export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
@@ -361,6 +381,7 @@ export function getMatchSegments(text: string, query: string): { text: string; m
 }
 
 export function isKnownWidgetType(type: string): boolean {
-    return widgetRegistry.has(type)
-        || layoutWidgetTypes.has(type);
+    const resolved = resolveLegacyWidgetType(type);
+    return widgetRegistry.has(resolved)
+        || layoutWidgetTypes.has(resolved);
 }
