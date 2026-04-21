@@ -11,9 +11,11 @@ import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
+    DISCRETE_COLOR_PALETTE,
     applyColors,
     getAvailableBackgroundColorsForUI,
-    getAvailableColorsForUI
+    getAvailableColorsForUI,
+    hashStringToColor
 } from '../../utils/colors';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
@@ -23,6 +25,7 @@ import {
     clearAllWidgetStyling,
     cycleWidgetColor,
     resetWidgetStyling,
+    setDiscreteValueColor,
     setWidgetColor,
     toggleWidgetBold
 } from './color-menu/mutations';
@@ -42,6 +45,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
     const [ansi256Input, setAnsi256Input] = useState('');
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [discreteEditMode, setDiscreteEditMode] = useState(false);
+    const [discreteEditIndex, setDiscreteEditIndex] = useState(0);
 
     const powerlineEnabled = settings.powerline.enabled;
 
@@ -69,6 +74,48 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
         // Skip input handling when confirmation is active - let ConfirmDialog handle it
         if (showClearConfirm) {
+            return;
+        }
+
+        // Handle discrete value edit mode
+        if (discreteEditMode) {
+            const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+            if (!selectedWidget) {
+                setDiscreteEditMode(false);
+                return;
+            }
+            const widgetImpl = getWidget(selectedWidget.type);
+            const discreteValues = widgetImpl?.getDiscreteValues?.() ?? [];
+            if (discreteValues.length === 0) {
+                setDiscreteEditMode(false);
+                return;
+            }
+
+            if (key.escape || key.return) {
+                setDiscreteEditMode(false);
+            } else if (key.upArrow) {
+                setDiscreteEditIndex(Math.max(0, discreteEditIndex - 1));
+            } else if (key.downArrow) {
+                setDiscreteEditIndex(Math.min(discreteValues.length - 1, discreteEditIndex + 1));
+            } else if (key.leftArrow || key.rightArrow) {
+                const currentValue = discreteValues[discreteEditIndex];
+                if (currentValue) {
+                    const fgColors = colorOptions.map(c => c.value || '').filter(c => c !== '');
+                    const currentColor = selectedWidget.metadata?.['colorMap:' + currentValue] ?? '';
+                    let currentIdx = fgColors.indexOf(currentColor);
+                    if (currentIdx === -1) {
+                        currentIdx = 0;
+                    }
+                    const nextIdx = key.rightArrow
+                        ? (currentIdx + 1) % fgColors.length
+                        : (currentIdx === 0 ? fgColors.length - 1 : currentIdx - 1);
+                    const nextColor = fgColors[nextIdx];
+                    if (nextColor) {
+                        const newItems = setDiscreteValueColor(widgets, selectedWidget.id, currentValue, nextColor);
+                        onUpdate(newItems);
+                    }
+                }
+            }
             return;
         }
 
@@ -280,8 +327,18 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const handleSelect = (selected: { value: string }) => {
         if (selected.value === 'back') {
             onBack();
+            return;
         }
-        // Enter no longer cycles colors - use left/right arrow keys instead
+        // Enter on a dynamic widget enters per-value color editing
+        const widget = colorableWidgets.find(w => w.id === selected.value);
+        if (widget?.metadata?.colorMode === 'dynamic') {
+            const widgetImpl = getWidget(widget.type);
+            const discreteValues = widgetImpl?.getDiscreteValues?.() ?? [];
+            if (discreteValues.length > 0) {
+                setDiscreteEditMode(true);
+                setDiscreteEditIndex(0);
+            }
+        }
     };
 
     const handleHighlight = (item: { value: string }) => {
@@ -302,12 +359,15 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return 'white';
         })()) : 'white');
 
+    const isDynamicMode = !editingBackground && selectedWidget?.metadata?.colorMode === 'dynamic';
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
-    const colorNumber = colorIndex === -1 ? 'custom' : colorIndex + 1;
+    const colorNumber = isDynamicMode ? 'Dynamic' : (colorIndex === -1 ? 'custom' : colorIndex + 1);
 
     let colorDisplay;
-    if (editingBackground) {
+    if (isDynamicMode) {
+        colorDisplay = chalk.italic.cyan('Dynamic');
+    } else if (editingBackground) {
         if (!currentColor || currentColor === '') {
             colorDisplay = chalk.gray('(no background)');
         } else {
@@ -376,6 +436,45 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         );
     }
 
+    // Show discrete value color editor
+    if (discreteEditMode && selectedWidget) {
+        const widgetImpl = getWidget(selectedWidget.type);
+        const discreteValues = widgetImpl?.getDiscreteValues?.() ?? [];
+        const level = getColorLevelString(settings.colorLevel);
+
+        return (
+            <Box flexDirection='column'>
+                <Text bold>
+                    Edit Per-Value Colors
+                    {' - '}
+                    {widgetImpl?.getDisplayName() ?? selectedWidget.type}
+                </Text>
+                <Text dimColor>
+                    ↑↓ to select value, ←→ to cycle color, Enter/ESC to go back
+                </Text>
+                <Box marginTop={1} flexDirection='column'>
+                    {discreteValues.map((value, idx) => {
+                        const mappedColor = selectedWidget.metadata?.['colorMap:' + value];
+                        const effectiveColor = mappedColor ?? hashStringToColor(value, DISCRETE_COLOR_PALETTE);
+                        const colorLabel = mappedColor
+                            ? applyColors(mappedColor, mappedColor, undefined, false, level)
+                            : chalk.gray('auto');
+                        const isSelected = idx === discreteEditIndex;
+
+                        return (
+                            <Text key={value}>
+                                {isSelected ? '▶ ' : '  '}
+                                {applyColors(value, effectiveColor, undefined, isSelected, level)}
+                                {' → '}
+                                {colorLabel}
+                            </Text>
+                        );
+                    })}
+                </Box>
+            </Box>
+        );
+    }
+
     // Check for global overrides
     // Note: When powerline is enabled, background override doesn't affect the display
     // since powerline uses item-specific backgrounds for segments
@@ -434,7 +533,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         , (f) to toggle bg/fg, (b)old,
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {' '}
-                        (r)eset, (c)lear all, ESC to go back
+                        (r)eset, (c)lear all,
+                        {isDynamicMode ? ' Enter to edit values,' : ''}
+                        {' '}
+                        ESC to go back
                     </Text>
                     {!settings.powerline.enabled && !settings.defaultSeparator && (
                         <Text dimColor>

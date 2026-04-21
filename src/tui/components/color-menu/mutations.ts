@@ -1,4 +1,7 @@
-import type { WidgetItem } from '../../../types/Widget';
+import type {
+    Widget,
+    WidgetItem
+} from '../../../types/Widget';
 import { getWidget } from '../../../utils/widgets';
 
 export function updateWidgetById(
@@ -122,6 +125,14 @@ export function cycleWidgetColor({
             };
         }
 
+        // Check if widget supports discrete values (dynamic color mode)
+        const widgetImpl = getWidget(widget.type);
+        const hasDiscreteValues = widgetImpl?.getDiscreteValues && widgetImpl.getDiscreteValues().length > 0;
+
+        if (hasDiscreteValues) {
+            return cycleWithDynamic(widget, widgetImpl, colors, direction);
+        }
+
         if (colors.length === 0) {
             return widget;
         }
@@ -143,6 +154,96 @@ export function cycleWidgetColor({
         return {
             ...widget,
             color: nextColor
+        };
+    });
+}
+
+// Extended color list for discrete-value widgets: normal colors + "Dynamic" pseudo-entry
+const DYNAMIC_COLOR_SENTINEL = '__dynamic__';
+
+function cycleWithDynamic(
+    widget: WidgetItem,
+    widgetImpl: Widget | undefined,
+    colors: string[],
+    direction: 'left' | 'right'
+): WidgetItem {
+    // Build extended list: normal colors + Dynamic sentinel
+    const extendedColors = [...colors, DYNAMIC_COLOR_SENTINEL];
+    const isDynamic = widget.metadata?.colorMode === 'dynamic';
+
+    let currentIndex: number;
+    if (isDynamic) {
+        currentIndex = extendedColors.length - 1; // Dynamic is last
+    } else {
+        const defaultColor = getDefaultForegroundColor(widget);
+        let currentColor = widget.color ?? defaultColor;
+        if (currentColor === 'dim') {
+            currentColor = defaultColor;
+        }
+        currentIndex = extendedColors.indexOf(currentColor);
+        if (currentIndex === -1) {
+            currentIndex = 0;
+        }
+    }
+
+    const nextIndex = getNextIndex(currentIndex, extendedColors.length, direction);
+    const nextValue = extendedColors[nextIndex];
+
+    if (nextValue === DYNAMIC_COLOR_SENTINEL) {
+        // Entering dynamic mode
+        return {
+            ...widget,
+            metadata: {
+                ...(widget.metadata ?? {}),
+                colorMode: 'dynamic'
+            }
+        };
+    }
+
+    // Leaving dynamic mode or cycling normal colors
+    const cleanedMetadata = Object.fromEntries(
+        Object.entries(widget.metadata ?? {}).filter(([key]) => key !== 'colorMode')
+    );
+    const hasMetadata = Object.keys(cleanedMetadata).length > 0;
+
+    return {
+        ...widget,
+        color: nextValue,
+        metadata: hasMetadata ? cleanedMetadata : undefined
+    };
+}
+
+export function setDiscreteValueColor(
+    widgets: WidgetItem[],
+    widgetId: string,
+    discreteValue: string,
+    color: string
+): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        return {
+            ...widget,
+            metadata: {
+                ...(widget.metadata ?? {}),
+                ['colorMap:' + discreteValue]: color
+            }
+        };
+    });
+}
+
+export function clearDiscreteValueColor(
+    widgets: WidgetItem[],
+    widgetId: string,
+    discreteValue: string
+): WidgetItem[] {
+    const metadataKey = 'colorMap:' + discreteValue;
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        const cleaned = Object.fromEntries(
+            Object.entries(widget.metadata ?? {}).filter(([key]) => key !== metadataKey)
+        );
+        const hasMetadata = Object.keys(cleaned).length > 0;
+        return {
+            ...widget,
+            metadata: hasMetadata ? cleaned : undefined
         };
     });
 }

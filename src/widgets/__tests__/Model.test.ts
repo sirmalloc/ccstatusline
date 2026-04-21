@@ -66,4 +66,62 @@ describe('ModelWidget', () => {
             expect(new ModelWidget().render(RAW_ITEM, ctx, DEFAULT_SETTINGS)).toBe('claude-opus-4-6[1m]');
         });
     });
+
+    describe('getDiscreteValues()', () => {
+        it('returns known model families', () => {
+            const widget = new ModelWidget();
+            const values = widget.getDiscreteValues();
+            expect(values).toEqual(['Sonnet', 'Opus', 'Haiku']);
+        });
+    });
+
+    describe('getEffectiveColor()', () => {
+        it('returns null when colorMode is not dynamic', () => {
+            const widget = new ModelWidget();
+            const ctx = makeContext({ data: { model: { id: 'claude-sonnet-4-6', display_name: 'Sonnet 4.6' } } });
+            expect(widget.getEffectiveColor(ctx, ITEM)).toBeNull();
+        });
+
+        it('returns mapped color from colorMap metadata', () => {
+            const widget = new ModelWidget();
+            const item: WidgetItem = {
+                ...ITEM,
+                metadata: { 'colorMode': 'dynamic', 'colorMap:Sonnet': 'blue' }
+            };
+            const ctx = makeContext({ data: { model: { id: 'claude-sonnet-4-6', display_name: 'Sonnet 4.6' } } });
+            expect(widget.getEffectiveColor(ctx, item)).toBe('blue');
+        });
+
+        it('matches colorMap keys case-insensitively as substrings', () => {
+            const widget = new ModelWidget();
+            const item: WidgetItem = {
+                ...ITEM,
+                metadata: { 'colorMode': 'dynamic', 'colorMap:opus': 'magenta' }
+            };
+            const ctx = makeContext({ data: { model: { id: 'claude-opus-4-6[1m]', display_name: 'Opus 4.6 (1M context)' } } });
+            expect(widget.getEffectiveColor(ctx, item)).toBe('magenta');
+        });
+
+        it('falls back to hash-based color for unknown models', () => {
+            const widget = new ModelWidget();
+            const item: WidgetItem = {
+                ...ITEM,
+                metadata: { colorMode: 'dynamic' }
+            };
+            const ctx = makeContext({ data: { model: { id: 'new-model', display_name: 'New Model' } } });
+            const color = widget.getEffectiveColor(ctx, item);
+            expect(color).toBeTruthy();
+            expect(typeof color).toBe('string');
+        });
+
+        it('returns null when model is absent in dynamic mode', () => {
+            const widget = new ModelWidget();
+            const item: WidgetItem = {
+                ...ITEM,
+                metadata: { colorMode: 'dynamic' }
+            };
+            const ctx = makeContext({ data: {} });
+            expect(widget.getEffectiveColor(ctx, item)).toBeNull();
+        });
+    });
 });

@@ -45,6 +45,8 @@ export interface Widget {
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
     getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
+    getEffectiveColor?(context: RenderContext, item: WidgetItem): string | null;
+    getDiscreteValues?(): string[];
 }
 
 export interface WidgetEditorProps {

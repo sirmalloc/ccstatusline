@@ -39,6 +39,13 @@ function formatEffort(resolved: ResolvedThinkingEffort | null): string {
     return resolved.known ? resolved.value : `${resolved.value}?`;
 }
 
+const THINKING_EFFORT_DEFAULTS: Record<string, string> = {
+    low: 'green',
+    medium: 'yellow',
+    high: 'brightRed',
+    max: 'red'
+};
+
 export class ThinkingEffortWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
     getDescription(): string { return 'Displays the current thinking effort level (low, medium, high, xhigh, max).\nUnknown levels are shown with a trailing "?" (e.g. "super-max?").\nMay be incorrect when multiple Claude Code sessions are running due to current Claude Code limitations.'; }
@@ -46,6 +53,27 @@ export class ThinkingEffortWidget implements Widget {
     getCategory(): string { return 'Core'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
+    }
+
+    getDiscreteValues(): string[] {
+        return ['low', 'medium', 'high', 'max'];
+    }
+
+    getEffectiveColor(context: RenderContext, item: WidgetItem): string | null {
+        if (item.metadata?.colorMode !== 'dynamic') {
+            return null;
+        }
+
+        const effort = context.isPreview ? 'high' : resolveThinkingEffort(context);
+
+        // Check explicit colorMap entries first
+        const mappedColor = item.metadata['colorMap:' + effort];
+        if (mappedColor) {
+            return mappedColor;
+        }
+
+        // Fall back to sensible defaults per level
+        return THINKING_EFFORT_DEFAULTS[effort] ?? null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {

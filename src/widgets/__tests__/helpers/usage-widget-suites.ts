@@ -53,7 +53,8 @@ const EXPECTED_USAGE_KEYBINDS: CustomKeybind[] = [
 
 const EXPECTED_USAGE_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+    { key: 't', label: '(t)hreshold colors', action: 'toggle-threshold' }
 ];
 
 const EXPECTED_TIMER_TIME_KEYBINDS: CustomKeybind[] = [

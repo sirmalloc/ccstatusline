@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getThresholdColor } from '../utils/colors';
 import {
     getUsageErrorMessage,
     makeUsageProgressBar
@@ -20,6 +21,7 @@ import {
     getUsageProgressBarWidth,
     isUsageInverted,
     isUsageProgressMode,
+    toggleThresholdColors,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -45,7 +47,39 @@ export class WeeklyUsageWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
+        if (action === 'toggle-threshold') {
+            return toggleThresholdColors(item);
+        }
+
         return null;
+    }
+
+    getEffectiveColor(context: RenderContext, item: WidgetItem): string | null {
+        if (!isUsageProgressMode(getUsageDisplayMode(item))) {
+            return null;
+        }
+        if (item.metadata?.thresholdColors === 'false') {
+            return null;
+        }
+
+        const inverted = isUsageInverted(item);
+        const lowThreshold = parseInt(item.metadata?.thresholdLow ?? '50', 10);
+        const highThreshold = parseInt(item.metadata?.thresholdHigh ?? '80', 10);
+
+        if (context.isPreview) {
+            const previewPercent = 12;
+            const renderedPercent = inverted ? 100 - previewPercent : previewPercent;
+            return getThresholdColor(renderedPercent, lowThreshold, highThreshold);
+        }
+
+        const data = context.usageData ?? {};
+        if (data.weeklyUsage === undefined) {
+            return null;
+        }
+
+        const percent = Math.max(0, Math.min(100, data.weeklyUsage));
+        const renderedPercent = inverted ? 100 - percent : percent;
+        return getThresholdColor(renderedPercent, lowThreshold, highThreshold);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
