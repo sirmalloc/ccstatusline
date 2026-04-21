@@ -141,7 +141,6 @@ Default to using Bun instead of Node.js:
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
 - **Type checking and linting**: Run checks via `bun run lint` and use `bun run lint:fix` only when you intentionally want ESLint auto-fixes. Never use `npx eslint`, `eslint`, `tsx`, `bun tsc`, or any other variation directly
 - **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
-- **EOF style**: This repo enforces `@stylistic/eol-last: ['error', 'never']`. Never leave a trailing newline at the end of a file. When editing an existing file, preserve its EOF style and verify touched files do not end with `\n`
 - **Testing**: Uses Vitest (via Bun) with 6 test files and ~40 test cases covering:
   - Model context detection and token calculation (src/utils/__tests__/model-context.test.ts)
   - Context percentage calculations (src/utils/__tests__/context-percentage.test.ts)

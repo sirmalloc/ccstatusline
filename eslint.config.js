@@ -106,7 +106,7 @@ export default ts.config([
             '@stylistic/nonblock-statement-body-position': ['error', 'below'],
             '@stylistic/object-curly-newline': ['error', { 'multiline': true }],
             '@stylistic/switch-colon-spacing': 'error',
-            '@stylistic/eol-last': ['error', 'never'],
+            '@stylistic/eol-last': ['error', 'always'],
             '@stylistic/jsx-quotes': ['error', 'prefer-single'],
             '@stylistic/multiline-ternary': 'off',
             'import-x/no-unresolved': ['error'],
