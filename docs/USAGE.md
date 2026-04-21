@@ -142,7 +142,7 @@ The keybind footer in the TUI only shows shortcuts that apply to the currently s
 
 Widget-specific shortcuts:
 - **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
-- **Git Branch**: `l` toggle clickable GitHub branch links
+- **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`)
 - **Git PR**: `h` hide empty/no-PR output, `s` toggle review status, `t` toggle title
 - **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `h` hide when no remote, `l` toggle clickable repo links
