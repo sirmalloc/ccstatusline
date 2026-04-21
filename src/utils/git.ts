@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 import type { RenderContext } from '../types/RenderContext';
 
@@ -27,8 +27,14 @@ export function resolveGitCwd(context: RenderContext): string | undefined {
 }
 
 export function runGit(command: string, context: RenderContext): string | null {
+    const args = command.trim().split(/\s+/).filter(Boolean);
+    return runGitArgs(args, context, command);
+}
+
+export function runGitArgs(args: string[], context: RenderContext, cacheCommand?: string): string | null {
     const cwd = resolveGitCwd(context);
-    const cacheKey = `${command}|${cwd ?? ''}`;
+    const cacheToken = cacheCommand ?? args.join('\0');
+    const cacheKey = `${cacheToken}|${cwd ?? ''}`;
 
     // Check cache first
     if (gitCommandCache.has(cacheKey)) {
@@ -36,7 +42,7 @@ export function runGit(command: string, context: RenderContext): string | null {
     }
 
     try {
-        const output = execSync(`git ${command}`, {
+        const output = execFileSync('git', args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
