@@ -14,7 +14,6 @@ import type {
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
-import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
     getMatchSegments,
@@ -227,8 +226,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         return `Unknown: ${widget.type}`;
     };
 
-    const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
-    const widthDetectionAvailable = canDetectTerminalWidth();
     const pickerCategories = widgetPicker
         ? [...widgetCategories]
         : [];
@@ -403,12 +400,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 <Box flexDirection='column'>
                     <Text dimColor>{helpText}</Text>
                     <Text dimColor>{customKeybindsText || ' '}</Text>
-                </Box>
-            )}
-            {hasFlexSeparator && !widthDetectionAvailable && (
-                <Box marginTop={1}>
-                    <Text color='yellow'>⚠ Note: Terminal width detection is currently unavailable in your environment.</Text>
-                    <Text dimColor>  Flex separators will act as normal separators until width detection is available.</Text>
                 </Box>
             )}
             {widgetPicker && (
