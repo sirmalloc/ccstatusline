@@ -296,10 +296,6 @@ describe('git-review-cache', () => {
     });
 
     it('falls back to --repo <origin> for forked GitHub repos when gh\'s default resolves elsewhere', () => {
-        // Simulates the forked-repo case: the CLI's default repo resolution
-        // (e.g. `upstream`/parent) returns nothing for the current branch,
-        // but the review lives on `origin` (the user's fork). The fallback
-        // pass, pinned to origin, finds it.
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
         harness.ghResponses.push('');
@@ -327,8 +323,6 @@ describe('git-review-cache', () => {
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('https://github.com/fork-owner/example-repo');
-        // `gh pr view --repo` requires an explicit branch argument, so the
-        // pinned call must include the current branch as a positional arg.
         expect(ghPrCalls[1]?.args).toContain('feature/cache-a');
     });
 
@@ -360,7 +354,6 @@ describe('git-review-cache', () => {
         expect(glabMrCalls[0]?.args).not.toContain('--repo');
         expect(glabMrCalls[1]?.args).toContain('--repo');
         expect(glabMrCalls[1]?.args).toContain('https://gitlab.com/fork-owner/example-fork');
-        // `glab mr view --repo` requires an explicit branch argument.
         expect(glabMrCalls[1]?.args).toContain('feature/cache-a');
     });
 

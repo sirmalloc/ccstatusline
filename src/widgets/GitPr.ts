@@ -65,18 +65,12 @@ function resolvePrNoun(
     context: RenderContext,
     deps: GitPrWidgetDeps
 ): 'PR' | 'MR' {
-    // Prefer the provider recorded at fetch time — that's authoritative for
-    // self-hosted GitLab whose hostname may not contain "gitlab".
     if (pr?.provider === 'glab')
         return 'MR';
     if (pr?.provider === 'gh')
         return 'PR';
-    // Fallback path: no pr yet (empty state), or an older cache entry written
-    // before `provider` existed. Use the URL structure or origin host as a hint.
     if (pr) {
         const url = pr.url.toLowerCase();
-        // `/-/merge_requests/` is a GitLab-specific URL segment that works
-        // for self-hosted instances regardless of hostname.
         if (url.includes('/-/merge_requests/') || url.includes('gitlab'))
             return 'MR';
     } else {

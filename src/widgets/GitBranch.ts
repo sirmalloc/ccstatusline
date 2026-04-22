@@ -29,9 +29,6 @@ import {
 import { isMetadataFlagEnabled } from './shared/metadata';
 
 const LINK_KEY = 'linkToRepo';
-// Older versions stored this flag under `linkToGitHub` before the feature was
-// generalized to GitLab and self-hosted hosts. Read the legacy key as a
-// fallback; toggling rewrites to `linkToRepo` and strips the legacy key.
 const LEGACY_LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
 

@@ -141,8 +141,6 @@ export async function loadSettings(): Promise<Settings> {
             return await recoverWithDefaults(paths);
         }
 
-        // Silently rewrite any legacy widget `type` strings to their canonical
-        // name. This allows us to support older configs that used the old widget type names
         return {
             ...result.data,
             lines: upgradeLegacyWidgetTypes(result.data.lines)

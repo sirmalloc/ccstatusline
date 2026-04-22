@@ -177,26 +177,12 @@ export function listRemotes(context: RenderContext): string[] {
     return output.split('\n').filter(Boolean);
 }
 
-/**
- * Build a web URL for a repository. Works for hosts that expose the standard
- * `host/owner/repo` path (GitHub, GitLab, Gitea, Bitbucket Server, etc.).
- *
- * Note: this uses the parsed remote host verbatim. Repos cloned via an
- * SSH-only subdomain (e.g. `git-ssh.example.com`) will produce a web URL
- * pointing at that SSH-only host, which typically does not resolve. Users
- * in that setup should add an HTTPS remote or clone over HTTPS — those
- * produce a web-resolvable host that this function uses directly.
- */
 export function buildRepoWebUrl(remote: RemoteInfo): string {
     return `https://${remote.host}/${remote.owner}/${remote.repo}`;
 }
 
-/**
- * Build a web URL for a branch/tree view. GitLab's canonical path is
- * `/-/tree/<branch>`, but GitLab also redirects `/tree/<branch>` to the
- * canonical form, so a single `/tree/` suffix works for both GitHub and
- * GitLab (including self-hosted instances).
- */
+// GitLab redirects /tree/<branch> to its canonical /-/tree/<branch>, so one
+// suffix works for both GitHub and GitLab.
 export function buildBranchWebUrl(remote: RemoteInfo, encodedBranch: string): string {
     return `${buildRepoWebUrl(remote)}/tree/${encodedBranch}`;
 }

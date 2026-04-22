@@ -207,9 +207,6 @@ describe('GitPrWidget', () => {
     });
 
     it('should render "MR #N" for self-hosted GitLab via URL pattern when provider field is missing', () => {
-        // Simulates a cache entry written by an older version of the cache
-        // layer that predates the `provider` field. The URL points at a
-        // self-hosted GitLab host whose name does not contain "gitlab".
         const legacyCacheEntry = {
             number: 1626,
             reviewDecision: '',
@@ -234,16 +231,12 @@ describe('GitPrWidget', () => {
         );
     });
 
-    it('should return (no MR) for self-hosted GitLab origins when glab is the candidate', () => {
+    it('should fall back to (no PR) when the origin host name does not identify the forge', () => {
         expect(render({ cwd: '/tmp/repo' }, {
             fetchGitReviewData: () => null,
             getRemoteInfo: () => ({
                 name: 'origin',
                 url: 'git@git.example.com:team/repo.git',
-                // Host doesn't contain "gitlab" — empty-state noun will stay
-                // "PR" here because we can't know the forge without a probe.
-                // Once a user has fetched at least one MR the provider-based
-                // path above kicks in.
                 host: 'git.example.com',
                 owner: 'team',
                 repo: 'repo'

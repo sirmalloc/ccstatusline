@@ -20,8 +20,6 @@ export interface GitReviewData {
     title: string;
     state: string;
     reviewDecision: string;
-    // Which CLI produced this record. Optional for backward compatibility
-    // with cache files written before this field existed.
     provider?: GitReviewProvider;
 }
 
@@ -150,12 +148,6 @@ function getOriginHost(cwd: string, deps: GitReviewCacheDeps): string | null {
     return parsed ? parsed.host.toLowerCase() : null;
 }
 
-/**
- * Normalize an origin URL to the HTTPS form both `gh` and `glab` accept via
- * their `--repo` flag. Without pinning the repo explicitly, both CLIs may
- * resolve to a different remote (typically the fork parent / `upstream`),
- * silently missing reviews that live on the user's own fork (`origin`).
- */
 function toHttpsRepoRef(url: string): string | null {
     const parsed = parseRemoteUrl(url);
     if (!parsed) {
@@ -169,20 +161,8 @@ function getOriginRepoRef(cwd: string, deps: GitReviewCacheDeps): string | null 
     return url ? toHttpsRepoRef(url) : null;
 }
 
-/**
- * Choose which CLI to use based on the origin remote host. Hostnames that
- * clearly name the forge (e.g. `github.com`, `gitlab.example.com`) are
- * routed directly. For self-hosted hosts whose name contains neither
- * token, probe each CLI with `auth status --hostname <host>` and keep
- * only the CLIs that are authenticated against that host — a signal-
- * based choice rather than a guess. Deterministic ordering (`glab`
- * before `gh`) matters only when both CLIs are authed for the same
- * unknown host.
- *
- * When the origin URL itself is missing or unparseable there is no host
- * to probe, so we return `['gh', 'glab']` and let the CLIs do their own
- * repo resolution from local git config.
- */
+// Self-hosted hosts that name neither forge are resolved by probing each CLI's
+// `auth status --hostname <host>` and keeping those that are authed.
 function getProviderCandidates(cwd: string, deps: GitReviewCacheDeps): GitReviewProvider[] {
     const host = getOriginHost(cwd, deps);
     if (!host) {
@@ -216,12 +196,6 @@ function isCliAvailable(cli: GitReviewProvider, deps: GitReviewCacheDeps): boole
     }
 }
 
-/**
- * Probe whether `cli` is authenticated against `host`. Both `gh` and
- * `glab` exit 0 on `auth status --hostname <h>` when authed, non-zero
- * otherwise. ENOENT (CLI not installed) also throws, so this doubles
- * as an availability check for the unknown-host branch.
- */
 function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitReviewCacheDeps): boolean {
     try {
         deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
@@ -249,10 +223,7 @@ function mapGlabState(state: string): string {
 function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
     const args = ['pr', 'view'];
     if (repoRef) {
-        // `gh pr view --repo <r>` requires an explicit positional argument
-        // — unlike plain `gh pr view`, it does not fall back to the current
-        // branch. Pass the branch name so gh looks up the matching PR on the
-        // pinned repo.
+        // `--repo` disables branch auto-resolution, so pass the branch explicitly.
         const branch = getCurrentBranch(cwd, deps);
         if (!branch) {
             return null;
@@ -293,8 +264,7 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
 function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
     const args = ['mr', 'view'];
     if (repoRef) {
-        // `glab mr view --repo <r>` requires an explicit positional argument
-        // (id or branch), mirroring gh's `--repo` behavior.
+        // `--repo` disables branch auto-resolution, so pass the branch explicitly.
         const branch = getCurrentBranch(cwd, deps);
         if (!branch) {
             return null;
@@ -327,26 +297,13 @@ function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCache
         url: parsed.web_url,
         title: typeof parsed.title === 'string' ? parsed.title : '',
         state: typeof parsed.state === 'string' ? mapGlabState(parsed.state) : '',
-        // GitLab approval model differs from GitHub review decisions — leave blank.
         reviewDecision: '',
         provider: 'glab'
     };
 }
 
-/**
- * Try both lookup strategies for the given provider, in this order:
- *
- * 1. Without `--repo` — uses the CLI's own repo resolution. This is what
- *    most users expect; it works for any standard single-remote repo and
- *    respects the user's `gh repo set-default` / `glab repo set-default`
- *    choice when multiple remotes exist.
- * 2. With `--repo <origin-url>` — pins the query to the origin remote. This
- *    catches the forked-repo case where the CLI auto-resolves to the parent
- *    (upstream) and would otherwise miss a review that lives on the fork.
- *
- * Every value passed to `--repo` is derived per-repo from the live
- * `git remote` output at call time — nothing is hard-coded.
- */
+// First try the CLI's own repo resolution, then fall back to pinning `--repo`
+// to origin. The pinned pass catches forks where the CLI resolves to upstream.
 function fetchFromProvider(provider: GitReviewProvider, cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
     const fetchFn = provider === 'gh' ? fetchFromGh : fetchFromGlab;
 
@@ -355,9 +312,7 @@ function fetchFromProvider(provider: GitReviewProvider, cwd: string, repoRef: st
         if (unpinned) {
             return unpinned;
         }
-    } catch {
-        // Fall through to the origin-pinned attempt.
-    }
+    } catch { /* fall through */ }
 
     if (repoRef) {
         return fetchFn(cwd, repoRef, deps);
@@ -384,9 +339,7 @@ export function fetchGitReviewData(cwd: string, deps: GitReviewCacheDeps = DEFAU
                 writeCache(cachePath, data, deps);
                 return data;
             }
-        } catch {
-            // Fall through to the next provider (if any).
-        }
+        } catch { /* try next provider */ }
     }
 
     writeCache(cachePath, null, deps);
