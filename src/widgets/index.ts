@@ -43,6 +43,7 @@ export { InputSpeedWidget } from './InputSpeed';
 export { OutputSpeedWidget } from './OutputSpeed';
 export { TotalSpeedWidget } from './TotalSpeed';
 export { FreeMemoryWidget } from './FreeMemory';
+export { DockerContainersWidget } from './DockerContainers';
 export { SessionNameWidget } from './SessionName';
 export { SessionUsageWidget } from './SessionUsage';
 export { WeeklyUsageWidget } from './WeeklyUsage';
