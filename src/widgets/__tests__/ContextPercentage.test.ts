@@ -101,6 +101,59 @@ describe('ContextPercentageWidget', () => {
         });
     });
 
+    it('cycles slider display modes', () => {
+        const widget = new ContextPercentageWidget();
+        const base: WidgetItem = { id: 'ctx', type: 'context-percentage' };
+
+        const slider = widget.handleEditorAction('toggle-slider', base);
+        const sliderOnly = widget.handleEditorAction('toggle-slider', slider ?? base);
+        const none = widget.handleEditorAction('toggle-slider', sliderOnly ?? base);
+
+        expect(slider?.metadata?.display).toBe('slider');
+        expect(sliderOnly?.metadata?.display).toBe('slider-only');
+        expect(none?.metadata?.display).toBeUndefined();
+    });
+
+    it('renders slider with percentage in slider mode', () => {
+        const widget = new ContextPercentageWidget();
+        const item: WidgetItem = {
+            id: 'ctx',
+            type: 'context-percentage',
+            metadata: { display: 'slider' }
+        };
+        const context: RenderContext = {
+            data: {
+                model: { id: 'claude-3-5-sonnet-20241022' },
+                context_window: {
+                    context_window_size: 200000,
+                    used_percentage: 50
+                }
+            }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx: ▓▓▓▓▓░░░░░ 50.0%');
+    });
+
+    it('renders slider only in slider-only mode', () => {
+        const widget = new ContextPercentageWidget();
+        const item: WidgetItem = {
+            id: 'ctx',
+            type: 'context-percentage',
+            metadata: { display: 'slider-only' }
+        };
+        const context: RenderContext = {
+            data: {
+                model: { id: 'claude-3-5-sonnet-20241022' },
+                context_window: {
+                    context_window_size: 200000,
+                    used_percentage: 50
+                }
+            }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx: ▓▓▓▓▓░░░░░');
+    });
+
     describe('Older models with 200k context window', () => {
         it('should calculate percentage using 200k denominator for older Sonnet 3.5', () => {
             const result = render('claude-3-5-sonnet-20241022', 42000);

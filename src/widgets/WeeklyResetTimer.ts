@@ -52,9 +52,9 @@ function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
     const modifiers: string[] = [];
 
     if (displayMode === 'progress') {
-        modifiers.push('progress bar');
+        modifiers.push('long bar');
     } else if (displayMode === 'progress-short') {
-        modifiers.push('short bar');
+        modifiers.push('medium bar');
     }
 
     if (isUsageInverted(item)) {

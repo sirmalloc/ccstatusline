@@ -115,7 +115,7 @@ describe('BlockResetTimerWidget', () => {
         baseItem: { id: 'reset', type: 'reset-timer' },
         createWidget: () => new BlockResetTimerWidget(),
         expectedDisplayName: 'Block Reset Timer',
-        expectedModifierText: '(short bar, inverted)',
+        expectedModifierText: '(medium bar, inverted)',
         modifierItem: {
             id: 'reset',
             type: 'reset-timer',

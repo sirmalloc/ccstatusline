@@ -184,7 +184,7 @@ describe('WeeklyResetTimerWidget', () => {
                 display: 'progress',
                 hours: 'true'
             }
-        }).modifierText).toBe('(progress bar)');
+        }).modifierText).toBe('(long bar)');
     });
 
     runUsageTimerEditorSuite({
@@ -196,7 +196,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 'h', label: '(h)ours only', action: 'toggle-hours' }
         ],
-        expectedModifierText: '(short bar, inverted)',
+        expectedModifierText: '(medium bar, inverted)',
         modifierItem: {
             id: 'weekly-reset',
             type: 'weekly-reset-timer',
