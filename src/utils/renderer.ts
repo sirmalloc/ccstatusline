@@ -78,11 +78,13 @@ function renderPowerlineStatusLine(
     context: RenderContext,
     lineIndex = 0,  // Which line we're rendering (for theme color cycling)
     globalSeparatorOffset = 0,  // Starting separator index for this line
+    globalThemeColorOffset = 0,  // Starting theme color index for this line
     preRenderedWidgets: PreRenderedWidget[],  // Pre-rendered widgets for this line
     preCalculatedMaxWidths: number[]  // Pre-calculated max widths for alignment
 ): string {
     const powerlineConfig = settings.powerline as Record<string, unknown> | undefined;
     const config = powerlineConfig ?? {};
+    const continueThemeAcrossLines = Boolean(config.continueThemeAcrossLines);
 
     // Get separator configuration
     const separators = (config.separators as string[] | undefined) ?? ['\uE0B0'];
@@ -127,7 +129,7 @@ function renderPowerlineStatusLine(
 
     // Build widget elements (similar to regular mode but without separators)
     const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
-    let widgetColorIndex = 0;  // Track widget index for theme colors
+    let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
 
     // Create a mapping from filteredWidgets to preRenderedWidgets indices
     // This is needed because filteredWidgets excludes separators but preRenderedWidgets includes all widgets
@@ -513,7 +515,8 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            const widgetText = widgetImpl.render(effectiveWidget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
@@ -620,7 +623,16 @@ export function renderStatusLine(
 
     // If powerline mode is enabled, use powerline renderer
     if (isPowerlineMode)
-        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0, preRenderedWidgets, preCalculatedMaxWidths);
+        return renderPowerlineStatusLine(
+            widgets,
+            settings,
+            context,
+            context.lineIndex ?? 0,
+            context.globalSeparatorIndex ?? 0,
+            context.globalPowerlineThemeIndex ?? 0,
+            preRenderedWidgets,
+            preCalculatedMaxWidths
+        );
 
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {

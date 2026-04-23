@@ -12,7 +12,11 @@ import {
 
 import { getUsageToken } from '../usage-fetch';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };

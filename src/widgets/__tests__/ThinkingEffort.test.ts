@@ -26,6 +26,10 @@ const mockedLoadSettings = loadClaudeSettingsSync as Mock;
 const MODEL_WITH_HIGH_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-6)\u001b[22m with \u001b[1mhigh\u001b[22m effort</local-command-stdout>';
 const MODEL_WITH_LOW_EFFORT = '<local-command-stdout>Set model to \u001b[1msonnet (claude-sonnet-4-5)\u001b[22m with \u001b[1mlow\u001b[22m effort</local-command-stdout>';
 const MODEL_WITH_MAX_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-6)\u001b[22m with \u001b[1mmax\u001b[22m effort</local-command-stdout>';
+const MODEL_WITH_XHIGH_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-7)\u001b[22m with \u001b[1mxhigh\u001b[22m effort</local-command-stdout>';
+const MODEL_WITH_XHIGH_MIXED_CASE_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-7)\u001b[22m with \u001b[1mxHigh\u001b[22m effort</local-command-stdout>';
+const MODEL_WITH_SUPER_MAX_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-8)\u001b[22m with \u001b[1msuper-max\u001b[22m effort</local-command-stdout>';
+const MODEL_WITH_SUPER_MAX_MIXED_CASE_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-8)\u001b[22m with \u001b[1mSuper-Max\u001b[22m effort</local-command-stdout>';
 const MODEL_WITHOUT_EFFORT = '<local-command-stdout>Set model to \u001b[1msonnet (claude-sonnet-4-5)\u001b[22m</local-command-stdout>';
 
 let tempDir: string;
@@ -142,6 +146,26 @@ describe('ThinkingEffortWidget', () => {
             expect(result).toBe('Thinking: max');
         });
 
+        it('supports xhigh effort from transcript output', () => {
+            const result = render({ fileContent: makeTranscriptEntry(MODEL_WITH_XHIGH_EFFORT) });
+            expect(result).toBe('Thinking: xhigh');
+        });
+
+        it('supports mixed-case xHigh effort from transcript output', () => {
+            const result = render({ fileContent: makeTranscriptEntry(MODEL_WITH_XHIGH_MIXED_CASE_EFFORT) });
+            expect(result).toBe('Thinking: xhigh');
+        });
+
+        it('shows unknown-but-valid effort with trailing "?" marker', () => {
+            const result = render({ fileContent: makeTranscriptEntry(MODEL_WITH_SUPER_MAX_EFFORT) });
+            expect(result).toBe('Thinking: super-max?');
+        });
+
+        it('lowercases and marks mixed-case unknown effort', () => {
+            const result = render({ fileContent: makeTranscriptEntry(MODEL_WITH_SUPER_MAX_MIXED_CASE_EFFORT) });
+            expect(result).toBe('Thinking: super-max?');
+        });
+
         it('does not keep stale transcript effort when a newer /model output has no effort', () => {
             const result = render({
                 fileContent: [
@@ -183,27 +207,62 @@ describe('ThinkingEffortWidget', () => {
             expect(result).toBe('Thinking: max');
         });
 
-        it('defaults to medium when effortLevel is not set', () => {
+        it('supports xhigh effortLevel', () => {
+            const result = render({ settingsValue: { effortLevel: 'xhigh' } });
+            expect(result).toBe('Thinking: xhigh');
+        });
+
+        it('supports mixed-case xHigh effortLevel', () => {
+            const result = render({ settingsValue: { effortLevel: 'xHigh' } });
+            expect(result).toBe('Thinking: xhigh');
+        });
+
+        it('shows unknown-but-valid effortLevel with trailing "?" marker', () => {
+            const result = render({ settingsValue: { effortLevel: 'super-max' } });
+            expect(result).toBe('Thinking: super-max?');
+        });
+
+        it('marks unknown effortLevel still passes through case-insensitive match', () => {
+            const result = render({ settingsValue: { effortLevel: 'Ultra' } });
+            expect(result).toBe('Thinking: ultra?');
+        });
+
+        it('displays default when effortLevel is not set', () => {
             const result = render();
-            expect(result).toBe('Thinking: medium');
+            expect(result).toBe('Thinking: default');
         });
 
-        it('defaults to medium when effortLevel is invalid', () => {
-            const result = render({ settingsValue: { effortLevel: 'ultra' } });
-            expect(result).toBe('Thinking: medium');
+        it('displays default when effortLevel fails the shape check', () => {
+            const result = render({ settingsValue: { effortLevel: 'has space' } });
+            expect(result).toBe('Thinking: default');
         });
 
-        it('defaults to medium when settings read fails', () => {
+        it('displays default when effortLevel is too long', () => {
+            const result = render({ settingsValue: { effortLevel: 'thisisaveryverylongeffortname' } });
+            expect(result).toBe('Thinking: default');
+        });
+
+        it('displays default when effortLevel is a single character', () => {
+            const result = render({ settingsValue: { effortLevel: 'x' } });
+            expect(result).toBe('Thinking: default');
+        });
+
+        it('displays default when settings read fails', () => {
             mockedLoadSettings.mockImplementation(() => {
                 throw new Error('settings unavailable');
             });
             const result = render();
-            expect(result).toBe('Thinking: medium');
+            expect(result).toBe('Thinking: default');
         });
 
-        it('defaults to medium when the latest /model output has no effort and settings are missing', () => {
+        it('displays default when the latest /model output has no effort and settings are missing', () => {
             const result = render({ fileContent: makeTranscriptEntry(MODEL_WITHOUT_EFFORT) });
-            expect(result).toBe('Thinking: medium');
+            expect(result).toBe('Thinking: default');
+        });
+
+        it('displays raw default when fallback hits', () => {
+            const result = render({ rawValue: true });
+            expect(result).toBe('default');
         });
     });
 });

@@ -1,3 +1,4 @@
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -14,13 +15,17 @@ import {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
+    getClaudeCodeVersion,
     getClaudeSettingsPath,
     getExistingStatusLine,
+    getRefreshInterval,
     installStatusLine,
+    isClaudeCodeVersionAtLeast,
     isInstalled,
     isKnownCommand,
     loadClaudeSettings,
     saveClaudeSettings,
+    setRefreshInterval,
     uninstallStatusLine
 } from '../claude-settings';
 import { initConfigPath } from '../config';
@@ -33,6 +38,13 @@ function readInstalledCommand(): string {
     const content = fs.readFileSync(settingsPath, 'utf-8');
     const data = JSON.parse(content) as { statusLine?: { command?: string } };
     return data.statusLine?.command ?? '';
+}
+
+function readInstalledRefreshInterval(): number | undefined {
+    const settingsPath = getClaudeSettingsPath();
+    const content = fs.readFileSync(settingsPath, 'utf-8');
+    const data = JSON.parse(content) as { statusLine?: { refreshInterval?: number } };
+    return data.statusLine?.refreshInterval;
 }
 
 function writeRawClaudeSettings(content: string): void {
@@ -106,6 +118,14 @@ describe('isKnownCommand', () => {
     it('should not match prefix that is a substring', () => {
         expect(isKnownCommand('npx -y ccstatusline@latestFOO')).toBe(false);
     });
+
+    it('should match command containing ccstatusline.ts', () => {
+        expect(isKnownCommand('bun run /home/user/ccstatusline/src/ccstatusline.ts')).toBe(true);
+    });
+
+    it('should match command containing a quoted ccstatusline.ts path', () => {
+        expect(isKnownCommand('bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"')).toBe(true);
+    });
 });
 
 describe('buildCommand via installStatusLine', () => {
@@ -173,6 +193,102 @@ describe('buildCommand via installStatusLine', () => {
                 hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
             }
         ]);
+    });
+});
+
+describe('installStatusLine refreshInterval', () => {
+    it('should set refreshInterval to 10 when version is supported', async () => {
+        initConfigPath();
+        await installStatusLine(false, true);
+        expect(readInstalledRefreshInterval()).toBe(10);
+    });
+
+    it('should not set refreshInterval when version is unsupported', async () => {
+        initConfigPath();
+        await installStatusLine(false, false);
+        expect(readInstalledRefreshInterval()).toBeUndefined();
+    });
+
+    it('should preserve existing refreshInterval on re-install', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 5
+            }
+        }));
+        await installStatusLine(false, true);
+        expect(readInstalledRefreshInterval()).toBe(5);
+    });
+});
+
+describe('refreshInterval', () => {
+    it('getRefreshInterval should return null when no settings exist', async () => {
+        await expect(getRefreshInterval()).resolves.toBeNull();
+    });
+
+    it('getRefreshInterval should return null when statusLine has no refreshInterval', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0
+            }
+        });
+        await expect(getRefreshInterval()).resolves.toBeNull();
+    });
+
+    it('getRefreshInterval should return the configured value', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 5
+            }
+        });
+        await expect(getRefreshInterval()).resolves.toBe(5);
+    });
+
+    it('setRefreshInterval should set the value on existing statusLine', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0
+            }
+        });
+
+        await setRefreshInterval(15);
+
+        const settings = await loadClaudeSettings();
+        expect(settings.statusLine?.refreshInterval).toBe(15);
+    });
+
+    it('setRefreshInterval with null should remove refreshInterval', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 10
+            }
+        });
+
+        await setRefreshInterval(null);
+
+        const settings = await loadClaudeSettings();
+        expect(settings.statusLine?.refreshInterval).toBeUndefined();
+    });
+
+    it('setRefreshInterval should do nothing when no statusLine exists', async () => {
+        await saveClaudeSettings({});
+
+        await setRefreshInterval(10);
+
+        const settings = await loadClaudeSettings();
+        expect(settings.statusLine).toBeUndefined();
     });
 });
 
@@ -354,5 +470,75 @@ describe('backup and error handling behavior', () => {
         });
 
         await expect(isInstalled()).resolves.toBe(true);
+    });
+
+    it('isInstalled should accept quoted local development commands when padding is undefined', async () => {
+        await saveClaudeSettings({
+            statusLine: {
+                type: 'command',
+                command: 'bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"'
+            }
+        });
+
+        await expect(isInstalled()).resolves.toBe(true);
+    });
+});
+
+describe('getClaudeCodeVersion', () => {
+    it('should parse version from claude --version output', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('2.1.97 (Claude Code)\n');
+        expect(getClaudeCodeVersion()).toBe('2.1.97');
+    });
+
+    it('should parse version without suffix text', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('3.0.0\n');
+        expect(getClaudeCodeVersion()).toBe('3.0.0');
+    });
+
+    it('should return null when claude is not installed', () => {
+        vi.spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('not found'); });
+        expect(getClaudeCodeVersion()).toBeNull();
+    });
+
+    it('should return null for unexpected output', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('unknown output');
+        expect(getClaudeCodeVersion()).toBeNull();
+    });
+});
+
+describe('isClaudeCodeVersionAtLeast', () => {
+    it('should return true when version equals minimum', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('2.1.97 (Claude Code)\n');
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(true);
+    });
+
+    it('should return true when patch is higher', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('2.1.100 (Claude Code)\n');
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(true);
+    });
+
+    it('should return true when minor is higher', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('2.2.0 (Claude Code)\n');
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(true);
+    });
+
+    it('should return true when major is higher', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('3.0.0 (Claude Code)\n');
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(true);
+    });
+
+    it('should return false when version is lower', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('2.1.96 (Claude Code)\n');
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
+    });
+
+    it('should return false when minor is lower', () => {
+        vi.spyOn(childProcess, 'execSync').mockReturnValue('2.0.100 (Claude Code)\n');
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
+    });
+
+    it('should return false when claude is not installed', () => {
+        vi.spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('not found'); });
+        expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
     });
 });
