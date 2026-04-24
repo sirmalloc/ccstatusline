@@ -614,4 +614,200 @@ describe('items-editor input handlers', () => {
         expect(customEditorState?.action).toBe('edit-list-limit');
         expect(customEditorState?.widget?.type).toBe('skills');
     });
+
+    describe('k shortcut - clone widget', () => {
+        it('inserts clone after source and moves selection to clone', () => {
+            const widgets: WidgetItem[] = [
+                { id: 'a', type: 'tokens-input' },
+                { id: 'b', type: 'tokens-output' }
+            ];
+            const onUpdate = vi.fn();
+            const setSelectedIndex = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated).toHaveLength(3);
+            expect(updated[0]?.id).toBe('a');
+            expect(updated[1]?.type).toBe('tokens-input');
+            expect(updated[2]?.id).toBe('b');
+            expect(setSelectedIndex).toHaveBeenCalledWith(1);
+        });
+
+        it('copies all primitive properties of source to clone', () => {
+            const widgets: WidgetItem[] = [
+                { id: 'src', type: 'tokens-input', color: 'green', bold: true, rawValue: true, backgroundColor: 'blue' }
+            ];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            const clone = updated[1];
+            expect(clone?.color).toBe('green');
+            expect(clone?.bold).toBe(true);
+            expect(clone?.rawValue).toBe(true);
+        });
+
+        it('generates a different id for the clone', () => {
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'tokens-input' }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated[1]?.id).not.toBe('src');
+            expect(typeof updated[1]?.id).toBe('string');
+            expect(updated[1]?.id.length).toBeGreaterThan(0);
+        });
+
+        it('shallow-clones metadata so mutating clone does not affect source', () => {
+            const sourceMeta = { display: 'progress' };
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'session-usage', metadata: sourceMeta }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            const cloneMeta = updated[1]?.metadata as Record<string, unknown> | undefined;
+            expect(cloneMeta).toBeDefined();
+            expect(cloneMeta).not.toBe(sourceMeta);
+            expect(cloneMeta?.display).toBe('progress');
+
+            if (cloneMeta) {
+                cloneMeta.display = 'changed';
+            }
+            expect(sourceMeta.display).toBe('progress');
+        });
+
+        it('uses getUniqueBackgroundColor result as backgroundColor in powerline mode', () => {
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'tokens-input', backgroundColor: 'red' }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn(),
+                getUniqueBackgroundColor: () => 'cyan'
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated[1]?.backgroundColor).toBe('cyan');
+        });
+
+        it('preserves source backgroundColor when getUniqueBackgroundColor returns undefined', () => {
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'tokens-input', backgroundColor: 'red' }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn(),
+                getUniqueBackgroundColor: () => undefined
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated[1]?.backgroundColor).toBe('red');
+        });
+
+        it('does nothing when widget list is empty', () => {
+            const onUpdate = vi.fn();
+            const setSelectedIndex = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets: [],
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            expect(onUpdate).not.toHaveBeenCalled();
+            expect(setSelectedIndex).not.toHaveBeenCalled();
+        });
+    });
 });
