@@ -178,6 +178,176 @@ describe('items-editor input handlers', () => {
         expect(pickerState.get()?.level).toBe('category');
     });
 
+    it('wraps to last category when pressing up at first category', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'tokens-input', displayName: 'Tokens Input', category: 'Tokens' }
+        ]);
+        const widgetCategories = ['All', 'Git', 'Tokens'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: null
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedCategory).toBe('Tokens');
+    });
+
+    it('wraps to first category when pressing down at last category', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'tokens-input', displayName: 'Tokens Input', category: 'Tokens' }
+        ]);
+        const widgetCategories = ['All', 'Git', 'Tokens'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'Tokens',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: null
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedCategory).toBe('All');
+    });
+
+    it('wraps to last widget when pressing up at first widget in picker', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' },
+            { type: 'git-insertions', displayName: 'Git Insertions', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'widget',
+            selectedCategory: 'Git',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-insertions');
+    });
+
+    it('wraps to first widget when pressing down at last widget in picker', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' },
+            { type: 'git-insertions', displayName: 'Git Insertions', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'widget',
+            selectedCategory: 'Git',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-insertions'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-branch');
+    });
+
+    it('wraps to last search result when pressing up at first in top-level search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: 'git',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-changes');
+    });
+
+    it('wraps to first search result when pressing down at last in top-level search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: 'git',
+            widgetQuery: '',
+            selectedType: 'git-changes'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-branch');
+    });
+
     it('moves selected widget up in move mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'tokens-input' },
@@ -202,6 +372,112 @@ describe('items-editor input handlers', () => {
         ]);
         expect(setSelectedIndex).toHaveBeenCalledWith(0);
         expect(setMoveMode).not.toHaveBeenCalled();
+    });
+
+    it('wraps to last widget when pressing up at first position in normal mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const setSelectedIndex = vi.fn();
+
+        handleNormalInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex,
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(setSelectedIndex).toHaveBeenCalledWith(2);
+    });
+
+    it('wraps to first widget when pressing down at last position in normal mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const setSelectedIndex = vi.fn();
+
+        handleNormalInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgets,
+            selectedIndex: 2,
+            separatorChars: ['|'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex,
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(setSelectedIndex).toHaveBeenCalledWith(0);
+    });
+
+    it('wraps to last position when moving widget up from first position', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setSelectedIndex = vi.fn();
+
+        handleMoveInputMode({
+            key: { upArrow: true },
+            widgets,
+            selectedIndex: 0,
+            onUpdate,
+            setSelectedIndex,
+            setMoveMode: vi.fn()
+        });
+
+        expect(onUpdate).toHaveBeenCalledWith([
+            { id: '3', type: 'git-branch' },
+            { id: '2', type: 'tokens-output' },
+            { id: '1', type: 'tokens-input' }
+        ]);
+        expect(setSelectedIndex).toHaveBeenCalledWith(2);
+    });
+
+    it('wraps to first position when moving widget down from last position', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setSelectedIndex = vi.fn();
+
+        handleMoveInputMode({
+            key: { downArrow: true },
+            widgets,
+            selectedIndex: 2,
+            onUpdate,
+            setSelectedIndex,
+            setMoveMode: vi.fn()
+        });
+
+        expect(onUpdate).toHaveBeenCalledWith([
+            { id: '3', type: 'git-branch' },
+            { id: '2', type: 'tokens-output' },
+            { id: '1', type: 'tokens-input' }
+        ]);
+        expect(setSelectedIndex).toHaveBeenCalledWith(0);
     });
 
     it('toggles raw value in normal mode for supported widgets', () => {
