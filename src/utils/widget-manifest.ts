@@ -49,6 +49,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'output-speed', create: () => new widgets.OutputSpeedWidget() },
     { type: 'total-speed', create: () => new widgets.TotalSpeedWidget() },
     { type: 'context-length', create: () => new widgets.ContextLengthWidget() },
+    { type: 'context-window', create: () => new widgets.ContextWindowWidget() },
     { type: 'context-percentage', create: () => new widgets.ContextPercentageWidget() },
     { type: 'context-percentage-usable', create: () => new widgets.ContextPercentageUsableWidget() },
     { type: 'session-clock', create: () => new widgets.SessionClockWidget() },
