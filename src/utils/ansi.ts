@@ -336,6 +336,34 @@ export function stripSgrCodes(text: string): string {
     return text.replace(SGR_REGEX, '');
 }
 
+export function stripOscCodes(text: string): string {
+    let result = '';
+    let index = 0;
+
+    while (index < text.length) {
+        const escape = parseEscapeSequence(text, index);
+        if (escape) {
+            const isOsc = escape.sequence.startsWith(`${ESC}]`) || escape.sequence.startsWith(C1_OSC);
+            if (!isOsc) {
+                result += escape.sequence;
+            }
+            index = escape.nextIndex;
+            continue;
+        }
+
+        const codePoint = text.codePointAt(index);
+        if (codePoint === undefined) {
+            break;
+        }
+
+        const character = String.fromCodePoint(codePoint);
+        result += character;
+        index += character.length;
+    }
+
+    return result;
+}
+
 export function getVisibleText(text: string): string {
     let result = '';
     let index = 0;
