@@ -129,6 +129,14 @@ describe('git-remote utils', () => {
                     repo: 'project'
                 });
             });
+
+            it('preserves non-default HTTPS ports', () => {
+                expect(parseRemoteUrl('https://git.example.com:8443/team/repo.git')).toEqual({
+                    host: 'git.example.com:8443',
+                    owner: 'team',
+                    repo: 'repo'
+                });
+            });
         });
 
         describe('ssh:// protocol format', () => {
@@ -145,6 +153,14 @@ describe('git-remote utils', () => {
                     host: 'github.service.anz',
                     owner: 'org',
                     repo: 'project'
+                });
+            });
+
+            it('omits ssh:// transport ports from the parsed host', () => {
+                expect(parseRemoteUrl('ssh://git@git.example.com:2222/team/repo.git')).toEqual({
+                    host: 'git.example.com',
+                    owner: 'team',
+                    repo: 'repo'
                 });
             });
         });

@@ -97,26 +97,28 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         }
 
         if (moveMode) {
-            if (key.upArrow && selectedIndex > 0) {
+            if (key.upArrow && localLines.length > 1) {
                 const newLines = [...localLines];
+                const targetIndex = selectedIndex - 1 < 0 ? localLines.length - 1 : selectedIndex - 1;
                 const temp = newLines[selectedIndex];
-                const prev = newLines[selectedIndex - 1];
+                const prev = newLines[targetIndex];
                 if (temp && prev) {
-                    [newLines[selectedIndex], newLines[selectedIndex - 1]] = [prev, temp];
+                    [newLines[selectedIndex], newLines[targetIndex]] = [prev, temp];
                 }
                 setLocalLines(newLines);
                 onLinesUpdate(newLines);
-                setSelectedIndex(selectedIndex - 1);
-            } else if (key.downArrow && selectedIndex < localLines.length - 1) {
+                setSelectedIndex(targetIndex);
+            } else if (key.downArrow && localLines.length > 1) {
                 const newLines = [...localLines];
+                const targetIndex = selectedIndex + 1 > localLines.length - 1 ? 0 : selectedIndex + 1;
                 const temp = newLines[selectedIndex];
-                const next = newLines[selectedIndex + 1];
+                const next = newLines[targetIndex];
                 if (temp && next) {
-                    [newLines[selectedIndex], newLines[selectedIndex + 1]] = [next, temp];
+                    [newLines[selectedIndex], newLines[targetIndex]] = [next, temp];
                 }
                 setLocalLines(newLines);
                 onLinesUpdate(newLines);
-                setSelectedIndex(selectedIndex + 1);
+                setSelectedIndex(targetIndex);
             } else if (key.escape || key.return) {
                 setMoveMode(false);
             }

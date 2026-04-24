@@ -78,7 +78,9 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
         }
 
         return {
-            host: parsedUrl.hostname,
+            host: parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:'
+                ? parsedUrl.host
+                : parsedUrl.hostname,
             owner,
             repo
         };
@@ -177,11 +179,12 @@ export function listRemotes(context: RenderContext): string[] {
     return output.split('\n').filter(Boolean);
 }
 
-/**
- * Build a web URL for a repository on GitHub-like hosts.
- * Returns null if the host doesn't appear to be GitHub-like.
- */
 export function buildRepoWebUrl(remote: RemoteInfo): string {
-    // Assume HTTPS for the web URL
     return `https://${remote.host}/${remote.owner}/${remote.repo}`;
+}
+
+// GitLab redirects /tree/<branch> to its canonical /-/tree/<branch>, so one
+// suffix works for both GitHub and GitLab.
+export function buildBranchWebUrl(remote: RemoteInfo, encodedBranch: string): string {
+    return `${buildRepoWebUrl(remote)}/tree/${encodedBranch}`;
 }
