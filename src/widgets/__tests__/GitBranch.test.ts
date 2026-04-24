@@ -31,7 +31,7 @@ function render(options: {
     cwd?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
-    linkToGitHub?: boolean;
+    linkToRepo?: boolean;
     metadata?: Record<string, string>;
     rawValue?: boolean;
 } = {}) {
@@ -43,7 +43,7 @@ function render(options: {
     const metadata = {
         ...options.metadata,
         ...(options.hideNoGit ? { hideNoGit: 'true' } : {}),
-        ...(options.linkToGitHub ? { linkToGitHub: 'true' } : {})
+        ...(options.linkToRepo ? { linkToRepo: 'true' } : {})
     };
     const item: WidgetItem = {
         id: 'git-branch',
@@ -102,9 +102,31 @@ describe('GitBranchWidget', () => {
         mockExecFileSync.mockReturnValueOnce('feature/issue#1');
         mockExecFileSync.mockReturnValueOnce('ssh://git@github.com/owner/repo.git');
 
-        expect(render({ linkToGitHub: true })).toBe(renderOsc8Link(
+        expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
             'https://github.com/owner/repo/tree/feature/issue%231',
             '⎇ feature/issue#1'
+        ));
+    });
+
+    it('should render encoded GitLab branch links', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('feature/issue#1');
+        mockExecFileSync.mockReturnValueOnce('git@gitlab.com:owner/repo.git');
+
+        expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
+            'https://gitlab.com/owner/repo/tree/feature/issue%231',
+            '⎇ feature/issue#1'
+        ));
+    });
+
+    it('should render links for self-hosted git remotes', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('https://git.example.com/group/subgroup/repo.git');
+
+        expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
+            'https://git.example.com/group/subgroup/repo/tree/main',
+            '⎇ main'
         ));
     });
 
@@ -133,11 +155,68 @@ describe('GitBranchWidget', () => {
         expect(render()).toBe('⎇ no git');
     });
 
-    it('should keep plain text when GitHub remote cannot be parsed', () => {
+    it('should keep plain text when origin remote cannot be parsed', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockReturnValueOnce('feature/worktree');
-        mockExecFileSync.mockReturnValueOnce('https://gitlab.com/owner/repo.git');
+        mockExecFileSync.mockReturnValueOnce('not-a-valid-remote-url');
 
-        expect(render({ linkToGitHub: true })).toBe('⎇ feature/worktree');
+        expect(render({ linkToRepo: true })).toBe('⎇ feature/worktree');
+    });
+
+    it('should render a link when only the legacy linkToGitHub flag is set', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
+
+        expect(render({ metadata: { linkToGitHub: 'true' } })).toBe(renderOsc8Link(
+            'https://github.com/owner/repo/tree/main',
+            '⎇ main'
+        ));
+    });
+
+    it('should prefer explicit linkToRepo:false over legacy linkToGitHub:true', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('main');
+
+        expect(render({ metadata: { linkToRepo: 'false', linkToGitHub: 'true' } })).toBe('⎇ main');
+    });
+
+    describe('toggle action', () => {
+        const widget = new GitBranchWidget();
+
+        it('upgrades a legacy-only item to linkToRepo and drops the legacy key', () => {
+            const item: WidgetItem = {
+                id: 'git-branch',
+                type: 'git-branch',
+                metadata: { linkToGitHub: 'true' }
+            };
+
+            const toggled = widget.handleEditorAction('toggle-link', item);
+
+            expect(toggled?.metadata).toEqual(undefined);
+        });
+
+        it('enables a disabled item by writing only linkToRepo', () => {
+            const item: WidgetItem = {
+                id: 'git-branch',
+                type: 'git-branch'
+            };
+
+            const toggled = widget.handleEditorAction('toggle-link', item);
+
+            expect(toggled?.metadata).toEqual({ linkToRepo: 'true' });
+        });
+
+        it('strips both legacy and new keys when disabling from a dual-key state', () => {
+            const item: WidgetItem = {
+                id: 'git-branch',
+                type: 'git-branch',
+                metadata: { linkToRepo: 'true', linkToGitHub: 'true', hideNoGit: 'true' }
+            };
+
+            const toggled = widget.handleEditorAction('toggle-link', item);
+
+            expect(toggled?.metadata).toEqual({ hideNoGit: 'true' });
+        });
     });
 });
