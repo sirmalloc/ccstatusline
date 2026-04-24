@@ -388,6 +388,46 @@ describe('git-review-cache', () => {
         expect(glabMrCalls).toHaveLength(1);
     });
 
+    it('preserves non-default ports when probing and pinning self-hosted GitLab repos', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://git.self-hosted.example:8443/team/repo.git');
+        harness.setGlabAvailable(true);
+        harness.setCliAuthedForHost('glab', 'git.self-hosted.example:8443', true);
+        harness.glabResponses.push('');
+        harness.glabResponses.push(JSON.stringify({
+            iid: 8,
+            state: 'opened',
+            title: 'Port-hosted MR',
+            web_url: 'https://git.self-hosted.example:8443/team/repo/-/merge_requests/8'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 8,
+            provider: 'glab',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Port-hosted MR',
+            url: 'https://git.self-hosted.example:8443/team/repo/-/merge_requests/8'
+        });
+
+        const glabAuthCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'auth'
+        );
+        expect(glabAuthCalls[0]?.args).toEqual([
+            'auth',
+            'status',
+            '--hostname',
+            'git.self-hosted.example:8443'
+        ]);
+
+        const glabMrCalls = harness.execCalls.filter(
+            call => call.cmd === 'glab' && call.args[0] === 'mr'
+        );
+        expect(glabMrCalls).toHaveLength(2);
+        expect(glabMrCalls[1]?.args).toContain('--repo');
+        expect(glabMrCalls[1]?.args).toContain('https://git.self-hosted.example:8443/team/repo');
+    });
+
     it('uses gh for unknown host when only gh is authed (no wasted glab mr calls)', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('git@git.self-hosted.example:team/repo.git');

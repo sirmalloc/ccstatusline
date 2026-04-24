@@ -78,7 +78,9 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
         }
 
         return {
-            host: parsedUrl.hostname,
+            host: parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:'
+                ? parsedUrl.host
+                : parsedUrl.hostname,
             owner,
             repo
         };
