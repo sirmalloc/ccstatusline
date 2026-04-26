@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import type { RenderContext } from '../types/RenderContext';
@@ -8,9 +9,24 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getClaudeConfigDir } from '../utils/claude-settings';
 
 interface ClaudeJson { oauthAccount?: { emailAddress?: string } }
+
+/**
+ * Resolves the path to Claude Code's `.claude.json` state file.
+ *
+ * - When `CLAUDE_CONFIG_DIR` is set, Claude Code stores `.claude.json` inside
+ *   that directory along with the rest of its config.
+ * - When unset, `.claude.json` lives at `~/.claude.json` (sibling of the
+ *   default `~/.claude` config dir).
+ */
+function getClaudeJsonPath(): string {
+    const envConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    if (envConfigDir) {
+        return path.resolve(envConfigDir, '.claude.json');
+    }
+    return path.join(os.homedir(), '.claude.json');
+}
 
 export class ClaudeAccountEmailWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -27,19 +43,11 @@ export class ClaudeAccountEmailWidget implements Widget {
         }
 
         try {
-            const configDir = getClaudeConfigDir();
-            const claudeJsonPath = path.join(configDir, '..', '.claude.json');
-            const resolved = path.resolve(claudeJsonPath);
-
-            if (!fs.existsSync(resolved)) {
-                return null;
-            }
-
-            const content = fs.readFileSync(resolved, 'utf-8');
+            const content = fs.readFileSync(getClaudeJsonPath(), 'utf-8');
             const data = JSON.parse(content) as ClaudeJson;
             const email = data.oauthAccount?.emailAddress;
 
-            if (!email) {
+            if (typeof email !== 'string' || email.length === 0) {
                 return null;
             }
 
