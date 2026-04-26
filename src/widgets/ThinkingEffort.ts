@@ -15,21 +15,30 @@ import {
 
 export type ThinkingEffortLevel = TranscriptThinkingEffort;
 
-function resolveThinkingEffortFromSettings(): ResolvedThinkingEffort | undefined {
+
+function resolveThinkingEffortFromSettings(): ResolvedThinkingEffort | null {
     try {
         const settings = loadClaudeSettingsSync({ logErrors: false });
-        return normalizeThinkingEffort(settings.effortLevel);
+        if (!settings) {
+            return null;
+        }
+        const resolved = normalizeThinkingEffort(settings.effortLevel);
+        if (resolved) {
+            return resolved;
+        }
     } catch {
-        // Settings unavailable, return undefined
+        // Settings unavailable, return null to trigger fallback
     }
 
-    return undefined;
+    return null;
 }
 
 function resolveThinkingEffort(context: RenderContext): ResolvedThinkingEffort | null {
-    return getTranscriptThinkingEffort(context.data?.transcript_path)
-        ?? resolveThinkingEffortFromSettings()
-        ?? null;
+    const fromTranscript = getTranscriptThinkingEffort(context.data?.transcript_path);
+    if (fromTranscript) {
+        return fromTranscript;
+    }
+    return resolveThinkingEffortFromSettings();
 }
 
 function formatEffort(resolved: ResolvedThinkingEffort | null): string {
