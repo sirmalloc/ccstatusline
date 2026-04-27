@@ -114,6 +114,12 @@ describe('widget catalog', () => {
         }
     });
 
+    it('returns unique widget identifiers', () => {
+        const types = getAllWidgetTypes(baseSettings);
+
+        expect(new Set(types).size).toBe(types.length);
+    });
+
     it('recognizes known widget and layout types', () => {
         expect(isKnownWidgetType('model')).toBe(true);
         expect(isKnownWidgetType('separator')).toBe(true);

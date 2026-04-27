@@ -7,6 +7,12 @@ export interface GitChangeCounts {
     deletions: number;
 }
 
+export interface GitFileStatusCounts {
+    staged: number;
+    unstaged: number;
+    untracked: number;
+}
+
 // Cache for git commands - key is "command|cwd"
 const gitCommandCache = new Map<string, string | null>();
 
@@ -90,6 +96,10 @@ export function getGitChangeCounts(context: RenderContext): GitChangeCounts {
     };
 }
 
+function hasRenameOrCopyStatus(line: string): boolean {
+    return line.startsWith('R') || line.startsWith('C') || line[1] === 'R' || line[1] === 'C';
+}
+
 export interface GitStatus {
     staged: boolean;
     unstaged: boolean;
@@ -127,13 +137,47 @@ export function getGitStatus(context: RenderContext): GitStatus {
         if (staged && unstaged && untracked && conflicts)
             break;
 
-        const indexStatus = line[0];
-        if (indexStatus === 'R' || indexStatus === 'C') {
+        if (hasRenameOrCopyStatus(line)) {
             index += 1;
         }
     }
 
     return { staged, unstaged, untracked, conflicts };
+}
+
+export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCounts {
+    const output = runGit('--no-optional-locks status --porcelain -z', context);
+
+    if (!output) {
+        return { staged: 0, unstaged: 0, untracked: 0 };
+    }
+
+    let staged = 0;
+    let unstaged = 0;
+    let untracked = 0;
+
+    const entries = output.split('\0');
+
+    for (let index = 0; index < entries.length; index += 1) {
+        const line = entries[index];
+        if (typeof line !== 'string' || line.length < 2)
+            continue;
+
+        if (line.startsWith('??')) {
+            untracked += 1;
+        } else {
+            if (/^[MADRCTU]/.test(line))
+                staged += 1;
+            if (/^.[MADRCTU]/.test(line))
+                unstaged += 1;
+        }
+
+        if (hasRenameOrCopyStatus(line)) {
+            index += 1;
+        }
+    }
+
+    return { staged, unstaged, untracked };
 }
 
 export interface GitAheadBehind {

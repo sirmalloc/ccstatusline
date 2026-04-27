@@ -11,10 +11,14 @@ import type {
 } from '../../types';
 import { GitBranchWidget } from '../GitBranch';
 import { GitChangesWidget } from '../GitChanges';
+import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitDeletionsWidget } from '../GitDeletions';
 import { GitInsertionsWidget } from '../GitInsertions';
 import { GitPrWidget } from '../GitPr';
 import { GitRootDirWidget } from '../GitRootDir';
+import { GitStagedFilesWidget } from '../GitStagedFiles';
+import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
+import { GitUntrackedFilesWidget } from '../GitUntrackedFiles';
 import { GitWorktreeWidget } from '../GitWorktree';
 
 type GitWidget = Widget & {
@@ -27,6 +31,10 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
     { name: 'GitChangesWidget', itemType: 'git-changes', widget: new GitChangesWidget() },
     { name: 'GitInsertionsWidget', itemType: 'git-insertions', widget: new GitInsertionsWidget() },
     { name: 'GitDeletionsWidget', itemType: 'git-deletions', widget: new GitDeletionsWidget() },
+    { name: 'GitStagedFilesWidget', itemType: 'git-staged-files', widget: new GitStagedFilesWidget() },
+    { name: 'GitUnstagedFilesWidget', itemType: 'git-unstaged-files', widget: new GitUnstagedFilesWidget() },
+    { name: 'GitUntrackedFilesWidget', itemType: 'git-untracked-files', widget: new GitUntrackedFilesWidget() },
+    { name: 'GitCleanStatusWidget', itemType: 'git-clean-status', widget: new GitCleanStatusWidget() },
     { name: 'GitPrWidget', itemType: 'git-review', widget: new GitPrWidget() },
     { name: 'GitRootDirWidget', itemType: 'git-root-dir', widget: new GitRootDirWidget() },
     { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }

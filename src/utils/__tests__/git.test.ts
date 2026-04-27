@@ -11,6 +11,7 @@ import type { RenderContext } from '../../types/RenderContext';
 import {
     clearGitCache,
     getGitChangeCounts,
+    getGitFileStatusCounts,
     getGitStatus,
     isInsideGitWorkTree,
     resolveGitCwd,
@@ -342,6 +343,24 @@ describe('git utils', () => {
             expect(result.conflicts).toBe(false);
         });
 
+        it('ignores unstaged rename source path in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' R new-name.txt\0ANT.txt\0');
+
+            const result = getGitStatus({});
+            expect(result.staged).toBe(false);
+            expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
+        });
+
+        it('ignores unstaged copy source path in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' C copy.txt\0MOUSE.txt\0');
+
+            const result = getGitStatus({});
+            expect(result.staged).toBe(false);
+            expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
+        });
+
         it('detects type changed file in index (staged)', () => {
             mockExecFileSync.mockReturnValueOnce('T  file.txt');
 
@@ -379,6 +398,88 @@ describe('git utils', () => {
                 unstaged: false,
                 untracked: false,
                 conflicts: false
+            });
+        });
+    });
+
+    describe('getGitFileStatusCounts', () => {
+        it('counts staged, unstaged, and untracked files from porcelain status', () => {
+            mockExecFileSync.mockReturnValueOnce('M  staged-a.ts\0A  staged-b.ts\0 M unstaged-a.ts\0?? new-a.ts\0?? new-b.ts\0');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 2,
+                unstaged: 1,
+                untracked: 2
+            });
+        });
+
+        it('counts files with both staged and unstaged changes in both totals', () => {
+            mockExecFileSync.mockReturnValueOnce('MM file.ts');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 1,
+                unstaged: 1,
+                untracked: 0
+            });
+        });
+
+        it('returns zero counts when there are no matching files', () => {
+            mockExecFileSync.mockReturnValueOnce('');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 0,
+                untracked: 0
+            });
+        });
+
+        it('ignores rename source paths in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce('R  new-name.ts\0old-name.ts\0?? new-file.ts\0');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 1,
+                unstaged: 0,
+                untracked: 1
+            });
+        });
+
+        it('ignores copy source paths in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce('C  copy.ts\0original.ts\0 M changed.ts');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 1,
+                unstaged: 1,
+                untracked: 0
+            });
+        });
+
+        it('ignores unstaged rename source paths in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' R new-name.ts\0A-old-name.ts\0?? new-file.ts\0');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 1,
+                untracked: 1
+            });
+        });
+
+        it('ignores unstaged copy source paths in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' C copy.ts\0M-original.ts\0 M changed.ts');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 2,
+                untracked: 0
+            });
+        });
+
+        it('returns zero counts when git commands fail', () => {
+            mockExecFileSync.mockImplementation(() => { throw new Error('git failed'); });
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 0,
+                untracked: 0
             });
         });
     });
