@@ -343,6 +343,24 @@ describe('git utils', () => {
             expect(result.conflicts).toBe(false);
         });
 
+        it('ignores unstaged rename source path in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' R new-name.txt\0ANT.txt\0');
+
+            const result = getGitStatus({});
+            expect(result.staged).toBe(false);
+            expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
+        });
+
+        it('ignores unstaged copy source path in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' C copy.txt\0MOUSE.txt\0');
+
+            const result = getGitStatus({});
+            expect(result.staged).toBe(false);
+            expect(result.unstaged).toBe(true);
+            expect(result.conflicts).toBe(false);
+        });
+
         it('detects type changed file in index (staged)', () => {
             mockExecFileSync.mockReturnValueOnce('T  file.txt');
 
@@ -431,6 +449,26 @@ describe('git utils', () => {
             expect(getGitFileStatusCounts({})).toEqual({
                 staged: 1,
                 unstaged: 1,
+                untracked: 0
+            });
+        });
+
+        it('ignores unstaged rename source paths in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' R new-name.ts\0A-old-name.ts\0?? new-file.ts\0');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 1,
+                untracked: 1
+            });
+        });
+
+        it('ignores unstaged copy source paths in porcelain -z output', () => {
+            mockExecFileSync.mockReturnValueOnce(' C copy.ts\0M-original.ts\0 M changed.ts');
+
+            expect(getGitFileStatusCounts({})).toEqual({
+                staged: 0,
+                unstaged: 2,
                 untracked: 0
             });
         });

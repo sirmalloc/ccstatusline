@@ -96,6 +96,10 @@ export function getGitChangeCounts(context: RenderContext): GitChangeCounts {
     };
 }
 
+function hasRenameOrCopyStatus(line: string): boolean {
+    return line.startsWith('R') || line.startsWith('C') || line[1] === 'R' || line[1] === 'C';
+}
+
 export interface GitStatus {
     staged: boolean;
     unstaged: boolean;
@@ -133,8 +137,7 @@ export function getGitStatus(context: RenderContext): GitStatus {
         if (staged && unstaged && untracked && conflicts)
             break;
 
-        const indexStatus = line[0];
-        if (indexStatus === 'R' || indexStatus === 'C') {
+        if (hasRenameOrCopyStatus(line)) {
             index += 1;
         }
     }
@@ -160,7 +163,6 @@ export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCou
         if (typeof line !== 'string' || line.length < 2)
             continue;
 
-        const indexStatus = line[0];
         if (line.startsWith('??')) {
             untracked += 1;
         } else {
@@ -170,7 +172,7 @@ export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCou
                 unstaged += 1;
         }
 
-        if (indexStatus === 'R' || indexStatus === 'C') {
+        if (hasRenameOrCopyStatus(line)) {
             index += 1;
         }
     }
