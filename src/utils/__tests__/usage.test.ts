@@ -164,6 +164,30 @@ describe('usage window helpers', () => {
         expect(formatUsageResetAt('not-a-date')).toBeNull();
     });
 
+    it('formats reset timestamps in a specific IANA timezone', () => {
+        const result = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo');
+        expect(result).toMatch(/^2026-04-27 19:00 /);
+        const compactResult = formatUsageResetAt('2026-04-27T10:00:00.000Z', true, 'Asia/Tokyo');
+        expect(compactResult).toBe('04-27 19:00');
+    });
+
+    it('keeps UTC behavior when timezone is undefined or "UTC"', () => {
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z')).toBe('2026-03-12 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC')).toBe('2026-03-12 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', true, 'UTC')).toBe('03-12 08:30Z');
+    });
+
+    it('falls back to UTC when timezone is invalid', () => {
+        const result = formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'Not/A_Real_Zone');
+        expect(result).toBe('2026-03-12 08:30 UTC');
+    });
+
+    it('renders the system local timezone when timezone is "local"', () => {
+        const result = formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'local');
+        expect(result).not.toBeNull();
+        expect(result).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \S+$/);
+    });
+
     it('formats duration with days in compact style when >= 24h', () => {
         expect(formatUsageDuration(25 * 60 * 60 * 1000, true)).toBe('1d1h');
         expect(formatUsageDuration(36.5 * 60 * 60 * 1000, true)).toBe('1d12h30m');

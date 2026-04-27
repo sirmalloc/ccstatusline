@@ -24,6 +24,7 @@ import {
     getUsageDisplayMode,
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
+    getUsageTimezone,
     isUsageCompact,
     isUsageDateMode,
     isUsageInverted,
@@ -160,7 +161,8 @@ export class WeeklyResetTimerWidget implements Widget {
         }
 
         if (dateMode) {
-            const resetAt = formatUsageResetAt(usageData.weeklyResetAt, compact);
+            const timezone = getUsageTimezone(item);
+            const resetAt = formatUsageResetAt(usageData.weeklyResetAt, compact, timezone);
             if (resetAt) {
                 return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt);
             }

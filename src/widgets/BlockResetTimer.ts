@@ -20,6 +20,7 @@ import {
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
+    getUsageTimezone,
     isUsageCompact,
     isUsageDateMode,
     isUsageInverted,
@@ -111,7 +112,8 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         if (dateMode) {
-            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact);
+            const timezone = getUsageTimezone(item);
+            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone);
             if (resetAt) {
                 return formatRawOrLabeledValue(item, 'Reset: ', resetAt);
             }

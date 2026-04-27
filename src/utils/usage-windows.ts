@@ -106,7 +106,57 @@ function pad(value: number): string {
     return value.toString().padStart(2, '0');
 }
 
-export function formatUsageResetAt(resetAt: string | undefined, compact = false): string | null {
+function formatResetAtUtc(date: Date, compact: boolean): string {
+    const year = date.getUTCFullYear();
+    const month = pad(date.getUTCMonth() + 1);
+    const day = pad(date.getUTCDate());
+    const hours = pad(date.getUTCHours());
+    const minutes = pad(date.getUTCMinutes());
+
+    return compact
+        ? `${month}-${day} ${hours}:${minutes}Z`
+        : `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
+function formatResetAtInTimezone(date: Date, compact: boolean, timezone: string | undefined): string | null {
+    try {
+        const formatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZoneName: 'short'
+        });
+        const parts = formatter.formatToParts(date);
+        const get = (type: string): string => parts.find(p => p.type === type)?.value ?? '';
+
+        const year = get('year');
+        const month = get('month');
+        const day = get('day');
+        const hour = get('hour');
+        const minute = get('minute');
+        const tzName = get('timeZoneName');
+
+        if (!year || !month || !day || !hour || !minute) {
+            return null;
+        }
+
+        return compact
+            ? `${month}-${day} ${hour}:${minute}`
+            : `${year}-${month}-${day} ${hour}:${minute} ${tzName}`;
+    } catch {
+        return null;
+    }
+}
+
+export function formatUsageResetAt(
+    resetAt: string | undefined,
+    compact = false,
+    timezone?: string
+): string | null {
     if (!resetAt) {
         return null;
     }
@@ -117,15 +167,18 @@ export function formatUsageResetAt(resetAt: string | undefined, compact = false)
     }
 
     const date = new Date(resetAtMs);
-    const year = date.getUTCFullYear();
-    const month = pad(date.getUTCMonth() + 1);
-    const day = pad(date.getUTCDate());
-    const hours = pad(date.getUTCHours());
-    const minutes = pad(date.getUTCMinutes());
 
-    return compact
-        ? `${month}-${day} ${hours}:${minutes}Z`
-        : `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+    if (!timezone || timezone === 'UTC') {
+        return formatResetAtUtc(date, compact);
+    }
+
+    const resolvedTimezone = timezone === 'local' ? undefined : timezone;
+    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone);
+    if (localized) {
+        return localized;
+    }
+
+    return formatResetAtUtc(date, compact);
 }
 
 export function getUsageErrorMessage(error: UsageError): string {

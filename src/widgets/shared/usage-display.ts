@@ -58,6 +58,11 @@ export function isUsageDateMode(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'absolute');
 }
 
+export function getUsageTimezone(item: WidgetItem): string | undefined {
+    const tz = item.metadata?.timezone;
+    return typeof tz === 'string' && tz.length > 0 ? tz : undefined;
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
