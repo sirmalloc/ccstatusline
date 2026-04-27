@@ -106,12 +106,22 @@ function pad(value: number): string {
     return value.toString().padStart(2, '0');
 }
 
-function formatResetAtUtc(date: Date, compact: boolean): string {
+function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean): string {
     const year = date.getUTCFullYear();
     const month = pad(date.getUTCMonth() + 1);
     const day = pad(date.getUTCDate());
     const hours = pad(date.getUTCHours());
     const minutes = pad(date.getUTCMinutes());
+
+    if (hour12) {
+        const hour = date.getUTCHours();
+        const displayHour = (hour % 12) || 12;
+        const period = hour >= 12 ? 'PM' : 'AM';
+
+        return compact
+            ? `${month}-${day} ${displayHour}:${minutes} ${period}Z`
+            : `${year}-${month}-${day} ${displayHour}:${minutes} ${period} UTC`;
+    }
 
     return compact
         ? `${month}-${day} ${hours}:${minutes}Z`
@@ -124,7 +134,8 @@ function formatResetAtInTimezone(
     date: Date,
     compact: boolean,
     timezone: string | undefined,
-    locale: string
+    locale: string,
+    hour12: boolean
 ): string | null {
     try {
         const formatter = new Intl.DateTimeFormat(locale, {
@@ -134,7 +145,7 @@ function formatResetAtInTimezone(
             day: '2-digit',
             hour: '2-digit',
             minute: '2-digit',
-            hour12: false,
+            hour12,
             timeZoneName: 'short'
         });
         const parts = formatter.formatToParts(date);
@@ -145,10 +156,19 @@ function formatResetAtInTimezone(
         const day = get('day');
         const hour = get('hour');
         const minute = get('minute');
+        const dayPeriod = get('dayPeriod');
         const tzName = get('timeZoneName');
 
         if (!year || !month || !day || !hour || !minute) {
             return null;
+        }
+
+        if (hour12) {
+            const displayHour = hour.startsWith('0') ? hour.slice(1) : hour;
+            const time = `${displayHour}:${minute}${dayPeriod ? ` ${dayPeriod}` : ''}`;
+            return compact
+                ? `${month}-${day} ${time}`
+                : `${year}-${month}-${day} ${time} ${tzName}`;
         }
 
         return compact
@@ -163,7 +183,8 @@ export function formatUsageResetAt(
     resetAt: string | undefined,
     compact = false,
     timezone?: string,
-    locale?: string
+    localeOrHour12?: string | boolean,
+    hour12Arg = false
 ): string | null {
     if (!resetAt) {
         return null;
@@ -175,26 +196,28 @@ export function formatUsageResetAt(
     }
 
     const date = new Date(resetAtMs);
+    const locale = typeof localeOrHour12 === 'string' ? localeOrHour12 : undefined;
+    const hour12 = typeof localeOrHour12 === 'boolean' ? localeOrHour12 : hour12Arg;
 
     if (!timezone || timezone === 'UTC') {
-        return formatResetAtUtc(date, compact);
+        return formatResetAtUtc(date, compact, hour12);
     }
 
     const resolvedTimezone = timezone === 'local' ? undefined : timezone;
     const resolvedLocale = locale && locale.length > 0 ? locale : DEFAULT_TZ_LOCALE;
-    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone, resolvedLocale);
+    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone, resolvedLocale, hour12);
     if (localized) {
         return localized;
     }
 
     if (resolvedLocale !== DEFAULT_TZ_LOCALE) {
-        const fallback = formatResetAtInTimezone(date, compact, resolvedTimezone, DEFAULT_TZ_LOCALE);
+        const fallback = formatResetAtInTimezone(date, compact, resolvedTimezone, DEFAULT_TZ_LOCALE, hour12);
         if (fallback) {
             return fallback;
         }
     }
 
-    return formatResetAtUtc(date, compact);
+    return formatResetAtUtc(date, compact, hour12);
 }
 
 export function getUsageErrorMessage(error: UsageError): string {

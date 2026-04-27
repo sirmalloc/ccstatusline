@@ -159,6 +159,12 @@ describe('usage window helpers', () => {
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', true)).toBe('03-12 08:30Z');
     });
 
+    it('formats reset timestamps with a 12-hour clock when requested', () => {
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC', true)).toBe('2026-03-12 8:30 AM UTC');
+        expect(formatUsageResetAt('2026-03-12T20:30:00.000Z', false, 'UTC', true)).toBe('2026-03-12 8:30 PM UTC');
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', true, 'UTC', true)).toBe('03-12 8:30 AMZ');
+    });
+
     it('returns null for invalid reset timestamps in date mode', () => {
         expect(formatUsageResetAt(undefined)).toBeNull();
         expect(formatUsageResetAt('not-a-date')).toBeNull();
@@ -169,6 +175,13 @@ describe('usage window helpers', () => {
         expect(result).toMatch(/^2026-04-27 19:00 /);
         const compactResult = formatUsageResetAt('2026-04-27T10:00:00.000Z', true, 'Asia/Tokyo');
         expect(compactResult).toBe('04-27 19:00');
+    });
+
+    it('formats reset timestamps with a 12-hour clock in a specific IANA timezone', () => {
+        const result = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', true);
+        expect(result).toMatch(/^2026-04-27 7:00 PM /);
+        const compactResult = formatUsageResetAt('2026-04-27T10:00:00.000Z', true, 'Asia/Tokyo', true);
+        expect(compactResult).toBe('04-27 7:00 PM');
     });
 
     it('keeps UTC behavior when timezone is undefined or "UTC"', () => {

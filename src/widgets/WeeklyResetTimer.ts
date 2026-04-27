@@ -1,9 +1,12 @@
+import type React from 'react';
+
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -20,18 +23,25 @@ import {
 } from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
+    TIMEZONE_EDITOR_ACTION,
+    renderUsageTimezoneEditor
+} from './shared/timezone-editor';
+import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
-    getUsageProgressBarWidth,
     getUsageLocale,
+    getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
+    getUsageTimezoneModifier,
+    isUsage12HourClock,
     isUsageCompact,
     isUsageDateMode,
     isUsageInverted,
     isUsageProgressMode,
     toggleUsageCompact,
     toggleUsageDateMode,
+    toggleUsageHourFormat,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -43,6 +53,7 @@ function makeTimerProgressBar(percent: number, width: number): string {
 }
 
 const WEEKLY_PREVIEW_DURATION_MS = 36.5 * 60 * 60 * 1000;
+const WEEKLY_RESET_PREVIEW_AT = '2026-03-15T08:30:00.000Z';
 
 function isWeeklyResetHoursOnly(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'hours');
@@ -74,9 +85,18 @@ function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
 
         if (dateMode) {
             modifiers.push('date');
+
+            if (isUsage12HourClock(item)) {
+                modifiers.push('12hr');
+            }
         } else if (isWeeklyResetHoursOnly(item)) {
             modifiers.push('hours only');
         }
+    }
+
+    const timezoneModifier = getUsageTimezoneModifier(item);
+    if (!isUsageProgressMode(displayMode) && dateMode && timezoneModifier) {
+        modifiers.push(timezoneModifier);
     }
 
     return makeModifierText(modifiers);
@@ -112,6 +132,10 @@ export class WeeklyResetTimerWidget implements Widget {
             return toggleUsageDateMode(item);
         }
 
+        if (action === 'toggle-hour-format') {
+            return toggleUsageHourFormat(item);
+        }
+
         if (action === 'toggle-hours') {
             return toggleWeeklyResetHoursOnly(item);
         }
@@ -136,7 +160,14 @@ export class WeeklyResetTimerWidget implements Widget {
             }
 
             if (dateMode) {
-                return formatRawOrLabeledValue(item, 'Weekly Reset: ', compact ? '03-15 08:30Z' : '2026-03-15 08:30 UTC');
+                const resetAt = formatUsageResetAt(
+                    WEEKLY_RESET_PREVIEW_AT,
+                    compact,
+                    getUsageTimezone(item),
+                    getUsageLocale(item),
+                    isUsage12HourClock(item)
+                );
+                return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt ?? (compact ? '03-15 08:30Z' : '2026-03-15 08:30 UTC'));
             }
 
             return formatRawOrLabeledValue(item, 'Weekly Reset: ', formatUsageDuration(WEEKLY_PREVIEW_DURATION_MS, compact, useDays));
@@ -164,7 +195,7 @@ export class WeeklyResetTimerWidget implements Widget {
         if (dateMode) {
             const timezone = getUsageTimezone(item);
             const locale = getUsageLocale(item);
-            const resetAt = formatUsageResetAt(usageData.weeklyResetAt, compact, timezone, locale);
+            const resetAt = formatUsageResetAt(usageData.weeklyResetAt, compact, timezone, locale, isUsage12HourClock(item));
             if (resetAt) {
                 return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt);
             }
@@ -175,13 +206,21 @@ export class WeeklyResetTimerWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        const keybinds = getUsageTimerCustomKeybinds(item, { includeDate: true });
+        const keybinds = getUsageTimerCustomKeybinds(item, { includeDate: true, includeHourFormat: true, includeTimezone: true });
 
         if (!item || (!isUsageProgressMode(getUsageDisplayMode(item)) && !isUsageDateMode(item))) {
             keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
         }
 
         return keybinds;
+    }
+
+    renderEditor(props: WidgetEditorProps): React.ReactElement | null {
+        if (props.action === TIMEZONE_EDITOR_ACTION) {
+            return renderUsageTimezoneEditor(props);
+        }
+
+        return null;
     }
 
     supportsRawValue(): boolean { return true; }

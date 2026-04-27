@@ -1,9 +1,12 @@
+import type React from 'react';
+
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -15,19 +18,25 @@ import {
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
+    TIMEZONE_EDITOR_ACTION,
+    renderUsageTimezoneEditor
+} from './shared/timezone-editor';
+import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
-    getUsageProgressBarWidth,
     getUsageLocale,
+    getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
+    isUsage12HourClock,
     isUsageCompact,
     isUsageDateMode,
     isUsageInverted,
     isUsageProgressMode,
     toggleUsageCompact,
     toggleUsageDateMode,
+    toggleUsageHourFormat,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -37,6 +46,8 @@ function makeTimerProgressBar(percent: number, width: number): string {
     const emptyWidth = width - filledWidth;
     return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
 }
+
+const BLOCK_RESET_PREVIEW_AT = '2026-03-12T08:30:00.000Z';
 
 export class BlockResetTimerWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
@@ -68,6 +79,10 @@ export class BlockResetTimerWidget implements Widget {
             return toggleUsageDateMode(item);
         }
 
+        if (action === 'toggle-hour-format') {
+            return toggleUsageHourFormat(item);
+        }
+
         return null;
     }
 
@@ -87,7 +102,14 @@ export class BlockResetTimerWidget implements Widget {
             }
 
             if (dateMode) {
-                return formatRawOrLabeledValue(item, 'Reset: ', compact ? '03-12 08:30Z' : '2026-03-12 08:30 UTC');
+                const resetAt = formatUsageResetAt(
+                    BLOCK_RESET_PREVIEW_AT,
+                    compact,
+                    getUsageTimezone(item),
+                    getUsageLocale(item),
+                    isUsage12HourClock(item)
+                );
+                return formatRawOrLabeledValue(item, 'Reset: ', resetAt ?? (compact ? '03-12 08:30Z' : '2026-03-12 08:30 UTC'));
             }
 
             return formatRawOrLabeledValue(item, 'Reset: ', compact ? '4h30m' : '4hr 30m');
@@ -115,7 +137,7 @@ export class BlockResetTimerWidget implements Widget {
         if (dateMode) {
             const timezone = getUsageTimezone(item);
             const locale = getUsageLocale(item);
-            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone, locale);
+            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone, locale, isUsage12HourClock(item));
             if (resetAt) {
                 return formatRawOrLabeledValue(item, 'Reset: ', resetAt);
             }
@@ -126,7 +148,15 @@ export class BlockResetTimerWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return getUsageTimerCustomKeybinds(item, { includeDate: true });
+        return getUsageTimerCustomKeybinds(item, { includeDate: true, includeHourFormat: true, includeTimezone: true });
+    }
+
+    renderEditor(props: WidgetEditorProps): React.ReactElement | null {
+        if (props.action === TIMEZONE_EDITOR_ACTION) {
+            return renderUsageTimezoneEditor(props);
+        }
+
+        return null;
     }
 
     supportsRawValue(): boolean { return true; }

@@ -18,6 +18,8 @@ const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress to
 const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
 const DATE_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)imestamp', action: 'toggle-date' };
+const HOUR_FORMAT_TOGGLE_KEYBIND: CustomKeybind = { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' };
+const TIMEZONE_KEYBIND: CustomKeybind = { key: 'z', label: 'time(z)one', action: 'edit-timezone' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
@@ -58,6 +60,10 @@ export function isUsageDateMode(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'absolute');
 }
 
+export function isUsage12HourClock(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'hour12');
+}
+
 export function getUsageTimezone(item: WidgetItem): string | undefined {
     const tz = item.metadata?.timezone;
     return typeof tz === 'string' && tz.length > 0 ? tz : undefined;
@@ -68,12 +74,35 @@ export function getUsageLocale(item: WidgetItem): string | undefined {
     return typeof locale === 'string' && locale.length > 0 ? locale : undefined;
 }
 
+export function getUsageTimezoneModifier(item: WidgetItem): string | undefined {
+    const timezone = getUsageTimezone(item);
+    return timezone ? `tz: ${timezone}` : undefined;
+}
+
+export function setUsageTimezone(item: WidgetItem, timezone: string): WidgetItem {
+    if (timezone === 'UTC') {
+        return removeMetadataKeys(item, ['timezone']);
+    }
+
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            timezone
+        }
+    };
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
 
 export function toggleUsageDateMode(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'absolute');
+}
+
+export function toggleUsageHourFormat(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'hour12');
 }
 
 interface UsageDisplayModifierOptions {
@@ -108,6 +137,15 @@ export function getUsageDisplayModifierText(
 
     if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item)) {
         modifiers.push('date');
+    }
+
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && isUsage12HourClock(item)) {
+        modifiers.push('12hr');
+    }
+
+    const timezoneModifier = getUsageTimezoneModifier(item);
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && timezoneModifier) {
+        modifiers.push(timezoneModifier);
     }
 
     return makeModifierText(modifiers);
@@ -165,7 +203,11 @@ export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[
     return keybinds;
 }
 
-interface UsageTimerCustomKeybindOptions { includeDate?: boolean }
+interface UsageTimerCustomKeybindOptions {
+    includeDate?: boolean;
+    includeHourFormat?: boolean;
+    includeTimezone?: boolean;
+}
 
 export function getUsageTimerCustomKeybinds(
     item?: WidgetItem,
@@ -180,6 +222,16 @@ export function getUsageTimerCustomKeybinds(
 
         if (options.includeDate) {
             keybinds.push(DATE_TOGGLE_KEYBIND);
+        }
+    }
+
+    if (item && isUsageDateMode(item) && !isUsageProgressMode(getUsageDisplayMode(item))) {
+        if (options.includeHourFormat) {
+            keybinds.push(HOUR_FORMAT_TOGGLE_KEYBIND);
+        }
+
+        if (options.includeTimezone) {
+            keybinds.push(TIMEZONE_KEYBIND);
         }
     }
 
