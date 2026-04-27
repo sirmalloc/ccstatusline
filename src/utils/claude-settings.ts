@@ -397,7 +397,7 @@ export async function installStatusLine(
     const savedSettings = await loadSavedSettingsForHookSync();
     if (savedSettings) {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(savedSettings);
+        await syncWidgetHooks(savedSettings, { targetPath: settingsPath });
     }
 }
 

@@ -7,7 +7,7 @@ import {
     getActiveClaudeSettingsPath,
     getClaudeLocalSettingsPath,
     getClaudeSettingsPath,
-    getExistingStatusLine,
+    isKnownCommand,
     loadClaudeSettings,
     saveClaudeSettings
 } from './claude-settings';
@@ -25,6 +25,8 @@ interface HookEntry {
     matcher?: string;
     hooks?: { type: string; command: string }[];
 }
+
+interface SyncWidgetHooksOptions { targetPath?: string }
 
 function stripManagedHooks(hooks: Record<string, HookEntry[]>): void {
     for (const event of Object.keys(hooks)) {
@@ -57,15 +59,19 @@ function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
     return defs;
 }
 
-export async function syncWidgetHooks(settings: Settings): Promise<void> {
+export async function syncWidgetHooks(
+    settings: Settings,
+    options: SyncWidgetHooksOptions = {}
+): Promise<void> {
     const needed = getActiveHookDefs(settings);
-    const activePath = getActiveClaudeSettingsPath();
+    const activePath = options.targetPath ?? getActiveClaudeSettingsPath();
+    const cleanNonTargetFile = options.targetPath === undefined;
 
     // Clean stale managed hooks from the non-active file to prevent duplicates
     const globalPath = getClaudeSettingsPath();
     const localPath = getClaudeLocalSettingsPath();
     const nonActivePath = activePath === localPath ? globalPath : localPath;
-    if (fs.existsSync(nonActivePath)) {
+    if (cleanNonTargetFile && fs.existsSync(nonActivePath)) {
         try {
             const otherSettings = await loadClaudeSettings({ logErrors: false, filePath: nonActivePath });
             if (Object.keys(otherSettings).length > 0) {
@@ -86,8 +92,8 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     // Remove all ccstatusline-managed hooks
     stripManagedHooks(hooks);
 
-    const statusCommand = await getExistingStatusLine();
-    if (!statusCommand) {
+    const statusCommand = claudeSettings.statusLine?.command ?? null;
+    if (!statusCommand || !isKnownCommand(statusCommand)) {
         claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
         await saveClaudeSettings(claudeSettings, activePath);
         return;

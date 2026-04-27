@@ -664,6 +664,41 @@ describe('file-targeted installStatusLine', () => {
         await installStatusLine(false);
         expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
+
+    it('should sync hooks to settings.json when settings.local.json overrides statusLine', async () => {
+        const configPath = path.join(testClaudeConfigDir, 'ccstatusline-settings.json');
+        initConfigPath(configPath);
+        const settingsWithSkills = {
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        };
+        fs.writeFileSync(configPath, JSON.stringify(settingsWithSkills, null, 2), 'utf-8');
+        writeLocalClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: 'user-custom-tool',
+                padding: 0
+            }
+        }));
+
+        await installStatusLine(false, getClaudeSettingsPath());
+
+        const globalContent = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as {
+            hooks?: Record<string, { hooks?: { command?: string }[] }[]>;
+            statusLine?: { command?: string };
+        };
+        const installedCommand = `${CCSTATUSLINE_COMMANDS.NPM} --config ${configPath}`;
+        expect(globalContent.statusLine?.command).toBe(installedCommand);
+        expect(globalContent.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toBe(`${installedCommand} --hook`);
+
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        const localContent = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as {
+            hooks?: Record<string, unknown[]>;
+            statusLine?: { command?: string };
+        };
+        expect(localContent.statusLine?.command).toBe('user-custom-tool');
+        expect(localContent.hooks).toBeUndefined();
+    });
 });
 
 describe('dual-file uninstallStatusLine', () => {

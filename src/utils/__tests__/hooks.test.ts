@@ -108,6 +108,60 @@ describe('syncWidgetHooks', () => {
         }
     });
 
+    it('syncs hooks to an explicit target instead of an overriding local statusLine', async () => {
+        const globalPath = path.join(testClaudeConfigDir, 'settings.json');
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.writeFileSync(globalPath, JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0
+            }
+        }, null, 2), 'utf-8');
+        fs.writeFileSync(localPath, JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: 'user-custom-tool',
+                padding: 0
+            }
+        }, null, 2), 'utf-8');
+
+        const settingsWithSkills = {
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        };
+
+        await syncWidgetHooks(settingsWithSkills, { targetPath: globalPath });
+
+        const globalSaved = JSON.parse(fs.readFileSync(globalPath, 'utf-8')) as { hooks?: Record<string, { hooks?: { command?: string }[] }[]> };
+        expect(globalSaved.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --hook`);
+
+        const localSaved = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { hooks?: Record<string, unknown[]>; statusLine?: { command?: string } };
+        expect(localSaved.statusLine?.command).toBe('user-custom-tool');
+        expect(localSaved.hooks).toBeUndefined();
+    });
+
+    it('does not create hooks for a non-ccstatusline statusLine command', async () => {
+        const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.writeFileSync(localPath, JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: 'user-custom-tool',
+                padding: 0
+            }
+        }, null, 2), 'utf-8');
+
+        const settingsWithSkills = {
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        };
+
+        await syncWidgetHooks(settingsWithSkills);
+
+        const localSaved = JSON.parse(fs.readFileSync(localPath, 'utf-8')) as { hooks?: Record<string, unknown[]> };
+        expect(localSaved.hooks).toBeUndefined();
+    });
+
     it('subsequent sync does not recreate hooks in old file', async () => {
         const localPath = path.join(testClaudeConfigDir, 'settings.local.json');
         fs.writeFileSync(localPath, JSON.stringify({
