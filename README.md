@@ -47,6 +47,17 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.9 - GitLab support, refresh intervals, and TUI polish
+
+- **🦊 GitLab PR/MR support** - `Git Branch` and `Git PR/MR` now support GitHub, GitLab, and compatible self-hosted remotes, using `gh` or `glab` as appropriate.
+- **🔄 Status line refresh interval** - Installed configs can set Claude Code's `statusLine.refreshInterval` from the TUI when Claude Code >=2.1.97 supports it.
+- **🧭 Wrap-around TUI navigation** - Menu/list navigation and move/reorder modes now wrap at the first and last items.
+- **📋 Clone widget shortcut** - Press `k` in the item editor to duplicate the selected widget, with fresh Powerline background color for cloned Powerline items.
+- **🧠 Thinking Effort updates** - Added `xhigh`, show `default` when no effort is set, and mark unknown future effort levels with `?`.
+- **🧮 More accurate token counts** - Streaming duplicate JSONL entries are deduped so token widgets do not overcount live Claude Code output.
+- **🏷️ Cleaner model display** - The Model widget strips trailing context suffixes like `(1M context)`; use Context Length when you want the window size shown.
+- **🧱 More resilient Git helpers** - Git widgets handle missing or unusual git command output more defensively.
+
 ### v2.2.8 - Git widgets, smarter picker search, and minimalist mode
 
 - **🔀 New Git PR widget** - Added a `Git PR` widget with clickable PR links plus optional status and title display for the current branch.
@@ -220,6 +231,7 @@ The interactive configuration tool provides a terminal UI where you can:
 - Add/remove/reorder status line widgets
 - Customize colors for each widget
 - Configure flex separator behavior
+- Configure Claude Code status line refresh interval when supported
 - Edit custom text widgets
 - Install/uninstall to Claude Code settings
 - Preview your status line in real-time
@@ -248,10 +260,13 @@ When you install from the TUI, ccstatusline writes a `statusLine` command object
   "statusLine": {
     "type": "command",
     "command": "npx -y ccstatusline@latest",
-    "padding": 0
+    "padding": 0,
+    "refreshInterval": 10
   }
 }
 ```
+
+`refreshInterval` is written only when your Claude Code version supports it (>=2.1.97). The TUI can set it to `1-60` seconds, or remove it by leaving the input empty.
 
 Other supported command values are:
 - `bunx -y ccstatusline@latest`

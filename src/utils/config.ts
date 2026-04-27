@@ -13,6 +13,7 @@ import {
     migrateConfig,
     needsMigration
 } from './migrations';
+import { upgradeLegacyWidgetTypes } from './widgets';
 
 // Use fs.promises directly (always available in modern Node.js)
 const readFile = fs.promises.readFile;
@@ -140,7 +141,10 @@ export async function loadSettings(): Promise<Settings> {
             return await recoverWithDefaults(paths);
         }
 
-        return result.data;
+        return {
+            ...result.data,
+            lines: upgradeLegacyWidgetTypes(result.data.lines)
+        };
     } catch (error) {
         // Any other error, backup and write defaults
         console.error('Error loading settings:', error);

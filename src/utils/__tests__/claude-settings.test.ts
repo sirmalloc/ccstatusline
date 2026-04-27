@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
     getClaudeCodeVersion,
+    getClaudeJsonPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
     getRefreshInterval,
@@ -125,6 +126,26 @@ describe('isKnownCommand', () => {
 
     it('should match command containing a quoted ccstatusline.ts path', () => {
         expect(isKnownCommand('bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"')).toBe(true);
+    });
+});
+
+describe('Claude config paths', () => {
+    it('should resolve .claude.json inside CLAUDE_CONFIG_DIR when configured', () => {
+        expect(getClaudeJsonPath()).toBe(path.join(testClaudeConfigDir, '.claude.json'));
+    });
+
+    it('should resolve .claude.json beside the default Claude config dir when CLAUDE_CONFIG_DIR is unset', () => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+
+        expect(getClaudeJsonPath()).toBe(path.join(os.homedir(), '.claude.json'));
+    });
+
+    it('should use default .claude.json path when CLAUDE_CONFIG_DIR points to a file', () => {
+        const invalidConfigDir = path.join(testClaudeConfigDir, 'not-a-dir');
+        fs.writeFileSync(invalidConfigDir, 'not a directory', 'utf-8');
+        process.env.CLAUDE_CONFIG_DIR = invalidConfigDir;
+
+        expect(getClaudeJsonPath()).toBe(path.join(os.homedir(), '.claude.json'));
     });
 });
 

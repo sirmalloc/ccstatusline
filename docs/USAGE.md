@@ -23,14 +23,14 @@ bun run example
 
 ### Claude & Session
 
-- **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version.
+- **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version. Model names omit trailing context suffixes like `(1M context)`; use **Context Length** when you want the window size shown.
 - **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email.
-- **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data.
+- **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`.
 - **Session Clock** / **Session Cost** - Show elapsed session time and the current session cost in USD.
 
 ### Git
 
-- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR details for the current branch with optional links.
+- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Works with GitHub (`gh`) and GitLab (`glab`); for self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
 - **Git Changes** / **Git Insertions** / **Git Deletions** - Show aggregate file-change counts and dedicated insertion/deletion counts.
 - **Git Status** / **Git Staged** / **Git Unstaged** / **Git Untracked** / **Git Ahead/Behind** / **Git Conflicts** / **Git SHA** - Show compact repo-state indicators, upstream divergence, merge-conflict count, and the current short commit SHA.
 - **Git Origin Owner** / **Git Origin Repo** / **Git Origin Owner/Repo** - Show parsed `origin` remote metadata.
@@ -92,6 +92,10 @@ Configure global formatting preferences that apply to all widgets:
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
 
+## Claude Code Status Line Settings
+
+When ccstatusline is installed in Claude Code, the main menu includes **Configure Status Line**. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty.
+
 ## Block Timer Widget
 
 The Block Timer widget helps you track your progress through Claude Code's 5-hour conversation blocks:
@@ -123,8 +127,10 @@ Some widgets support "raw value" mode which displays just the value without a la
 Common controls in the line editor:
 - `↑/↓` select widget
 - `←/→` open the type picker for the selected widget
+- navigation wraps at list boundaries, including move/reorder mode
 - `a` add widget via the picker
 - `i` insert widget via the picker
+- `k` clone the selected widget
 - `Enter` enter/exit move mode
 - `d` delete selected widget
 - `c` clear the current line
@@ -142,9 +148,9 @@ The keybind footer in the TUI only shows shortcuts that apply to the currently s
 
 Widget-specific shortcuts:
 - **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
-- **Git Branch**: `l` toggle clickable GitHub branch links
+- **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`)
-- **Git PR**: `h` hide empty/no-PR output, `s` toggle review status, `t` toggle title
+- **Git PR**: `h` hide empty/no-PR/MR output, `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
 - **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `h` hide when no remote, `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Is Fork**: `h` hide when the repo is not a fork

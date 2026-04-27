@@ -50,7 +50,8 @@ $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
   "statusLine": {
     "type": "command",
     "command": "bunx -y ccstatusline@latest",
-    "padding": 0
+    "padding": 0,
+    "refreshInterval": 10
   }
 }
 ```
@@ -62,10 +63,13 @@ $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
   "statusLine": {
     "type": "command",
     "command": "npx -y ccstatusline@latest",
-    "padding": 0
+    "padding": 0,
+    "refreshInterval": 10
   }
 }
 ```
+
+`refreshInterval` is optional and only supported by Claude Code >=2.1.97. You can configure it from ccstatusline's TUI after installation.
 
 ## Windows-Specific Features
 

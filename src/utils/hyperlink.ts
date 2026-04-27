@@ -9,57 +9,6 @@ export function renderOsc8Link(url: string, text: string): string {
     return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
-function parseGitHubRepositoryPath(pathname: string): string | null {
-    const trimmedPath = pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
-    const segments = trimmedPath.split('/').filter(Boolean);
-
-    if (segments.length !== 2) {
-        return null;
-    }
-
-    return `${segments[0]}/${segments[1]}`;
-}
-
-/**
- * Converts a git remote URL to a GitHub HTTPS base URL.
- * Handles SSH, HTTPS, and ssh:// URL formats.
- * Returns null if the remote is not a GitHub URL.
- */
-export function parseGitHubBaseUrl(remoteUrl: string): string | null {
-    const trimmed = remoteUrl.trim();
-    if (trimmed.length === 0) {
-        return null;
-    }
-
-    const sshMatch = /^(?:[^@]+@)?github\.com:([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(trimmed);
-    if (sshMatch?.[1]) {
-        return `https://github.com/${sshMatch[1]}`;
-    }
-
-    try {
-        const parsedUrl = new URL(trimmed);
-        const supportedProtocols = new Set([
-            'http:',
-            'https:',
-            'ssh:',
-            'git:'
-        ]);
-
-        if (parsedUrl.hostname.toLowerCase() !== 'github.com' || !supportedProtocols.has(parsedUrl.protocol)) {
-            return null;
-        }
-
-        const repoPath = parseGitHubRepositoryPath(parsedUrl.pathname);
-        if (!repoPath) {
-            return null;
-        }
-
-        return `https://github.com/${repoPath}`;
-    } catch {
-        return null;
-    }
-}
-
 export function encodeGitRefForUrlPath(ref: string): string {
     return ref
         .split('/')
