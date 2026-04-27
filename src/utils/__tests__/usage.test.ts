@@ -15,6 +15,7 @@ import {
 } from '../usage-types';
 import {
     formatUsageDuration,
+    formatUsageResetAt,
     getUsageWindowFromResetAt,
     getWeeklyUsageWindowFromResetAt,
     resolveUsageWindowWithFallback,
@@ -151,6 +152,16 @@ describe('usage window helpers', () => {
         expect(formatUsageDuration(3 * 60 * 60 * 1000, true)).toBe('3h');
         expect(formatUsageDuration(3.5 * 60 * 60 * 1000, true)).toBe('3h30m');
         expect(formatUsageDuration(4 * 60 * 60 * 1000 + 5 * 60 * 1000, true)).toBe('4h5m');
+    });
+
+    it('formats reset timestamps in UTC date mode', () => {
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z')).toBe('2026-03-12 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', true)).toBe('03-12 08:30Z');
+    });
+
+    it('returns null for invalid reset timestamps in date mode', () => {
+        expect(formatUsageResetAt(undefined)).toBeNull();
+        expect(formatUsageResetAt('not-a-date')).toBeNull();
     });
 
     it('formats duration with days in compact style when >= 24h', () => {

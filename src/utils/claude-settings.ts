@@ -89,6 +89,23 @@ export function getClaudeConfigDir(): string {
 }
 
 /**
+ * Gets the full path to Claude Code's .claude.json account state file.
+ *
+ * Claude Code stores this as a sibling of the default ~/.claude directory, but
+ * inside CLAUDE_CONFIG_DIR when a valid config directory override is active.
+ */
+export function getClaudeJsonPath(): string {
+    const configDir = getClaudeConfigDir();
+    const envConfigDir = process.env.CLAUDE_CONFIG_DIR;
+
+    if (envConfigDir && configDir === path.resolve(envConfigDir)) {
+        return path.join(configDir, '.claude.json');
+    }
+
+    return path.join(path.dirname(configDir), '.claude.json');
+}
+
+/**
  * Gets the full path to the Claude settings.json file.
  */
 export function getClaudeSettingsPath(): string {
