@@ -49,6 +49,13 @@ function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
 }
 
+function hasContextPercentage(
+    data: StatusJSON
+): data is StatusJSON & { context_window: { used_percentage: number } } {
+    const pct = data.context_window?.used_percentage;
+    return typeof pct === 'number' && Number.isFinite(pct) && pct >= 0;
+}
+
 async function readStdin(): Promise<string | null> {
     // Check if stdin is a TTY (terminal) - if it is, there's no piped data
     if (process.stdin.isTTY) {
@@ -149,12 +156,16 @@ async function renderMultipleLines(data: StatusJSON) {
     // Compaction detection — track context percentage drops between renders
     let compactionCount = 0;
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
-    if (hasCompactionWidget && data.session_id && data.context_window?.used_percentage !== null && data.context_window?.used_percentage !== undefined) {
+    if (hasCompactionWidget && data.session_id) {
         const prevState = loadCompactionState(data.session_id);
-        const ctxPct = Math.round(data.context_window.used_percentage);
-        const newState = detectCompaction(ctxPct, prevState);
-        saveCompactionState(data.session_id, newState);
-        compactionCount = newState.count;
+        compactionCount = prevState.count;
+        if (hasContextPercentage(data)) {
+            const newState = detectCompaction(data.context_window.used_percentage, prevState);
+            if (newState.count !== prevState.count || newState.prevCtxPct !== prevState.prevCtxPct) {
+                saveCompactionState(data.session_id, newState);
+            }
+            compactionCount = newState.count;
+        }
     }
 
     // Create render context

@@ -20,22 +20,22 @@ export class CompactionCounterWidget implements Widget {
     getDescription(): string { return 'Count of context compaction events in the current session. Hidden when no compactions have occurred.'; }
     getDisplayName(): string { return 'Compaction Counter'; }
     getCategory(): string { return 'Context'; }
-    getEditorDisplay(_item: WidgetItem): WidgetEditorDisplay {
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: 'Compaction Counter' };
     }
 
-    render(_item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return '\u21BB2';
+            return '↻2';
         }
 
         const count = context.compactionData?.count;
-        if (!count)
+        if (count === undefined || count === 0)
             return null;
 
-        return `\u21BB${count}`;
+        return `↻${count}`;
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(_item: WidgetItem): boolean { return true; }
+    supportsColors(item: WidgetItem): boolean { return true; }
 }

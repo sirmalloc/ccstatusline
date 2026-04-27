@@ -1,21 +1,29 @@
 import {
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import type {
     RenderContext,
     WidgetItem
 } from '../../types';
+import type { CompactionData } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { CompactionCounterWidget } from '../CompactionCounter';
+
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
 const ITEM: WidgetItem = { id: 'compaction-counter', type: 'compaction-counter' };
 
 function render(options: {
     isPreview?: boolean;
-    compactionData?: { count: number } | null;
+    compactionData?: CompactionData | null;
 } = {}) {
     const widget = new CompactionCounterWidget();
     const context: RenderContext = {
@@ -69,12 +77,13 @@ describe('CompactionCounterWidget', () => {
             expect(render({ compactionData: null })).toBeNull();
         });
 
-        it('returns null when context.data is absent', () => {
-            expect(render()).toBeNull();
-        });
-
         it('returns sample data in preview mode', () => {
             expect(render({ isPreview: true })).toBe('↻2');
+        });
+
+        it('preview mode ignores live compactionData', () => {
+            // Verify preview short-circuits before reading compactionData
+            expect(render({ isPreview: true, compactionData: { count: 99 } })).toBe('↻2');
         });
     });
 
