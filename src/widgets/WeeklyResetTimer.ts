@@ -173,7 +173,7 @@ export class WeeklyResetTimerWidget implements Widget {
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds = getUsageTimerCustomKeybinds(item, { includeDate: true });
 
-        if (!item || !isUsageProgressMode(getUsageDisplayMode(item))) {
+        if (!item || (!isUsageProgressMode(getUsageDisplayMode(item)) && !isUsageDateMode(item))) {
             keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
         }
 

@@ -138,7 +138,7 @@ describe('BlockResetTimerWidget', () => {
         expectedTimeKeybinds: [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
-            { key: 'd', label: '(d)ate mode', action: 'toggle-date' }
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' }
         ],
         supportsDateMode: true,
         expectedModifierText: '(medium bar, inverted)',

@@ -558,6 +558,32 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.metadata?.display).toBe('progress');
     });
 
+    it('uses t to toggle reset timer date mode in normal mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'reset-timer' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 't',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.metadata?.absolute).toBe('true');
+    });
+
     it('uses v to cycle skills widget mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'skills' }

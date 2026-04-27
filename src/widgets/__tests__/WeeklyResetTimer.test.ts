@@ -207,6 +207,23 @@ describe('WeeklyResetTimerWidget', () => {
         }).modifierText).toBe('(long bar)');
     });
 
+    it('hides hours-only keybind while timestamp mode is active', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getCustomKeybinds({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: {
+                absolute: 'true',
+                hours: 'true'
+            }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' }
+        ]);
+    });
+
     runUsageTimerEditorSuite({
         baseItem: { id: 'weekly-reset', type: 'weekly-reset-timer' },
         createWidget: () => new WeeklyResetTimerWidget(),
@@ -214,7 +231,7 @@ describe('WeeklyResetTimerWidget', () => {
         expectedTimeKeybinds: [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
-            { key: 'd', label: '(d)ate mode', action: 'toggle-date' },
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' },
             { key: 'h', label: '(h)ours only', action: 'toggle-hours' }
         ],
         supportsDateMode: true,
