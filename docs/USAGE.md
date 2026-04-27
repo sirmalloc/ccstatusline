@@ -42,7 +42,7 @@ bun run example
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context %** / **Context % (usable)** / **Context Bar** - Show model context size, usage percentage, usable-window percentage, or a progress bar.
-- **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing.
+- **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. Reset timers can show remaining time, progress, or the exact reset date/time.
 
 ### Environment, Layout & Custom
 
@@ -156,8 +156,9 @@ Widget-specific shortcuts:
 - **Git Is Fork**: `h` hide when the repo is not a fork
 - **Context % widgets**: `u` toggle used vs remaining display
 - **Session Usage / Weekly Usage**: `p` cycle percentage/full bar/short bar, `v` invert fill in progress mode
-- **Block Timer / Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
-- **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `h` toggle hours-only, `v` invert fill in progress mode
+- **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
+- **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `v` invert fill in progress mode
+- **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode, `v` invert fill in progress mode
 - **Context Bar**: `p` toggle full-width vs short progress bar
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode

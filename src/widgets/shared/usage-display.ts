@@ -17,6 +17,7 @@ const SLIDER_WIDTH = 10;
 const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
 const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
+const DATE_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)imestamp', action: 'toggle-date' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
@@ -53,11 +54,22 @@ export function isUsageCompact(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'compact');
 }
 
+export function isUsageDateMode(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'absolute');
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
 
-interface UsageDisplayModifierOptions { includeCompact?: boolean }
+export function toggleUsageDateMode(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'absolute');
+}
+
+interface UsageDisplayModifierOptions {
+    includeCompact?: boolean;
+    includeDate?: boolean;
+}
 
 export function getUsageDisplayModifierText(
     item: WidgetItem,
@@ -82,6 +94,10 @@ export function getUsageDisplayModifierText(
 
     if (options.includeCompact && !isUsageProgressMode(mode) && isUsageCompact(item)) {
         modifiers.push('compact');
+    }
+
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item)) {
+        modifiers.push('date');
     }
 
     return makeModifierText(modifiers);
@@ -139,13 +155,22 @@ export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[
     return keybinds;
 }
 
-export function getUsageTimerCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+interface UsageTimerCustomKeybindOptions { includeDate?: boolean }
+
+export function getUsageTimerCustomKeybinds(
+    item?: WidgetItem,
+    options: UsageTimerCustomKeybindOptions = {}
+): CustomKeybind[] {
     const keybinds = [PROGRESS_TOGGLE_KEYBIND];
 
     if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
         keybinds.push(INVERT_TOGGLE_KEYBIND);
     } else {
         keybinds.push(COMPACT_TOGGLE_KEYBIND);
+
+        if (options.includeDate) {
+            keybinds.push(DATE_TOGGLE_KEYBIND);
+        }
     }
 
     return keybinds;

@@ -22,12 +22,14 @@ function render(widget: WeeklyResetTimerWidget, item: WidgetItem, context: Rende
 
 describe('WeeklyResetTimerWidget', () => {
     let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockFormatUsageResetAt: { mockReturnValue: (value: string | null) => void };
     let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
     let mockResolveWeeklyUsageWindow: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
 
     beforeEach(() => {
         vi.restoreAllMocks();
         mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockFormatUsageResetAt = vi.spyOn(usage, 'formatUsageResetAt');
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
         mockResolveWeeklyUsageWindow = vi.spyOn(usage, 'resolveWeeklyUsageWindow');
     });
@@ -142,6 +144,24 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('120hr 15m');
     });
 
+    it('shows weekly reset timestamp in date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 171900000,
+            remainingMs: 432900000,
+            elapsedPercent: 28.4216269841,
+            remainingPercent: 71.5783730159
+        });
+        mockFormatUsageResetAt.mockReturnValue('2026-03-15 08:30 UTC');
+
+        expect(render(widget,
+            { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { absolute: 'true' } },
+            { usageData: { weeklyResetAt: '2026-03-15T08:30:00.000Z' } }
+        )).toBe('Weekly Reset: 2026-03-15 08:30 UTC');
+    });
+
     it('toggles hours-only metadata and shows hours-only modifier text', () => {
         const widget = new WeeklyResetTimerWidget();
         const baseItem: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer' };
@@ -187,6 +207,23 @@ describe('WeeklyResetTimerWidget', () => {
         }).modifierText).toBe('(long bar)');
     });
 
+    it('hides hours-only keybind while timestamp mode is active', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getCustomKeybinds({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: {
+                absolute: 'true',
+                hours: 'true'
+            }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' }
+        ]);
+    });
+
     runUsageTimerEditorSuite({
         baseItem: { id: 'weekly-reset', type: 'weekly-reset-timer' },
         createWidget: () => new WeeklyResetTimerWidget(),
@@ -194,8 +231,10 @@ describe('WeeklyResetTimerWidget', () => {
         expectedTimeKeybinds: [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' },
             { key: 'h', label: '(h)ours only', action: 'toggle-hours' }
         ],
+        supportsDateMode: true,
         expectedModifierText: '(medium bar, inverted)',
         modifierItem: {
             id: 'weekly-reset',

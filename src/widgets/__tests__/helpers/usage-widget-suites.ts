@@ -42,6 +42,7 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
     createWidget: () => TWidget;
     expectedDisplayName: string;
     expectedProgressKeybinds?: CustomKeybind[];
+    supportsDateMode?: boolean;
     expectedModifierText: string;
     modifierItem: WidgetItem;
     expectedTimeKeybinds?: CustomKeybind[];
@@ -253,4 +254,16 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
         expect(cleared?.metadata?.compact).toBe('false');
         expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { compact: 'true' } }).modifierText).toBe('(compact)');
     });
+    if (config.supportsDateMode) {
+        it('toggles date metadata and shows date modifier text', () => {
+            const widget = config.createWidget();
+
+            const dated = widget.handleEditorAction('toggle-date', config.baseItem);
+            const cleared = widget.handleEditorAction('toggle-date', dated ?? config.baseItem);
+
+            expect(dated?.metadata?.absolute).toBe('true');
+            expect(cleared?.metadata?.absolute).toBe('false');
+            expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { absolute: 'true' } }).modifierText).toBe('(date)');
+        });
+    }
 }
