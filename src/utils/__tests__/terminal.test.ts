@@ -13,7 +13,11 @@ import {
     getTerminalWidth
 } from '../terminal';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
 describe('terminal utils', () => {
     const mockExecSync = execSync as unknown as {

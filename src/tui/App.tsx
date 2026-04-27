@@ -25,8 +25,10 @@ import {
     hasLocalSettings,
     installStatusLine,
     isBunxAvailable,
+    isClaudeCodeVersionAtLeast,
     isInstalled,
     isKnownCommand,
+    setRefreshInterval,
     uninstallStatusLine
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
@@ -45,6 +47,7 @@ import {
 } from '../utils/powerline';
 import { getPackageVersion } from '../utils/terminal';
 
+import { loadClaudeStatusLineState } from './claude-status';
 import {
     ColorMenu,
     ConfirmDialog,
@@ -55,6 +58,7 @@ import {
     LineSelector,
     MainMenu,
     PowerlineSetup,
+    RefreshIntervalMenu,
     StatusLinePreview,
     TerminalOptionsMenu,
     TerminalWidthMenu,
@@ -79,7 +83,8 @@ type AppScreen = 'main'
     | 'confirm'
     | 'powerline'
     | 'install'
-    | 'fileTarget';
+    | 'fileTarget'
+    | 'refreshInterval';
 
 interface ConfirmDialogState {
     message: string;
@@ -125,11 +130,14 @@ export const App: React.FC = () => {
         useBunx: boolean;
         targetPath?: string;
     } | null>(null);
+    const [currentRefreshInterval, setCurrentRefreshInterval] = useState<number | null>(null);
+    const [supportsRefreshInterval] = useState(() => isClaudeCodeVersionAtLeast('2.1.97'));
 
     useEffect(() => {
-        // Load existing status line
-        void getExistingStatusLine().then(setExistingStatusLine);
-
+        void loadClaudeStatusLineState().then((statusLineState) => {
+            setExistingStatusLine(statusLineState.existingStatusLine);
+            setCurrentRefreshInterval(statusLineState.refreshInterval);
+        });
         void loadSettings().then((loadedSettings) => {
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
@@ -226,16 +234,21 @@ export const App: React.FC = () => {
                 message,
                 cancelScreen: 'install',
                 action: async () => {
-                    await installStatusLine(useBunx, targetPath);
+                    await installStatusLine(useBunx, {
+                        targetPath,
+                        supportsRefreshInterval
+                    });
+                    const installedStatusLineState = await loadClaudeStatusLineState();
                     setIsClaudeInstalled(true);
-                    setExistingStatusLine(command);
+                    setExistingStatusLine(installedStatusLineState.existingStatusLine ?? command);
+                    setCurrentRefreshInterval(installedStatusLineState.refreshInterval);
                     setScreen('main');
                     setConfirmDialog(null);
                 }
             });
             setScreen('confirm');
         });
-    }, []);
+    }, [supportsRefreshInterval]);
 
     const handleNpxInstall = useCallback(() => {
         setMenuSelections(prev => ({ ...prev, install: 0 }));
@@ -275,6 +288,7 @@ export const App: React.FC = () => {
                     await uninstallStatusLine();
                     setIsClaudeInstalled(false);
                     setExistingStatusLine(null);
+                    setCurrentRefreshInterval(null);
                     setScreen('main');
                     setConfirmDialog(null);
                 }
@@ -305,6 +319,9 @@ export const App: React.FC = () => {
                 break;
             case 'install':
                 handleInstallUninstall();
+                break;
+            case 'configureStatusLine':
+                setScreen('refreshInterval');
                 break;
             case 'starGithub':
                 setConfirmDialog({
@@ -549,6 +566,34 @@ export const App: React.FC = () => {
                         onCancel={() => {
                             setPendingInstall(null);
                             setScreen('install');
+                        }}
+                    />
+                )}
+                {screen === 'refreshInterval' && (
+                    <RefreshIntervalMenu
+                        currentInterval={currentRefreshInterval}
+                        supportsRefreshInterval={supportsRefreshInterval}
+                        onUpdate={(interval) => {
+                            const previous = currentRefreshInterval;
+                            setCurrentRefreshInterval(interval);
+                            void setRefreshInterval(interval)
+                                .then(() => {
+                                    setFlashMessage({
+                                        text: '✓ Refresh interval updated',
+                                        color: 'green'
+                                    });
+                                })
+                                .catch(() => {
+                                    setCurrentRefreshInterval(previous);
+                                    setFlashMessage({
+                                        text: '✗ Failed to save refresh interval',
+                                        color: 'red'
+                                    });
+                                });
+                            setScreen('main');
+                        }}
+                        onBack={() => {
+                            setScreen('main');
                         }}
                     />
                 )}

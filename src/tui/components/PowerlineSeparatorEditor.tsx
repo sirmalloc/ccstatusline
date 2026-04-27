@@ -146,10 +146,10 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
             // Normal mode
             if (key.escape) {
                 onBack();
-            } else if (key.upArrow) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
+            } else if (key.upArrow && separators.length > 0) {
+                setSelectedIndex(selectedIndex - 1 < 0 ? separators.length - 1 : selectedIndex - 1);
             } else if (key.downArrow && separators.length > 0) {
-                setSelectedIndex(Math.min(separators.length - 1, selectedIndex + 1));
+                setSelectedIndex(selectedIndex + 1 > separators.length - 1 ? 0 : selectedIndex + 1);
             } else if ((key.leftArrow || key.rightArrow) && separators.length > 0) {
                 // Cycle through preset separators
                 const currentChar = separators[selectedIndex] ?? '\uE0B0';

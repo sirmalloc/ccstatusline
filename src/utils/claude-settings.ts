@@ -30,7 +30,9 @@ export const CCSTATUSLINE_COMMANDS = {
 
 export function isKnownCommand(command: string): boolean {
     const prefixes = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED];
-    return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `));
+    // Also match local development commands (e.g., "bun run /path/to/ccstatusline.ts")
+    return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `))
+        || /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command);
 }
 
 function needsQuoting(filePath: string): boolean {
@@ -84,6 +86,23 @@ export function getClaudeConfigDir(): string {
 
     // Default fallback
     return path.join(os.homedir(), '.claude');
+}
+
+/**
+ * Gets the full path to Claude Code's .claude.json account state file.
+ *
+ * Claude Code stores this as a sibling of the default ~/.claude directory, but
+ * inside CLAUDE_CONFIG_DIR when a valid config directory override is active.
+ */
+export function getClaudeJsonPath(): string {
+    const configDir = getClaudeConfigDir();
+    const envConfigDir = process.env.CLAUDE_CONFIG_DIR;
+
+    if (envConfigDir && configDir === path.resolve(envConfigDir)) {
+        return path.join(configDir, '.claude.json');
+    }
+
+    return path.join(path.dirname(configDir), '.claude.json');
 }
 
 /**
@@ -175,6 +194,25 @@ async function backupClaudeSettings(settingsPath: string, suffix = '.bak'): Prom
 
 interface LoadClaudeSettingsOptions { logErrors?: boolean; filePath?: string }
 
+interface InstallStatusLineOptions {
+    targetPath?: string;
+    supportsRefreshInterval?: boolean;
+}
+
+function normalizeInstallStatusLineOptions(
+    options: string | boolean | InstallStatusLineOptions
+): InstallStatusLineOptions {
+    if (typeof options === 'string') {
+        return { targetPath: options };
+    }
+
+    if (typeof options === 'boolean') {
+        return { supportsRefreshInterval: options };
+    }
+
+    return options;
+}
+
 export function loadClaudeSettingsSync(options: LoadClaudeSettingsOptions = {}): ClaudeSettings {
     const { logErrors = true, filePath } = options;
     const settingsPath = filePath ?? getClaudeSettingsPath();
@@ -260,6 +298,40 @@ export function isBunxAvailable(): boolean {
     }
 }
 
+export function getClaudeCodeVersion(): string | null {
+    try {
+        const output = execSync('claude --version', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        // Output is like "2.1.97 (Claude Code)" — extract the version number
+        const match = /^(\d+\.\d+\.\d+)/.exec(output);
+        return match?.[1] ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export function isClaudeCodeVersionAtLeast(minVersion: string): boolean {
+    const version = getClaudeCodeVersion();
+    if (!version) {
+        return false;
+    }
+
+    const current = version.split('.').map(Number);
+    const minimum = minVersion.split('.').map(Number);
+
+    for (let i = 0; i < 3; i++) {
+        const c = current[i] ?? 0;
+        const m = minimum[i] ?? 0;
+        if (c > m) {
+            return true;
+        }
+        if (c < m) {
+            return false;
+        }
+    }
+
+    return true; // equal
+}
+
 function buildCommand(baseCommand: string): string {
     if (isCustomConfigPath()) {
         return `${baseCommand} --config ${quotePathIfNeeded(getConfigPath())}`;
@@ -286,7 +358,11 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     }
 }
 
-export async function installStatusLine(useBunx = false, targetPath?: string): Promise<void> {
+export async function installStatusLine(
+    useBunx = false,
+    options: string | boolean | InstallStatusLineOptions = {}
+): Promise<void> {
+    const { targetPath, supportsRefreshInterval = false } = normalizeInstallStatusLineOptions(options);
     const settingsPath = targetPath ?? getClaudeSettingsPath();
 
     const backupPath = await backupClaudeSettings(settingsPath, '.orig');
@@ -304,11 +380,17 @@ export async function installStatusLine(useBunx = false, targetPath?: string): P
         : CCSTATUSLINE_COMMANDS.NPM;
 
     // Update settings with our status line (confirmation already handled in TUI)
+    const existingRefreshInterval = settings.statusLine?.refreshInterval;
     settings.statusLine = {
         type: 'command',
         command: buildCommand(baseCommand),
         padding: 0
     };
+
+    // Only set refreshInterval if Claude Code version supports it (>=2.1.97)
+    if (supportsRefreshInterval) {
+        settings.statusLine.refreshInterval = existingRefreshInterval ?? 10;
+    }
 
     await saveClaudeSettings(settings, settingsPath);
 
@@ -354,6 +436,43 @@ export async function uninstallStatusLine(): Promise<void> {
     }
 }
 
-export function getExistingStatusLine(): Promise<string | null> {
+export async function getExistingStatusLine(): Promise<string | null> {
     return Promise.resolve(resolveStatusLine().command);
+}
+
+export async function getRefreshInterval(): Promise<number | null> {
+    const resolved = resolveStatusLine();
+    if (!resolved.command) {
+        return null;
+    }
+
+    try {
+        const settings = await loadClaudeSettings({ logErrors: false, filePath: resolved.sourcePath });
+        return settings.statusLine?.refreshInterval ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export async function setRefreshInterval(interval: number | null): Promise<void> {
+    const settingsPath = getActiveClaudeSettingsPath();
+    let settings: ClaudeSettings;
+
+    try {
+        settings = await loadClaudeSettings({ logErrors: false, filePath: settingsPath });
+    } catch {
+        return;
+    }
+
+    if (!settings.statusLine) {
+        return;
+    }
+
+    if (interval === null) {
+        delete settings.statusLine.refreshInterval;
+    } else {
+        settings.statusLine.refreshInterval = interval;
+    }
+
+    await saveClaudeSettings(settings, settingsPath);
 }

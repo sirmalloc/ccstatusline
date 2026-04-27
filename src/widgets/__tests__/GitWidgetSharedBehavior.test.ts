@@ -27,7 +27,7 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
     { name: 'GitChangesWidget', itemType: 'git-changes', widget: new GitChangesWidget() },
     { name: 'GitInsertionsWidget', itemType: 'git-insertions', widget: new GitInsertionsWidget() },
     { name: 'GitDeletionsWidget', itemType: 'git-deletions', widget: new GitDeletionsWidget() },
-    { name: 'GitPrWidget', itemType: 'git-pr', widget: new GitPrWidget() },
+    { name: 'GitPrWidget', itemType: 'git-review', widget: new GitPrWidget() },
     { name: 'GitRootDirWidget', itemType: 'git-root-dir', widget: new GitRootDirWidget() },
     { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }
 ];

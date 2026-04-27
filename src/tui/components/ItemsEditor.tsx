@@ -201,7 +201,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             setShowClearConfirm,
             openWidgetPicker,
             getCustomKeybindsForWidget,
-            setCustomEditorWidget
+            setCustomEditorWidget,
+            getUniqueBackgroundColor
         });
     });
 
@@ -280,7 +281,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         helpText += ', Space edit separator';
     }
     if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
+        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
     }
     if (canToggleRaw) {
         helpText += ', (r)aw value';
