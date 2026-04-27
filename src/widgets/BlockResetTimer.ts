@@ -16,6 +16,10 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import {
+    LOCALE_EDITOR_ACTION,
+    renderUsageLocaleEditor
+} from './shared/locale-editor';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     TIMEZONE_EDITOR_ACTION,
@@ -148,10 +152,19 @@ export class BlockResetTimerWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return getUsageTimerCustomKeybinds(item, { includeDate: true, includeHourFormat: true, includeTimezone: true });
+        return getUsageTimerCustomKeybinds(item, {
+            includeDate: true,
+            includeHourFormat: true,
+            includeLocale: true,
+            includeTimezone: true
+        });
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement | null {
+        if (props.action === LOCALE_EDITOR_ACTION) {
+            return renderUsageLocaleEditor(props);
+        }
+
         if (props.action === TIMEZONE_EDITOR_ACTION) {
             return renderUsageTimezoneEditor(props);
         }

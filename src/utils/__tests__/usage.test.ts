@@ -184,6 +184,12 @@ describe('usage window helpers', () => {
         expect(compactResult).toBe('04-27 7:00 PM');
     });
 
+    it('normalizes lowercase 12-hour day periods from locale data', () => {
+        const result = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'en-GB', true);
+
+        expect(result).toMatch(/^2026-04-27 7:00 PM /);
+    });
+
     it('keeps UTC behavior when timezone is undefined or "UTC"', () => {
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z')).toBe('2026-03-12 08:30 UTC');
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC')).toBe('2026-03-12 08:30 UTC');
@@ -202,11 +208,11 @@ describe('usage window helpers', () => {
     });
 
     it('uses the supplied locale to choose the timezone abbreviation', () => {
-        // ja-JP returns 'JST' for Asia/Tokyo, en-CA returns 'GMT+9'
+        // ja-JP returns 'JST' for Asia/Tokyo, en-US returns 'GMT+9'
         const ja = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'ja-JP');
         expect(ja).toBe('2026-04-27 19:00 JST');
 
-        const en = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'en-CA');
+        const en = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'en-US');
         expect(en).toBe('2026-04-27 19:00 GMT+9');
     });
 

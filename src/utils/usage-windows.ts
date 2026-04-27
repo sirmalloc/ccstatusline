@@ -128,7 +128,11 @@ function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean): string
         : `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
-const DEFAULT_TZ_LOCALE = 'en-CA';
+const DEFAULT_TZ_LOCALE = 'en-US';
+
+function normalizeDayPeriod(dayPeriod: string): string {
+    return dayPeriod.replace(/\./g, '').toUpperCase();
+}
 
 function formatResetAtInTimezone(
     date: Date,
@@ -165,7 +169,8 @@ function formatResetAtInTimezone(
 
         if (hour12) {
             const displayHour = hour.startsWith('0') ? hour.slice(1) : hour;
-            const time = `${displayHour}:${minute}${dayPeriod ? ` ${dayPeriod}` : ''}`;
+            const normalizedDayPeriod = dayPeriod ? normalizeDayPeriod(dayPeriod) : '';
+            const time = `${displayHour}:${minute}${normalizedDayPeriod ? ` ${normalizedDayPeriod}` : ''}`;
             return compact
                 ? `${month}-${day} ${time}`
                 : `${year}-${month}-${day} ${time} ${tzName}`;

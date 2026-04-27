@@ -18,6 +18,10 @@ import {
 
 import { makeModifierText } from './shared/editor-display';
 import {
+    LOCALE_EDITOR_ACTION,
+    renderUsageLocaleEditor
+} from './shared/locale-editor';
+import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
 } from './shared/metadata';
@@ -30,6 +34,7 @@ import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageLocale,
+    getUsageLocaleModifier,
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
@@ -97,6 +102,11 @@ function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
     const timezoneModifier = getUsageTimezoneModifier(item);
     if (!isUsageProgressMode(displayMode) && dateMode && timezoneModifier) {
         modifiers.push(timezoneModifier);
+    }
+
+    const localeModifier = getUsageLocaleModifier(item);
+    if (!isUsageProgressMode(displayMode) && dateMode && localeModifier) {
+        modifiers.push(localeModifier);
     }
 
     return makeModifierText(modifiers);
@@ -206,7 +216,12 @@ export class WeeklyResetTimerWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        const keybinds = getUsageTimerCustomKeybinds(item, { includeDate: true, includeHourFormat: true, includeTimezone: true });
+        const keybinds = getUsageTimerCustomKeybinds(item, {
+            includeDate: true,
+            includeHourFormat: true,
+            includeLocale: true,
+            includeTimezone: true
+        });
 
         if (!item || (!isUsageProgressMode(getUsageDisplayMode(item)) && !isUsageDateMode(item))) {
             keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
@@ -216,6 +231,10 @@ export class WeeklyResetTimerWidget implements Widget {
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement | null {
+        if (props.action === LOCALE_EDITOR_ACTION) {
+            return renderUsageLocaleEditor(props);
+        }
+
         if (props.action === TIMEZONE_EDITOR_ACTION) {
             return renderUsageTimezoneEditor(props);
         }

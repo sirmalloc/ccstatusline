@@ -126,28 +126,28 @@ describe('BlockResetTimerWidget', () => {
         mockFormatUsageResetAt.mockReturnValue('2026-03-12 08:30 UTC');
 
         expect(render(widget,
-            { id: 'reset', type: 'reset-timer', metadata: { absolute: 'true', timezone: 'Asia/Tokyo', hour12: 'true' } },
+            { id: 'reset', type: 'reset-timer', metadata: { absolute: 'true', timezone: 'Asia/Tokyo', locale: 'ja-JP', hour12: 'true' } },
             { usageData: { sessionResetAt: '2026-03-12T08:30:00.000Z' } }
         )).toBe('Reset: 2026-03-12 08:30 UTC');
-        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-12T08:30:00.000Z', false, 'Asia/Tokyo', undefined, true);
+        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-12T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true);
     });
 
-    it('shows configured hour format and timezone in editor display only in timestamp mode', () => {
+    it('shows configured timestamp settings in editor display only in timestamp mode', () => {
         const widget = new BlockResetTimerWidget();
 
         expect(widget.getEditorDisplay({
             id: 'reset',
             type: 'reset-timer',
-            metadata: { timezone: 'America/New_York', hour12: 'true' }
+            metadata: { timezone: 'America/New_York', locale: 'ja-JP', hour12: 'true' }
         }).modifierText).toBeUndefined();
         expect(widget.getEditorDisplay({
             id: 'reset',
             type: 'reset-timer',
-            metadata: { absolute: 'true', timezone: 'America/New_York', hour12: 'true' }
-        }).modifierText).toBe('(date, 12hr, tz: America/New_York)');
+            metadata: { absolute: 'true', timezone: 'America/New_York', locale: 'ja-JP', hour12: 'true' }
+        }).modifierText).toBe('(date, 12hr, tz: America/New_York, locale: ja-JP)');
     });
 
-    it('shows hour format and timezone keybinds only in timestamp mode', () => {
+    it('shows timestamp keybinds only in timestamp mode', () => {
         const widget = new BlockResetTimerWidget();
 
         expect(widget.getCustomKeybinds({
@@ -159,7 +159,8 @@ describe('BlockResetTimerWidget', () => {
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 't', label: '(t)imestamp', action: 'toggle-date' },
             { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' },
-            { key: 'z', label: 'time(z)one', action: 'edit-timezone' }
+            { key: 'z', label: 'time(z)one', action: 'edit-timezone' },
+            { key: 'l', label: '(l)ocale', action: 'edit-locale' }
         ]);
     });
 

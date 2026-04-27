@@ -641,6 +641,37 @@ describe('items-editor input handlers', () => {
         expect(customEditorState?.widget?.type).toBe('reset-timer');
     });
 
+    it('opens custom editor for reset timer locale action', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'reset-timer', metadata: { absolute: 'true' } }
+        ];
+        const onUpdate = vi.fn();
+        const setCustomEditorWidget = vi.fn();
+
+        handleNormalInputMode({
+            input: 'l',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+        const customEditorState = setCustomEditorWidget.mock.calls[0]?.[0] as
+            | { action?: string; widget?: WidgetItem }
+            | undefined;
+        expect(customEditorState?.action).toBe('edit-locale');
+        expect(customEditorState?.widget?.type).toBe('reset-timer');
+    });
+
     it('uses v to cycle skills widget mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'skills' }

@@ -2,6 +2,10 @@ import type {
     CustomKeybind,
     WidgetItem
 } from '../../types/Widget';
+import {
+    DEFAULT_RESET_LOCALE,
+    canonicalizeLocale
+} from '../../utils/locales';
 
 import { makeModifierText } from './editor-display';
 import {
@@ -20,6 +24,7 @@ const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time',
 const DATE_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)imestamp', action: 'toggle-date' };
 const HOUR_FORMAT_TOGGLE_KEYBIND: CustomKeybind = { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' };
 const TIMEZONE_KEYBIND: CustomKeybind = { key: 'z', label: 'time(z)one', action: 'edit-timezone' };
+const LOCALE_KEYBIND: CustomKeybind = { key: 'l', label: '(l)ocale', action: 'edit-locale' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
@@ -74,6 +79,11 @@ export function getUsageLocale(item: WidgetItem): string | undefined {
     return typeof locale === 'string' && locale.length > 0 ? locale : undefined;
 }
 
+export function getUsageLocaleModifier(item: WidgetItem): string | undefined {
+    const locale = getUsageLocale(item);
+    return locale ? `locale: ${locale}` : undefined;
+}
+
 export function getUsageTimezoneModifier(item: WidgetItem): string | undefined {
     const timezone = getUsageTimezone(item);
     return timezone ? `tz: ${timezone}` : undefined;
@@ -89,6 +99,21 @@ export function setUsageTimezone(item: WidgetItem, timezone: string): WidgetItem
         metadata: {
             ...item.metadata,
             timezone
+        }
+    };
+}
+
+export function setUsageLocale(item: WidgetItem, locale: string): WidgetItem {
+    const canonicalLocale = canonicalizeLocale(locale);
+    if (!canonicalLocale || canonicalLocale === DEFAULT_RESET_LOCALE) {
+        return removeMetadataKeys(item, ['locale']);
+    }
+
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            locale: canonicalLocale
         }
     };
 }
@@ -146,6 +171,11 @@ export function getUsageDisplayModifierText(
     const timezoneModifier = getUsageTimezoneModifier(item);
     if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && timezoneModifier) {
         modifiers.push(timezoneModifier);
+    }
+
+    const localeModifier = getUsageLocaleModifier(item);
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && localeModifier) {
+        modifiers.push(localeModifier);
     }
 
     return makeModifierText(modifiers);
@@ -206,6 +236,7 @@ export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[
 interface UsageTimerCustomKeybindOptions {
     includeDate?: boolean;
     includeHourFormat?: boolean;
+    includeLocale?: boolean;
     includeTimezone?: boolean;
 }
 
@@ -232,6 +263,10 @@ export function getUsageTimerCustomKeybinds(
 
         if (options.includeTimezone) {
             keybinds.push(TIMEZONE_KEYBIND);
+        }
+
+        if (options.includeLocale) {
+            keybinds.push(LOCALE_KEYBIND);
         }
     }
 
