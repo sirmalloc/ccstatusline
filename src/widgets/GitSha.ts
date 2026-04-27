@@ -7,8 +7,8 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    isInsideGitWorkTree,
-    runGit
+    getGitShortSha,
+    isInsideGitWorkTree
 } from '../utils/git';
 
 import {
@@ -19,10 +19,11 @@ import {
 } from './shared/git-no-git';
 
 export class GitShaWidget implements Widget {
-    getDefaultColor(): string { return 'brightBlack'; }
-    getDescription(): string { return 'Shows current git commit short SHA'; }
+    getDefaultColor(): string { return 'gray'; }
+    getDescription(): string { return 'Shows short commit hash (SHA)'; }
     getDisplayName(): string { return 'Git SHA'; }
     getCategory(): string { return 'Git'; }
+
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
@@ -38,23 +39,15 @@ export class GitShaWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            return 'a3f2c1d';
+            return 'a1b2c3d';
         }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : '(no git)';
         }
 
-        const sha = this.getGitSha(context);
-        if (sha) {
-            return sha;
-        }
-
-        return hideNoGit ? null : '(no git)';
-    }
-
-    private getGitSha(context: RenderContext): string | null {
-        return runGit('rev-parse --short HEAD', context);
+        const sha = getGitShortSha(context);
+        return sha ?? (hideNoGit ? null : '(no commit)');
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -62,5 +55,5 @@ export class GitShaWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsColors(_item: WidgetItem): boolean { return true; }
 }

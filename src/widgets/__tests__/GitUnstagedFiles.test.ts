@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -10,16 +10,22 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { clearGitCache } from '../../utils/git';
 import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
+
+const widget = new GitUnstagedFilesWidget();
 
 function render(options: {
     cwd?: string;
@@ -27,7 +33,6 @@ function render(options: {
     isPreview?: boolean;
     rawValue?: boolean;
 } = {}) {
-    const widget = new GitUnstagedFilesWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
         data: options.cwd ? { cwd: options.cwd } : undefined
@@ -45,77 +50,58 @@ function render(options: {
 describe('GitUnstagedFilesWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
-    it('should render preview', () => {
+    it('renders preview', () => {
         expect(render({ isPreview: true })).toBe('M:2');
     });
 
-    it('should render preview with raw value', () => {
+    it('renders preview with raw value', () => {
         expect(render({ isPreview: true, rawValue: true })).toBe('2');
     });
 
-    it('should render unstaged files count', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('a.ts\n');
-        mockExecSync.mockReturnValueOnce('b.ts\nc.ts\n');
-        mockExecSync.mockReturnValueOnce('u.ts\n');
+    it('renders unstaged file count', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('M  a.ts\0 M b.ts\0 D c.ts\0?? d.ts\0');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('M:2');
-        expect(mockExecSync.mock.calls[0]?.[1]).toEqual({
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd: '/tmp/worktree'
         });
-        expect(mockExecSync.mock.calls[1]?.[1]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecSync.mock.calls[2]?.[1]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecSync.mock.calls[3]?.[1]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--no-optional-locks', 'status', '--porcelain', '-z']);
     });
 
-    it('should render raw unstaged files count', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('a.ts\n');
-        mockExecSync.mockReturnValueOnce('b.ts\nc.ts\n');
-        mockExecSync.mockReturnValueOnce('u.ts\n');
+    it('renders raw unstaged file count', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce(' M a.ts\0 D b.ts\0');
 
         expect(render({ rawValue: true })).toBe('2');
     });
 
-    it('should render zero count when repo is clean', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('');
-        mockExecSync.mockReturnValueOnce('');
-        mockExecSync.mockReturnValueOnce('');
+    it('renders zero count when repo is clean', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('M:0');
     });
 
-    it('should render no git when probe returns false', () => {
-        mockExecSync.mockReturnValue('false\n');
+    it('renders no git when probe returns false', () => {
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render()).toBe('(no git)');
     });
 
-    it('should hide no git when configured', () => {
-        mockExecSync.mockReturnValue('false\n');
+    it('hides no git when configured', () => {
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
-    it('should render no git when command fails', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No git'); });
+    it('renders no git when command fails', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('No git'); });
 
         expect(render()).toBe('(no git)');
     });

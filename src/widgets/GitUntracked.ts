@@ -7,10 +7,11 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    isInsideGitWorkTree,
-    runGit
+    getGitStatus,
+    isInsideGitWorkTree
 } from '../utils/git';
 
+import { makeModifierText } from './shared/editor-display';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
@@ -18,15 +19,23 @@ import {
     isHideNoGitEnabled
 } from './shared/git-no-git';
 
-export class GitMergeConflictsWidget implements Widget {
+const DEFAULT_SYMBOL = '?';
+
+export class GitUntrackedWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
-    getDescription(): string { return 'Shows git merge conflicts count'; }
-    getDisplayName(): string { return 'Git Merge Conflicts'; }
+    getDescription(): string { return 'Shows ? when there are untracked files'; }
+    getDisplayName(): string { return 'Git Untracked'; }
     getCategory(): string { return 'Git'; }
+
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const modifiers: string[] = [];
+        const noGitText = getHideNoGitModifierText(item);
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
+
         return {
             displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
+            modifierText: makeModifierText(modifiers)
         };
     }
 
@@ -38,34 +47,33 @@ export class GitMergeConflictsWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            return item.rawValue ? '1' : '⚠1';
+            return item.rawValue ? 'true' : (item.character ?? DEFAULT_SYMBOL);
         }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : '(no git)';
         }
 
-        const conflicts = this.getConflictCount(context);
-        if (conflicts === 0) {
+        const status = getGitStatus(context);
+
+        if (!status.untracked) {
             return null;
         }
 
-        return item.rawValue ? `${conflicts}` : `⚠${conflicts}`;
-    }
-
-    private getConflictCount(context: RenderContext): number {
-        const output = runGit('diff --name-only --diff-filter=U', context);
-        if (!output) {
-            return 0;
-        }
-
-        return output.split('\n').filter(line => line.length > 0).length;
+        return item.rawValue ? 'true' : (item.character ?? DEFAULT_SYMBOL);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return getHideNoGitKeybinds();
     }
 
+    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
+        if (!isInsideGitWorkTree(context))
+            return null;
+        const status = getGitStatus(context);
+        return status.untracked ? 1 : 0;
+    }
+
     supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsColors(_item: WidgetItem): boolean { return true; }
 }

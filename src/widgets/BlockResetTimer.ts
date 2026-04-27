@@ -8,6 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     formatUsageDuration,
+    formatUsageResetAt,
     getUsageErrorMessage,
     resolveUsageWindowWithFallback
 } from '../utils/usage';
@@ -18,10 +19,13 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    getUsageTimerCustomKeybinds,
     isUsageCompact,
+    isUsageDateMode,
     isUsageInverted,
     isUsageProgressMode,
     toggleUsageCompact,
+    toggleUsageDateMode,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -41,13 +45,13 @@ export class BlockResetTimerWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item, { includeCompact: true })
+            modifierText: getUsageDisplayModifierText(item, { includeCompact: true, includeDate: true })
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item);
+            return cycleUsageDisplayMode(item, ['compact', 'absolute']);
         }
 
         if (action === 'toggle-invert') {
@@ -58,6 +62,10 @@ export class BlockResetTimerWidget implements Widget {
             return toggleUsageCompact(item);
         }
 
+        if (action === 'toggle-date') {
+            return toggleUsageDateMode(item);
+        }
+
         return null;
     }
 
@@ -65,6 +73,7 @@ export class BlockResetTimerWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
+        const dateMode = isUsageDateMode(item);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -73,6 +82,10 @@ export class BlockResetTimerWidget implements Widget {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
                 return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+            }
+
+            if (dateMode) {
+                return formatRawOrLabeledValue(item, 'Reset: ', compact ? '03-12 08:30Z' : '2026-03-12 08:30 UTC');
             }
 
             return formatRawOrLabeledValue(item, 'Reset: ', compact ? '4h30m' : '4hr 30m');
@@ -97,16 +110,19 @@ export class BlockResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${percentage}%`);
         }
 
+        if (dateMode) {
+            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact);
+            if (resetAt) {
+                return formatRawOrLabeledValue(item, 'Reset: ', resetAt);
+            }
+        }
+
         const remainingTime = formatUsageDuration(window.remainingMs, compact);
         return formatRawOrLabeledValue(item, 'Reset: ', remainingTime);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 's', label: '(s)hort time', action: 'toggle-compact' }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getUsageTimerCustomKeybinds(item, { includeDate: true });
     }
 
     supportsRawValue(): boolean { return true; }

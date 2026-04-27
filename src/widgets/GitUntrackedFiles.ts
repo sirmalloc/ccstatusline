@@ -20,7 +20,7 @@ import {
 
 export class GitUntrackedFilesWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
-    getDescription(): string { return 'Shows git untracked files count'; }
+    getDescription(): string { return 'Shows count of untracked files'; }
     getDisplayName(): string { return 'Git Untracked Files'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -38,7 +38,7 @@ export class GitUntrackedFilesWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            return item.rawValue ? '1' : 'A:1';
+            return item.rawValue ? '1' : '?:1';
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -46,13 +46,19 @@ export class GitUntrackedFilesWidget implements Widget {
         }
 
         const counts = getGitFileStatusCounts(context);
-        return item.rawValue ? `${counts.untracked}` : `A:${counts.untracked}`;
+        return item.rawValue ? `${counts.untracked}` : `?:${counts.untracked}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return getHideNoGitKeybinds();
     }
 
+    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
+        if (!isInsideGitWorkTree(context))
+            return null;
+        return getGitFileStatusCounts(context).untracked;
+    }
+
     supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsColors(_item: WidgetItem): boolean { return true; }
 }

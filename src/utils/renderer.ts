@@ -78,11 +78,13 @@ function renderPowerlineStatusLine(
     context: RenderContext,
     lineIndex = 0,  // Which line we're rendering (for theme color cycling)
     globalSeparatorOffset = 0,  // Starting separator index for this line
+    globalThemeColorOffset = 0,  // Starting theme color index for this line
     preRenderedWidgets: PreRenderedWidget[],  // Pre-rendered widgets for this line
     preCalculatedMaxWidths: number[]  // Pre-calculated max widths for alignment
 ): string {
     const powerlineConfig = settings.powerline as Record<string, unknown> | undefined;
     const config = powerlineConfig ?? {};
+    const continueThemeAcrossLines = Boolean(config.continueThemeAcrossLines);
 
     // Get separator configuration
     const separators = (config.separators as string[] | undefined) ?? ['\uE0B0'];
@@ -127,7 +129,7 @@ function renderPowerlineStatusLine(
 
     // Build widget elements (similar to regular mode but without separators)
     const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
-    let widgetColorIndex = 0;  // Track widget index for theme colors
+    let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
 
     // Create a mapping from filteredWidgets to preRenderedWidgets indices
     // This is needed because filteredWidgets excludes separators but preRenderedWidgets includes all widgets
@@ -155,10 +157,10 @@ function renderPowerlineStatusLine(
         // Use pre-rendered content - use the correct index from the mapping
         const actualPreRenderedIndex = preRenderedIndices[i];
         const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
+        const widgetImpl = getWidget(widget.type);
         if (preRendered?.content) {
             widgetText = preRendered.content;
             // Get default color from widget impl for consistency
-            const widgetImpl = getWidget(widget.type);
             if (widgetImpl) {
                 defaultColor = widgetImpl.getDefaultColor();
             }
@@ -352,7 +354,7 @@ function renderPowerlineStatusLine(
             //   - Background: previous widget's background color
 
             // Build separator with raw ANSI codes to avoid reset issues
-            let separatorOutput = '';
+            let separatorOutput: string;
 
             // Check if adjacent widgets have the same background color
             const sameBackground = widget.bgColor && nextWidget.bgColor && widget.bgColor === nextWidget.bgColor;
@@ -513,7 +515,8 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            const widgetText = widgetImpl.render(effectiveWidget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
@@ -620,7 +623,16 @@ export function renderStatusLine(
 
     // If powerline mode is enabled, use powerline renderer
     if (isPowerlineMode)
-        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0, preRenderedWidgets, preCalculatedMaxWidths);
+        return renderPowerlineStatusLine(
+            widgets,
+            settings,
+            context,
+            context.lineIndex ?? 0,
+            context.globalSeparatorIndex ?? 0,
+            context.globalPowerlineThemeIndex ?? 0,
+            preRenderedWidgets,
+            preCalculatedMaxWidths
+        );
 
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
@@ -832,7 +844,7 @@ export function renderStatusLine(
     });
 
     // Build the final status line
-    let statusLine = '';
+    let statusLine: string;
 
     if (hasFlexSeparator && terminalWidth) {
         // Split elements by flex separators

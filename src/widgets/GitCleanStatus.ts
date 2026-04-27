@@ -7,8 +7,8 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    isInsideGitWorkTree,
-    runGit
+    getGitStatus,
+    isInsideGitWorkTree
 } from '../utils/git';
 
 import {
@@ -20,7 +20,7 @@ import {
 
 export class GitCleanStatusWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows whether git working tree is clean or dirty'; }
+    getDescription(): string { return 'Shows ✓ when the working tree is clean and ✗ when it is dirty'; }
     getDisplayName(): string { return 'Git Clean Status'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -54,7 +54,8 @@ export class GitCleanStatusWidget implements Widget {
     }
 
     private isClean(context: RenderContext): boolean {
-        return runGit('status --porcelain', context) === null;
+        const status = getGitStatus(context);
+        return !status.staged && !status.unstaged && !status.untracked && !status.conflicts;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -62,5 +63,5 @@ export class GitCleanStatusWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsColors(_item: WidgetItem): boolean { return true; }
 }

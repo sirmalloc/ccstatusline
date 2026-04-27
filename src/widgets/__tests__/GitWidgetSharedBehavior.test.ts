@@ -9,15 +9,13 @@ import type {
     Widget,
     WidgetItem
 } from '../../types';
-import { GitAheadBehindWidget } from '../GitAheadBehind';
 import { GitBranchWidget } from '../GitBranch';
 import { GitChangesWidget } from '../GitChanges';
 import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitDeletionsWidget } from '../GitDeletions';
 import { GitInsertionsWidget } from '../GitInsertions';
-import { GitMergeConflictsWidget } from '../GitMergeConflicts';
+import { GitPrWidget } from '../GitPr';
 import { GitRootDirWidget } from '../GitRootDir';
-import { GitShaWidget } from '../GitSha';
 import { GitStagedFilesWidget } from '../GitStagedFiles';
 import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
 import { GitUntrackedFilesWidget } from '../GitUntrackedFiles';
@@ -36,19 +34,17 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
     { name: 'GitStagedFilesWidget', itemType: 'git-staged-files', widget: new GitStagedFilesWidget() },
     { name: 'GitUnstagedFilesWidget', itemType: 'git-unstaged-files', widget: new GitUnstagedFilesWidget() },
     { name: 'GitUntrackedFilesWidget', itemType: 'git-untracked-files', widget: new GitUntrackedFilesWidget() },
-    { name: 'GitAheadBehindWidget', itemType: 'git-ahead-behind', widget: new GitAheadBehindWidget() },
-    { name: 'GitMergeConflictsWidget', itemType: 'git-merge-conflicts', widget: new GitMergeConflictsWidget() },
     { name: 'GitCleanStatusWidget', itemType: 'git-clean-status', widget: new GitCleanStatusWidget() },
-    { name: 'GitShaWidget', itemType: 'git-sha', widget: new GitShaWidget() },
+    { name: 'GitPrWidget', itemType: 'git-review', widget: new GitPrWidget() },
     { name: 'GitRootDirWidget', itemType: 'git-root-dir', widget: new GitRootDirWidget() },
     { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }
 ];
 
 describe('Git widget shared behavior', () => {
     it.each(cases)('$name should expose hide-no-git keybind', ({ widget }) => {
-        expect(widget.getCustomKeybinds()).toEqual([
+        expect(widget.getCustomKeybinds()).toContainEqual(
             { key: 'h', label: '(h)ide \'no git\' message', action: 'toggle-nogit' }
-        ]);
+        );
     });
 
     it.each(cases)('$name should toggle hideNoGit metadata', ({ widget, itemType }) => {

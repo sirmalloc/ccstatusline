@@ -20,7 +20,7 @@ import {
 
 export class GitUnstagedFilesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
-    getDescription(): string { return 'Shows git unstaged files count'; }
+    getDescription(): string { return 'Shows count of unstaged files'; }
     getDisplayName(): string { return 'Git Unstaged Files'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -53,6 +53,12 @@ export class GitUnstagedFilesWidget implements Widget {
         return getHideNoGitKeybinds();
     }
 
+    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
+        if (!isInsideGitWorkTree(context))
+            return null;
+        return getGitFileStatusCounts(context).unstaged;
+    }
+
     supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
+    supportsColors(_item: WidgetItem): boolean { return true; }
 }

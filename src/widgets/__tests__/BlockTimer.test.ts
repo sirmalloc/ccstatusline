@@ -104,7 +104,7 @@ describe('BlockTimerWidget', () => {
         baseItem: { id: 'block', type: 'block-timer' },
         createWidget: () => new BlockTimerWidget(),
         expectedDisplayName: 'Block Timer',
-        expectedModifierText: '(progress bar, inverted)',
+        expectedModifierText: '(long bar, inverted)',
         modifierItem: {
             id: 'block',
             type: 'block-timer',
