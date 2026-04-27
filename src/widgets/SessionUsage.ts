@@ -16,9 +16,12 @@ import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
+    getUsagePercentCustomKeybinds,
     getUsageProgressBarWidth,
     isUsageInverted,
     isUsageProgressMode,
+    isUsageSliderMode,
+    makeSliderBar,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -37,7 +40,7 @@ export class SessionUsageWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item);
+            return cycleUsageDisplayMode(item, [], true);
         }
 
         if (action === 'toggle-invert') {
@@ -61,6 +64,12 @@ export class SessionUsageWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Session: ', progressDisplay);
             }
 
+            if (isUsageSliderMode(displayMode)) {
+                const slider = makeSliderBar(renderedPercent);
+                const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+                return formatRawOrLabeledValue(item, 'Session: ', sliderDisplay);
+            }
+
             return formatRawOrLabeledValue(item, 'Session: ', `${previewPercent.toFixed(1)}%`);
         }
 
@@ -71,21 +80,25 @@ export class SessionUsageWidget implements Widget {
             return null;
 
         const percent = Math.max(0, Math.min(100, data.sessionUsage));
+        const renderedPercent = inverted ? 100 - percent : percent;
+
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
-            const renderedPercent = inverted ? 100 - percent : percent;
             const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
             return formatRawOrLabeledValue(item, 'Session: ', progressDisplay);
+        }
+
+        if (isUsageSliderMode(displayMode)) {
+            const slider = makeSliderBar(renderedPercent);
+            const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+            return formatRawOrLabeledValue(item, 'Session: ', sliderDisplay);
         }
 
         return formatRawOrLabeledValue(item, 'Session: ', `${percent.toFixed(1)}%`);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getUsagePercentCustomKeybinds(item);
     }
 
     supportsRawValue(): boolean { return true; }

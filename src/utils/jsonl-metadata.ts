@@ -4,27 +4,39 @@ import {
     readJsonlLinesSync
 } from './jsonl-lines';
 
-export type TranscriptThinkingEffort = 'low' | 'medium' | 'high' | 'max';
+const KNOWN_THINKING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+const KNOWN_THINKING_EFFORTS_SET: ReadonlySet<string> = new Set(KNOWN_THINKING_EFFORTS);
+export type TranscriptThinkingEffort = typeof KNOWN_THINKING_EFFORTS[number];
+
+export interface ResolvedThinkingEffort {
+    value: string;
+    known: boolean;
+}
 
 const MODEL_STDOUT_PREFIX = '<local-command-stdout>Set model to ';
-const MODEL_STDOUT_EFFORT_REGEX = /^<local-command-stdout>Set model to[\s\S]*? with (low|medium|high|max) effort<\/local-command-stdout>$/i;
+const MODEL_STDOUT_EFFORT_REGEX = /^<local-command-stdout>Set model to[\s\S]*? with ([a-zA-Z0-9-]+) effort<\/local-command-stdout>$/i;
+const UNKNOWN_EFFORT_PATTERN = /^(?=.*[a-z0-9])[a-z0-9-]{2,20}$/;
 
 interface TranscriptEntry { message?: { content?: string } }
 
-function normalizeThinkingEffort(value: string | undefined): TranscriptThinkingEffort | undefined {
+export function normalizeThinkingEffort(value: string | undefined): ResolvedThinkingEffort | undefined {
     if (!value) {
         return undefined;
     }
 
     const normalized = value.toLowerCase();
-    if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'max') {
-        return normalized;
+    if (KNOWN_THINKING_EFFORTS_SET.has(normalized)) {
+        return { value: normalized, known: true };
+    }
+
+    if (UNKNOWN_EFFORT_PATTERN.test(normalized)) {
+        return { value: normalized, known: false };
     }
 
     return undefined;
 }
 
-export function getTranscriptThinkingEffort(transcriptPath: string | undefined): TranscriptThinkingEffort | undefined {
+export function getTranscriptThinkingEffort(transcriptPath: string | undefined): ResolvedThinkingEffort | undefined {
     if (!transcriptPath) {
         return undefined;
     }

@@ -135,7 +135,13 @@ describe('BlockResetTimerWidget', () => {
         baseItem: { id: 'reset', type: 'reset-timer' },
         createWidget: () => new BlockResetTimerWidget(),
         expectedDisplayName: 'Block Reset Timer',
-        expectedModifierText: '(short bar, inverted)',
+        expectedTimeKeybinds: [
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 'd', label: '(d)ate mode', action: 'toggle-date' }
+        ],
+        supportsDateMode: true,
+        expectedModifierText: '(medium bar, inverted)',
         modifierItem: {
             id: 'reset',
             type: 'reset-timer',

@@ -19,6 +19,7 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    getUsageTimerCustomKeybinds,
     isUsageCompact,
     isUsageDateMode,
     isUsageInverted,
@@ -50,7 +51,7 @@ export class BlockResetTimerWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item);
+            return cycleUsageDisplayMode(item, ['compact', 'absolute']);
         }
 
         if (action === 'toggle-invert') {
@@ -120,13 +121,8 @@ export class BlockResetTimerWidget implements Widget {
         return formatRawOrLabeledValue(item, 'Reset: ', remainingTime);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
-            { key: 'd', label: '(d)ate mode', action: 'toggle-date' }
-        ];
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        return getUsageTimerCustomKeybinds(item, { includeDate: true });
     }
 
     supportsRawValue(): boolean { return true; }

@@ -13,11 +13,13 @@ export const WidgetItemSchema = z.object({
     character: z.string().optional(),
     rawValue: z.boolean().optional(),
     customText: z.string().optional(),
+    customSymbol: z.string().optional(),
     commandPath: z.string().optional(),
     maxWidth: z.number().optional(),
     preserveColors: z.boolean().optional(),
     timeout: z.number().optional(),
     merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
+    hide: z.boolean().optional(),
     metadata: z.record(z.string(), z.string()).optional()
 });
 
@@ -37,11 +39,12 @@ export interface Widget {
     getCategory(): string;
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay;
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
-    getCustomKeybinds?(): CustomKeybind[];
+    getCustomKeybinds?(item?: WidgetItem): CustomKeybind[];
     renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
+    getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
 }
 
 export interface WidgetEditorProps {
