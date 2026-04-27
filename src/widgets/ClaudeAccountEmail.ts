@@ -1,6 +1,4 @@
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -9,24 +7,9 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getClaudeJsonPath } from '../utils/claude-settings';
 
 interface ClaudeJson { oauthAccount?: { emailAddress?: string } }
-
-/**
- * Resolves the path to Claude Code's `.claude.json` state file.
- *
- * - When `CLAUDE_CONFIG_DIR` is set, Claude Code stores `.claude.json` inside
- *   that directory along with the rest of its config.
- * - When unset, `.claude.json` lives at `~/.claude.json` (sibling of the
- *   default `~/.claude` config dir).
- */
-function getClaudeJsonPath(): string {
-    const envConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    if (envConfigDir) {
-        return path.resolve(envConfigDir, '.claude.json');
-    }
-    return path.join(os.homedir(), '.claude.json');
-}
 
 export class ClaudeAccountEmailWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
