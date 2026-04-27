@@ -13,8 +13,16 @@ import { CompactionCounterWidget } from '../CompactionCounter';
 
 const ITEM: WidgetItem = { id: 'compaction-counter', type: 'compaction-counter' };
 
-function makeContext(overrides: Partial<RenderContext> = {}): RenderContext {
-    return { ...overrides };
+function render(options: {
+    isPreview?: boolean;
+    compactionData?: { count: number } | null;
+} = {}) {
+    const widget = new CompactionCounterWidget();
+    const context: RenderContext = {
+        isPreview: options.isPreview,
+        compactionData: options.compactionData
+    };
+    return widget.render(ITEM, context, DEFAULT_SETTINGS);
 }
 
 describe('CompactionCounterWidget', () => {
@@ -42,46 +50,37 @@ describe('CompactionCounterWidget', () => {
 
     describe('render()', () => {
         it('renders compaction count with arrow', () => {
-            const ctx = makeContext({ compactionData: { count: 3 } });
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBe('\u21BB3');
+            expect(render({ compactionData: { count: 3 } })).toBe('↻3');
         });
 
         it('renders count of 1', () => {
-            const ctx = makeContext({ compactionData: { count: 1 } });
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBe('\u21BB1');
+            expect(render({ compactionData: { count: 1 } })).toBe('↻1');
         });
 
         it('returns null when count is 0', () => {
-            const ctx = makeContext({ compactionData: { count: 0 } });
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBeNull();
+            expect(render({ compactionData: { count: 0 } })).toBeNull();
         });
 
         it('returns null when compactionData is undefined', () => {
-            const ctx = makeContext();
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBeNull();
+            expect(render()).toBeNull();
         });
 
         it('returns null when compactionData is null', () => {
-            const ctx = makeContext({ compactionData: null });
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBeNull();
+            expect(render({ compactionData: null })).toBeNull();
         });
 
         it('returns null when context.data is absent', () => {
-            const ctx = makeContext();
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBeNull();
+            expect(render()).toBeNull();
         });
 
         it('returns sample data in preview mode', () => {
-            const ctx = makeContext({ isPreview: true });
-            expect(new CompactionCounterWidget().render(ITEM, ctx, DEFAULT_SETTINGS)).toBe('\u21BB2');
+            expect(render({ isPreview: true })).toBe('↻2');
         });
     });
 
     describe('editor', () => {
         it('has correct editor display', () => {
-            expect(new CompactionCounterWidget().getEditorDisplay(ITEM)).toEqual({
-                displayText: 'Compaction Counter'
-            });
+            expect(new CompactionCounterWidget().getEditorDisplay(ITEM)).toEqual({ displayText: 'Compaction Counter' });
         });
     });
 });

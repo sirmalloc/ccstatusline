@@ -19,9 +19,7 @@ export interface RenderUsageData {
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
-export interface CompactionData {
-    count: number;
-}
+export interface CompactionData { count: number }
 
 export interface RenderContext {
     data?: StatusJSON;

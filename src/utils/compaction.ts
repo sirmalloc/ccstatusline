@@ -1,12 +1,6 @@
-import {
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    writeFileSync
-} from 'node:fs';
-import * as os from 'node:os';
-import { join } from 'node:path';
-
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { z } from 'zod';
 
 const DEFAULT_DROP_THRESHOLD = 2;
@@ -29,11 +23,6 @@ const CompactionStateSchema = z.object({
  * the threshold indicates Claude Code compacted the conversation. The threshold
  * filters rounding noise and cache accounting wobble — a drop must exceed
  * the threshold (default: more than 2 points) to count.
- *
- * @param currentCtxPct - Current used_percentage from StatusJSON
- * @param state - Previous compaction state
- * @param dropThreshold - Minimum percentage-point drop to count as compaction (default: 2)
- * @returns Updated compaction state
  */
 export function detectCompaction(
     currentCtxPct: number,
@@ -52,7 +41,7 @@ export function detectCompaction(
 
 function getCacheDir(): string {
     const home = process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
-    return join(home, '.cache', 'ccstatusline', CACHE_SUBDIR);
+    return path.join(home, '.cache', 'ccstatusline', CACHE_SUBDIR);
 }
 
 function sanitizeSessionId(sessionId: string): string {
@@ -60,20 +49,21 @@ function sanitizeSessionId(sessionId: string): string {
 }
 
 function getStatePath(sessionId: string): string {
-    return join(getCacheDir(), `compaction-${sanitizeSessionId(sessionId)}.json`);
+    return path.join(getCacheDir(), `compaction-${sanitizeSessionId(sessionId)}.json`);
 }
 
 /**
  * Load compaction state for a session.
  */
 export function loadCompactionState(sessionId: string): CompactionState {
-    const path = getStatePath(sessionId);
-    if (!existsSync(path)) {
+    const statePath = getStatePath(sessionId);
+    if (!fs.existsSync(statePath)) {
         return { count: 0, prevCtxPct: 0 };
     }
     try {
-        const raw: unknown = JSON.parse(readFileSync(path, 'utf-8'));
-        return CompactionStateSchema.parse(raw);
+        const raw: unknown = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+        const result = CompactionStateSchema.safeParse(raw);
+        return result.success ? result.data : { count: 0, prevCtxPct: 0 };
     } catch {
         return { count: 0, prevCtxPct: 0 };
     }
@@ -85,10 +75,10 @@ export function loadCompactionState(sessionId: string): CompactionState {
 export function saveCompactionState(sessionId: string, state: CompactionState): void {
     try {
         const dir = getCacheDir();
-        if (!existsSync(dir)) {
-            mkdirSync(dir, { recursive: true });
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
         }
-        writeFileSync(getStatePath(sessionId), JSON.stringify(state) + '\n');
+        fs.writeFileSync(getStatePath(sessionId), JSON.stringify(state) + '\n');
     } catch {
         // Best-effort — cache write failure should not break status line rendering
     }

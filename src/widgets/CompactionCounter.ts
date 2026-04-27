@@ -30,7 +30,8 @@ export class CompactionCounterWidget implements Widget {
         }
 
         const count = context.compactionData?.count;
-        if (!count) return null;
+        if (!count)
+            return null;
 
         return `\u21BB${count}`;
     }
