@@ -23,9 +23,9 @@ bun run example
 
 ### Claude & Session
 
-- **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version.
+- **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version. Model names omit trailing context suffixes like `(1M context)`; use **Context Length** when you want the window size shown.
 - **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email.
-- **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data.
+- **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`.
 - **Session Clock** / **Session Cost** - Show elapsed session time and the current session cost in USD.
 
 ### Git
@@ -92,6 +92,10 @@ Configure global formatting preferences that apply to all widgets:
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
 
+## Claude Code Status Line Settings
+
+When ccstatusline is installed in Claude Code, the main menu includes **Configure Status Line**. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty.
+
 ## Block Timer Widget
 
 The Block Timer widget helps you track your progress through Claude Code's 5-hour conversation blocks:
@@ -123,8 +127,10 @@ Some widgets support "raw value" mode which displays just the value without a la
 Common controls in the line editor:
 - `↑/↓` select widget
 - `←/→` open the type picker for the selected widget
+- navigation wraps at list boundaries, including move/reorder mode
 - `a` add widget via the picker
 - `i` insert widget via the picker
+- `k` clone the selected widget
 - `Enter` enter/exit move mode
 - `d` delete selected widget
 - `c` clear the current line
