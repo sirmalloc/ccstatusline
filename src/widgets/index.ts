@@ -26,6 +26,7 @@ export { TokensOutputWidget } from './TokensOutput';
 export { TokensCachedWidget } from './TokensCached';
 export { TokensTotalWidget } from './TokensTotal';
 export { ContextLengthWidget } from './ContextLength';
+export { ContextWindowWidget } from './ContextWindow';
 export { ContextPercentageWidget } from './ContextPercentage';
 export { ContextPercentageUsableWidget } from './ContextPercentageUsable';
 export { SessionClockWidget } from './SessionClock';
