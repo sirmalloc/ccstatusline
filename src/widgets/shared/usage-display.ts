@@ -63,6 +63,11 @@ export function getUsageTimezone(item: WidgetItem): string | undefined {
     return typeof tz === 'string' && tz.length > 0 ? tz : undefined;
 }
 
+export function getUsageLocale(item: WidgetItem): string | undefined {
+    const locale = item.metadata?.locale;
+    return typeof locale === 'string' && locale.length > 0 ? locale : undefined;
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }

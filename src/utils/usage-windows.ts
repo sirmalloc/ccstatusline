@@ -118,9 +118,16 @@ function formatResetAtUtc(date: Date, compact: boolean): string {
         : `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }
 
-function formatResetAtInTimezone(date: Date, compact: boolean, timezone: string | undefined): string | null {
+const DEFAULT_TZ_LOCALE = 'en-CA';
+
+function formatResetAtInTimezone(
+    date: Date,
+    compact: boolean,
+    timezone: string | undefined,
+    locale: string
+): string | null {
     try {
-        const formatter = new Intl.DateTimeFormat('en-CA', {
+        const formatter = new Intl.DateTimeFormat(locale, {
             timeZone: timezone,
             year: 'numeric',
             month: '2-digit',
@@ -155,7 +162,8 @@ function formatResetAtInTimezone(date: Date, compact: boolean, timezone: string 
 export function formatUsageResetAt(
     resetAt: string | undefined,
     compact = false,
-    timezone?: string
+    timezone?: string,
+    locale?: string
 ): string | null {
     if (!resetAt) {
         return null;
@@ -173,9 +181,17 @@ export function formatUsageResetAt(
     }
 
     const resolvedTimezone = timezone === 'local' ? undefined : timezone;
-    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone);
+    const resolvedLocale = locale && locale.length > 0 ? locale : DEFAULT_TZ_LOCALE;
+    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone, resolvedLocale);
     if (localized) {
         return localized;
+    }
+
+    if (resolvedLocale !== DEFAULT_TZ_LOCALE) {
+        const fallback = formatResetAtInTimezone(date, compact, resolvedTimezone, DEFAULT_TZ_LOCALE);
+        if (fallback) {
+            return fallback;
+        }
     }
 
     return formatResetAtUtc(date, compact);

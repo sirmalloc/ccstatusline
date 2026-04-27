@@ -19,6 +19,7 @@ import {
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsageProgressBarWidth,
+    getUsageLocale,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
     isUsageCompact,
@@ -113,7 +114,8 @@ export class BlockResetTimerWidget implements Widget {
 
         if (dateMode) {
             const timezone = getUsageTimezone(item);
-            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone);
+            const locale = getUsageLocale(item);
+            const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone, locale);
             if (resetAt) {
                 return formatRawOrLabeledValue(item, 'Reset: ', resetAt);
             }

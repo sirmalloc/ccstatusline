@@ -188,6 +188,28 @@ describe('usage window helpers', () => {
         expect(result).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \S+$/);
     });
 
+    it('uses the supplied locale to choose the timezone abbreviation', () => {
+        // ja-JP returns 'JST' for Asia/Tokyo, en-CA returns 'GMT+9'
+        const ja = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'ja-JP');
+        expect(ja).toBe('2026-04-27 19:00 JST');
+
+        const en = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'en-CA');
+        expect(en).toBe('2026-04-27 19:00 GMT+9');
+    });
+
+    it('compact mode drops the locale-dependent timezone abbreviation', () => {
+        const ja = formatUsageResetAt('2026-04-27T10:00:00.000Z', true, 'Asia/Tokyo', 'ja-JP');
+        expect(ja).toBe('04-27 19:00');
+    });
+
+    it('still produces a valid output even with a permissive/unknown locale', () => {
+        // Intl.DateTimeFormat is lenient about locale strings (canonicalizes
+        // or falls back to system default). We just verify the output shape
+        // is intact — locale handling is delegated to the runtime ICU data.
+        const result = formatUsageResetAt('2026-04-27T10:00:00.000Z', false, 'Asia/Tokyo', 'xx-XX');
+        expect(result).toMatch(/^2026-04-27 19:00 \S+$/);
+    });
+
     it('formats duration with days in compact style when >= 24h', () => {
         expect(formatUsageDuration(25 * 60 * 60 * 1000, true)).toBe('1d1h');
         expect(formatUsageDuration(36.5 * 60 * 60 * 1000, true)).toBe('1d12h30m');
