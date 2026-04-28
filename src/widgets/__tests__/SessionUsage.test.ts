@@ -2,6 +2,8 @@ import {
     afterEach,
     beforeEach,
     describe,
+    expect,
+    it,
     vi
 } from 'vitest';
 
@@ -9,6 +11,7 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
+import type { UsageWindowMetrics } from '../../utils/usage-types';
 import { SessionUsageWidget } from '../SessionUsage';
 
 import { runUsagePercentWidgetSuite } from './helpers/usage-widget-suites';
@@ -18,6 +21,14 @@ const usageErrorMessageMock = {
     mockReturnValue(value: string): void {
         mockGetUsageErrorMessage.mockReturnValue(value);
     }
+};
+
+const halfElapsedWindow: UsageWindowMetrics = {
+    sessionDurationMs: 18000000,
+    elapsedMs: 9000000,
+    remainingMs: 9000000,
+    elapsedPercent: 50,
+    remainingPercent: 50
 };
 
 function render(widget: SessionUsageWidget, item: WidgetItem, context: RenderContext = {}): string | null {
@@ -33,6 +44,24 @@ describe('SessionUsageWidget', () => {
 
     afterEach(() => {
         vi.restoreAllMocks();
+    });
+
+    it('renders the time cursor in short bar modes', () => {
+        const widget = new SessionUsageWidget();
+        const context: RenderContext = { usageData: { sessionUsage: 20 } };
+
+        vi.spyOn(usage, 'resolveUsageWindowWithFallback').mockReturnValue(halfElapsedWindow);
+
+        expect(render(widget, {
+            id: 'session',
+            type: 'session-usage',
+            metadata: { cursor: 'true', display: 'slider' }
+        }, context)).toBe('Session: ▓▓░░░│░░░░ 20.0%');
+        expect(render(widget, {
+            id: 'session',
+            type: 'session-usage',
+            metadata: { cursor: 'true', display: 'slider-only' }
+        }, context)).toBe('Session: ▓▓░░░│░░░░');
     });
 
     runUsagePercentWidgetSuite({

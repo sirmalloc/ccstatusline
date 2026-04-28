@@ -43,11 +43,27 @@ export function isUsageSliderMode(mode: UsageDisplayMode): boolean {
     return mode === 'slider' || mode === 'slider-only';
 }
 
-export function makeSliderBar(percent: number, width: number = SLIDER_WIDTH): string {
+interface SliderBarOptions { cursorPercent?: number }
+
+export function makeSliderBar(percent: number, width: number = SLIDER_WIDTH, options?: SliderBarOptions): string {
     const clamped = Math.max(0, Math.min(100, percent));
     const filled = Math.round((clamped / 100) * width);
-    const empty = width - filled;
-    return '▓'.repeat(filled) + '░'.repeat(empty);
+    const cursorPos = options?.cursorPercent !== undefined
+        ? Math.min(Math.floor((Math.max(0, Math.min(100, options.cursorPercent)) / 100) * width), width - 1)
+        : -1;
+
+    let bar = '';
+    for (let i = 0; i < width; i++) {
+        if (i === cursorPos) {
+            bar += '│';
+        } else if (i < filled) {
+            bar += '▓';
+        } else {
+            bar += '░';
+        }
+    }
+
+    return bar;
 }
 
 export function getUsageProgressBarWidth(mode: UsageDisplayMode): number {
@@ -165,7 +181,7 @@ export function getUsageDisplayModifierText(
         modifiers.push('inverted');
     }
 
-    if (isUsageCursorEnabled(item) && isUsageProgressMode(mode)) {
+    if (isUsageCursorEnabled(item) && (isUsageProgressMode(mode) || isUsageSliderMode(mode))) {
         modifiers.push('time cursor');
     }
 
@@ -215,11 +231,7 @@ export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: 
                 : 'time';
     }
 
-    const keysToRemove = nextMode === 'time'
-        ? ['invert', 'cursor']
-        : isUsageSliderMode(nextMode)
-            ? ['cursor', ...disabledInProgressKeys]
-            : disabledInProgressKeys;
+    const keysToRemove = nextMode === 'time' ? ['invert', 'cursor'] : disabledInProgressKeys;
     const nextItem = removeMetadataKeys(item, keysToRemove);
     const nextMetadata: Record<string, string> = {
         ...(nextItem.metadata ?? {}),
@@ -244,7 +256,7 @@ export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[
         if (isUsageProgressMode(mode) || isUsageSliderMode(mode)) {
             keybinds.push(INVERT_TOGGLE_KEYBIND);
         }
-        if (isUsageProgressMode(mode)) {
+        if (isUsageProgressMode(mode) || isUsageSliderMode(mode)) {
             keybinds.push(CURSOR_TOGGLE_KEYBIND);
         }
     }

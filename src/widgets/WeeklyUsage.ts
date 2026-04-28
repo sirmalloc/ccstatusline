@@ -74,7 +74,7 @@ export class WeeklyUsageWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(renderedPercent);
+                const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
                 return formatRawOrLabeledValue(item, 'Weekly: ', sliderDisplay);
             }
@@ -90,25 +90,25 @@ export class WeeklyUsageWidget implements Widget {
 
         const percent = Math.max(0, Math.min(100, data.weeklyUsage));
         const renderedPercent = inverted ? 100 - percent : percent;
+        const getCursorOptions = (): { cursorPercent: number } | undefined => {
+            if (!showCursor) {
+                return undefined;
+            }
+
+            const window = resolveWeeklyUsageWindow(data);
+            return window ? { cursorPercent: window.elapsedPercent } : undefined;
+        };
 
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
 
-            let cursorOpts;
-            if (showCursor) {
-                const window = resolveWeeklyUsageWindow(data);
-                if (window) {
-                    cursorOpts = { cursorPercent: window.elapsedPercent };
-                }
-            }
-
-            const progressBar = makeTimerProgressBar(renderedPercent, width, cursorOpts);
+            const progressBar = makeTimerProgressBar(renderedPercent, width, getCursorOptions());
             const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
             return formatRawOrLabeledValue(item, 'Weekly: ', progressDisplay);
         }
 
         if (isUsageSliderMode(displayMode)) {
-            const slider = makeSliderBar(renderedPercent);
+            const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
             return formatRawOrLabeledValue(item, 'Weekly: ', sliderDisplay);
         }

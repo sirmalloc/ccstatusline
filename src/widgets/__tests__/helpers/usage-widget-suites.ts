@@ -79,12 +79,20 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         vi.clearAllMocks();
     });
 
-    it('exposes widget-managed keybinds for time and progress modes', () => {
+    it('exposes widget-managed keybinds for time and bar modes', () => {
         const widget = config.createWidget();
 
         expect(widget.supportsRawValue()).toBe(true);
         expect(widget.getCustomKeybinds(config.baseItem)).toEqual(EXPECTED_USAGE_KEYBINDS);
         expect(widget.getCustomKeybinds(config.progressItem)).toEqual(EXPECTED_USAGE_PROGRESS_KEYBINDS);
+        expect(widget.getCustomKeybinds({
+            ...config.baseItem,
+            metadata: { display: 'slider' }
+        })).toEqual(EXPECTED_USAGE_PROGRESS_KEYBINDS);
+        expect(widget.getCustomKeybinds({
+            ...config.baseItem,
+            metadata: { display: 'slider-only' }
+        })).toEqual(EXPECTED_USAGE_PROGRESS_KEYBINDS);
     });
 
     it.each([
@@ -164,6 +172,25 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(cleared?.metadata?.invert).toBe('false');
         expect(widget.getEditorDisplay(config.baseItem).modifierText).toBeUndefined();
         expect(widget.getEditorDisplay(config.modifierItem).modifierText).toBe(config.expectedModifierText);
+    });
+
+    it('shows time cursor editor modifiers in short bar modes', () => {
+        const widget = config.createWidget();
+
+        expect(widget.getEditorDisplay({
+            ...config.baseItem,
+            metadata: {
+                cursor: 'true',
+                display: 'slider'
+            }
+        }).modifierText).toBe('(short bar, time cursor)');
+        expect(widget.getEditorDisplay({
+            ...config.baseItem,
+            metadata: {
+                cursor: 'true',
+                display: 'slider-only'
+            }
+        }).modifierText).toBe('(short bar only, time cursor)');
     });
 
     it('ignores stale compact metadata in editor modifiers', () => {
