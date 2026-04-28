@@ -13,6 +13,7 @@ import {
 
 import type {
     RenderContext,
+    StatusJSON,
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
@@ -31,6 +32,10 @@ const MODEL_WITH_XHIGH_MIXED_CASE_EFFORT = '<local-command-stdout>Set model to \
 const MODEL_WITH_SUPER_MAX_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-8)\u001b[22m with \u001b[1msuper-max\u001b[22m effort</local-command-stdout>';
 const MODEL_WITH_SUPER_MAX_MIXED_CASE_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-8)\u001b[22m with \u001b[1mSuper-Max\u001b[22m effort</local-command-stdout>';
 const MODEL_WITHOUT_EFFORT = '<local-command-stdout>Set model to \u001b[1msonnet (claude-sonnet-4-5)\u001b[22m</local-command-stdout>';
+const EFFORT_HIGH = '<local-command-stdout>Set effort level to \u001b[1mhigh\u001b[22m: Comprehensive implementation with extensive testing and documentation</local-command-stdout>';
+const EFFORT_LOW = '<local-command-stdout>Set effort level to \u001b[1mlow\u001b[22m: Quick, minimal-effort response</local-command-stdout>';
+const EFFORT_MEDIUM = '<local-command-stdout>Set effort level to \u001b[1mmedium\u001b[22m: Balanced response with good coverage</local-command-stdout>';
+const EFFORT_MAX = '<local-command-stdout>Set effort level to \u001b[1mmax\u001b[22m (this session only): Maximum capability with deepest reasoning (Opus 4.6 only)</local-command-stdout>';
 
 let tempDir: string;
 
@@ -49,6 +54,7 @@ function render(options: {
     fileContent?: string | null | undefined;
     rawValue?: boolean;
     isPreview?: boolean;
+    statusData?: Partial<StatusJSON>;
     settingsValue?: unknown;
 } = {}): string | null {
     const {
@@ -56,12 +62,17 @@ function render(options: {
         fileContent,
         rawValue = false,
         isPreview = false,
+        statusData = {},
         settingsValue = {}
     } = options;
 
     const widget = new ThinkingEffortWidget();
+    const data: Partial<StatusJSON> = {
+        ...statusData,
+        ...(transcriptPath ? { transcript_path: transcriptPath } : {})
+    };
     const context: RenderContext = {
-        data: transcriptPath ? { transcript_path: transcriptPath } : undefined,
+        data: Object.keys(data).length > 0 ? data : undefined,
         isPreview
     };
     const item: WidgetItem = {
@@ -124,6 +135,49 @@ describe('ThinkingEffortWidget', () => {
         });
     });
 
+    describe('status JSON source', () => {
+        it('reads max effort from status JSON', () => {
+            const result = render({ statusData: { effort: { level: 'max' } } });
+            expect(result).toBe('Thinking: max');
+        });
+
+        it('returns raw status JSON effort when requested', () => {
+            const result = render({
+                rawValue: true,
+                statusData: { effort: { level: 'max' } }
+            });
+            expect(result).toBe('max');
+        });
+
+        it('prefers status JSON effort over transcript and settings fallbacks', () => {
+            const result = render({
+                fileContent: makeTranscriptEntry(MODEL_WITH_HIGH_EFFORT),
+                settingsValue: { effortLevel: 'low' },
+                statusData: { effort: { level: 'max' } }
+            });
+            expect(result).toBe('Thinking: max');
+        });
+
+        it('supports xhigh effort from status JSON', () => {
+            const result = render({ statusData: { effort: { level: 'xhigh' } } });
+            expect(result).toBe('Thinking: xhigh');
+        });
+
+        it('shows unknown-but-valid status JSON effort with trailing "?" marker', () => {
+            const result = render({ statusData: { effort: { level: 'ultra' } } });
+            expect(result).toBe('Thinking: ultra?');
+        });
+
+        it('treats null status JSON effort as explicit default', () => {
+            const result = render({
+                fileContent: makeTranscriptEntry(MODEL_WITH_HIGH_EFFORT),
+                settingsValue: { effortLevel: 'low' },
+                statusData: { effort: { level: null } }
+            });
+            expect(result).toBe('Thinking: default');
+        });
+    });
+
     describe('transcript source', () => {
         it('reads effort from the latest /model transcript stdout', () => {
             const result = render({
@@ -176,6 +230,61 @@ describe('ThinkingEffortWidget', () => {
                 settingsValue: { effortLevel: 'medium' }
             });
             expect(result).toBe('Thinking: medium');
+        });
+    });
+
+    describe('/effort command source', () => {
+        it('reads effort from /effort transcript stdout', () => {
+            const result = render({ fileContent: makeTranscriptEntry(EFFORT_HIGH) });
+            expect(result).toBe('Thinking: high');
+        });
+
+        it('supports low effort from /effort command', () => {
+            const result = render({ fileContent: makeTranscriptEntry(EFFORT_LOW) });
+            expect(result).toBe('Thinking: low');
+        });
+
+        it('supports medium effort from /effort command', () => {
+            const result = render({ fileContent: makeTranscriptEntry(EFFORT_MEDIUM) });
+            expect(result).toBe('Thinking: medium');
+        });
+
+        it('supports max effort from /effort command', () => {
+            const result = render({ fileContent: makeTranscriptEntry(EFFORT_MAX) });
+            expect(result).toBe('Thinking: max');
+        });
+
+        it('returns raw effort from /effort command', () => {
+            const result = render({ fileContent: makeTranscriptEntry(EFFORT_HIGH), rawValue: true });
+            expect(result).toBe('high');
+        });
+
+        it('/effort overrides earlier /model when it is newer', () => {
+            const result = render({
+                fileContent: [
+                    makeTranscriptEntry(MODEL_WITH_LOW_EFFORT),
+                    makeTranscriptEntry(EFFORT_MAX)
+                ].join('\n')
+            });
+            expect(result).toBe('Thinking: max');
+        });
+
+        it('/model overrides earlier /effort when it is newer', () => {
+            const result = render({
+                fileContent: [
+                    makeTranscriptEntry(EFFORT_MAX),
+                    makeTranscriptEntry(MODEL_WITH_LOW_EFFORT)
+                ].join('\n')
+            });
+            expect(result).toBe('Thinking: low');
+        });
+
+        it('/effort overrides settings fallback', () => {
+            const result = render({
+                fileContent: makeTranscriptEntry(EFFORT_HIGH),
+                settingsValue: { effortLevel: 'low' }
+            });
+            expect(result).toBe('Thinking: high');
         });
     });
 
