@@ -108,6 +108,7 @@ export const App: React.FC = () => {
     const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
+    const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -331,6 +332,14 @@ export const App: React.FC = () => {
         setScreen('items');
     };
 
+    const handleWidgetHighlight = useCallback((widgetId: string | null) => {
+        setActiveWidgetId(widgetId);
+    }, []);
+
+    const handleTabSwap = useCallback(() => {
+        setScreen((prev) => (prev === 'items' ? 'colors' : 'items'));
+    }, []);
+
     return (
         <Box flexDirection='column'>
             <Box marginBottom={1}>
@@ -408,6 +417,9 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
+                        onTabSwap={handleTabSwap}
+                        onWidgetHighlight={handleWidgetHighlight}
+                        initialWidgetId={activeWidgetId}
                     />
                 )}
                 {screen === 'colorLines' && (
@@ -446,6 +458,9 @@ export const App: React.FC = () => {
                             // Go back to line selection for colors
                             setScreen('colorLines');
                         }}
+                        onTabSwap={handleTabSwap}
+                        onWidgetHighlight={handleWidgetHighlight}
+                        initialWidgetId={activeWidgetId}
                     />
                 )}
                 {screen === 'terminalConfig' && (
