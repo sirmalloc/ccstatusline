@@ -170,10 +170,10 @@ function renderPowerlineStatusLine(
             // Apply default padding from settings
             const padding = settings.defaultPadding ?? '';
 
-            // If override FG color is set and this is a custom command with preserveColors,
+            // If override FG color is set and this widget has preserveColors,
             // we need to strip the ANSI codes from the widget text
             if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                && widget.type === 'custom-command' && widget.preserveColors) {
+                && widget.preserveColors) {
                 // Strip ANSI color codes when override is active
                 widgetText = stripSgrCodes(widgetText);
             }
@@ -193,8 +193,8 @@ function renderPowerlineStatusLine(
             let bgColor = widget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
-            // For custom commands with preserveColors, only skip foreground theme colors
-            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
+            // For widgets with preserveColors, only skip foreground theme colors
+            const skipFgTheme = widget.preserveColors;
 
             if (themeColors) {
                 if (!skipFgTheme) {
@@ -305,8 +305,8 @@ function renderPowerlineStatusLine(
 
         let widgetContent = '';
 
-        // For custom commands with preserveColors, only skip foreground color/bold
-        const isPreserveColors = widget.widget.type === 'custom-command' && widget.widget.preserveColors;
+        // For widgets with preserveColors, only skip foreground color/bold
+        const isPreserveColors = widget.widget.preserveColors;
 
         if (shouldBold && !isPreserveColors) {
             widgetContent += '\x1b[1m';
@@ -738,8 +738,8 @@ export function renderStatusLine(
             }
 
             if (widgetText) {
-                // Special handling for custom-command with preserveColors
-                if (widget.type === 'custom-command' && widget.preserveColors) {
+                // Special handling for widgets with preserveColors
+                if (widget.preserveColors) {
                     // Handle max width truncation for commands with ANSI codes
                     let finalOutput = widgetText;
                     if (widget.maxWidth && widget.maxWidth > 0) {

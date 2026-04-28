@@ -66,6 +66,7 @@ export { LinkWidget } from './Link';
 export { SkillsWidget } from './Skills';
 export { ThinkingEffortWidget } from './ThinkingEffort';
 export { VimModeWidget } from './VimMode';
+export { PeakHoursWidget } from './PeakHours';
 export { GitWorktreeModeWidget } from './GitWorktreeMode';
 export { GitWorktreeNameWidget } from './GitWorktreeName';
 export { GitWorktreeBranchWidget } from './GitWorktreeBranch';
