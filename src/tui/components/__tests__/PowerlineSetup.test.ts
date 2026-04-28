@@ -11,6 +11,10 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import {
+    PowerlineSeparatorEditor,
+    type PowerlineSeparatorEditorProps
+} from '../PowerlineSeparatorEditor';
+import {
     PowerlineSetup,
     buildPowerlineSetupMenuItems,
     getCapDisplay,
@@ -167,6 +171,66 @@ describe('PowerlineSetup helpers', () => {
             const updatedSettings = onUpdate.mock.calls[0]?.[0];
             expect(updatedSettings).toBeDefined();
             expect(updatedSettings?.powerline.continueThemeAcrossLines).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+});
+
+describe('PowerlineSeparatorEditor', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it.each([
+        ['startCap', 'startCaps', '\uE0B2'],
+        ['endCap', 'endCaps', '\uE0B0']
+    ] as const)('allows adding more than 3 %s entries', async (mode, capKey, expectedDefaultCap) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSeparatorEditorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const existingCaps = [expectedDefaultCap, expectedDefaultCap, expectedDefaultCap];
+        const instance = render(
+            React.createElement(PowerlineSeparatorEditor, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        [capKey]: existingCaps
+                    }
+                },
+                mode,
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stdout.getOutput()).toContain('(a)dd');
+
+            stdin.write('a');
+            await flushInk();
+
+            const updatedSettings = onUpdate.mock.calls[0]?.[0];
+            expect(updatedSettings).toBeDefined();
+            expect(updatedSettings?.powerline[capKey]).toHaveLength(4);
+            expect(updatedSettings?.powerline[capKey][1]).toBe(expectedDefaultCap);
         } finally {
             instance.unmount();
             instance.cleanup();
