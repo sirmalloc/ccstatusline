@@ -13,10 +13,16 @@ import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
+    detectCompaction,
+    loadCompactionState,
+    saveCompactionState
+} from './utils/compaction';
+import {
     initConfigPath,
     loadSettings,
     saveSettings
 } from './utils/config';
+import { calculateContextPercentageMetrics } from './utils/context-percentage';
 import {
     getSessionDuration,
     getSpeedMetricsCollection,
@@ -141,6 +147,26 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
+    // Compaction detection — track context percentage drops between renders
+    let compactionCount = 0;
+    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    if (hasCompactionWidget && data.session_id) {
+        const prevState = loadCompactionState(data.session_id);
+        compactionCount = prevState.count;
+        const contextPercentageMetrics = calculateContextPercentageMetrics({ data, tokenMetrics });
+        if (contextPercentageMetrics !== null) {
+            const newState = detectCompaction(contextPercentageMetrics.usedPercentage, prevState, { windowSize: contextPercentageMetrics.windowSize });
+            if (
+                newState.count !== prevState.count
+                || newState.prevCtxPct !== prevState.prevCtxPct
+                || newState.prevWindowSize !== prevState.prevWindowSize
+            ) {
+                saveCompactionState(data.session_id, newState);
+            }
+            compactionCount = newState.count;
+        }
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -150,6 +176,7 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
+        compactionData: hasCompactionWidget ? { count: compactionCount } : null,
         isPreview: false,
         minimalist: settings.minimalistMode
     };
