@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -10,15 +10,20 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { clearGitCache } from '../../utils/git';
 import {
     buildIdeFileUrl,
     renderOsc8Link
 } from '../../utils/hyperlink';
 import { GitRootDirWidget } from '../GitRootDir';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -43,6 +48,7 @@ function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolea
 describe('GitRootDirWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        clearGitCache();
     });
 
     it('should render preview', () => {
@@ -63,16 +69,20 @@ describe('GitRootDirWidget', () => {
     });
 
     it('should render root directory name', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('/some/path/my-repo');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('/some/path/my-repo');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('my-repo');
-        expect(mockExecSync.mock.calls[0]?.[1]).toEqual({
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd: '/tmp/worktree'
         });
-        expect(mockExecSync.mock.calls[1]?.[1]).toEqual({
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('git');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['rev-parse', '--show-toplevel']);
+        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd: '/tmp/worktree'
@@ -80,30 +90,30 @@ describe('GitRootDirWidget', () => {
     });
 
     it('should handle trailing separators', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('/some/path/my-repo/');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('/some/path/my-repo/');
 
         expect(render()).toBe('my-repo');
     });
 
     it('should render unix root path without returning empty output', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('/');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('/');
 
         expect(render()).toBe('/');
     });
 
     it('should render windows drive root without returning empty output', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('C:/');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('C:/');
 
         expect(render()).toBe('C:');
     });
 
     it('should render encoded vscode IDE links for repository roots', () => {
         const widget = new GitRootDirWidget();
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('C:/Work/my repo#1');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('C:/Work/my repo#1');
 
         expect(widget.render({
             id: 'git-root-dir',
@@ -117,8 +127,8 @@ describe('GitRootDirWidget', () => {
 
     it('should continue honoring legacy cursor link metadata', () => {
         const widget = new GitRootDirWidget();
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('/some/path/my repo#1');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('/some/path/my repo#1');
 
         expect(widget.render({
             id: 'git-root-dir',
@@ -131,19 +141,19 @@ describe('GitRootDirWidget', () => {
     });
 
     it('should render no git when probe returns false', () => {
-        mockExecSync.mockReturnValue('false\n');
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render()).toBe('no git');
     });
 
     it('should render no git when command fails', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No git'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('No git'); });
 
         expect(render()).toBe('no git');
     });
 
     it('should hide no git when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No git'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('No git'); });
 
         expect(render({ hideNoGit: true })).toBeNull();
     });

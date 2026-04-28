@@ -1,13 +1,20 @@
 import type { Settings } from '../types/Settings';
 import type {
     Widget,
+    WidgetItem,
     WidgetItemType
 } from '../types/Widget';
 
 import {
+    filterFuzzySearchRecords,
+    type FuzzySearchRecord
+} from './fuzzy';
+import {
     LAYOUT_WIDGET_MANIFEST,
     WIDGET_MANIFEST
 } from './widget-manifest';
+
+export { getMatchSegments } from './fuzzy';
 
 // Create widget registry
 const widgetRegistry = new Map<WidgetItemType, Widget>(
@@ -15,8 +22,21 @@ const widgetRegistry = new Map<WidgetItemType, Widget>(
 );
 const layoutWidgetTypes = new Set<WidgetItemType>(LAYOUT_WIDGET_MANIFEST.map(entry => entry.type));
 
+export const LEGACY_WIDGET_TYPE_ALIASES: Record<string, WidgetItemType> = { 'git-pr': 'git-review' };
+
+export function resolveLegacyWidgetType(type: WidgetItemType): WidgetItemType {
+    return LEGACY_WIDGET_TYPE_ALIASES[type] ?? type;
+}
+
+export function upgradeLegacyWidgetTypes(lines: WidgetItem[][]): WidgetItem[][] {
+    return lines.map(line => line.map((item) => {
+        const resolved = resolveLegacyWidgetType(item.type);
+        return resolved === item.type ? item : { ...item, type: resolved };
+    }));
+}
+
 export function getWidget(type: WidgetItemType): Widget | null {
-    return widgetRegistry.get(type) ?? null;
+    return widgetRegistry.get(resolveLegacyWidgetType(type)) ?? null;
 }
 
 export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
@@ -91,62 +111,25 @@ export function getWidgetCatalogCategories(catalog: WidgetCatalogEntry[]): strin
 }
 
 export function filterWidgetCatalog(catalog: WidgetCatalogEntry[], category: string, query: string): WidgetCatalogEntry[] {
-    const normalizedQuery = query.trim().toLowerCase();
-
     const categoryFiltered = category === 'All'
         ? [...catalog]
         : catalog.filter(entry => entry.category === category);
 
-    const withScore = categoryFiltered
-        .map((entry) => {
-            if (!normalizedQuery) {
-                return {
-                    entry,
-                    score: 99
-                };
-            }
+    const records: FuzzySearchRecord<WidgetCatalogEntry>[] = categoryFiltered.map(entry => ({
+        item: entry,
+        name: entry.displayName,
+        type: entry.type,
+        description: entry.description,
+        searchText: entry.searchText,
+        sortText: entry.displayName,
+        secondarySortText: entry.type
+    }));
 
-            const name = entry.displayName.toLowerCase();
-            const description = entry.description.toLowerCase();
-            const type = entry.type.toLowerCase();
-
-            if (name.startsWith(normalizedQuery)) {
-                return { entry, score: 0 };
-            }
-            if (name.includes(normalizedQuery)) {
-                return { entry, score: 1 };
-            }
-            if (type.includes(normalizedQuery)) {
-                return { entry, score: 2 };
-            }
-            if (description.includes(normalizedQuery)) {
-                return { entry, score: 3 };
-            }
-            if (entry.searchText.includes(normalizedQuery)) {
-                return { entry, score: 4 };
-            }
-
-            return null;
-        })
-        .filter((item): item is { entry: WidgetCatalogEntry; score: number } => item !== null);
-
-    return withScore
-        .sort((a, b) => {
-            if (a.score !== b.score) {
-                return a.score - b.score;
-            }
-
-            const byDisplayName = a.entry.displayName.localeCompare(b.entry.displayName);
-            if (byDisplayName !== 0) {
-                return byDisplayName;
-            }
-
-            return a.entry.type.localeCompare(b.entry.type);
-        })
-        .map(item => item.entry);
+    return filterFuzzySearchRecords(records, query);
 }
 
 export function isKnownWidgetType(type: string): boolean {
-    return widgetRegistry.has(type)
-        || layoutWidgetTypes.has(type);
+    const resolved = resolveLegacyWidgetType(type);
+    return widgetRegistry.has(resolved)
+        || layoutWidgetTypes.has(resolved);
 }

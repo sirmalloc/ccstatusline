@@ -39,7 +39,7 @@ describe('WeeklyUsageWidget', () => {
         baseItem: { id: 'weekly', type: 'weekly-usage' },
         createWidget: () => new WeeklyUsageWidget(),
         errorMessageMock: usageErrorMessageMock,
-        expectedModifierText: '(progress bar, inverted)',
+        expectedModifierText: '(long bar, inverted)',
         expectedProgress: 'Weekly: [███████████████████░░░░░░░░░░░░░] 57.9%',
         expectedRawProgress: '[███████░░░░░░░░░] 42.1%',
         expectedRawTime: '42.1%',
