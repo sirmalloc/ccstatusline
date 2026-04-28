@@ -114,11 +114,40 @@ describe('widget catalog', () => {
         }
     });
 
+    it('returns unique widget identifiers', () => {
+        const types = getAllWidgetTypes(baseSettings);
+
+        expect(new Set(types).size).toBe(types.length);
+    });
+
     it('recognizes known widget and layout types', () => {
         expect(isKnownWidgetType('model')).toBe(true);
         expect(isKnownWidgetType('separator')).toBe(true);
         expect(isKnownWidgetType('flex-separator')).toBe(true);
         expect(isKnownWidgetType('unknown-widget-type')).toBe(false);
+    });
+});
+
+describe('legacy widget type aliases', () => {
+    it('resolves legacy git-pr type to the git-review widget instance', () => {
+        const canonical = getWidget('git-review');
+        const legacy = getWidget('git-pr');
+        expect(canonical).not.toBeNull();
+        expect(legacy).toBe(canonical);
+    });
+
+    it('treats legacy git-pr as a known widget type', () => {
+        expect(isKnownWidgetType('git-pr')).toBe(true);
+    });
+
+    it('does not list the legacy git-pr type in the catalog', () => {
+        const catalog = getWidgetCatalog({
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        });
+        const types = new Set(catalog.map(entry => entry.type));
+        expect(types.has('git-review')).toBe(true);
+        expect(types.has('git-pr')).toBe(false);
     });
 });
 

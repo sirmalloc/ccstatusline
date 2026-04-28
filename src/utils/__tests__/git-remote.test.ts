@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -18,9 +18,13 @@ import {
     parseRemoteUrl
 } from '../git-remote';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockImplementationOnce: (impl: () => never) => void;
@@ -125,6 +129,14 @@ describe('git-remote utils', () => {
                     repo: 'project'
                 });
             });
+
+            it('preserves non-default HTTPS ports', () => {
+                expect(parseRemoteUrl('https://git.example.com:8443/team/repo.git')).toEqual({
+                    host: 'git.example.com:8443',
+                    owner: 'team',
+                    repo: 'repo'
+                });
+            });
         });
 
         describe('ssh:// protocol format', () => {
@@ -141,6 +153,14 @@ describe('git-remote utils', () => {
                     host: 'github.service.anz',
                     owner: 'org',
                     repo: 'project'
+                });
+            });
+
+            it('omits ssh:// transport ports from the parsed host', () => {
+                expect(parseRemoteUrl('ssh://git@git.example.com:2222/team/repo.git')).toEqual({
+                    host: 'git.example.com',
+                    owner: 'team',
+                    repo: 'repo'
                 });
             });
         });
@@ -188,7 +208,7 @@ describe('git-remote utils', () => {
 
     describe('getRemoteInfo', () => {
         it('returns remote info for valid remote', () => {
-            mockExecSync.mockReturnValue('https://github.com/hangie/ccstatusline.git\n');
+            mockExecFileSync.mockReturnValue('https://github.com/hangie/ccstatusline.git\n');
             const context: RenderContext = { data: { cwd: '/tmp/repo' } };
 
             const result = getRemoteInfo('origin', context);
@@ -202,14 +222,24 @@ describe('git-remote utils', () => {
             });
         });
 
+        it('passes remote name as a literal git argument', () => {
+            mockExecFileSync.mockReturnValue('https://github.com/hangie/ccstatusline.git\n');
+            const remoteName = 'foo$(touch /tmp/pwn)';
+
+            getRemoteInfo(remoteName, {});
+
+            expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['remote', 'get-url', '--', remoteName]);
+        });
+
         it('returns null when remote does not exist', () => {
-            mockExecSync.mockImplementation(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockImplementation(() => { throw new Error('No such remote'); });
 
             expect(getRemoteInfo('nonexistent', {})).toBeNull();
         });
 
         it('returns null when URL cannot be parsed', () => {
-            mockExecSync.mockReturnValue('invalid-url\n');
+            mockExecFileSync.mockReturnValue('invalid-url\n');
 
             expect(getRemoteInfo('origin', {})).toBeNull();
         });
@@ -217,7 +247,7 @@ describe('git-remote utils', () => {
 
     describe('getUpstreamRemoteInfo', () => {
         it('prefers a literal upstream remote when present', () => {
-            mockExecSync.mockReturnValueOnce('https://github.com/upstream-owner/repo.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/upstream-owner/repo.git\n');
 
             expect(getUpstreamRemoteInfo({})).toEqual({
                 name: 'upstream',
@@ -229,10 +259,10 @@ describe('git-remote utils', () => {
         });
 
         it('falls back to the tracking remote when upstream is not a remote name', () => {
-            mockExecSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
-            mockExecSync.mockReturnValueOnce('origin\nhangie\n');
-            mockExecSync.mockReturnValueOnce('https://github.com/hangie/ccstatusline.git\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
+            mockExecFileSync.mockReturnValueOnce('origin\nhangie\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/hangie/ccstatusline.git\n');
 
             expect(getUpstreamRemoteInfo({})).toEqual({
                 name: 'hangie',
@@ -244,10 +274,10 @@ describe('git-remote utils', () => {
         });
 
         it('matches the longest remote prefix when remote names contain slashes', () => {
-            mockExecSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecSync.mockReturnValueOnce('team/upstream/feature/worktree\n');
-            mockExecSync.mockReturnValueOnce('origin\nteam\nteam/upstream\n');
-            mockExecSync.mockReturnValueOnce('https://github.com/team/upstream-repo.git\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('team/upstream/feature/worktree\n');
+            mockExecFileSync.mockReturnValueOnce('origin\nteam\nteam/upstream\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/team/upstream-repo.git\n');
 
             expect(getUpstreamRemoteInfo({})).toEqual({
                 name: 'team/upstream',
@@ -259,9 +289,9 @@ describe('git-remote utils', () => {
         });
 
         it('returns null when the tracking remote cannot be resolved', () => {
-            mockExecSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
-            mockExecSync.mockReturnValueOnce('origin\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
+            mockExecFileSync.mockReturnValueOnce('origin\n');
 
             expect(getUpstreamRemoteInfo({})).toBeNull();
         });
@@ -269,8 +299,8 @@ describe('git-remote utils', () => {
 
     describe('getForkStatus', () => {
         it('detects fork when origin and upstream differ', () => {
-            mockExecSync.mockReturnValueOnce('https://github.com/hangie/ccstatusline.git\n');
-            mockExecSync.mockReturnValueOnce('https://github.com/sirmalloc/ccstatusline.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/hangie/ccstatusline.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/sirmalloc/ccstatusline.git\n');
 
             const result = getForkStatus({});
 
@@ -280,8 +310,8 @@ describe('git-remote utils', () => {
         });
 
         it('detects fork when repos have different names', () => {
-            mockExecSync.mockReturnValueOnce('https://github.com/hangie/my-fork.git\n');
-            mockExecSync.mockReturnValueOnce('https://github.com/hangie/original.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/hangie/my-fork.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/hangie/original.git\n');
 
             const result = getForkStatus({});
 
@@ -289,8 +319,8 @@ describe('git-remote utils', () => {
         });
 
         it('returns not a fork when only origin exists', () => {
-            mockExecSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
-            mockExecSync.mockImplementation(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+            mockExecFileSync.mockImplementation(() => { throw new Error('No such remote'); });
 
             const result = getForkStatus({});
 
@@ -300,8 +330,8 @@ describe('git-remote utils', () => {
         });
 
         it('returns not a fork when origin equals upstream', () => {
-            mockExecSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
-            mockExecSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
 
             const result = getForkStatus({});
 
@@ -309,7 +339,7 @@ describe('git-remote utils', () => {
         });
 
         it('returns not a fork when no remotes exist', () => {
-            mockExecSync.mockImplementation(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockImplementation(() => { throw new Error('No such remote'); });
 
             const result = getForkStatus({});
 
@@ -321,19 +351,19 @@ describe('git-remote utils', () => {
 
     describe('listRemotes', () => {
         it('returns list of remote names', () => {
-            mockExecSync.mockReturnValue('origin\nupstream\n');
+            mockExecFileSync.mockReturnValue('origin\nupstream\n');
 
             expect(listRemotes({})).toEqual(['origin', 'upstream']);
         });
 
         it('returns empty array when no remotes', () => {
-            mockExecSync.mockImplementation(() => { throw new Error('Not a git repo'); });
+            mockExecFileSync.mockImplementation(() => { throw new Error('Not a git repo'); });
 
             expect(listRemotes({})).toEqual([]);
         });
 
         it('filters empty lines', () => {
-            mockExecSync.mockReturnValue('origin\n\nupstream\n\n');
+            mockExecFileSync.mockReturnValue('origin\n\nupstream\n\n');
 
             expect(listRemotes({})).toEqual(['origin', 'upstream']);
         });

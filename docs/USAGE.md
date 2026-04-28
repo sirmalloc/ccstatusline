@@ -23,16 +23,17 @@ bun run example
 
 ### Claude & Session
 
-- **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version.
+- **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version. Model names omit trailing context suffixes like `(1M context)`; use **Context Window** when you want the total window size shown.
 - **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email.
-- **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data.
+- **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort reads live status JSON first, then `/model` or `/effort` transcript output, then settings fallback; it supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`.
 - **Session Clock** / **Session Cost** - Show elapsed session time and the current session cost in USD.
 
 ### Git
 
-- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR details for the current branch with optional links.
+- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Works with GitHub (`gh`) and GitLab (`glab`); for self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
 - **Git Changes** / **Git Insertions** / **Git Deletions** - Show aggregate file-change counts and dedicated insertion/deletion counts.
 - **Git Status** / **Git Staged** / **Git Unstaged** / **Git Untracked** / **Git Ahead/Behind** / **Git Conflicts** / **Git SHA** - Show compact repo-state indicators, upstream divergence, merge-conflict count, and the current short commit SHA.
+- **Git Staged Files** / **Git Unstaged Files** / **Git Untracked Files** / **Git Clean Status** - Show file-level status counts and clean/dirty state.
 - **Git Origin Owner** / **Git Origin Repo** / **Git Origin Owner/Repo** - Show parsed `origin` remote metadata.
 - **Git Upstream Owner** / **Git Upstream Repo** / **Git Upstream Owner/Repo** / **Git Is Fork** - Show upstream remote metadata and whether the current repo is a fork.
 - **Git Worktree** / **Git Worktree Mode** / **Git Worktree Name** / **Git Worktree Branch** / **Git Worktree Original Branch** - Show worktree status plus the active worktree's name and branch metadata.
@@ -41,8 +42,9 @@ bun run example
 
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
-- **Context Length** / **Context %** / **Context % (usable)** / **Context Bar** - Show model context size, usage percentage, usable-window percentage, or a progress bar.
-- **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing.
+- **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, usage percentage, usable-window percentage, or a progress bar.
+- **Compaction Counter** - Show how many context compactions have been detected in the current session. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
+- **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. Reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
 
 ### Environment, Layout & Custom
 
@@ -69,6 +71,7 @@ Configure global formatting preferences that apply to all widgets:
 - **Default Separator** - Automatically insert a separator between all widgets
   - Press **(p)** to edit padding
   - Press **(s)** to edit separator
+- Manual separators collapse around widgets that render empty, so hide-when-empty widgets do not leave dangling dividers.
 
 <details>
 <summary><b>Global Formatting Options</b></summary>
@@ -91,6 +94,10 @@ Configure global formatting preferences that apply to all widgets:
 > 💡 **Note:** These settings are applied during rendering and don't add widgets to your widget list. They provide a consistent look across your entire status line without modifying individual widget configurations.
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
+
+## Claude Code Status Line Settings
+
+When ccstatusline is installed in Claude Code, the main menu includes **Configure Status Line**. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty.
 
 ## Block Timer Widget
 
@@ -123,8 +130,10 @@ Some widgets support "raw value" mode which displays just the value without a la
 Common controls in the line editor:
 - `↑/↓` select widget
 - `←/→` open the type picker for the selected widget
+- navigation wraps at list boundaries, including move/reorder mode
 - `a` add widget via the picker
 - `i` insert widget via the picker
+- `k` clone the selected widget
 - `Enter` enter/exit move mode
 - `d` delete selected widget
 - `c` clear the current line
@@ -142,17 +151,19 @@ The keybind footer in the TUI only shows shortcuts that apply to the currently s
 
 Widget-specific shortcuts:
 - **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
-- **Git Branch**: `l` toggle clickable GitHub branch links
+- **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`)
-- **Git PR**: `h` hide empty/no-PR output, `s` toggle review status, `t` toggle title
+- **Git PR**: `h` hide empty/no-PR/MR output, `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
 - **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `h` hide when no remote, `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Is Fork**: `h` hide when the repo is not a fork
-- **Context % widgets**: `u` toggle used vs remaining display
-- **Session Usage / Weekly Usage**: `p` cycle percentage/full bar/short bar, `v` invert fill in progress mode
-- **Block Timer / Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
-- **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `h` toggle hours-only, `v` invert fill in progress mode
-- **Context Bar**: `p` toggle full-width vs short progress bar
+- **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
+- **Session Usage / Weekly Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode
+- **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
+- **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
+- **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
+- **Context Bar**: `p` cycle medium/full/short/short-only progress bar
+- **Compaction Counter**: `f` cycle format, `n` toggle Nerd Font icon in icon mode, `h` hide when zero
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds

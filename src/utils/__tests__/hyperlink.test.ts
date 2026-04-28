@@ -6,27 +6,8 @@ import {
 
 import {
     buildIdeFileUrl,
-    encodeGitRefForUrlPath,
-    parseGitHubBaseUrl
+    encodeGitRefForUrlPath
 } from '../hyperlink';
-
-describe('parseGitHubBaseUrl', () => {
-    it('supports scp-style SSH remotes', () => {
-        expect(parseGitHubBaseUrl('git@github.com:owner/repo.git')).toBe('https://github.com/owner/repo');
-    });
-
-    it('supports ssh URL remotes', () => {
-        expect(parseGitHubBaseUrl('ssh://git@github.com/owner/repo.git')).toBe('https://github.com/owner/repo');
-    });
-
-    it('supports credentialed HTTPS remotes', () => {
-        expect(parseGitHubBaseUrl('https://token@github.com/owner/repo.git')).toBe('https://github.com/owner/repo');
-    });
-
-    it('rejects non-GitHub remotes', () => {
-        expect(parseGitHubBaseUrl('https://gitlab.com/owner/repo.git')).toBeNull();
-    });
-});
 
 describe('encodeGitRefForUrlPath', () => {
     it('encodes reserved characters while preserving branch separators', () => {
