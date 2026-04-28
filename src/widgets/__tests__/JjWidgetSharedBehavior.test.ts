@@ -11,6 +11,9 @@ import type {
 } from '../../types';
 import { JjBookmarksWidget } from '../JjBookmarks';
 import { JjChangesWidget } from '../JjChanges';
+import { JjDeletionsWidget } from '../JjDeletions';
+import { JjDescriptionWidget } from '../JjDescription';
+import { JjInsertionsWidget } from '../JjInsertions';
 import { JjRevisionWidget } from '../JjRevision';
 import { JjRootDirWidget } from '../JjRootDir';
 import { JjWorkspaceWidget } from '../JjWorkspace';
@@ -25,6 +28,9 @@ const cases: { name: string; itemType: string; widget: JjWidget }[] = [
     { name: 'JjWorkspaceWidget', itemType: 'jj-workspace', widget: new JjWorkspaceWidget() },
     { name: 'JjRootDirWidget', itemType: 'jj-root-dir', widget: new JjRootDirWidget() },
     { name: 'JjChangesWidget', itemType: 'jj-changes', widget: new JjChangesWidget() },
+    { name: 'JjInsertionsWidget', itemType: 'jj-insertions', widget: new JjInsertionsWidget() },
+    { name: 'JjDeletionsWidget', itemType: 'jj-deletions', widget: new JjDeletionsWidget() },
+    { name: 'JjDescriptionWidget', itemType: 'jj-description', widget: new JjDescriptionWidget() },
     { name: 'JjRevisionWidget', itemType: 'jj-revision', widget: new JjRevisionWidget() }
 ];
 
