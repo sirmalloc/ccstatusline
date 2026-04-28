@@ -51,6 +51,7 @@ bun run docs
 - `~/.config/ccstatusline/settings.json` - ccstatusline UI/render settings
 - `~/.claude/settings.json` - Claude Code settings (`statusLine` command object)
 - `~/.cache/ccstatusline/block-cache-*.json` - block timer cache (keyed by Claude config directory hash)
+- `~/.cache/ccstatusline/compaction/compaction-*.json` - per-session compaction counter state
 
 If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
 
