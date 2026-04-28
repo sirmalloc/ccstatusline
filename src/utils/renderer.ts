@@ -668,18 +668,21 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
-            // Check if there's any widget before this separator that actually rendered content
-            // Look backwards to find ANY widget that produced content
+            // Look backwards to the immediately-prior non-separator widget and
+            // emit this separator only if that widget actually rendered content.
+            // This collapses separators around hide-capable widgets that rendered
+            // empty (e.g., git-changes with no changes, conditional widgets with
+            // hide-when-zero semantics) and also suppresses a leading separator
+            // when no prior widget has rendered.
             let hasContentBefore = false;
             for (let j = i - 1; j >= 0; j--) {
                 const prevWidget = widgets[j];
-                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
-                    if (preRenderedWidgets[j]?.content) {
-                        hasContentBefore = true;
-                        break;
-                    }
-                    // Continue looking backwards even if this widget didn't render content
-                }
+                if (!prevWidget)
+                    continue;
+                if (prevWidget.type === 'separator' || prevWidget.type === 'flex-separator')
+                    continue;
+                hasContentBefore = Boolean(preRenderedWidgets[j]?.content);
+                break;
             }
             if (!hasContentBefore)
                 continue;
