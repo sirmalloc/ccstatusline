@@ -12,6 +12,7 @@ import type { WidgetItemType } from '../../types/Widget';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
+    getMatchSegments,
     getWidget,
     getWidgetCatalog,
     getWidgetCatalogCategories,
@@ -114,11 +115,40 @@ describe('widget catalog', () => {
         }
     });
 
+    it('returns unique widget identifiers', () => {
+        const types = getAllWidgetTypes(baseSettings);
+
+        expect(new Set(types).size).toBe(types.length);
+    });
+
     it('recognizes known widget and layout types', () => {
         expect(isKnownWidgetType('model')).toBe(true);
         expect(isKnownWidgetType('separator')).toBe(true);
         expect(isKnownWidgetType('flex-separator')).toBe(true);
         expect(isKnownWidgetType('unknown-widget-type')).toBe(false);
+    });
+});
+
+describe('legacy widget type aliases', () => {
+    it('resolves legacy git-pr type to the git-review widget instance', () => {
+        const canonical = getWidget('git-review');
+        const legacy = getWidget('git-pr');
+        expect(canonical).not.toBeNull();
+        expect(legacy).toBe(canonical);
+    });
+
+    it('treats legacy git-pr as a known widget type', () => {
+        expect(isKnownWidgetType('git-pr')).toBe(true);
+    });
+
+    it('does not list the legacy git-pr type in the catalog', () => {
+        const catalog = getWidgetCatalog({
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        });
+        const types = new Set(catalog.map(entry => entry.type));
+        expect(types.has('git-review')).toBe(true);
+        expect(types.has('git-pr')).toBe(false);
     });
 });
 
@@ -145,6 +175,49 @@ describe('widget catalog filtering', () => {
 
     it('applies category and query filters together', () => {
         const results = filterWidgetCatalog(catalog, 'Git', 'context');
+        expect(results).toHaveLength(0);
+    });
+
+    it('fuzzy-matches initials across word boundaries (gb → Git Branch)', () => {
+        const results = filterWidgetCatalog(catalog, 'All', 'gb');
+        expect(results[0]?.type).toBe('git-branch');
+    });
+
+    it('prioritizes display-name fuzzy matches over description substring hits', () => {
+        const results = filterWidgetCatalog(catalog, 'All', 'tw');
+        expect(results[0]?.type).toBe('terminal-width');
+    });
+
+    it('prioritizes word-initial fuzzy matches over incidental subsequence matches', () => {
+        expect(filterWidgetCatalog(catalog, 'All', 'tc')[0]?.type).toBe('tokens-cached');
+        expect(filterWidgetCatalog(catalog, 'All', 'ti')[0]?.type).toBe('tokens-input');
+        expect(filterWidgetCatalog(catalog, 'All', 'to')[0]?.type).toBe('tokens-output');
+    });
+
+    it('ranks exact substring matches above fuzzy matches', () => {
+        const rankingCatalog: WidgetCatalogEntry[] = [
+            {
+                type: 'exact-match' as WidgetItemType,
+                displayName: 'Git Branch',
+                description: 'Exact substring match',
+                category: 'Core',
+                searchText: 'git branch exact substring match exact-match'
+            },
+            {
+                type: 'fuzzy-match' as WidgetItemType,
+                displayName: 'Global Input Timer',
+                description: 'Fuzzy-only match',
+                category: 'Core',
+                searchText: 'global input timer fuzzy-only match fuzzy-match'
+            }
+        ];
+
+        const results = filterWidgetCatalog(rankingCatalog, 'All', 'git');
+        expect(results.map(entry => entry.type)).toEqual(['exact-match', 'fuzzy-match']);
+    });
+
+    it('returns no results when query chars cannot form a subsequence in any entry', () => {
+        const results = filterWidgetCatalog(catalog, 'All', 'zzz');
         expect(results).toHaveLength(0);
     });
 
@@ -175,5 +248,52 @@ describe('widget catalog filtering', () => {
 
         const results = filterWidgetCatalog(rankingCatalog, 'All', 'git');
         expect(results.map(entry => entry.type)).toEqual(['alpha', 'git-type-only', 'desc-only']);
+    });
+});
+
+describe('getMatchSegments', () => {
+    it('returns single unmatched segment when query is empty', () => {
+        expect(getMatchSegments('Git Branch', '')).toEqual([{ text: 'Git Branch', matched: false }]);
+    });
+
+    it('highlights exact substring match', () => {
+        const segments = getMatchSegments('Git Branch', 'git');
+        expect(segments).toEqual([
+            { text: 'Git', matched: true },
+            { text: ' Branch', matched: false }
+        ]);
+    });
+
+    it('highlights exact substring in the middle', () => {
+        const segments = getMatchSegments('Git Branch', 'it B');
+        expect(segments).toEqual([
+            { text: 'G', matched: false },
+            { text: 'it B', matched: true },
+            { text: 'ranch', matched: false }
+        ]);
+    });
+
+    it('highlights fuzzy match positions when no substring match exists', () => {
+        const segments = getMatchSegments('Git Branch', 'gb');
+        const matched = segments.filter(s => s.matched).map(s => s.text).join('');
+        expect(matched.toLowerCase()).toBe('gb');
+    });
+
+    it('prefers word-initial fuzzy positions over incidental interior-letter matches', () => {
+        expect(getMatchSegments('Tokens Output', 'to')).toEqual([
+            { text: 'T', matched: true },
+            { text: 'okens ', matched: false },
+            { text: 'O', matched: true },
+            { text: 'utput', matched: false }
+        ]);
+    });
+
+    it('returns unmatched segment when query chars cannot form a subsequence', () => {
+        expect(getMatchSegments('Git Branch', 'zzz')).toEqual([{ text: 'Git Branch', matched: false }]);
+    });
+
+    it('is case-insensitive but preserves original casing in output', () => {
+        const segments = getMatchSegments('Git Branch', 'GIT');
+        expect(segments[0]).toEqual({ text: 'Git', matched: true });
     });
 });

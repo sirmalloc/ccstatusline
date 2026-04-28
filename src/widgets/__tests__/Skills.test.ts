@@ -18,7 +18,15 @@ function render(item: WidgetItem, context: RenderContext): string | null {
 describe('SkillsWidget', () => {
     it('uses v as the mode toggle keybind', () => {
         const widget = new SkillsWidget();
-        expect(widget.getCustomKeybinds()).toEqual([
+        expect(widget.getCustomKeybinds({ id: 'skills', type: 'skills' })).toEqual([
+            { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
+            { key: 'h', label: '(h)ide when empty', action: 'toggle-hide-empty' }
+        ]);
+        expect(widget.getCustomKeybinds({
+            id: 'skills',
+            type: 'skills',
+            metadata: { mode: 'list' }
+        })).toEqual([
             { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
             { key: 'h', label: '(h)ide when empty', action: 'toggle-hide-empty' },
             { key: 'l', label: '(l)imit', action: 'edit-list-limit' }
@@ -35,6 +43,21 @@ describe('SkillsWidget', () => {
         expect(count?.metadata?.mode).toBe('count');
         expect(list?.metadata?.mode).toBe('list');
         expect(current?.metadata?.mode).toBe('current');
+    });
+
+    it('clears list limit metadata when leaving list mode', () => {
+        const widget = new SkillsWidget();
+        const updated = widget.handleEditorAction('cycle-mode', {
+            id: 'skills',
+            type: 'skills',
+            metadata: {
+                mode: 'list',
+                listLimit: '2'
+            }
+        });
+
+        expect(updated?.metadata?.mode).toBe('current');
+        expect(updated?.metadata?.listLimit).toBeUndefined();
     });
 
     it('toggles hide-when-empty metadata', () => {

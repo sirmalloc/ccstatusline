@@ -20,6 +20,7 @@ import { shouldInsertInput } from '../utils/input-guards';
 import { makeModifierText } from './shared/editor-display';
 import {
     isMetadataFlagEnabled,
+    removeMetadataKeys,
     toggleMetadataFlag
 } from './shared/metadata';
 
@@ -73,12 +74,17 @@ export class SkillsWidget implements Widget {
         ];
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        const keybinds: CustomKeybind[] = [
             { key: 'v', label: '(v)iew: last/count/list', action: 'cycle-mode' },
-            { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION },
-            { key: 'l', label: '(l)imit', action: EDIT_LIST_LIMIT_ACTION }
+            { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_EMPTY_ACTION }
         ];
+
+        if (item && this.getMode(item) === 'list') {
+            keybinds.push({ key: 'l', label: '(l)imit', action: EDIT_LIST_LIMIT_ACTION });
+        }
+
+        return keybinds;
     }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -98,7 +104,8 @@ export class SkillsWidget implements Widget {
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'cycle-mode') {
             const next = MODES[(MODES.indexOf(this.getMode(item)) + 1) % MODES.length] ?? 'current';
-            return { ...item, metadata: { ...item.metadata, mode: next } };
+            const nextItem = next === 'list' ? item : removeMetadataKeys(item, [LIST_LIMIT_KEY]);
+            return { ...nextItem, metadata: { ...nextItem.metadata, mode: next } };
         }
         if (action === TOGGLE_HIDE_EMPTY_ACTION) {
             return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);

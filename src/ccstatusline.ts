@@ -13,15 +13,22 @@ import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
+    detectCompaction,
+    loadCompactionState,
+    saveCompactionState
+} from './utils/compaction';
+import {
     initConfigPath,
     loadSettings,
     saveSettings
 } from './utils/config';
+import { calculateContextPercentageMetrics } from './utils/context-percentage';
 import {
     getSessionDuration,
     getSpeedMetricsCollection,
     getTokenMetrics
 } from './utils/jsonl';
+import { advanceGlobalPowerlineThemeIndex } from './utils/powerline-theme-index';
 import {
     calculateMaxWidthsFromPreRendered,
     preRenderAllWidgets,
@@ -121,7 +128,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
-    const usageData = await prefetchUsageDataIfNeeded(lines);
+    const usageData = await prefetchUsageDataIfNeeded(lines, data);
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
@@ -140,6 +147,26 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
+    // Compaction detection — track context percentage drops between renders
+    let compactionCount = 0;
+    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    if (hasCompactionWidget && data.session_id) {
+        const prevState = loadCompactionState(data.session_id);
+        compactionCount = prevState.count;
+        const contextPercentageMetrics = calculateContextPercentageMetrics({ data, tokenMetrics });
+        if (contextPercentageMetrics !== null) {
+            const newState = detectCompaction(contextPercentageMetrics.usedPercentage, prevState, { windowSize: contextPercentageMetrics.windowSize });
+            if (
+                newState.count !== prevState.count
+                || newState.prevCtxPct !== prevState.prevCtxPct
+                || newState.prevWindowSize !== prevState.prevWindowSize
+            ) {
+                saveCompactionState(data.session_id, newState);
+            }
+            compactionCount = newState.count;
+        }
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -149,7 +176,9 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
-        isPreview: false
+        compactionData: hasCompactionWidget ? { count: compactionCount } : null,
+        isPreview: false,
+        minimalist: settings.minimalistMode
     };
 
     // Always pre-render all widgets once (for efficiency)
@@ -158,11 +187,17 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Render each line using pre-rendered content
     let globalSeparatorIndex = 0;
+    let globalPowerlineThemeIndex = 0;
     for (let i = 0; i < lines.length; i++) {
         const lineItems = lines[i];
         if (lineItems && lineItems.length > 0) {
-            const lineContext = { ...context, lineIndex: i, globalSeparatorIndex };
             const preRenderedWidgets = preRenderedLines[i] ?? [];
+            const lineContext = {
+                ...context,
+                lineIndex: i,
+                globalSeparatorIndex,
+                globalPowerlineThemeIndex
+            };
             const line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
 
             // Only output the line if it has content (not just ANSI codes)
@@ -177,6 +212,9 @@ async function renderMultipleLines(data: StatusJSON) {
                 console.log(outputLine);
 
                 globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
+                if (settings.powerline.enabled && settings.powerline.continueThemeAcrossLines) {
+                    globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
+                }
             }
         }
     }
@@ -250,7 +288,7 @@ async function handleHook(): Promise<void> {
         if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
             skillName = data.tool_input?.skill ?? '';
         } else if (data.hook_event_name === 'UserPromptSubmit') {
-            const match = /^\/([a-zA-Z0-9_:-]+)/.exec(data.prompt ?? '');
+            const match = /^\/([a-zA-Z0-9_:-]+)(?:\s|$)/.exec(data.prompt ?? '');
             if (match) {
                 skillName = match[1] ?? '';
             }

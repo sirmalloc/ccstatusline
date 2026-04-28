@@ -14,6 +14,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { renderOsc8Link } from '../utils/hyperlink';
 import { shouldInsertInput } from '../utils/input-guards';
 
 function isValidHttpUrl(url: string): boolean {
@@ -58,10 +59,6 @@ function buildMetadata(widget: WidgetItem, urlValue: string, textValue: string):
         ...widget,
         metadata
     };
-}
-
-function renderOsc8Link(url: string, text: string): string {
-    return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
 function getLinkLabel(item: WidgetItem): { url: string; label: string } {

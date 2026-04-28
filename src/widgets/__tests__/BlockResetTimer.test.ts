@@ -22,12 +22,14 @@ function render(widget: BlockResetTimerWidget, item: WidgetItem, context: Render
 
 describe('BlockResetTimerWidget', () => {
     let mockFormatUsageDuration: { mockReturnValue: (value: string) => void };
+    let mockFormatUsageResetAt: { mockReturnValue: (value: string | null) => void };
     let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
     let mockResolveUsageWindowWithFallback: { mockReturnValue: (value: UsageWindowMetrics | null) => void };
 
     beforeEach(() => {
         vi.restoreAllMocks();
         mockFormatUsageDuration = vi.spyOn(usage, 'formatUsageDuration');
+        mockFormatUsageResetAt = vi.spyOn(usage, 'formatUsageResetAt');
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
         mockResolveUsageWindowWithFallback = vi.spyOn(usage, 'resolveUsageWindowWithFallback');
     });
@@ -111,11 +113,87 @@ describe('BlockResetTimerWidget', () => {
         expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('3hr 45m');
     });
 
+    it('shows reset timestamp in date mode', () => {
+        const widget = new BlockResetTimerWidget();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 4500000,
+            remainingMs: 13500000,
+            elapsedPercent: 25,
+            remainingPercent: 75
+        });
+        mockFormatUsageResetAt.mockReturnValue('2026-03-12 08:30 UTC');
+
+        expect(render(widget,
+            { id: 'reset', type: 'reset-timer', metadata: { absolute: 'true', timezone: 'Asia/Tokyo', locale: 'ja-JP', hour12: 'true' } },
+            { usageData: { sessionResetAt: '2026-03-12T08:30:00.000Z' } }
+        )).toBe('Reset: 2026-03-12 08:30 UTC');
+        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-12T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true);
+    });
+
+    it('shows configured timestamp settings in editor display only in timestamp mode', () => {
+        const widget = new BlockResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { timezone: 'America/New_York', locale: 'ja-JP', hour12: 'true' }
+        }).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { absolute: 'true', timezone: 'America/New_York', locale: 'ja-JP', hour12: 'true' }
+        }).modifierText).toBe('(date, 12hr, tz: America/New_York, locale: ja-JP)');
+    });
+
+    it('shows timestamp keybinds only in timestamp mode', () => {
+        const widget = new BlockResetTimerWidget();
+
+        expect(widget.getCustomKeybinds({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { absolute: 'true' }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' },
+            { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' },
+            { key: 'z', label: 'time(z)one', action: 'edit-timezone' },
+            { key: 'l', label: '(l)ocale', action: 'edit-locale' }
+        ]);
+    });
+
+    it('toggles hour format metadata', () => {
+        const widget = new BlockResetTimerWidget();
+        const baseItem: WidgetItem = {
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { absolute: 'true' }
+        };
+
+        const hour12 = widget.handleEditorAction('toggle-hour-format', baseItem);
+        const cleared = widget.handleEditorAction('toggle-hour-format', hour12 ?? baseItem);
+
+        expect(hour12?.metadata?.hour12).toBe('true');
+        expect(cleared?.metadata?.hour12).toBe('false');
+    });
+
     runUsageTimerEditorSuite({
         baseItem: { id: 'reset', type: 'reset-timer' },
         createWidget: () => new BlockResetTimerWidget(),
         expectedDisplayName: 'Block Reset Timer',
-        expectedModifierText: '(short bar, inverted)',
+        expectedTimeKeybinds: [
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 's', label: '(s)hort time', action: 'toggle-compact' },
+            { key: 't', label: '(t)imestamp', action: 'toggle-date' }
+        ],
+        supportsDateMode: true,
+        expectedModifierText: '(medium bar, inverted)',
+        expectedProgressKeybinds: [
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+        ],
         modifierItem: {
             id: 'reset',
             type: 'reset-timer',

@@ -171,4 +171,39 @@ describe('config utilities', () => {
         expect(saved.version).toBe(CURRENT_VERSION);
         expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
+
+    it('silently rewrites legacy git-pr widget type to git-review on load', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({
+                version: CURRENT_VERSION,
+                lines: [
+                    [
+                        { id: 'widget-1', type: 'model' },
+                        { id: 'widget-2', type: 'git-pr' }
+                    ],
+                    [],
+                    []
+                ]
+            }),
+            'utf-8'
+        );
+
+        const settings = await loadSettings();
+
+        // In-memory rewrite: legacy string is gone.
+        const types = settings.lines[0]?.map(item => item.type);
+        expect(types).toEqual(['model', 'git-review']);
+
+        // Load does not eagerly persist; the rewrite lands on next save.
+        const onDiskBeforeSave = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { lines: { type: string }[][] };
+        expect(onDiskBeforeSave.lines[0]?.[1]?.type).toBe('git-pr');
+
+        await saveSettings(settings);
+
+        const onDiskAfterSave = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { lines: { type: string }[][] };
+        expect(onDiskAfterSave.lines[0]?.[1]?.type).toBe('git-review');
+    });
 });
