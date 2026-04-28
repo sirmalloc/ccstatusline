@@ -7,55 +7,84 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    getJjCurrentWorkspace,
-    isInsideJjWorkspace
+    isInsideJjRepo,
+    runJjArgs
 } from '../utils/jj';
 
-import {
-    getHideNoJjKeybinds,
-    getHideNoJjModifierText,
-    handleToggleNoJjAction,
-    isHideNoJjEnabled
-} from './shared/jj-no-jj';
+const CURRENT_WORKSPACE_TEMPLATE = 'if(target.current_working_copy(), name ++ "\n")';
 
 export class JjWorkspaceWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
-    getDescription(): string { return 'Shows the current jj workspace name'; }
+    getDescription(): string { return 'Shows the current jujutsu workspace name'; }
     getDisplayName(): string { return 'JJ Workspace'; }
     getCategory(): string { return 'Jujutsu'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const hideNoJj = item.metadata?.hideNoJj === 'true';
+        const modifiers: string[] = [];
+
+        if (hideNoJj) {
+            modifiers.push('hide \'no jj\'');
+        }
+
         return {
             displayText: this.getDisplayName(),
-            modifierText: getHideNoJjModifierText(item)
+            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoJjAction(action, item);
+        if (action === 'toggle-nojj') {
+            const currentState = item.metadata?.hideNoJj === 'true';
+            return {
+                ...item,
+                metadata: {
+                    ...item.metadata,
+                    hideNoJj: (!currentState).toString()
+                }
+            };
+        }
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHideNoJjEnabled(item);
+        const hideNoJj = item.metadata?.hideNoJj === 'true';
 
         if (context.isPreview) {
-            return item.rawValue ? 'default' : 'W: default';
+            return item.rawValue ? 'default' : '◆ default';
         }
 
-        if (!isInsideJjWorkspace(context)) {
-            return hideNoJj ? null : 'W: no jj';
+        if (!isInsideJjRepo(context)) {
+            return hideNoJj ? null : '◆ no jj';
         }
 
-        const workspace = getJjCurrentWorkspace(context);
-        if (workspace)
-            return item.rawValue ? workspace : `W: ${workspace}`;
+        const workspace = this.getJjWorkspace(context);
+        if (workspace) {
+            return item.rawValue ? workspace : `◆ ${workspace}`;
+        }
 
-        return hideNoJj ? null : 'W: no jj';
+        return hideNoJj ? null : '◆ no jj';
+    }
+
+    private getJjWorkspace(context: RenderContext): string | null {
+        const output = runJjArgs([
+            'workspace',
+            'list',
+            '--template',
+            CURRENT_WORKSPACE_TEMPLATE
+        ], context);
+        if (!output) {
+            return null;
+        }
+
+        return output.split(/\r?\n/).map(workspace => workspace.trim()).find(Boolean) ?? null;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoJjKeybinds();
+        return [
+            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
+        ];
     }
 
     supportsRawValue(): boolean { return true; }
-    supportsColors(_item: WidgetItem): boolean { return true; }
+    supportsColors(): boolean { return true; }
 }

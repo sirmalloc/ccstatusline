@@ -22,8 +22,12 @@ export function isHideWhenJjEnabled(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, HIDE_WHEN_JJ_KEY);
 }
 
-export function getHideWhenJjModifierText(item: WidgetItem): string[] {
+export function getHideWhenJjModifiers(item: WidgetItem): string[] {
     return isHideWhenJjEnabled(item) ? ['hide when jj'] : [];
+}
+
+export function getHideWhenJjModifierText(item: WidgetItem): string | undefined {
+    return makeModifierText(getHideWhenJjModifiers(item));
 }
 
 export function handleToggleHideWhenJjAction(action: string, item: WidgetItem): WidgetItem | null {

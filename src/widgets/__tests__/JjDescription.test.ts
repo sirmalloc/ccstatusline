@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -12,12 +12,11 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjDescriptionWidget } from '../JjDescription';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
-    mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
 
@@ -50,41 +49,50 @@ describe('JjDescriptionWidget', () => {
     });
 
     it('should render description', () => {
-        mockExecSync.mockReturnValueOnce('/my/project\n');
-        mockExecSync.mockReturnValueOnce('fix: update readme');
+        mockExecFileSync.mockReturnValueOnce('/my/project\n');
+        mockExecFileSync.mockReturnValueOnce('fix: update readme');
 
         expect(render({ cwd: '/my/project' })).toBe('fix: update readme');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
+            'log',
+            '--no-graph',
+            '-r',
+            '@',
+            '-T',
+            'description.first_line()'
+        ]);
     });
 
-    it('should render no jj when not in workspace', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No jj'); });
+    it('should render no jj when not in repo', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('No jj'); });
 
         expect(render()).toBe('no jj');
     });
 
     it('should hide no jj when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No jj'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('No jj'); });
 
         expect(render({ hideNoJj: true })).toBeNull();
     });
 
     it('should render no description when description is empty', () => {
-        mockExecSync.mockReturnValueOnce('/my/project\n');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('/my/project\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render({ cwd: '/my/project' })).toBe('(no description)');
     });
 
-    it('should render no description when command fails', () => {
-        mockExecSync.mockReturnValueOnce('/my/project\n');
-        mockExecSync.mockImplementation(() => { throw new Error('Failed'); });
+    it('should render no jj when command fails', () => {
+        mockExecFileSync.mockReturnValueOnce('/my/project\n');
+        mockExecFileSync.mockImplementation(() => { throw new Error('Failed'); });
 
         expect(render({ cwd: '/my/project' })).toBe('no jj');
     });
 
     it('should hide when command fails and hideNoJj enabled', () => {
-        mockExecSync.mockReturnValueOnce('/my/project\n');
-        mockExecSync.mockImplementation(() => { throw new Error('Failed'); });
+        mockExecFileSync.mockReturnValueOnce('/my/project\n');
+        mockExecFileSync.mockImplementation(() => { throw new Error('Failed'); });
 
         expect(render({ cwd: '/my/project', hideNoJj: true })).toBeNull();
     });

@@ -11,32 +11,59 @@ import {
     runGit
 } from '../utils/git';
 import {
+    buildBranchWebUrl,
+    getRemoteInfo
+} from '../utils/git-remote';
+import {
     encodeGitRefForUrlPath,
-    parseGitHubBaseUrl,
     renderOsc8Link
 } from '../utils/hyperlink';
-import { isInsideJjWorkspace } from '../utils/jj';
+import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
+import {
+    getHideWhenJjKeybinds,
+    getHideWhenJjModifiers,
+    handleToggleHideWhenJjAction,
+    isHideWhenJjEnabled
+} from './shared/git-hide-when-jj';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifiers,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
-import {
-    isMetadataFlagEnabled,
-    toggleMetadataFlag
-} from './shared/metadata';
-import {
-    getHideWhenJjKeybinds,
-    getHideWhenJjModifierText,
-    handleToggleHideWhenJjAction,
-    isHideWhenJjEnabled
-} from './shared/git-hide-when-jj';
+import { isMetadataFlagEnabled } from './shared/metadata';
 
-const LINK_KEY = 'linkToGitHub';
+const LINK_KEY = 'linkToRepo';
+const LEGACY_LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
+
+function isLinkEnabled(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, LINK_KEY)
+        || (item.metadata?.[LINK_KEY] === undefined && isMetadataFlagEnabled(item, LEGACY_LINK_KEY));
+}
+
+function toggleLink(item: WidgetItem): WidgetItem {
+    const nextEnabled = !isLinkEnabled(item);
+    const {
+        [LINK_KEY]: removedLink,
+        [LEGACY_LINK_KEY]: removedLegacyLink,
+        ...restMetadata
+    } = item.metadata ?? {};
+
+    void removedLink;
+    void removedLegacyLink;
+
+    const nextMetadata = nextEnabled
+        ? { ...restMetadata, [LINK_KEY]: 'true' }
+        : restMetadata;
+
+    return {
+        ...item,
+        metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined
+    };
+}
 
 export class GitBranchWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
@@ -44,22 +71,22 @@ export class GitBranchWidget implements Widget {
     getDisplayName(): string { return 'Git Branch'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const isLink = isMetadataFlagEnabled(item, LINK_KEY);
-        const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
+        const isLink = isLinkEnabled(item);
+        const modifiers = [
+            ...getHideNoGitModifiers(item),
+            ...getHideWhenJjModifiers(item)
+        ];
         if (isLink)
-            modifiers.push('GitHub link');
+            modifiers.push('repo link');
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText([...modifiers, ...getHideWhenJjModifierText(item)])
+            modifierText: makeModifierText(modifiers)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_LINK_ACTION) {
-            return toggleMetadataFlag(item, LINK_KEY);
+            return toggleLink(item);
         }
         return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
     }
@@ -67,14 +94,14 @@ export class GitBranchWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         void settings;
         const hideNoGit = isHideNoGitEnabled(item);
-        const isLink = isMetadataFlagEnabled(item, LINK_KEY);
+        const isLink = isLinkEnabled(item);
 
         if (context.isPreview) {
             const text = item.rawValue ? 'main' : '⎇ main';
             return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
         }
 
-        if (isHideWhenJjEnabled(item) && isInsideJjWorkspace(context)) {
+        if (isHideWhenJjEnabled(item) && isInsideJjRepo(context)) {
             return null;
         }
 
@@ -90,10 +117,12 @@ export class GitBranchWidget implements Widget {
         const displayText = item.rawValue ? branch : `⎇ ${branch}`;
 
         if (isLink) {
-            const remoteUrl = runGit('remote get-url origin', context);
-            const baseUrl = remoteUrl ? parseGitHubBaseUrl(remoteUrl) : null;
-            if (baseUrl) {
-                return renderOsc8Link(`${baseUrl}/tree/${encodeGitRefForUrlPath(branch)}`, displayText);
+            const origin = getRemoteInfo('origin', context);
+            if (origin) {
+                return renderOsc8Link(
+                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(branch)),
+                    displayText
+                );
             }
         }
 
@@ -108,7 +137,7 @@ export class GitBranchWidget implements Widget {
         return [
             ...getHideNoGitKeybinds(),
             ...getHideWhenJjKeybinds(),
-            { key: 'l', label: '(l)ink to GitHub', action: TOGGLE_LINK_ACTION }
+            { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION }
         ];
     }
 

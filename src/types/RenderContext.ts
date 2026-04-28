@@ -19,6 +19,8 @@ export interface RenderUsageData {
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
+export interface CompactionData { count: number }
+
 export interface RenderContext {
     data?: StatusJSON;
     tokenMetrics?: TokenMetrics | null;
@@ -28,8 +30,18 @@ export interface RenderContext {
     sessionDuration?: string | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
+    compactionData?: CompactionData | null;
     terminalWidth?: number | null;
     isPreview?: boolean;
+    minimalist?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
+
+    // For git widget thresholds
+    gitData?: {
+        changedFiles?: number;
+        insertions?: number;
+        deletions?: number;
+    };
+    globalPowerlineThemeIndex?: number;  // Global powerline theme index that continues across lines
 }

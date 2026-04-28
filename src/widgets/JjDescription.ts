@@ -7,45 +7,62 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
-    isInsideJjWorkspace,
-    runJj
+    isInsideJjRepo,
+    runJjArgs
 } from '../utils/jj';
-
-import {
-    getHideNoJjKeybinds,
-    getHideNoJjModifierText,
-    handleToggleNoJjAction,
-    isHideNoJjEnabled
-} from './shared/jj-no-jj';
 
 export class JjDescriptionWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
-    getDescription(): string { return 'Shows the current jj change description'; }
+    getDescription(): string { return 'Shows the current jujutsu change description'; }
     getDisplayName(): string { return 'JJ Description'; }
     getCategory(): string { return 'Jujutsu'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const hideNoJj = item.metadata?.hideNoJj === 'true';
+        const modifiers: string[] = [];
+
+        if (hideNoJj) {
+            modifiers.push('hide \'no jj\'');
+        }
+
         return {
             displayText: this.getDisplayName(),
-            modifierText: getHideNoJjModifierText(item)
+            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoJjAction(action, item);
+        if (action === 'toggle-nojj') {
+            const currentState = item.metadata?.hideNoJj === 'true';
+            return {
+                ...item,
+                metadata: {
+                    ...item.metadata,
+                    hideNoJj: (!currentState).toString()
+                }
+            };
+        }
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHideNoJjEnabled(item);
+        const hideNoJj = item.metadata?.hideNoJj === 'true';
 
         if (context.isPreview) {
             return '(no description)';
         }
 
-        if (!isInsideJjWorkspace(context)) {
+        if (!isInsideJjRepo(context)) {
             return hideNoJj ? null : 'no jj';
         }
 
-        const description = runJj('log --no-graph -r @ -T \'description.first_line()\'', context, true);
+        const description = runJjArgs([
+            'log',
+            '--no-graph',
+            '-r',
+            '@',
+            '-T',
+            'description.first_line()'
+        ], context, true);
         if (description === null) {
             return hideNoJj ? null : 'no jj';
         }
@@ -54,7 +71,9 @@ export class JjDescriptionWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoJjKeybinds();
+        return [
+            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
+        ];
     }
 
     supportsRawValue(): boolean { return false; }

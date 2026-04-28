@@ -8,40 +8,50 @@ import type {
 } from '../types/Widget';
 import {
     getJjChangeCounts,
-    isInsideJjWorkspace
+    isInsideJjRepo
 } from '../utils/jj';
-
-import {
-    getHideNoJjKeybinds,
-    getHideNoJjModifierText,
-    handleToggleNoJjAction,
-    isHideNoJjEnabled
-} from './shared/jj-no-jj';
 
 export class JjDeletionsWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
-    getDescription(): string { return 'Shows jj deletions count'; }
+    getDescription(): string { return 'Shows jujutsu deletions count'; }
     getDisplayName(): string { return 'JJ Deletions'; }
     getCategory(): string { return 'Jujutsu'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const hideNoJj = item.metadata?.hideNoJj === 'true';
+        const modifiers: string[] = [];
+
+        if (hideNoJj) {
+            modifiers.push('hide \'no jj\'');
+        }
+
         return {
             displayText: this.getDisplayName(),
-            modifierText: getHideNoJjModifierText(item)
+            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoJjAction(action, item);
+        if (action === 'toggle-nojj') {
+            const currentState = item.metadata?.hideNoJj === 'true';
+            return {
+                ...item,
+                metadata: {
+                    ...item.metadata,
+                    hideNoJj: (!currentState).toString()
+                }
+            };
+        }
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHideNoJjEnabled(item);
+        const hideNoJj = item.metadata?.hideNoJj === 'true';
 
         if (context.isPreview) {
             return '-10';
         }
 
-        if (!isInsideJjWorkspace(context)) {
+        if (!isInsideJjRepo(context)) {
             return hideNoJj ? null : '(no jj)';
         }
 
@@ -50,7 +60,9 @@ export class JjDeletionsWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoJjKeybinds();
+        return [
+            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
+        ];
     }
 
     supportsRawValue(): boolean { return false; }

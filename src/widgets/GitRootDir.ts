@@ -16,9 +16,15 @@ import {
     buildIdeFileUrl,
     renderOsc8Link
 } from '../utils/hyperlink';
-import { isInsideJjWorkspace } from '../utils/jj';
+import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
+import {
+    getHideWhenJjKeybinds,
+    getHideWhenJjModifiers,
+    handleToggleHideWhenJjAction,
+    isHideWhenJjEnabled
+} from './shared/git-hide-when-jj';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifiers,
@@ -26,12 +32,6 @@ import {
     isHideNoGitEnabled
 } from './shared/git-no-git';
 import { isMetadataFlagEnabled } from './shared/metadata';
-import {
-    getHideWhenJjKeybinds,
-    getHideWhenJjModifierText,
-    handleToggleHideWhenJjAction,
-    isHideWhenJjEnabled
-} from './shared/git-hide-when-jj';
 
 const IDE_LINK_KEY = 'linkToIDE';
 const LEGACY_CURSOR_LINK_KEY = 'linkToCursor';
@@ -48,15 +48,12 @@ export class GitRootDirWidget implements Widget {
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const ideLinkMode = this.getIdeLinkMode(item);
-        const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
+        const modifiers = getHideNoGitModifiers(item);
         if (ideLinkMode)
             modifiers.push(IDE_LINK_LABELS[ideLinkMode]);
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText([...modifiers, ...getHideWhenJjModifierText(item)])
+            modifierText: makeModifierText([...modifiers, ...getHideWhenJjModifiers(item)])
         };
     }
 
@@ -76,7 +73,7 @@ export class GitRootDirWidget implements Widget {
             return ideLinkMode ? renderOsc8Link(buildIdeFileUrl('/Users/example/my-repo', ideLinkMode), name) : name;
         }
 
-        if (isHideWhenJjEnabled(item) && isInsideJjWorkspace(context)) {
+        if (isHideWhenJjEnabled(item) && isInsideJjRepo(context)) {
             return null;
         }
 

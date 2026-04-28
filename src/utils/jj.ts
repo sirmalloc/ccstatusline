@@ -1,38 +1,22 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 import type { RenderContext } from '../types/RenderContext';
+
+import { resolveGitCwd } from './git';
 
 export interface JjChangeCounts {
     insertions: number;
     deletions: number;
 }
 
-export function resolveJjCwd(context: RenderContext): string | undefined {
-    const candidates = [
-        context.data?.cwd,
-        context.data?.workspace?.current_dir,
-        context.data?.workspace?.project_dir
-    ];
-
-    for (const candidate of candidates) {
-        if (typeof candidate === 'string' && candidate.trim().length > 0) {
-            return candidate;
-        }
-    }
-
-    return undefined;
-}
-
-// Returns trimmed stdout, or null if empty or on error.
-// Pass allowEmpty=true when an empty result is semantically distinct from failure.
-export function runJj(command: string, context: RenderContext, allowEmpty = false): string | null {
+export function runJjArgs(args: string[], context: RenderContext, allowEmpty = false): string | null {
     try {
-        const cwd = resolveJjCwd(context);
-        const output = execSync(`jj ${command}`, {
+        const cwd = resolveGitCwd(context);
+        const output = execFileSync('jj', args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
-        }).trim();
+        }).trimEnd();
 
         return (allowEmpty || output.length > 0) ? output : null;
     } catch {
@@ -40,8 +24,8 @@ export function runJj(command: string, context: RenderContext, allowEmpty = fals
     }
 }
 
-export function isInsideJjWorkspace(context: RenderContext): boolean {
-    return runJj('workspace root', context) !== null;
+export function isInsideJjRepo(context: RenderContext): boolean {
+    return runJjArgs(['root'], context) !== null;
 }
 
 function parseDiffStat(stat: string): JjChangeCounts {
@@ -54,23 +38,6 @@ function parseDiffStat(stat: string): JjChangeCounts {
     };
 }
 
-export function getJjCurrentWorkspace(context: RenderContext): string | null {
-    const output = runJj('workspace list', context);
-    if (!output)
-        return null;
-
-    const firstLine = output.split('\n')[0] ?? '';
-    const colonIndex = firstLine.indexOf(':');
-    if (colonIndex === -1)
-        return null;
-
-    const name = firstLine.slice(0, colonIndex).trim();
-
-    return name.length > 0 ? name : null;
-}
-
 export function getJjChangeCounts(context: RenderContext): JjChangeCounts {
-    const stat = runJj('diff --stat', context) ?? '';
-
-    return parseDiffStat(stat);
+    return parseDiffStat(runJjArgs(['diff', '--stat'], context) ?? '');
 }

@@ -10,21 +10,21 @@ import {
     getGitChangeCounts,
     isInsideGitWorkTree
 } from '../utils/git';
-import { isInsideJjWorkspace } from '../utils/jj';
+import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
+import {
+    getHideWhenJjKeybinds,
+    getHideWhenJjModifiers,
+    handleToggleHideWhenJjAction,
+    isHideWhenJjEnabled
+} from './shared/git-hide-when-jj';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifiers,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
-import {
-    getHideWhenJjKeybinds,
-    getHideWhenJjModifierText,
-    handleToggleHideWhenJjAction,
-    isHideWhenJjEnabled
-} from './shared/git-hide-when-jj';
 
 export class GitInsertionsWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -34,7 +34,7 @@ export class GitInsertionsWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText([...getHideNoGitModifiers(item), ...getHideWhenJjModifierText(item)])
+            modifierText: makeModifierText([...getHideNoGitModifiers(item), ...getHideWhenJjModifiers(item)])
         };
     }
 
@@ -49,7 +49,7 @@ export class GitInsertionsWidget implements Widget {
             return '+42';
         }
 
-        if (isHideWhenJjEnabled(item) && isInsideJjWorkspace(context)) {
+        if (isHideWhenJjEnabled(item) && isInsideJjRepo(context)) {
             return null;
         }
 

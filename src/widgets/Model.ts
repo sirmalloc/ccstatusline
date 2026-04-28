@@ -26,7 +26,8 @@ export class ModelWidget implements Widget {
             : (model?.display_name ?? model?.id);
 
         if (modelDisplayName) {
-            return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
+            const shortName = modelDisplayName.replace(/\s*\(.*\)$/, '');
+            return item.rawValue ? shortName : `Model: ${shortName}`;
         }
         return null;
     }

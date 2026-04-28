@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -12,12 +12,11 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjDeletionsWidget } from '../JjDeletions';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
-    mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
 
@@ -50,27 +49,30 @@ describe('JjDeletionsWidget', () => {
     });
 
     it('should render deletions', () => {
-        mockExecSync.mockReturnValueOnce('/my/project\n');
-        mockExecSync.mockReturnValueOnce('2 files changed, 5 insertions(+), 8 deletions(-)');
+        mockExecFileSync.mockReturnValueOnce('/my/project\n');
+        mockExecFileSync.mockReturnValueOnce('2 files changed, 5 insertions(+), 8 deletions(-)');
 
         expect(render({ cwd: '/my/project' })).toBe('-8');
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
     });
 
-    it('should render no jj when not in workspace', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No jj'); });
+    it('should render no jj when not in repo', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('No jj'); });
 
         expect(render()).toBe('(no jj)');
     });
 
     it('should hide no jj when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No jj'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('No jj'); });
 
         expect(render({ hideNoJj: true })).toBeNull();
     });
 
     it('should render zero deletions when no diff output', () => {
-        mockExecSync.mockReturnValueOnce('/my/project\n');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('/my/project\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render({ cwd: '/my/project' })).toBe('-0');
     });

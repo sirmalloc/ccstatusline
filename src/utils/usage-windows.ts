@@ -102,6 +102,129 @@ export function formatUsageDuration(durationMs: number, compact = false, useDays
     return parts.length > 0 ? parts.join(sep) : '0m';
 }
 
+function pad(value: number): string {
+    return value.toString().padStart(2, '0');
+}
+
+function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean): string {
+    const year = date.getUTCFullYear();
+    const month = pad(date.getUTCMonth() + 1);
+    const day = pad(date.getUTCDate());
+    const hours = pad(date.getUTCHours());
+    const minutes = pad(date.getUTCMinutes());
+
+    if (hour12) {
+        const hour = date.getUTCHours();
+        const displayHour = (hour % 12) || 12;
+        const period = hour >= 12 ? 'PM' : 'AM';
+
+        return compact
+            ? `${month}-${day} ${displayHour}:${minutes} ${period}Z`
+            : `${year}-${month}-${day} ${displayHour}:${minutes} ${period} UTC`;
+    }
+
+    return compact
+        ? `${month}-${day} ${hours}:${minutes}Z`
+        : `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
+const DEFAULT_TZ_LOCALE = 'en-US';
+
+function normalizeDayPeriod(dayPeriod: string): string {
+    return dayPeriod.replace(/\./g, '').toUpperCase();
+}
+
+function formatResetAtInTimezone(
+    date: Date,
+    compact: boolean,
+    timezone: string | undefined,
+    locale: string,
+    hour12: boolean
+): string | null {
+    try {
+        const formatter = new Intl.DateTimeFormat(locale, {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12,
+            timeZoneName: 'short'
+        });
+        const parts = formatter.formatToParts(date);
+        const get = (type: string): string => parts.find(p => p.type === type)?.value ?? '';
+
+        const year = get('year');
+        const month = get('month');
+        const day = get('day');
+        const hour = get('hour');
+        const minute = get('minute');
+        const dayPeriod = get('dayPeriod');
+        const tzName = get('timeZoneName');
+
+        if (!year || !month || !day || !hour || !minute) {
+            return null;
+        }
+
+        if (hour12) {
+            const displayHour = hour.startsWith('0') ? hour.slice(1) : hour;
+            const normalizedDayPeriod = dayPeriod ? normalizeDayPeriod(dayPeriod) : '';
+            const time = `${displayHour}:${minute}${normalizedDayPeriod ? ` ${normalizedDayPeriod}` : ''}`;
+            return compact
+                ? `${month}-${day} ${time}`
+                : `${year}-${month}-${day} ${time} ${tzName}`;
+        }
+
+        return compact
+            ? `${month}-${day} ${hour}:${minute}`
+            : `${year}-${month}-${day} ${hour}:${minute} ${tzName}`;
+    } catch {
+        return null;
+    }
+}
+
+export function formatUsageResetAt(
+    resetAt: string | undefined,
+    compact = false,
+    timezone?: string,
+    localeOrHour12?: string | boolean,
+    hour12Arg = false
+): string | null {
+    if (!resetAt) {
+        return null;
+    }
+
+    const resetAtMs = Date.parse(resetAt);
+    if (Number.isNaN(resetAtMs)) {
+        return null;
+    }
+
+    const date = new Date(resetAtMs);
+    const locale = typeof localeOrHour12 === 'string' ? localeOrHour12 : undefined;
+    const hour12 = typeof localeOrHour12 === 'boolean' ? localeOrHour12 : hour12Arg;
+
+    if (!timezone || timezone === 'UTC') {
+        return formatResetAtUtc(date, compact, hour12);
+    }
+
+    const resolvedTimezone = timezone === 'local' ? undefined : timezone;
+    const resolvedLocale = locale && locale.length > 0 ? locale : DEFAULT_TZ_LOCALE;
+    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone, resolvedLocale, hour12);
+    if (localized) {
+        return localized;
+    }
+
+    if (resolvedLocale !== DEFAULT_TZ_LOCALE) {
+        const fallback = formatResetAtInTimezone(date, compact, resolvedTimezone, DEFAULT_TZ_LOCALE, hour12);
+        if (fallback) {
+            return fallback;
+        }
+    }
+
+    return formatResetAtUtc(date, compact, hour12);
+}
+
 export function getUsageErrorMessage(error: UsageError): string {
     switch (error) {
         case 'no-credentials': return '[No credentials]';

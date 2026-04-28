@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -12,9 +12,9 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjRootDirWidget } from '../JjRootDir';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -49,27 +49,43 @@ describe('JjRootDirWidget', () => {
         expect(render({ isPreview: true })).toBe('my-repo');
     });
 
-    it('should render root dir name', () => {
-        mockExecSync.mockReturnValueOnce('/home/user/my-project\n');
+    it('should render root directory name', () => {
+        mockExecFileSync.mockReturnValueOnce('/home/user/my-project\n');
+        mockExecFileSync.mockReturnValueOnce('/home/user/my-project\n');
 
         expect(render({ cwd: '/home/user/my-project' })).toBe('my-project');
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/home/user/my-project'
+        });
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/home/user/my-project'
+        });
     });
 
-    it('should render no jj when not in workspace', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No jj'); });
+    it('should render no jj when not in jj repo', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render()).toBe('no jj');
     });
 
     it('should hide no jj when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No jj'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render({ hideNoJj: true })).toBeNull();
     });
 
     it('should handle trailing slashes', () => {
-        mockExecSync.mockReturnValueOnce('/home/user/my-project/\n');
+        mockExecFileSync.mockReturnValueOnce('/home/user/my-project/\n');
+        mockExecFileSync.mockReturnValueOnce('/home/user/my-project/\n');
 
-        expect(render({ cwd: '/home/user/my-project' })).toBe('my-project');
+        expect(render()).toBe('my-project');
     });
 });

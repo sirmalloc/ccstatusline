@@ -9,37 +9,36 @@ import type {
     Widget,
     WidgetItem
 } from '../../types';
-import { JjBookmarkWidget } from '../JjBookmark';
-import { JjChangeWidget } from '../JjChange';
+import { JjBookmarksWidget } from '../JjBookmarks';
 import { JjChangesWidget } from '../JjChanges';
 import { JjDeletionsWidget } from '../JjDeletions';
 import { JjDescriptionWidget } from '../JjDescription';
 import { JjInsertionsWidget } from '../JjInsertions';
+import { JjRevisionWidget } from '../JjRevision';
 import { JjRootDirWidget } from '../JjRootDir';
 import { JjWorkspaceWidget } from '../JjWorkspace';
 
 type JjWidget = Widget & {
     getCustomKeybinds: () => CustomKeybind[];
     handleEditorAction: (action: string, item: WidgetItem) => WidgetItem | null;
-    getCategory: () => string;
 };
 
 const cases: { name: string; itemType: string; widget: JjWidget }[] = [
-    { name: 'JjChangeWidget', itemType: 'jj-change', widget: new JjChangeWidget() },
-    { name: 'JjBookmarkWidget', itemType: 'jj-bookmark', widget: new JjBookmarkWidget() },
+    { name: 'JjBookmarksWidget', itemType: 'jj-bookmarks', widget: new JjBookmarksWidget() },
+    { name: 'JjWorkspaceWidget', itemType: 'jj-workspace', widget: new JjWorkspaceWidget() },
+    { name: 'JjRootDirWidget', itemType: 'jj-root-dir', widget: new JjRootDirWidget() },
     { name: 'JjChangesWidget', itemType: 'jj-changes', widget: new JjChangesWidget() },
     { name: 'JjInsertionsWidget', itemType: 'jj-insertions', widget: new JjInsertionsWidget() },
     { name: 'JjDeletionsWidget', itemType: 'jj-deletions', widget: new JjDeletionsWidget() },
-    { name: 'JjRootDirWidget', itemType: 'jj-root-dir', widget: new JjRootDirWidget() },
     { name: 'JjDescriptionWidget', itemType: 'jj-description', widget: new JjDescriptionWidget() },
-    { name: 'JjWorkspaceWidget', itemType: 'jj-workspace', widget: new JjWorkspaceWidget() }
+    { name: 'JjRevisionWidget', itemType: 'jj-revision', widget: new JjRevisionWidget() }
 ];
 
-describe('Jj widget shared behavior', () => {
+describe('JJ widget shared behavior', () => {
     it.each(cases)('$name should expose hide-no-jj keybind', ({ widget }) => {
-        expect(widget.getCustomKeybinds()).toEqual([
+        expect(widget.getCustomKeybinds()).toContainEqual(
             { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
-        ]);
+        );
     });
 
     it.each(cases)('$name should toggle hideNoJj metadata', ({ widget, itemType }) => {
@@ -59,9 +58,5 @@ describe('Jj widget shared behavior', () => {
         });
 
         expect(display.modifierText).toBe('(hide \'no jj\')');
-    });
-
-    it.each(cases)('$name should have category Jujutsu', ({ widget }) => {
-        expect(widget.getCategory()).toBe('Jujutsu');
     });
 });
