@@ -39,7 +39,7 @@ describe('SessionUsageWidget', () => {
         baseItem: { id: 'session', type: 'session-usage' },
         createWidget: () => new SessionUsageWidget(),
         errorMessageMock: usageErrorMessageMock,
-        expectedModifierText: '(short bar, inverted)',
+        expectedModifierText: '(medium bar, inverted)',
         expectedProgress: 'Session: [bar:76.5:16] 76.5%',
         expectedRawProgress: '[bar:23.4:32] 23.4%',
         expectedRawTime: '23.4%',

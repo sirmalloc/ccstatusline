@@ -39,33 +39,27 @@ function probeTerminalWidth(): number | null {
         return null;
     }
 
-    try {
-        // First try to get the tty of the parent process
-        const tty = execSync('ps -o tty= -p $(ps -o ppid= -p $$)', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
-        }).trim();
-
-        // Check if we got a valid tty (not ?? which means no tty)
-        if (tty && tty !== '??' && tty !== '?') {
-            // Now get the terminal size
-            const width = execSync(
-                `stty size < /dev/${tty} | awk '{print $2}'`,
-                {
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    shell: '/bin/sh'
-                }
-            ).trim();
-
-            const parsed = parseInt(width, 10);
-            if (!isNaN(parsed) && parsed > 0) {
-                return parsed;
-            }
+    // Claude Code can spawn ccstatusline with piped stdio, leaving the immediate
+    // parent process without a controlling TTY. Walk up a few ancestors until we
+    // find the shell process that owns the real PTY.
+    let pid = process.pid;
+    for (let depth = 0; depth < 8; depth += 1) {
+        const parentPid = getParentProcessId(pid);
+        if (parentPid === null) {
+            break;
         }
-    } catch {
-        // Command failed, width detection not available
+
+        pid = parentPid;
+
+        const tty = getTTYForProcess(pid);
+        if (tty === null) {
+            continue;
+        }
+
+        const width = getWidthForTTY(tty);
+        if (width !== null) {
+            return width;
+        }
     }
 
     // Fallback: try tput cols which might work in some environments
@@ -75,15 +69,70 @@ function probeTerminalWidth(): number | null {
             stdio: ['pipe', 'pipe', 'ignore']
         }).trim();
 
-        const parsed = parseInt(width, 10);
-        if (!isNaN(parsed) && parsed > 0) {
-            return parsed;
-        }
+        return parsePositiveInteger(width);
     } catch {
         // tput also failed
     }
 
     return null;
+}
+
+function parsePositiveInteger(value: string): number | null {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed <= 0) {
+        return null;
+    }
+
+    return parsed;
+}
+
+function getParentProcessId(pid: number): number | null {
+    try {
+        const parentPidOutput = execSync(`ps -o ppid= -p ${pid}`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            shell: '/bin/sh'
+        }).trim();
+
+        return parsePositiveInteger(parentPidOutput);
+    } catch {
+        return null;
+    }
+}
+
+function getTTYForProcess(pid: number): string | null {
+    try {
+        const tty = execSync(`ps -o tty= -p ${pid}`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            shell: '/bin/sh'
+        }).replace(/\s+/g, '');
+
+        if (!tty || tty === '??' || tty === '?') {
+            return null;
+        }
+
+        return tty;
+    } catch {
+        return null;
+    }
+}
+
+function getWidthForTTY(tty: string): number | null {
+    try {
+        const width = execSync(
+            `stty size < /dev/${tty} | awk '{print $2}'`,
+            {
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'ignore'],
+                shell: '/bin/sh'
+            }
+        ).trim();
+
+        return parsePositiveInteger(width);
+    } catch {
+        return null;
+    }
 }
 
 // Get terminal width

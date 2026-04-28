@@ -17,6 +17,7 @@ import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
+    getMatchSegments,
     getWidget,
     getWidgetCatalog,
     getWidgetCatalogCategories
@@ -200,7 +201,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             setShowClearConfirm,
             openWidgetPicker,
             getCustomKeybindsForWidget,
-            setCustomEditorWidget
+            setCustomEditorWidget,
+            getUniqueBackgroundColor
         });
     });
 
@@ -279,7 +281,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         helpText += ', Space edit separator';
     }
     if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (d)elete, (c)lear line';
+        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
     }
     if (canToggleRaw) {
         helpText += ', (r)aw value';
@@ -420,6 +422,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 <>
                                     {topLevelSearchEntries.map((entry, index) => {
                                         const isSelected = entry.type === selectedTopLevelSearchEntry?.type;
+                                        const segments = getMatchSegments(entry.displayName, widgetPicker.categoryQuery);
                                         return (
                                             <Box key={entry.type} flexDirection='row' flexWrap='nowrap'>
                                                 <Box width={3}>
@@ -427,9 +430,16 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                         {isSelected ? '▶ ' : '  '}
                                                     </Text>
                                                 </Box>
-                                                <Text color={isSelected ? 'green' : undefined}>
-                                                    {`${index + 1}. ${entry.displayName}`}
-                                                </Text>
+                                                <Text color={isSelected ? 'green' : undefined}>{`${index + 1}. `}</Text>
+                                                {segments.map((seg, i) => (
+                                                    <Text
+                                                        key={i}
+                                                        color={isSelected ? 'green' : seg.matched ? 'yellowBright' : undefined}
+                                                        bold={isSelected ? true : seg.matched}
+                                                    >
+                                                        {seg.text}
+                                                    </Text>
+                                                ))}
                                             </Box>
                                         );
                                     })}
@@ -475,6 +485,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                             <>
                                 {pickerEntries.map((entry, index) => {
                                     const isSelected = entry.type === selectedPickerEntry?.type;
+                                    const segments = getMatchSegments(entry.displayName, widgetPicker.widgetQuery);
                                     return (
                                         <Box key={entry.type} flexDirection='row' flexWrap='nowrap'>
                                             <Box width={3}>
@@ -482,9 +493,16 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                     {isSelected ? '▶ ' : '  '}
                                                 </Text>
                                             </Box>
-                                            <Text color={isSelected ? 'green' : undefined}>
-                                                {`${index + 1}. ${entry.displayName}`}
-                                            </Text>
+                                            <Text color={isSelected ? 'green' : undefined}>{`${index + 1}. `}</Text>
+                                            {segments.map((seg, i) => (
+                                                <Text
+                                                    key={i}
+                                                    color={isSelected ? 'green' : (seg.matched ? 'yellowBright' : undefined)}
+                                                    bold={seg.matched}
+                                                >
+                                                    {seg.text}
+                                                </Text>
+                                            ))}
                                         </Box>
                                     );
                                 })}

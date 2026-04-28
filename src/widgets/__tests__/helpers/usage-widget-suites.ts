@@ -42,6 +42,7 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
     createWidget: () => TWidget;
     expectedDisplayName: string;
     expectedProgressKeybinds?: CustomKeybind[];
+    supportsDateMode?: boolean;
     expectedModifierText: string;
     modifierItem: WidgetItem;
     expectedTimeKeybinds?: CustomKeybind[];
@@ -122,16 +123,16 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
 
     it('clears invert metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
-        const updated = widget.handleEditorAction('toggle-progress', {
+        const fromShort = widget.handleEditorAction('toggle-progress', {
             ...config.baseItem,
             metadata: {
-                display: 'progress-short',
+                display: 'slider-only',
                 invert: 'true'
             }
         });
 
-        expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
+        expect(fromShort?.metadata?.display).toBe('time');
+        expect(fromShort?.metadata?.invert).toBeUndefined();
     });
 
     it('cycles display modes in the expected order', () => {
@@ -140,10 +141,14 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         const first = widget.handleEditorAction('toggle-progress', config.baseItem);
         const second = widget.handleEditorAction('toggle-progress', first ?? config.baseItem);
         const third = widget.handleEditorAction('toggle-progress', second ?? config.baseItem);
+        const fourth = widget.handleEditorAction('toggle-progress', third ?? config.baseItem);
+        const fifth = widget.handleEditorAction('toggle-progress', fourth ?? config.baseItem);
 
         expect(first?.metadata?.display).toBe('progress');
         expect(second?.metadata?.display).toBe('progress-short');
-        expect(third?.metadata?.display).toBe('time');
+        expect(third?.metadata?.display).toBe('slider');
+        expect(fourth?.metadata?.display).toBe('slider-only');
+        expect(fifth?.metadata?.display).toBe('time');
     });
 
     it('toggles invert metadata and shows editor modifiers', () => {
@@ -249,4 +254,16 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
         expect(cleared?.metadata?.compact).toBe('false');
         expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { compact: 'true' } }).modifierText).toBe('(compact)');
     });
+    if (config.supportsDateMode) {
+        it('toggles date metadata and shows date modifier text', () => {
+            const widget = config.createWidget();
+
+            const dated = widget.handleEditorAction('toggle-date', config.baseItem);
+            const cleared = widget.handleEditorAction('toggle-date', dated ?? config.baseItem);
+
+            expect(dated?.metadata?.absolute).toBe('true');
+            expect(cleared?.metadata?.absolute).toBe('false');
+            expect(widget.getEditorDisplay({ ...config.baseItem, metadata: { absolute: 'true' } }).modifierText).toBe('(date)');
+        });
+    }
 }

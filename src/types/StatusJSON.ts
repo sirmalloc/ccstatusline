@@ -14,6 +14,11 @@ const CoercedNumberSchema = z.preprocess((value) => {
     return Number.isFinite(parsed) ? parsed : value;
 }, z.number());
 
+const RateLimitPeriodSchema = z.object({
+    used_percentage: CoercedNumberSchema.nullable().optional(),
+    resets_at: CoercedNumberSchema.nullable().optional() // Unix epoch seconds
+});
+
 export const StatusJSONSchema = z.looseObject({
     hook_event_name: z.string().optional(),
     session_id: z.string().optional(),
@@ -32,6 +37,7 @@ export const StatusJSONSchema = z.looseObject({
     }).optional(),
     version: z.string().optional(),
     output_style: z.object({ name: z.string().optional() }).optional(),
+    effort: z.object({ level: z.string().nullable().optional() }).nullable().optional(),
     cost: z.object({
         total_cost_usd: CoercedNumberSchema.optional(),
         total_duration_ms: CoercedNumberSchema.optional(),
@@ -55,7 +61,18 @@ export const StatusJSONSchema = z.looseObject({
         used_percentage: CoercedNumberSchema.nullable().optional(),
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
-    vim: z.object({ mode: z.string().optional() }).nullable().optional()
+    vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    worktree: z.object({
+        name: z.string().optional(),
+        path: z.string().optional(),
+        branch: z.string().optional(),
+        original_cwd: z.string().optional(),
+        original_branch: z.string().optional()
+    }).nullable().optional(),
+    rate_limits: z.object({
+        five_hour: RateLimitPeriodSchema.optional(),
+        seven_day: RateLimitPeriodSchema.optional()
+    }).nullable().optional()
 });
 
 export type StatusJSON = z.infer<typeof StatusJSONSchema>;

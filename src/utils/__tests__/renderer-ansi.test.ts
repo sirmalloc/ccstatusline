@@ -13,6 +13,7 @@ import type { WidgetItem } from '../../types/Widget';
 import {
     getVisibleText,
     getVisibleWidth,
+    stripOscCodes,
     truncateStyledText
 } from '../ansi';
 import {
@@ -62,6 +63,17 @@ describe('renderer ANSI/OSC handling', () => {
         const text = `A ${OSC8_OPEN}click${OSC8_CLOSE} B`;
         expect(getVisibleText(text)).toBe('A click B');
         expect(getVisibleWidth(text)).toBe(getVisibleWidth('A click B'));
+    });
+
+    it('strips OSC controls while preserving SGR styling', () => {
+        const text = `\x1b[31m${OSC8_OPEN}click${OSC8_CLOSE}\x1b[39m`;
+        expect(stripOscCodes(text)).toBe('\x1b[31mclick\x1b[39m');
+    });
+
+    it('treats text-presentation pictographs as narrow unless explicitly emoji-style', () => {
+        expect(getVisibleWidth('⚠ 2')).toBe(3);
+        expect(getVisibleWidth('⚠️ 2')).toBe(4);
+        expect(getVisibleWidth('😀 2')).toBe(4);
     });
 
     it('closes open OSC 8 hyperlinks when truncating styled text', () => {
@@ -189,5 +201,36 @@ describe('renderer ANSI/OSC handling', () => {
         expect(truncated.endsWith('...')).toBe(true);
         expect(truncated).toContain(OSC8_CLOSE);
         expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(8);
+    });
+});
+
+describe('renderer minimalist mode', () => {
+    it('renders widget as raw value when minimalist mode is enabled', () => {
+        const widgets: WidgetItem[] = [{ id: 'model1', type: 'model' }];
+        const settings = createSettings();
+        const context: RenderContext = {
+            isPreview: true,
+            minimalist: true
+        };
+
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const content = preRenderedLines[0]?.[0]?.content;
+
+        // With minimalist mode, model widget should render raw value ('Claude') not 'Model: Claude'
+        expect(content).toBe('Claude');
+    });
+
+    it('renders widget with label when minimalist mode is disabled', () => {
+        const widgets: WidgetItem[] = [{ id: 'model1', type: 'model' }];
+        const settings = createSettings();
+        const context: RenderContext = {
+            isPreview: true,
+            minimalist: false
+        };
+
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const content = preRenderedLines[0]?.[0]?.content;
+
+        expect(content).toBe('Model: Claude');
     });
 });
