@@ -12,22 +12,51 @@ const SESSION_ID_HASH_HEX_LEN = 32;
 export interface CompactionState {
     count: number;
     prevCtxPct: number;
+    prevWindowSize?: number | null;
 }
 
 const FRESH: CompactionState = { count: 0, prevCtxPct: FRESH_PREV_CTX_PCT };
 
 const CompactionStateSchema = z.object({
     count: z.number().int().nonnegative().default(0),
-    prevCtxPct: z.number().default(FRESH_PREV_CTX_PCT)
+    prevCtxPct: z.number().default(FRESH_PREV_CTX_PCT),
+    prevWindowSize: z.number().positive().nullable().optional()
 });
+
+interface DetectCompactionOptions {
+    dropThreshold?: number;
+    windowSize?: number | null;
+}
+
+function normalizeWindowSize(value: number | null | undefined): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        return null;
+    }
+
+    return value;
+}
+
+function normalizeOptions(options: number | DetectCompactionOptions): Required<Pick<DetectCompactionOptions, 'dropThreshold'>> & Pick<DetectCompactionOptions, 'windowSize'> {
+    if (typeof options === 'number') {
+        return { dropThreshold: options, windowSize: null };
+    }
+
+    const dropThreshold = typeof options.dropThreshold === 'number' && Number.isFinite(options.dropThreshold)
+        ? options.dropThreshold
+        : DEFAULT_DROP_THRESHOLD;
+
+    return { dropThreshold, windowSize: options.windowSize ?? null };
+}
 
 /**
  * Detect context compaction events.
  *
- * Context only grows until compaction — any drop in used_percentage beyond
- * the threshold indicates Claude Code compacted the conversation. The threshold
- * filters rounding noise and cache accounting wobble — a drop must exceed
- * the threshold (default: more than 2 points) to count.
+ * Within the same context window size, context only grows until compaction, so
+ * any percentage drop beyond the threshold indicates Claude Code compacted the
+ * conversation. The threshold filters rounding noise and cache accounting
+ * wobble - a drop must exceed the threshold (default: more than 2 points) to
+ * count. When a known context window size changes, the previous percentage
+ * baseline is reset instead of counted as a compaction.
  *
  * Returns state unchanged when currentCtxPct is non-finite or negative,
  * preventing NaN from poisoning persistent state. The fresh-state sentinel
@@ -37,20 +66,29 @@ const CompactionStateSchema = z.object({
 export function detectCompaction(
     currentCtxPct: number,
     state: CompactionState,
-    dropThreshold: number = DEFAULT_DROP_THRESHOLD
+    options: number | DetectCompactionOptions = DEFAULT_DROP_THRESHOLD
 ): CompactionState {
     if (!Number.isFinite(currentCtxPct) || currentCtxPct < 0) {
         return state;
     }
 
+    const { dropThreshold, windowSize } = normalizeOptions(options);
+    const currentWindowSize = normalizeWindowSize(windowSize);
+    const prevWindowSize = normalizeWindowSize(state.prevWindowSize);
     let { count } = state;
     const { prevCtxPct } = state;
+    const hasKnownWindowChange = currentWindowSize !== null && prevWindowSize !== null && currentWindowSize !== prevWindowSize;
+    const isLearningWindowSize = currentWindowSize !== null && prevWindowSize === null && prevCtxPct >= 0;
 
-    if (prevCtxPct >= 0 && currentCtxPct < prevCtxPct - dropThreshold) {
+    if (!hasKnownWindowChange && !isLearningWindowSize && prevCtxPct >= 0 && currentCtxPct < prevCtxPct - dropThreshold) {
         count += 1;
     }
 
-    return { count, prevCtxPct: currentCtxPct };
+    return {
+        count,
+        prevCtxPct: currentCtxPct,
+        ...(currentWindowSize !== null ? { prevWindowSize: currentWindowSize } : {})
+    };
 }
 
 function getCacheDir(): string {

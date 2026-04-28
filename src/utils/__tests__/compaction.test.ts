@@ -86,6 +86,36 @@ describe('detectCompaction', () => {
         expect(result.count).toBe(1);
     });
 
+    it('stores the current context window size when provided', () => {
+        const result = detectCompaction(40, fresh, { windowSize: 200000 });
+        expect(result).toEqual({ count: 0, prevCtxPct: 40, prevWindowSize: 200000 });
+    });
+
+    it('detects compaction when the context window size is unchanged', () => {
+        const prev: CompactionState = { count: 0, prevCtxPct: 40, prevWindowSize: 200000 };
+        const result = detectCompaction(30, prev, { windowSize: 200000 });
+        expect(result.count).toBe(1);
+        expect(result.prevWindowSize).toBe(200000);
+    });
+
+    it('resets the baseline without incrementing when the context window size changes', () => {
+        const prev: CompactionState = { count: 0, prevCtxPct: 40, prevWindowSize: 200000 };
+        const result = detectCompaction(8, prev, { windowSize: 1000000 });
+        expect(result).toEqual({ count: 0, prevCtxPct: 8, prevWindowSize: 1000000 });
+    });
+
+    it('learns the context window size for legacy state without incrementing', () => {
+        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
+        const result = detectCompaction(8, prev, { windowSize: 1000000 });
+        expect(result).toEqual({ count: 0, prevCtxPct: 8, prevWindowSize: 1000000 });
+    });
+
+    it('accepts custom threshold in options', () => {
+        const prev: CompactionState = { count: 0, prevCtxPct: 10, prevWindowSize: 200000 };
+        const result = detectCompaction(8, prev, { dropThreshold: 1, windowSize: 200000 });
+        expect(result.count).toBe(1);
+    });
+
     it('returns state unchanged for NaN input (no poison)', () => {
         const prev: CompactionState = { count: 0, prevCtxPct: 40 };
         expect(detectCompaction(NaN, prev)).toEqual(prev);
@@ -153,7 +183,7 @@ describe('persistence', () => {
     });
 
     it('round-trips state through save and load', () => {
-        const state: CompactionState = { count: 5, prevCtxPct: 42 };
+        const state: CompactionState = { count: 5, prevCtxPct: 42, prevWindowSize: 200000 };
         saveCompactionState('test-session', state);
         const loaded = loadCompactionState('test-session');
         expect(loaded).toEqual(state);

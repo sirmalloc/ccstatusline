@@ -22,6 +22,7 @@ import {
     loadSettings,
     saveSettings
 } from './utils/config';
+import { calculateContextPercentageMetrics } from './utils/context-percentage';
 import {
     getSessionDuration,
     getSpeedMetricsCollection,
@@ -47,13 +48,6 @@ import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
-}
-
-function hasContextPercentage(
-    data: StatusJSON
-): data is StatusJSON & { context_window: { used_percentage: number } } {
-    const pct = data.context_window?.used_percentage;
-    return typeof pct === 'number' && Number.isFinite(pct) && pct >= 0;
 }
 
 async function readStdin(): Promise<string | null> {
@@ -159,9 +153,14 @@ async function renderMultipleLines(data: StatusJSON) {
     if (hasCompactionWidget && data.session_id) {
         const prevState = loadCompactionState(data.session_id);
         compactionCount = prevState.count;
-        if (hasContextPercentage(data)) {
-            const newState = detectCompaction(data.context_window.used_percentage, prevState);
-            if (newState.count !== prevState.count || newState.prevCtxPct !== prevState.prevCtxPct) {
+        const contextPercentageMetrics = calculateContextPercentageMetrics({ data, tokenMetrics });
+        if (contextPercentageMetrics !== null) {
+            const newState = detectCompaction(contextPercentageMetrics.usedPercentage, prevState, { windowSize: contextPercentageMetrics.windowSize });
+            if (
+                newState.count !== prevState.count
+                || newState.prevCtxPct !== prevState.prevCtxPct
+                || newState.prevWindowSize !== prevState.prevWindowSize
+            ) {
                 saveCompactionState(data.session_id, newState);
             }
             compactionCount = newState.count;
@@ -177,7 +176,7 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
-        compactionData: compactionCount > 0 ? { count: compactionCount } : null,
+        compactionData: hasCompactionWidget ? { count: compactionCount } : null,
         isPreview: false,
         minimalist: settings.minimalistMode
     };

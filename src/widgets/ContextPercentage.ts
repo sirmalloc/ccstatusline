@@ -6,11 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getContextWindowMetrics } from '../utils/context-window';
-import {
-    getContextConfig,
-    getModelContextIdentifier
-} from '../utils/model-context';
+import { calculateContextPercentageMetrics } from '../utils/context-percentage';
 
 import {
     getContextInverseModifierText,
@@ -52,7 +48,7 @@ export class ContextPercentageWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
         const sliderMode = getContextSliderMode(item);
-        const contextWindowMetrics = getContextWindowMetrics(context.data);
+        const contextPercentageMetrics = calculateContextPercentageMetrics(context);
 
         if (context.isPreview) {
             const previewPercent = isInverse ? 90.7 : 9.3;
@@ -63,20 +59,8 @@ export class ContextPercentageWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Ctx: ', `${previewPercent.toFixed(1)}%`);
         }
 
-        if (contextWindowMetrics.usedPercentage !== null) {
-            const displayPercentage = isInverse ? (100 - contextWindowMetrics.usedPercentage) : contextWindowMetrics.usedPercentage;
-            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
-            if (sliderResult !== null) {
-                return formatRawOrLabeledValue(item, 'Ctx: ', sliderResult);
-            }
-            return formatRawOrLabeledValue(item, 'Ctx: ', `${displayPercentage.toFixed(1)}%`);
-        }
-
-        if (context.tokenMetrics) {
-            const modelIdentifier = getModelContextIdentifier(context.data?.model);
-            const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
-            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
-            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
+        if (contextPercentageMetrics !== null) {
+            const displayPercentage = isInverse ? (100 - contextPercentageMetrics.usedPercentage) : contextPercentageMetrics.usedPercentage;
             const sliderResult = renderContextSlider(sliderMode, displayPercentage);
             if (sliderResult !== null) {
                 return formatRawOrLabeledValue(item, 'Ctx: ', sliderResult);
