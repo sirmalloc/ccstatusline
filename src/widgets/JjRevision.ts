@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjRepo,
-    runJj
+    runJjArgs
 } from '../utils/jj';
 
 export class JjRevisionWidget implements Widget {
@@ -64,7 +64,14 @@ export class JjRevisionWidget implements Widget {
     }
 
     private getJjRevision(context: RenderContext): string | null {
-        return runJj('log --no-graph -r @ -T \'change_id.shortest()\'', context);
+        return runJjArgs([
+            'log',
+            '--no-graph',
+            '-r',
+            '@',
+            '-T',
+            'change_id.shortest()'
+        ], context);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

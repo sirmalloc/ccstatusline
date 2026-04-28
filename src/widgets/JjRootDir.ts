@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjRepo,
-    runJj
+    runJjArgs
 } from '../utils/jj';
 
 export class JjRootDirWidget implements Widget {
@@ -55,7 +55,7 @@ export class JjRootDirWidget implements Widget {
             return hideNoJj ? null : 'no jj';
         }
 
-        const rootDir = runJj('root', context);
+        const rootDir = runJjArgs(['root'], context);
         if (rootDir) {
             return this.getRootDirName(rootDir);
         }

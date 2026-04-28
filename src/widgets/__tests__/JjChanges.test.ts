@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -12,9 +12,9 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjChangesWidget } from '../JjChanges';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -50,41 +50,55 @@ describe('JjChangesWidget', () => {
     });
 
     it('should render changes from jj diff --stat', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('src/main.ts | 5 +++--\n1 file changed, 3 insertions(+), 2 deletions(-)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('src/main.ts | 5 +++--\n1 file changed, 3 insertions(+), 2 deletions(-)');
 
         expect(render({ cwd: '/tmp/repo' })).toBe('(+3,-2)');
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/repo'
+        });
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
+        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/repo'
+        });
     });
 
     it('should render zero counts when repo is clean', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('(+0,-0)');
     });
 
     it('should render no jj when not in jj repo', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render()).toBe('(no jj)');
     });
 
     it('should hide no jj when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render({ hideNoJj: true })).toBeNull();
     });
 
     it('should handle insertions only', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('src/main.ts | 5 +++++\n1 file changed, 5 insertions(+)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('src/main.ts | 5 +++++\n1 file changed, 5 insertions(+)');
 
         expect(render()).toBe('(+5,-0)');
     });
 
     it('should handle deletions only', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('src/main.ts | 3 ---\n1 file changed, 3 deletions(-)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('src/main.ts | 3 ---\n1 file changed, 3 deletions(-)');
 
         expect(render()).toBe('(+0,-3)');
     });

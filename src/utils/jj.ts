@@ -1,17 +1,17 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 import type { RenderContext } from '../types/RenderContext';
 
 import { resolveGitCwd } from './git';
 
-export function runJj(command: string, context: RenderContext): string | null {
+export function runJjArgs(args: string[], context: RenderContext): string | null {
     try {
         const cwd = resolveGitCwd(context);
-        const output = execSync(`jj ${command}`, {
+        const output = execFileSync('jj', args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
-        }).trim();
+        }).trimEnd();
 
         return output.length > 0 ? output : null;
     } catch {
@@ -20,5 +20,5 @@ export function runJj(command: string, context: RenderContext): string | null {
 }
 
 export function isInsideJjRepo(context: RenderContext): boolean {
-    return runJj('root', context) !== null;
+    return runJjArgs(['root'], context) !== null;
 }

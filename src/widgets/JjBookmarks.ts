@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjRepo,
-    runJj
+    runJjArgs
 } from '../utils/jj';
 
 export class JjBookmarksWidget implements Widget {
@@ -64,7 +64,14 @@ export class JjBookmarksWidget implements Widget {
     }
 
     private getJjBookmarks(context: RenderContext): string | null {
-        const output = runJj('log --no-graph -r \'heads(::@ & bookmarks())\' --template bookmarks', context);
+        const output = runJjArgs([
+            'log',
+            '--no-graph',
+            '-r',
+            'heads(::@ & bookmarks())',
+            '--template',
+            'bookmarks'
+        ], context);
         if (!output) {
             return null;
         }

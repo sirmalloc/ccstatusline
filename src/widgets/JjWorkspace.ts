@@ -8,8 +8,10 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjRepo,
-    runJj
+    runJjArgs
 } from '../utils/jj';
+
+const CURRENT_WORKSPACE_TEMPLATE = 'if(target.current_working_copy(), name ++ "\n")';
 
 export class JjWorkspaceWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -64,17 +66,17 @@ export class JjWorkspaceWidget implements Widget {
     }
 
     private getJjWorkspace(context: RenderContext): string | null {
-        const output = runJj('workspace list', context);
+        const output = runJjArgs([
+            'workspace',
+            'list',
+            '--template',
+            CURRENT_WORKSPACE_TEMPLATE
+        ], context);
         if (!output) {
             return null;
         }
 
-        const activeMatch = /^(\S+):\s/.exec(output);
-        if (activeMatch?.[1]) {
-            return activeMatch[1];
-        }
-
-        return null;
+        return output.split(/\r?\n/).map(workspace => workspace.trim()).find(Boolean) ?? null;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

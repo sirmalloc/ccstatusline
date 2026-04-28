@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -12,9 +12,9 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjBookmarksWidget } from '../JjBookmarks';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -56,41 +56,62 @@ describe('JjBookmarksWidget', () => {
     });
 
     it('should render bookmark name', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('main');
 
         expect(render({ cwd: '/tmp/repo' })).toBe('🔖 main');
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/repo'
+        });
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
+            'log',
+            '--no-graph',
+            '-r',
+            'heads(::@ & bookmarks())',
+            '--template',
+            'bookmarks'
+        ]);
+        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/repo'
+        });
     });
 
     it('should render multiple bookmarks', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('main feature-branch');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('main feature-branch');
 
         expect(render()).toBe('🔖 main, feature-branch');
     });
 
     it('should render raw bookmark value', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('main');
 
         expect(render({ rawValue: true })).toBe('main');
     });
 
     it('should render no jj when not in jj repo', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render()).toBe('🔖 no jj');
     });
 
     it('should hide no jj when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render({ hideNoJj: true })).toBeNull();
     });
 
     it('should render none when no bookmarks at current change', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('🔖 (none)');
     });

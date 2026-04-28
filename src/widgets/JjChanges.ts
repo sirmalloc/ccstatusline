@@ -8,7 +8,7 @@ import type {
 } from '../types/Widget';
 import {
     isInsideJjRepo,
-    runJj
+    runJjArgs
 } from '../utils/jj';
 
 export class JjChangesWidget implements Widget {
@@ -64,7 +64,7 @@ export class JjChangesWidget implements Widget {
     }
 
     private getJjChanges(context: RenderContext): { insertions: number; deletions: number } | null {
-        const stat = runJj('diff --stat', context);
+        const stat = runJjArgs(['diff', '--stat'], context);
 
         let totalInsertions = 0;
         let totalDeletions = 0;

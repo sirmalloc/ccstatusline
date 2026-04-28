@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -12,9 +12,9 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjWorkspaceWidget } from '../JjWorkspace';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -56,34 +56,60 @@ describe('JjWorkspaceWidget', () => {
     });
 
     it('should render default workspace', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('default: abc12345 (no description set)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('default\n');
 
         expect(render({ cwd: '/tmp/repo' })).toBe('◆ default');
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/repo'
+        });
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
+            'workspace',
+            'list',
+            '--template',
+            'if(target.current_working_copy(), name ++ "\n")'
+        ]);
+        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            cwd: '/tmp/repo'
+        });
     });
 
     it('should render named workspace', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('feature: abc12345 (no description set)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('feature\n');
+
+        expect(render()).toBe('◆ feature');
+    });
+
+    it('should render the active workspace instead of the first listed workspace', () => {
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('\nfeature\n');
 
         expect(render()).toBe('◆ feature');
     });
 
     it('should render raw workspace value', () => {
-        mockExecSync.mockReturnValueOnce('/tmp/repo\n');
-        mockExecSync.mockReturnValueOnce('default: abc12345 (no description set)');
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('default\n');
 
         expect(render({ rawValue: true })).toBe('default');
     });
 
     it('should render no jj when not in jj repo', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render()).toBe('◆ no jj');
     });
 
     it('should hide no jj when configured', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not a jj repo'); });
 
         expect(render({ hideNoJj: true })).toBeNull();
     });
