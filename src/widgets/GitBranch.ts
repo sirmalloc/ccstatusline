@@ -22,7 +22,7 @@ import {
 import { makeModifierText } from './shared/editor-display';
 import {
     getHideNoGitKeybinds,
-    getHideNoGitModifiers,
+    getHideNoGitModifierText,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
@@ -65,7 +65,10 @@ export class GitBranchWidget implements Widget {
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isLink = isLinkEnabled(item);
-        const modifiers = getHideNoGitModifiers(item);
+        const modifiers: string[] = [];
+        const noGitText = getHideNoGitModifierText(item);
+        if (noGitText)
+            modifiers.push('hide \'no git\'');
         if (isLink)
             modifiers.push('repo link');
         return {
