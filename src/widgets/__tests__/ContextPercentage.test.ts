@@ -76,13 +76,13 @@ describe('ContextPercentageWidget', () => {
             }
         };
 
-        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx: 9.3%');
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: 9.3%');
     });
 
     describe('Sonnet 4.5 with 1M context window', () => {
         it('should calculate percentage using 1M denominator for Sonnet 4.5 with [1m] suffix', () => {
             const result = render('claude-sonnet-4-5-20250929[1m]', 42000);
-            expect(result).toBe('Ctx: 4.2%');
+            expect(result).toBe('Ctx Used: 4.2%');
         });
 
         it('should calculate percentage using 1M denominator for Sonnet 4.5 (raw value) with [1m] suffix', () => {
@@ -92,12 +92,12 @@ describe('ContextPercentageWidget', () => {
 
         it('should calculate percentage using 1M denominator for 1M context label model IDs', () => {
             const result = render('Opus 4.6 (1M context)', 42000);
-            expect(result).toBe('Ctx: 4.2%');
+            expect(result).toBe('Ctx Used: 4.2%');
         });
 
         it('should calculate percentage using 1M denominator for 1M in parentheses model IDs', () => {
             const result = render('Opus 4.6 (1M)', 42000);
-            expect(result).toBe('Ctx: 4.2%');
+            expect(result).toBe('Ctx Used: 4.2%');
         });
     });
 
@@ -131,7 +131,7 @@ describe('ContextPercentageWidget', () => {
             }
         };
 
-        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx: ▓▓▓▓▓░░░░░ 50.0%');
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: ▓▓▓▓▓░░░░░ 50.0%');
     });
 
     it('renders slider only in slider-only mode', () => {
@@ -151,23 +151,23 @@ describe('ContextPercentageWidget', () => {
             }
         };
 
-        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx: ▓▓▓▓▓░░░░░');
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx Used: ▓▓▓▓▓░░░░░');
     });
 
     describe('Older models with 200k context window', () => {
         it('should calculate percentage using 200k denominator for older Sonnet 3.5', () => {
             const result = render('claude-3-5-sonnet-20241022', 42000);
-            expect(result).toBe('Ctx: 21.0%');
+            expect(result).toBe('Ctx Used: 21.0%');
         });
 
         it('should calculate percentage using 200k denominator when model ID is undefined', () => {
             const result = render(undefined, 42000);
-            expect(result).toBe('Ctx: 21.0%');
+            expect(result).toBe('Ctx Used: 21.0%');
         });
 
         it('should calculate percentage using 200k denominator for unknown model', () => {
             const result = render('claude-unknown-model', 42000);
-            expect(result).toBe('Ctx: 21.0%');
+            expect(result).toBe('Ctx Used: 21.0%');
         });
     });
 });

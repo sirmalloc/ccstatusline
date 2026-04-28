@@ -47,25 +47,22 @@ export class ContextPercentageWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
+        const label = isInverse ? 'Ctx Left: ' : 'Ctx Used: ';
         const sliderMode = getContextSliderMode(item);
         const contextPercentageMetrics = calculateContextPercentageMetrics(context);
 
+        const formatContextPercentage = (displayPercentage: number): string => {
+            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
+            return formatRawOrLabeledValue(item, label, sliderResult ?? `${displayPercentage.toFixed(1)}%`);
+        };
+
         if (context.isPreview) {
-            const previewPercent = isInverse ? 90.7 : 9.3;
-            const sliderResult = renderContextSlider(sliderMode, previewPercent);
-            if (sliderResult !== null) {
-                return formatRawOrLabeledValue(item, 'Ctx: ', sliderResult);
-            }
-            return formatRawOrLabeledValue(item, 'Ctx: ', `${previewPercent.toFixed(1)}%`);
+            return formatContextPercentage(isInverse ? 90.7 : 9.3);
         }
 
         if (contextPercentageMetrics !== null) {
             const displayPercentage = isInverse ? (100 - contextPercentageMetrics.usedPercentage) : contextPercentageMetrics.usedPercentage;
-            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
-            if (sliderResult !== null) {
-                return formatRawOrLabeledValue(item, 'Ctx: ', sliderResult);
-            }
-            return formatRawOrLabeledValue(item, 'Ctx: ', `${displayPercentage.toFixed(1)}%`);
+            return formatContextPercentage(displayPercentage);
         }
 
         return null;
