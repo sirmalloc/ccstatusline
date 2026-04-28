@@ -13,6 +13,7 @@ import {
 
 import type {
     RenderContext,
+    StatusJSON,
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
@@ -49,6 +50,7 @@ function render(options: {
     fileContent?: string | null | undefined;
     rawValue?: boolean;
     isPreview?: boolean;
+    statusData?: Partial<StatusJSON>;
     settingsValue?: unknown;
 } = {}): string | null {
     const {
@@ -56,12 +58,17 @@ function render(options: {
         fileContent,
         rawValue = false,
         isPreview = false,
+        statusData = {},
         settingsValue = {}
     } = options;
 
     const widget = new ThinkingEffortWidget();
+    const data: Partial<StatusJSON> = {
+        ...statusData,
+        ...(transcriptPath ? { transcript_path: transcriptPath } : {})
+    };
     const context: RenderContext = {
-        data: transcriptPath ? { transcript_path: transcriptPath } : undefined,
+        data: Object.keys(data).length > 0 ? data : undefined,
         isPreview
     };
     const item: WidgetItem = {
@@ -121,6 +128,49 @@ describe('ThinkingEffortWidget', () => {
         it('returns raw preview', () => {
             const result = render({ isPreview: true, rawValue: true });
             expect(result).toBe('high');
+        });
+    });
+
+    describe('status JSON source', () => {
+        it('reads max effort from status JSON', () => {
+            const result = render({ statusData: { effort: { level: 'max' } } });
+            expect(result).toBe('Thinking: max');
+        });
+
+        it('returns raw status JSON effort when requested', () => {
+            const result = render({
+                rawValue: true,
+                statusData: { effort: { level: 'max' } }
+            });
+            expect(result).toBe('max');
+        });
+
+        it('prefers status JSON effort over transcript and settings fallbacks', () => {
+            const result = render({
+                fileContent: makeTranscriptEntry(MODEL_WITH_HIGH_EFFORT),
+                settingsValue: { effortLevel: 'low' },
+                statusData: { effort: { level: 'max' } }
+            });
+            expect(result).toBe('Thinking: max');
+        });
+
+        it('supports xhigh effort from status JSON', () => {
+            const result = render({ statusData: { effort: { level: 'xhigh' } } });
+            expect(result).toBe('Thinking: xhigh');
+        });
+
+        it('shows unknown-but-valid status JSON effort with trailing "?" marker', () => {
+            const result = render({ statusData: { effort: { level: 'ultra' } } });
+            expect(result).toBe('Thinking: ultra?');
+        });
+
+        it('treats null status JSON effort as explicit default', () => {
+            const result = render({
+                fileContent: makeTranscriptEntry(MODEL_WITH_HIGH_EFFORT),
+                settingsValue: { effortLevel: 'low' },
+                statusData: { effort: { level: null } }
+            });
+            expect(result).toBe('Thinking: default');
         });
     });
 
