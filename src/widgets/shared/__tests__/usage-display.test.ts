@@ -34,6 +34,15 @@ describe('makeSliderBar', () => {
     it('accepts custom width', () => {
         expect(makeSliderBar(50, 6)).toBe('▓▓▓░░░');
     });
+
+    it('renders a time cursor when cursorPercent is provided', () => {
+        expect(makeSliderBar(50, 10, { cursorPercent: 50 })).toBe('▓▓▓▓▓│░░░░');
+    });
+
+    it('clamps slider cursor percent', () => {
+        expect(makeSliderBar(50, 10, { cursorPercent: -10 })).toBe('│▓▓▓▓░░░░░');
+        expect(makeSliderBar(50, 10, { cursorPercent: 150 })).toBe('▓▓▓▓▓░░░░│');
+    });
 });
 
 describe('cycleUsageDisplayMode with slider', () => {
@@ -61,5 +70,23 @@ describe('cycleUsageDisplayMode with slider', () => {
         expect(first.metadata?.display).toBe('progress');
         expect(second.metadata?.display).toBe('progress-short');
         expect(third.metadata?.display).toBe('time');
+    });
+
+    it('keeps cursor metadata through slider modes and clears it when returning to time mode', () => {
+        const cursorBase: WidgetItem = {
+            ...base,
+            metadata: { cursor: 'true' }
+        };
+        const first = cycleUsageDisplayMode(cursorBase, [], true);
+        const second = cycleUsageDisplayMode(first, [], true);
+        const third = cycleUsageDisplayMode(second, [], true);
+        const fourth = cycleUsageDisplayMode(third, [], true);
+        const fifth = cycleUsageDisplayMode(fourth, [], true);
+
+        expect(first.metadata?.cursor).toBe('true');
+        expect(second.metadata?.cursor).toBe('true');
+        expect(third.metadata?.cursor).toBe('true');
+        expect(fourth.metadata?.cursor).toBe('true');
+        expect(fifth.metadata?.cursor).toBeUndefined();
     });
 });

@@ -8,9 +8,10 @@ import type {
 } from '../types/Widget';
 import {
     getUsageErrorMessage,
-    makeUsageProgressBar
+    resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     cycleUsageDisplayMode,
@@ -18,10 +19,12 @@ import {
     getUsageDisplayModifierText,
     getUsagePercentCustomKeybinds,
     getUsageProgressBarWidth,
+    isUsageCursorEnabled,
     isUsageInverted,
     isUsageProgressMode,
     isUsageSliderMode,
     makeSliderBar,
+    toggleUsageCursor,
     toggleUsageInverted
 } from './shared/usage-display';
 
@@ -47,12 +50,17 @@ export class SessionUsageWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
+        if (action === 'toggle-cursor') {
+            return toggleUsageCursor(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const showCursor = isUsageCursorEnabled(item);
 
         if (context.isPreview) {
             const previewPercent = 20;
@@ -60,12 +68,13 @@ export class SessionUsageWidget implements Widget {
 
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
-                const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
+                const progressBar = makeTimerProgressBar(renderedPercent, width, showCursor ? { cursorPercent: 50 } : undefined);
+                const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
                 return formatRawOrLabeledValue(item, 'Session: ', progressDisplay);
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(renderedPercent);
+                const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
                 return formatRawOrLabeledValue(item, 'Session: ', sliderDisplay);
             }
@@ -81,15 +90,25 @@ export class SessionUsageWidget implements Widget {
 
         const percent = Math.max(0, Math.min(100, data.sessionUsage));
         const renderedPercent = inverted ? 100 - percent : percent;
+        const getCursorOptions = (): { cursorPercent: number } | undefined => {
+            if (!showCursor) {
+                return undefined;
+            }
+
+            const window = resolveUsageWindowWithFallback(data, context.blockMetrics);
+            return window ? { cursorPercent: window.elapsedPercent } : undefined;
+        };
 
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
-            const progressDisplay = `${makeUsageProgressBar(renderedPercent, width)} ${renderedPercent.toFixed(1)}%`;
+
+            const progressBar = makeTimerProgressBar(renderedPercent, width, getCursorOptions());
+            const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
             return formatRawOrLabeledValue(item, 'Session: ', progressDisplay);
         }
 
         if (isUsageSliderMode(displayMode)) {
-            const slider = makeSliderBar(renderedPercent);
+            const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
             return formatRawOrLabeledValue(item, 'Session: ', sliderDisplay);
         }
