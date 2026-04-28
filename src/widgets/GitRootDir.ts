@@ -16,15 +16,8 @@ import {
     buildIdeFileUrl,
     renderOsc8Link
 } from '../utils/hyperlink';
-import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
-import {
-    getHideWhenJjKeybinds,
-    getHideWhenJjModifiers,
-    handleToggleHideWhenJjAction,
-    isHideWhenJjEnabled
-} from './shared/git-hide-when-jj';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifiers,
@@ -53,7 +46,7 @@ export class GitRootDirWidget implements Widget {
             modifiers.push(IDE_LINK_LABELS[ideLinkMode]);
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText([...modifiers, ...getHideWhenJjModifiers(item)])
+            modifierText: makeModifierText(modifiers)
         };
     }
 
@@ -61,7 +54,7 @@ export class GitRootDirWidget implements Widget {
         if (action === TOGGLE_LINK_ACTION) {
             return this.cycleIdeLinkMode(item);
         }
-        return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
+        return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
@@ -71,10 +64,6 @@ export class GitRootDirWidget implements Widget {
         if (context.isPreview) {
             const name = 'my-repo';
             return ideLinkMode ? renderOsc8Link(buildIdeFileUrl('/Users/example/my-repo', ideLinkMode), name) : name;
-        }
-
-        if (isHideWhenJjEnabled(item) && isInsideJjRepo(context)) {
-            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -110,7 +99,6 @@ export class GitRootDirWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
-            ...getHideWhenJjKeybinds(),
             { key: 'l', label: '(l)ink to IDE', action: TOGGLE_LINK_ACTION }
         ];
     }

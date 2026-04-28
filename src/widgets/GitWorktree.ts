@@ -9,18 +9,10 @@ import {
     isInsideGitWorkTree,
     runGit
 } from '../utils/git';
-import { isInsideJjRepo } from '../utils/jj';
 
-import { makeModifierText } from './shared/editor-display';
-import {
-    getHideWhenJjKeybinds,
-    getHideWhenJjModifiers,
-    handleToggleHideWhenJjAction,
-    isHideWhenJjEnabled
-} from './shared/git-hide-when-jj';
 import {
     getHideNoGitKeybinds,
-    getHideNoGitModifiers,
+    getHideNoGitModifierText,
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
@@ -33,12 +25,12 @@ export class GitWorktreeWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText([...getHideNoGitModifiers(item), ...getHideWhenJjModifiers(item)])
+            modifierText: getHideNoGitModifierText(item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
+        return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext): string | null {
@@ -46,10 +38,6 @@ export class GitWorktreeWidget implements Widget {
 
         if (context.isPreview)
             return item.rawValue ? 'main' : '𖠰 main';
-
-        if (isHideWhenJjEnabled(item) && isInsideJjRepo(context)) {
-            return null;
-        }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : '𖠰 no git';
@@ -92,7 +80,7 @@ export class GitWorktreeWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [...getHideNoGitKeybinds(), ...getHideWhenJjKeybinds()];
+        return getHideNoGitKeybinds();
     }
 
     supportsRawValue(): boolean { return true; }

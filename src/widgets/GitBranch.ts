@@ -18,15 +18,8 @@ import {
     encodeGitRefForUrlPath,
     renderOsc8Link
 } from '../utils/hyperlink';
-import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
-import {
-    getHideWhenJjKeybinds,
-    getHideWhenJjModifiers,
-    handleToggleHideWhenJjAction,
-    isHideWhenJjEnabled
-} from './shared/git-hide-when-jj';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifiers,
@@ -72,10 +65,7 @@ export class GitBranchWidget implements Widget {
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isLink = isLinkEnabled(item);
-        const modifiers = [
-            ...getHideNoGitModifiers(item),
-            ...getHideWhenJjModifiers(item)
-        ];
+        const modifiers = getHideNoGitModifiers(item);
         if (isLink)
             modifiers.push('repo link');
         return {
@@ -88,7 +78,7 @@ export class GitBranchWidget implements Widget {
         if (action === TOGGLE_LINK_ACTION) {
             return toggleLink(item);
         }
-        return handleToggleNoGitAction(action, item) ?? handleToggleHideWhenJjAction(action, item);
+        return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -99,10 +89,6 @@ export class GitBranchWidget implements Widget {
         if (context.isPreview) {
             const text = item.rawValue ? 'main' : '⎇ main';
             return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
-        }
-
-        if (isHideWhenJjEnabled(item) && isInsideJjRepo(context)) {
-            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -136,7 +122,6 @@ export class GitBranchWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
-            ...getHideWhenJjKeybinds(),
             { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION }
         ];
     }

@@ -40,15 +40,6 @@ const cases: { name: string; itemType: string; widget: GitWidget }[] = [
     { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }
 ];
 
-const hideWhenJjCases: { name: string; itemType: string; widget: GitWidget }[] = [
-    { name: 'GitBranchWidget', itemType: 'git-branch', widget: new GitBranchWidget() },
-    { name: 'GitChangesWidget', itemType: 'git-changes', widget: new GitChangesWidget() },
-    { name: 'GitInsertionsWidget', itemType: 'git-insertions', widget: new GitInsertionsWidget() },
-    { name: 'GitDeletionsWidget', itemType: 'git-deletions', widget: new GitDeletionsWidget() },
-    { name: 'GitRootDirWidget', itemType: 'git-root-dir', widget: new GitRootDirWidget() },
-    { name: 'GitWorktreeWidget', itemType: 'git-worktree', widget: new GitWorktreeWidget() }
-];
-
 describe('Git widget shared behavior', () => {
     it.each(cases)('$name should expose hide-no-git keybind', ({ widget }) => {
         expect(widget.getCustomKeybinds()).toContainEqual(
@@ -73,40 +64,5 @@ describe('Git widget shared behavior', () => {
         });
 
         expect(display.modifierText).toBe('(hide \'no git\')');
-    });
-
-    it.each(hideWhenJjCases)('$name should expose hide-when-jj keybind', ({ widget }) => {
-        expect(widget.getCustomKeybinds()).toContainEqual(
-            { key: 'j', label: 'hide when (j)j present', action: 'toggle-hide-when-jj' }
-        );
-    });
-
-    it.each(hideWhenJjCases)('$name should toggle hideWhenJj metadata', ({ widget, itemType }) => {
-        const base: WidgetItem = { id: itemType, type: itemType };
-        const toggledOn = widget.handleEditorAction('toggle-hide-when-jj', base);
-        const toggledOff = widget.handleEditorAction('toggle-hide-when-jj', toggledOn ?? base);
-
-        expect(toggledOn?.metadata?.hideWhenJj).toBe('true');
-        expect(toggledOff?.metadata?.hideWhenJj).toBe('false');
-    });
-
-    it.each(hideWhenJjCases)('$name should show hide-when-jj modifier in editor display', ({ widget, itemType }) => {
-        const display = widget.getEditorDisplay({
-            id: itemType,
-            type: itemType,
-            metadata: { hideWhenJj: 'true' }
-        });
-
-        expect(display.modifierText).toBe('(hide when jj)');
-    });
-
-    it.each(hideWhenJjCases)('$name should show combined modifiers in editor display', ({ widget, itemType }) => {
-        const display = widget.getEditorDisplay({
-            id: itemType,
-            type: itemType,
-            metadata: { hideNoGit: 'true', hideWhenJj: 'true' }
-        });
-
-        expect(display.modifierText).toBe('(hide \'no git\', hide when jj)');
     });
 });
