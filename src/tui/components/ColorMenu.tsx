@@ -455,7 +455,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {' '}
                         (r)eset, (c)lear all,
-                        {onTabSwap ? ' Tab items,' : ''}
+                        {onTabSwap ? ' ⇥ edit items,' : ''}
                         {' '}
                         ESC to go back
                     </Text>

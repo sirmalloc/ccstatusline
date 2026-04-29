@@ -315,6 +315,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     if (canMerge) {
         helpText += ', (m)erge';
     }
+    if (isColorable && onTabSwap) {
+        helpText += ', ⇥ edit colors';
+    }
     helpText += ', ESC back';
 
     // Build custom keybinds text
@@ -428,12 +431,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 </Box>
             ) : (
                 <Box flexDirection='column'>
-                    <Box flexDirection='row' flexWrap='wrap'>
-                        <Text dimColor>{helpText}</Text>
-                        {hasWidgets && onTabSwap && (
-                            <Text dimColor={!isColorable}>, Tab color</Text>
-                        )}
-                    </Box>
+                    <Text dimColor>{helpText}</Text>
                     <Text dimColor>{customKeybindsText || ' '}</Text>
                 </Box>
             )}
