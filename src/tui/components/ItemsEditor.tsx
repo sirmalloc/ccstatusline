@@ -34,9 +34,12 @@ import {
     getWidgetCatalogCategories
 } from '../../utils/widgets';
 import {
+    collapse as collapseAccordion,
     getRuleCount,
     isExpanded as isAccordionExpanded,
     reconcile,
+    selectRule as selectAccordionRule,
+    toggleExpand as toggleExpandAccordion,
     type AccordionState
 } from '../hooks/useRuleAccordion';
 
@@ -45,6 +48,7 @@ import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
+    handleRuleInputMode,
     normalizePickerState,
     type CustomEditorWidgetState,
     type WidgetPickerAction,
@@ -105,6 +109,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return prev;
         });
     }, [widgets, onAccordionChange]);
+
+    const setAccordion = (state: AccordionState) => {
+        setLocalAccordion(state);
+        if (onAccordionChange) {
+            onAccordionChange(state);
+        }
+    };
 
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
@@ -244,6 +255,32 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
+        // Route to rule-level input when accordion is expanded for the selected widget
+        const selectedWidget = widgets[selectedIndex];
+        if (
+            accordion.expandedWidgetId !== null
+            && accordion.expandedWidgetId === selectedWidget?.id
+        ) {
+            handleRuleInputMode({
+                input,
+                key,
+                widgets,
+                selectedIndex,
+                selectedRuleIndex: accordion.selectedRuleIndex,
+                onUpdate,
+                onCollapse: () => {
+                    setAccordion(collapseAccordion());
+                },
+                onSelectRule: (index: number) => {
+                    setAccordion(selectAccordionRule(accordion, index));
+                },
+                onEditCondition: (_ruleIndex: number) => {
+                    // Condition editor will be wired in a later task
+                }
+            });
+            return;
+        }
+
         handleNormalInputMode({
             input,
             key,
@@ -259,7 +296,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
             getUniqueBackgroundColor,
-            onTabSwap
+            onTabSwap,
+            onToggleAccordion: () => {
+                const w = widgets[selectedIndex];
+                if (w) {
+                    setAccordion(toggleExpandAccordion(accordion, w.id));
+                }
+            }
         });
     });
 
@@ -370,27 +413,47 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         && getWidget(currentWidget.type)?.supportsColors(currentWidget)
     );
     const hasWidgets = widgets.length > 0;
+    const isRuleMode = accordion.expandedWidgetId !== null
+        && accordion.expandedWidgetId === currentWidget?.id;
+    const isNonSeparatorWidget = currentWidget && !isSeparator && !isFlexSeparator;
 
     // Build main help text (without custom keybinds)
-    let helpText = hasWidgets
-        ? '↑↓ select, ←→ open type picker'
-        : '(a)dd via picker, (i)nsert via picker';
-    if (isSeparator) {
-        helpText += ', Space edit separator';
+    let helpText: string;
+    if (isRuleMode) {
+        const currentRules = currentWidget.rules ?? [];
+        const ruleHelpParts = ['↑↓ select rule', '(a)dd'];
+        if (currentRules.length > 0) {
+            ruleHelpParts.push('(d)elete', '(s)top', '(e)dit/Enter condition');
+        }
+        if (currentRules.length > 1) {
+            ruleHelpParts.push('(j)/(k) reorder');
+        }
+        ruleHelpParts.push('ESC collapse');
+        helpText = ruleHelpParts.join(', ');
+    } else {
+        helpText = hasWidgets
+            ? '↑↓ select, ←→ open type picker'
+            : '(a)dd via picker, (i)nsert via picker';
+        if (isSeparator) {
+            helpText += ', Space edit separator';
+        }
+        if (hasWidgets) {
+            helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
+        }
+        if (canToggleRaw) {
+            helpText += ', (r)aw value';
+        }
+        if (canMerge) {
+            helpText += ', (m)erge';
+        }
+        if (isNonSeparatorWidget) {
+            helpText += ', (x) rules';
+        }
+        if (isColorable && onTabSwap) {
+            helpText += ', ⇥ edit colors';
+        }
+        helpText += ', ESC back';
     }
-    if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
-    }
-    if (canToggleRaw) {
-        helpText += ', (r)aw value';
-    }
-    if (canMerge) {
-        helpText += ', (m)erge';
-    }
-    if (isColorable && onTabSwap) {
-        helpText += ', ⇥ edit colors';
-    }
-    helpText += ', ESC back';
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');

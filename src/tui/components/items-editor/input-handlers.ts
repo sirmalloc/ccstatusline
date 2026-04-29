@@ -1,5 +1,6 @@
 import type {
     CustomKeybind,
+    Rule,
     Widget,
     WidgetItem,
     WidgetItemType
@@ -349,6 +350,7 @@ export interface HandleNormalInputModeArgs {
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
     getUniqueBackgroundColor?: (insertIndex: number) => string | undefined;
     onTabSwap?: () => void;
+    onToggleAccordion?: () => void;
 }
 
 export function handleNormalInputMode({
@@ -366,7 +368,8 @@ export function handleNormalInputMode({
     getCustomKeybindsForWidget,
     setCustomEditorWidget,
     getUniqueBackgroundColor,
-    onTabSwap
+    onTabSwap,
+    onToggleAccordion
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1);
@@ -467,6 +470,13 @@ export function handleNormalInputMode({
                 onTabSwap();
             }
         }
+    } else if (input === 'x' && onToggleAccordion && widgets.length > 0) {
+        const currentWidget = widgets[selectedIndex];
+        if (currentWidget
+            && currentWidget.type !== 'separator'
+            && currentWidget.type !== 'flex-separator') {
+            onToggleAccordion();
+        }
     } else if (key.escape) {
         onBack();
     } else if (widgets.length > 0) {
@@ -495,5 +505,118 @@ export function handleNormalInputMode({
                 }
             }
         }
+    }
+}
+
+export interface HandleRuleInputModeArgs {
+    input: string;
+    key: InputKey;
+    widgets: WidgetItem[];
+    selectedIndex: number;
+    selectedRuleIndex: number;
+    onUpdate: (widgets: WidgetItem[]) => void;
+    onCollapse: () => void;
+    onSelectRule: (index: number) => void;
+    onEditCondition: (ruleIndex: number) => void;
+}
+
+export function handleRuleInputMode({
+    input,
+    key,
+    widgets,
+    selectedIndex,
+    selectedRuleIndex,
+    onUpdate,
+    onCollapse,
+    onSelectRule,
+    onEditCondition
+}: HandleRuleInputModeArgs): void {
+    const currentWidget = widgets[selectedIndex];
+    if (!currentWidget) {
+        return;
+    }
+
+    const rules = currentWidget.rules ?? [];
+    const ruleCount = rules.length;
+
+    if (key.escape) {
+        onCollapse();
+    } else if (key.upArrow) {
+        if (ruleCount > 0) {
+            const next = selectedRuleIndex - 1 < 0 ? ruleCount - 1 : selectedRuleIndex - 1;
+            onSelectRule(next);
+        }
+    } else if (key.downArrow) {
+        if (ruleCount > 0) {
+            const next = selectedRuleIndex + 1 >= ruleCount ? 0 : selectedRuleIndex + 1;
+            onSelectRule(next);
+        }
+    } else if (input === 'a') {
+        const newRule: Rule = { when: {}, apply: {} };
+        const newRules = [...rules];
+        const insertIndex = ruleCount > 0 ? selectedRuleIndex + 1 : 0;
+        newRules.splice(insertIndex, 0, newRule);
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+        onUpdate(newWidgets);
+        onSelectRule(insertIndex);
+    } else if (input === 'd' && ruleCount > 0) {
+        const newRules = rules.filter((_, i) => i !== selectedRuleIndex);
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+        onUpdate(newWidgets);
+        if (newRules.length === 0) {
+            onCollapse();
+        } else {
+            const clampedIndex = selectedRuleIndex >= newRules.length
+                ? newRules.length - 1
+                : selectedRuleIndex;
+            onSelectRule(clampedIndex);
+        }
+    } else if (input === 's' && ruleCount > 0) {
+        const rule = rules[selectedRuleIndex];
+        if (rule) {
+            const newRules = [...rules];
+            if (rule.stop) {
+                const { stop, ...rest } = rule;
+                void stop;
+                newRules[selectedRuleIndex] = rest;
+            } else {
+                newRules[selectedRuleIndex] = { ...rule, stop: true };
+            }
+            const newWidgets = [...widgets];
+            newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+            onUpdate(newWidgets);
+        }
+    } else if (input === 'e' && ruleCount > 0) {
+        onEditCondition(selectedRuleIndex);
+    } else if (key.return && ruleCount > 0) {
+        onEditCondition(selectedRuleIndex);
+    } else if (input === 'j' && ruleCount > 1) {
+        // Move rule down (swap with next, wrap-around)
+        const targetIndex = selectedRuleIndex + 1 >= ruleCount ? 0 : selectedRuleIndex + 1;
+        const newRules = [...rules];
+        const temp = newRules[selectedRuleIndex];
+        const target = newRules[targetIndex];
+        if (temp && target) {
+            [newRules[selectedRuleIndex], newRules[targetIndex]] = [target, temp];
+        }
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+        onUpdate(newWidgets);
+        onSelectRule(targetIndex);
+    } else if (input === 'k' && ruleCount > 1) {
+        // Move rule up (swap with previous, wrap-around)
+        const targetIndex = selectedRuleIndex - 1 < 0 ? ruleCount - 1 : selectedRuleIndex - 1;
+        const newRules = [...rules];
+        const temp = newRules[selectedRuleIndex];
+        const target = newRules[targetIndex];
+        if (temp && target) {
+            [newRules[selectedRuleIndex], newRules[targetIndex]] = [target, temp];
+        }
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+        onUpdate(newWidgets);
+        onSelectRule(targetIndex);
     }
 }
