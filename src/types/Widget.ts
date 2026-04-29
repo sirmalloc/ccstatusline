@@ -64,7 +64,8 @@ export interface Widget {
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
-    getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
+    getValueType?(): 'string' | 'number' | 'boolean';
+    getValue?(context: RenderContext, item: WidgetItem): number | string | boolean | null;
 }
 
 export interface WidgetEditorProps {
