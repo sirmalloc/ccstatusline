@@ -59,6 +59,7 @@ import {
     TerminalWidthMenu,
     type MainMenuOption
 } from './components';
+import type { AccordionState } from './hooks/useRuleAccordion';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -109,6 +110,7 @@ export const App: React.FC = () => {
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
+    const [accordionState, setAccordionState] = useState<AccordionState>({ expandedWidgetId: null, selectedRuleIndex: 0 });
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -240,6 +242,10 @@ export const App: React.FC = () => {
 
     const handleTabSwap = useCallback(() => {
         setScreen(prev => (prev === 'items' ? 'colors' : 'items'));
+    }, []);
+
+    const handleAccordionChange = useCallback((state: AccordionState) => {
+        setAccordionState(state);
     }, []);
 
     if (!settings) {
@@ -420,6 +426,8 @@ export const App: React.FC = () => {
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'colorLines' && (
@@ -461,6 +469,8 @@ export const App: React.FC = () => {
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'terminalConfig' && (

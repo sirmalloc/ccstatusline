@@ -25,6 +25,7 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
+import type { AccordionState } from '../hooks/useRuleAccordion';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -46,6 +47,8 @@ export interface ItemsEditorProps {
     onTabSwap?: () => void;
     onWidgetHighlight?: (widgetId: string | null) => void;
     initialWidgetId?: string | null;
+    accordionState?: AccordionState;
+    onAccordionChange?: (state: AccordionState) => void;
 }
 
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId }) => {

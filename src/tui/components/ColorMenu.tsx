@@ -17,6 +17,7 @@ import {
 } from '../../utils/colors';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
+import type { AccordionState } from '../hooks/useRuleAccordion';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -36,6 +37,8 @@ export interface ColorMenuProps {
     onTabSwap?: () => void;
     onWidgetHighlight?: (widgetId: string | null) => void;
     initialWidgetId?: string | null;
+    accordionState?: AccordionState;
+    onAccordionChange?: (state: AccordionState) => void;
 }
 
 export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
