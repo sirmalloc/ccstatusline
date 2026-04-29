@@ -238,7 +238,10 @@ function renderPowerlineStatusLine(
     }
 
     for (let i = 0; i < filteredWidgets.length; i++) {
-        const widget = filteredWidgets[i];
+        // Use the pre-rendered widget (which has rule overrides applied) for color/style lookups
+        const actualPreRenderedIndex = preRenderedIndices[i];
+        const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
+        const widget = preRendered?.widget ?? filteredWidgets[i];
         if (!widget)
             continue;
         let widgetText = '';
@@ -249,10 +252,6 @@ function renderPowerlineStatusLine(
             // These are filtered out in powerline mode
             continue;
         }
-
-        // Use pre-rendered content - use the correct index from the mapping
-        const actualPreRenderedIndex = preRenderedIndices[i];
-        const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
         const widgetImpl = getWidget(widget.type);
         if (preRendered?.content) {
             widgetText = preRendered.content;
@@ -1018,8 +1017,9 @@ export function renderStatusLine(
     let hasFlexSeparator = false;
 
     // Build elements based on configured widgets
+    // Use the pre-rendered widget (which has rule overrides applied) for color/style lookups
     for (let i = 0; i < widgets.length; i++) {
-        const widget = widgets[i];
+        const widget = preRenderedWidgets[i]?.widget ?? widgets[i];
         if (!widget)
             continue;
 
@@ -1033,7 +1033,7 @@ export function renderStatusLine(
             let replacesSpacingSeparator = false;
             let crossedEmptyWidget = false;
             for (let j = i - 1; j >= 0; j--) {
-                const prevWidget = widgets[j];
+                const prevWidget = preRenderedWidgets[j]?.widget ?? widgets[j];
                 if (!prevWidget)
                     continue;
                 if (prevWidget.type === 'separator') {
@@ -1072,7 +1072,7 @@ export function renderStatusLine(
 
             if (settings.inheritSeparatorColors && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
-                const prevWidget = widgets[contentBeforeIndex];
+                const prevWidget = preRenderedWidgets[contentBeforeIndex]?.widget ?? widgets[contentBeforeIndex];
                 if (prevWidget) {
                     // Get the previous widget's colors
                     let widgetColor = prevWidget.color;
