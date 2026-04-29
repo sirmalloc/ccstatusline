@@ -5,9 +5,20 @@ import {
     useInput
 } from 'ink';
 import SelectInput from 'ink-select-input';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
+import {
+    OPERATOR_LABELS,
+    getConditionNot,
+    getConditionOperator,
+    getConditionValue,
+    getConditionWidget,
+    isExistenceOperator
+} from '../../types/Condition';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
@@ -17,7 +28,16 @@ import {
 } from '../../utils/colors';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
-import type { AccordionState } from '../hooks/useRuleAccordion';
+import {
+    collapse as collapseAccordion,
+    getRuleCount,
+    isExpanded as isAccordionExpanded,
+    reconcile,
+    selectNextRule,
+    selectPrevRule,
+    toggleExpand as toggleExpandAccordion,
+    type AccordionState
+} from '../hooks/useRuleAccordion';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -41,13 +61,41 @@ export interface ColorMenuProps {
     onAccordionChange?: (state: AccordionState) => void;
 }
 
-export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId, accordionState: accordionStateProp, onAccordionChange }) => {
     const [showSeparators, setShowSeparators] = useState(false);
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
     const [ansi256Input, setAnsi256Input] = useState('');
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [localAccordion, setLocalAccordion] = useState<AccordionState>(
+        () => accordionStateProp ?? { expandedWidgetId: null, selectedRuleIndex: 0 }
+    );
+    const accordion = accordionStateProp ?? localAccordion;
+
+    const setAccordion = (state: AccordionState) => {
+        setLocalAccordion(state);
+        if (onAccordionChange) {
+            onAccordionChange(state);
+        }
+    };
+
+    // Reconcile accordion state when widgets change (e.g. widget deleted)
+    useEffect(() => {
+        setLocalAccordion((prev) => {
+            const reconciled = reconcile(prev, widgets);
+            if (
+                reconciled.expandedWidgetId !== prev.expandedWidgetId
+                || reconciled.selectedRuleIndex !== prev.selectedRuleIndex
+            ) {
+                if (onAccordionChange) {
+                    onAccordionChange(reconciled);
+                }
+                return reconciled;
+            }
+            return prev;
+        });
+    }, [widgets, onAccordionChange]);
 
     const powerlineEnabled = settings.powerline.enabled;
 
@@ -71,6 +119,36 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         return colorableWidgets[0]?.id ?? null;
     });
     const [editingBackground, setEditingBackground] = useState(false);
+
+    // Determine if accordion is expanded for the currently highlighted widget
+    const highlightedWidget = highlightedItemId && highlightedItemId !== 'back'
+        ? colorableWidgets.find(w => w.id === highlightedItemId)
+        : null;
+    const accordionExpanded = highlightedWidget
+        ? isAccordionExpanded(accordion, highlightedWidget.id)
+        : false;
+
+    const formatConditionText = (when: Record<string, unknown>): string => {
+        const widget = getConditionWidget(when);
+        const operator = getConditionOperator(when);
+        const negated = getConditionNot(when);
+
+        if (!operator) {
+            return 'when (invalid condition)';
+        }
+
+        const operatorLabel = OPERATOR_LABELS[operator];
+        const existenceOp = isExistenceOperator(operator);
+
+        if (existenceOp) {
+            const prefix = negated ? `when ${widget} NOT` : `when ${widget}`;
+            return `${prefix} ${operatorLabel}`;
+        }
+
+        const value = getConditionValue(when);
+        const prefix = negated ? `when ${widget} NOT` : `when ${widget}`;
+        return `${prefix} ${operatorLabel} ${String(value)}`;
+    };
 
     // Handle keyboard input
     const hasNoItems = colorableWidgets.length === 0;
@@ -169,6 +247,33 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         if (key.tab && onTabSwap) {
             onTabSwap();
             return;
+        }
+
+        // Accordion keybinds: x to toggle, up/down/escape at rule level
+        if (input === 'x' || input === 'X') {
+            if (highlightedWidget && highlightedWidget.type !== 'separator' && highlightedWidget.type !== 'flex-separator') {
+                const ruleCount = getRuleCount(highlightedWidget);
+                if (ruleCount > 0) {
+                    setAccordion(toggleExpandAccordion(accordion, highlightedWidget.id));
+                }
+            }
+            return;
+        }
+
+        // When accordion is expanded, capture up/down for rule navigation and escape to collapse
+        if (accordionExpanded && highlightedWidget) {
+            if (key.upArrow) {
+                setAccordion(selectPrevRule(accordion, colorableWidgets));
+                return;
+            }
+            if (key.downArrow) {
+                setAccordion(selectNextRule(accordion, colorableWidgets));
+                return;
+            }
+            if (key.escape) {
+                setAccordion(collapseAccordion());
+                return;
+            }
         }
 
         // Normal keyboard handling when there are items
@@ -279,6 +384,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
     // Create menu items with colored labels
     const menuItems = colorableWidgets.map((widget, index) => {
+        const ruleCount = getRuleCount(widget);
+        const ruleBadge = ruleCount > 0 ? ` [${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'}]` : '';
         const label = `${index + 1}: ${getItemLabel(widget)}`;
         // Apply both foreground and background colors
         const level = getColorLevelString(settings.colorLevel);
@@ -292,10 +399,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         const styledLabel = applyColors(label, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level);
         return {
             label: styledLabel,
+            ruleBadge,
             value: widget.id
         };
     });
-    menuItems.push({ label: '← Back', value: 'back' });
+    menuItems.push({ label: '← Back', ruleBadge: '', value: 'back' });
 
     const handleSelect = (selected: { value: string }) => {
         if (selected.value === 'back') {
@@ -451,16 +559,20 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             ) : (
                 <>
                     <Text dimColor>
-                        ↑↓ to select, ←→ to cycle
-                        {' '}
-                        {editingBackground ? 'background' : 'foreground'}
-                        , (f) to toggle bg/fg, (b)old,
-                        {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
-                        {' '}
-                        (r)eset, (c)lear all,
-                        {onTabSwap ? ' ⇥ edit items,' : ''}
-                        {' '}
-                        ESC to go back
+                        {accordionExpanded ? (
+                            '↑↓ select rule, ←→ to cycle color, (f) bg/fg, (b)old, (x) collapse, ESC collapse'
+                        ) : (
+                            <>
+                                {'↑↓ to select, ←→ to cycle '}
+                                {editingBackground ? 'background' : 'foreground'}
+                                , (f) to toggle bg/fg, (b)old,
+                                {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
+                                {' (r)eset, (c)lear all,'}
+                                {highlightedWidget && highlightedWidget.type !== 'separator' && highlightedWidget.type !== 'flex-separator' && getRuleCount(highlightedWidget) > 0 ? ' (x) rules,' : ''}
+                                {onTabSwap ? ' ⇥ edit items,' : ''}
+                                {' ESC to go back'}
+                            </>
+                        )}
                     </Text>
                     {!settings.powerline.enabled && !settings.defaultSeparator && (
                         <Text dimColor>
@@ -469,7 +581,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         </Text>
                     )}
                     {selectedWidget ? (
-                        <Box marginTop={1}>
+                        <Box marginTop={1} flexDirection='column'>
                             <Text>
                                 Current
                                 {' '}
@@ -482,6 +594,17 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 {colorDisplay}
                                 {selectedWidget.bold && chalk.bold(' [BOLD]')}
                             </Text>
+                            {(() => {
+                                const activeRule = accordionExpanded
+                                    ? selectedWidget.rules?.[accordion.selectedRuleIndex]
+                                    : undefined;
+                                return activeRule ? (
+                                    <Text color='cyan' dimColor>
+                                        {'Editing rule: '}
+                                        {formatConditionText(activeRule.when)}
+                                    </Text>
+                                ) : null;
+                            })()}
                         </Box>
                     ) : (
                         <Box marginTop={1}>
@@ -502,11 +625,63 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                             >
                                 {item.value === highlightedItemId ? '▶ ' : '  '}
                                 {item.label}
+                                {item.ruleBadge && <Text color='yellow'>{item.ruleBadge}</Text>}
                             </Text>
                         ))}
                     </Box>
+                ) : accordionExpanded ? (
+                    // Manual list rendering when accordion is expanded
+                    <Box flexDirection='column'>
+                        {menuItems.map((item) => {
+                            const isHighlighted = item.value === highlightedItemId;
+                            const widget = colorableWidgets.find(w => w.id === item.value);
+                            const widgetExpanded = widget ? isAccordionExpanded(accordion, widget.id) : false;
+
+                            return (
+                                <React.Fragment key={item.value}>
+                                    <Text
+                                        color={isHighlighted && !widgetExpanded ? 'cyan' : 'white'}
+                                        bold={isHighlighted && !widgetExpanded}
+                                    >
+                                        {isHighlighted && !widgetExpanded ? '▶ ' : '  '}
+                                        {item.label}
+                                        {item.ruleBadge && <Text color='yellow'>{item.ruleBadge}</Text>}
+                                    </Text>
+                                    {widgetExpanded && widget && (
+                                        <Box flexDirection='column'>
+                                            {getRuleCount(widget) === 0 ? (
+                                                <Box paddingLeft={5}>
+                                                    <Text dimColor>No rules</Text>
+                                                </Box>
+                                            ) : (
+                                                widget.rules?.map((rule, ruleIndex) => {
+                                                    const isRuleSelected = ruleIndex === accordion.selectedRuleIndex;
+                                                    const conditionText = formatConditionText(rule.when);
+                                                    return (
+                                                        <Box key={ruleIndex} paddingLeft={5} flexDirection='row' flexWrap='nowrap'>
+                                                            <Text color={isRuleSelected ? 'cyan' : 'gray'}>
+                                                                {isRuleSelected ? '› ' : '  '}
+                                                            </Text>
+                                                            <Text color={isRuleSelected ? 'cyan' : 'gray'}>
+                                                                {conditionText}
+                                                            </Text>
+                                                            {rule.stop && (
+                                                                <Text color={isRuleSelected ? 'red' : 'gray'} dimColor={!isRuleSelected}>
+                                                                    {' [STOP]'}
+                                                                </Text>
+                                                            )}
+                                                        </Box>
+                                                    );
+                                                })
+                                            )}
+                                        </Box>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
+                    </Box>
                 ) : (
-                    // Interactive SelectInput when not in input mode
+                    // Interactive SelectInput when not in input mode and accordion collapsed
                     <SelectInput
                         key={`${showSeparators}-${highlightedItemId}`}
                         items={menuItems}
@@ -516,11 +691,17 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         indicatorComponent={({ isSelected }) => (
                             <Text>{isSelected ? '▶' : '  '}</Text>
                         )}
-                        itemComponent={({ isSelected, label }) => (
+                        itemComponent={({ label, ...rest }) => {
                             // The label already has ANSI codes applied via applyColors()
                             // We need to pass it directly as a single Text child to preserve the codes
-                            <Text>{` ${label}`}</Text>
-                        )}
+                            const badge = 'ruleBadge' in rest ? (rest as { ruleBadge: string }).ruleBadge : '';
+                            return (
+                                <Text>
+                                    {` ${label}`}
+                                    {badge ? <Text color='yellow'>{badge}</Text> : null}
+                                </Text>
+                            );
+                        }}
                     />
                 )}
             </Box>
