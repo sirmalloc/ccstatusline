@@ -68,6 +68,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
     const [ansi256Input, setAnsi256Input] = useState('');
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [colorEditRuleIndex, setColorEditRuleIndex] = useState<number | null>(null);
     const [localAccordion, setLocalAccordion] = useState<AccordionState>(
         () => accordionStateProp ?? { expandedWidgetId: null, selectedRuleIndex: 0 }
     );
@@ -128,6 +129,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         ? isAccordionExpanded(accordion, highlightedWidget.id)
         : false;
 
+    // When the accordion is expanded, determine the active rule index for color editing
+    const activeRuleIndex = accordionExpanded ? accordion.selectedRuleIndex : undefined;
+
     const formatConditionText = (when: Record<string, unknown>): string => {
         const widget = getConditionWidget(when);
         const operator = getConditionOperator(when);
@@ -173,17 +177,19 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             if (key.escape) {
                 setHexInputMode(false);
                 setHexInput('');
+                setColorEditRuleIndex(null);
             } else if (key.return) {
                 // Validate and apply the hex color
                 if (hexInput.length === 6) {
                     const hexColor = `hex:${hexInput}`;
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                     if (selectedWidget) {
-                        const newItems = setWidgetColor(widgets, selectedWidget.id, hexColor, editingBackground);
+                        const newItems = setWidgetColor(widgets, selectedWidget.id, hexColor, editingBackground, colorEditRuleIndex ?? undefined);
                         onUpdate(newItems);
                     }
                     setHexInputMode(false);
                     setHexInput('');
+                    setColorEditRuleIndex(null);
                 }
             } else if (key.backspace || key.delete) {
                 setHexInput(hexInput.slice(0, -1));
@@ -206,6 +212,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             if (key.escape) {
                 setAnsi256InputMode(false);
                 setAnsi256Input('');
+                setColorEditRuleIndex(null);
             } else if (key.return) {
                 // Validate and apply the ansi256 color
                 const code = parseInt(ansi256Input, 10);
@@ -215,11 +222,12 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
 
                     if (selectedWidget) {
-                        const newItems = setWidgetColor(widgets, selectedWidget.id, ansiColor, editingBackground);
+                        const newItems = setWidgetColor(widgets, selectedWidget.id, ansiColor, editingBackground, colorEditRuleIndex ?? undefined);
 
                         onUpdate(newItems);
                         setAnsi256InputMode(false);
                         setAnsi256Input('');
+                        setColorEditRuleIndex(null);
                     }
                 }
             } else if (key.backspace || key.delete) {
@@ -288,12 +296,14 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 3) {
                 setHexInputMode(true);
                 setHexInput('');
+                setColorEditRuleIndex(activeRuleIndex ?? null);
             }
         } else if (input === 'a' || input === 'A') {
             // Enter ansi256 input mode (only in 256 color mode)
             if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 2) {
                 setAnsi256InputMode(true);
                 setAnsi256Input('');
+                setColorEditRuleIndex(activeRuleIndex ?? null);
             }
         } else if ((input === 's' || input === 'S') && !key.ctrl) {
             // Toggle show separators (only if not in powerline mode and no default separator)
@@ -308,19 +318,19 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             }
         } else if (input === 'b' || input === 'B') {
             if (highlightedItemId && highlightedItemId !== 'back') {
-                // Toggle bold for the highlighted item
+                // Toggle bold for the highlighted item (or rule)
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = toggleWidgetBold(widgets, selectedWidget.id);
+                    const newItems = toggleWidgetBold(widgets, selectedWidget.id, activeRuleIndex);
                     onUpdate(newItems);
                 }
             }
         } else if (input === 'r' || input === 'R') {
             if (highlightedItemId && highlightedItemId !== 'back') {
-                // Reset all styling (color, background, and bold) for the highlighted item
+                // Reset styling for the highlighted item (or rule)
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = resetWidgetStyling(widgets, selectedWidget.id);
+                    const newItems = resetWidgetStyling(widgets, selectedWidget.id, activeRuleIndex);
                     onUpdate(newItems);
                 }
             }
@@ -338,7 +348,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         direction: key.rightArrow ? 'right' : 'left',
                         editingBackground,
                         colors,
-                        backgroundColors: bgColors
+                        backgroundColors: bgColors,
+                        ruleIndex: activeRuleIndex
                     });
                     onUpdate(newItems);
                 }
@@ -423,15 +434,41 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const selectedWidget = highlightedItemId && highlightedItemId !== 'back'
         ? colorableWidgets.find(widget => widget.id === highlightedItemId)
         : null;
-    const currentColor = editingBackground
-        ? (selectedWidget?.backgroundColor ?? '')  // Empty string for 'none'
-        : (selectedWidget ? (selectedWidget.color ?? (() => {
-            if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
-                const widgetImpl = getWidget(selectedWidget.type);
-                return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
-            }
+
+    // Determine rule-level color overrides when a rule is selected
+    const activeRule = accordionExpanded && selectedWidget && activeRuleIndex !== undefined
+        ? selectedWidget.rules?.[activeRuleIndex]
+        : undefined;
+
+    // Resolve the effective color: rule override > widget value > default
+    const getWidgetDefaultFg = (): string => {
+        if (!selectedWidget) {
             return 'white';
-        })()) : 'white');
+        }
+        if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
+            const widgetImpl = getWidget(selectedWidget.type);
+            return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
+        }
+        return 'white';
+    };
+
+    const ruleColor = activeRule?.apply.color;
+    const ruleBgColor = activeRule?.apply.backgroundColor;
+    const isInherited = activeRule !== undefined && (editingBackground
+        ? ruleBgColor === undefined
+        : ruleColor === undefined);
+
+    const currentColor = editingBackground
+        ? (activeRule !== undefined
+            ? (ruleBgColor ?? selectedWidget?.backgroundColor ?? '')
+            : (selectedWidget?.backgroundColor ?? ''))
+        : (activeRule !== undefined
+            ? (ruleColor ?? selectedWidget?.color ?? getWidgetDefaultFg())
+            : (selectedWidget ? (selectedWidget.color ?? getWidgetDefaultFg()) : 'white'));
+
+    const currentBold = activeRule !== undefined
+        ? (activeRule.apply.bold ?? selectedWidget?.bold)
+        : selectedWidget?.bold;
 
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
@@ -440,7 +477,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     let colorDisplay;
     if (editingBackground) {
         if (!currentColor || currentColor === '') {
-            colorDisplay = chalk.gray('(no background)');
+            colorDisplay = isInherited
+                ? chalk.gray('(no background) (inherited)')
+                : chalk.gray('(no background)');
         } else {
             // Determine display name based on format
             let displayName;
@@ -455,11 +494,14 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
             // Apply the color using our applyColors function with the current colorLevel
             const level = getColorLevelString(settings.colorLevel);
-            colorDisplay = applyColors(` ${displayName} `, undefined, currentColor, false, level);
+            const suffix = isInherited ? ' (inherited)' : '';
+            colorDisplay = applyColors(` ${displayName} `, undefined, currentColor, false, level) + chalk.gray(suffix);
         }
     } else {
         if (!currentColor || currentColor === '') {
-            colorDisplay = chalk.gray('(default)');
+            colorDisplay = isInherited
+                ? chalk.gray('(default) (inherited)')
+                : chalk.gray('(default)');
         } else {
             // Determine display name based on format
             let displayName;
@@ -474,7 +516,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
             // Apply the color using our applyColors function with the current colorLevel
             const level = getColorLevelString(settings.colorLevel);
-            colorDisplay = applyColors(displayName, currentColor, undefined, false, level);
+            const suffix = isInherited ? ' (inherited)' : '';
+            colorDisplay = applyColors(displayName, currentColor, undefined, false, level) + chalk.gray(suffix);
         }
     }
 
@@ -592,7 +635,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 ):
                                 {' '}
                                 {colorDisplay}
-                                {selectedWidget.bold && chalk.bold(' [BOLD]')}
+                                {currentBold && chalk.bold(' [BOLD]')}
                             </Text>
                             {(() => {
                                 const activeRule = accordionExpanded
