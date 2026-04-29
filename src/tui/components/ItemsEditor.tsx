@@ -301,7 +301,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 },
                 onEditCondition: (ruleIndex: number) => {
                     setConditionEditorState({ ruleIndex });
-                }
+                },
+                onTabSwap
             });
             return;
         }
@@ -452,6 +453,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
         if (currentRules.length > 1) {
             ruleHelpParts.push('(j)/(k) reorder');
+        }
+        if (isColorable && onTabSwap) {
+            ruleHelpParts.push('⇥ edit colors');
         }
         ruleHelpParts.push('ESC collapse');
         helpText = ruleHelpParts.join(', ');

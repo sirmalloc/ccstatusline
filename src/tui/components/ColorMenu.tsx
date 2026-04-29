@@ -603,7 +603,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 <>
                     <Text dimColor>
                         {accordionExpanded ? (
-                            '↑↓ select rule, ←→ to cycle color, (f) bg/fg, (b)old, (x) collapse, ESC collapse'
+                            <>
+                                ↑↓ select rule, ←→ to cycle color, (f) bg/fg, (b)old,
+                                {onTabSwap ? ' ⇥ edit items,' : ''}
+                                {' (x) collapse, ESC collapse'}
+                            </>
                         ) : (
                             <>
                                 {'↑↓ to select, ←→ to cycle '}

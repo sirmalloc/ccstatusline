@@ -518,6 +518,7 @@ export interface HandleRuleInputModeArgs {
     onCollapse: () => void;
     onSelectRule: (index: number) => void;
     onEditCondition: (ruleIndex: number) => void;
+    onTabSwap?: () => void;
 }
 
 export function handleRuleInputMode({
@@ -529,7 +530,8 @@ export function handleRuleInputMode({
     onUpdate,
     onCollapse,
     onSelectRule,
-    onEditCondition
+    onEditCondition,
+    onTabSwap
 }: HandleRuleInputModeArgs): void {
     const currentWidget = widgets[selectedIndex];
     if (!currentWidget) {
@@ -539,7 +541,14 @@ export function handleRuleInputMode({
     const rules = currentWidget.rules ?? [];
     const ruleCount = rules.length;
 
-    if (key.escape) {
+    if (key.tab && onTabSwap
+        && currentWidget.type !== 'separator'
+        && currentWidget.type !== 'flex-separator') {
+        const widgetImpl = getWidget(currentWidget.type);
+        if (widgetImpl?.supportsColors(currentWidget)) {
+            onTabSwap();
+        }
+    } else if (key.escape) {
         onCollapse();
     } else if (key.upArrow) {
         if (ruleCount > 0) {
