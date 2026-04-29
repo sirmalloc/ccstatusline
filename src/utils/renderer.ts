@@ -19,6 +19,7 @@ import {
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import { applyRules } from './rules-engine';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -515,7 +516,18 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            let effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+
+            // Evaluate rules: apply overrides from matching rules
+            if (effectiveWidget.rules && effectiveWidget.rules.length > 0) {
+                effectiveWidget = applyRules(effectiveWidget, context, lineWidgets);
+            }
+
+            // If rules determined this widget should be hidden, skip it
+            if (effectiveWidget.hide) {
+                continue;
+            }
+
             const widgetText = widgetImpl.render(effectiveWidget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
@@ -524,7 +536,7 @@ export function preRenderAllWidgets(
             preRenderedLine.push({
                 content: widgetText,
                 plainLength,
-                widget
+                widget: effectiveWidget
             });
         }
 
