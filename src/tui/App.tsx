@@ -234,6 +234,14 @@ export const App: React.FC = () => {
         setScreen('main');
     }, []);
 
+    const handleWidgetHighlight = useCallback((widgetId: string | null) => {
+        setActiveWidgetId(widgetId);
+    }, []);
+
+    const handleTabSwap = useCallback(() => {
+        setScreen(prev => (prev === 'items' ? 'colors' : 'items'));
+    }, []);
+
     if (!settings) {
         return <Text>Loading settings...</Text>;
     }
@@ -331,14 +339,6 @@ export const App: React.FC = () => {
         setSelectedLine(lineIndex);
         setScreen('items');
     };
-
-    const handleWidgetHighlight = useCallback((widgetId: string | null) => {
-        setActiveWidgetId(widgetId);
-    }, []);
-
-    const handleTabSwap = useCallback(() => {
-        setScreen((prev) => (prev === 'items' ? 'colors' : 'items'));
-    }, []);
 
     return (
         <Box flexDirection='column'>
