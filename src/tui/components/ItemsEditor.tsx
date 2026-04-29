@@ -43,6 +43,7 @@ import {
     type AccordionState
 } from '../hooks/useRuleAccordion';
 
+import { ConditionEditor } from './ConditionEditor';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
     handleMoveInputMode,
@@ -80,6 +81,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [conditionEditorState, setConditionEditorState] = useState<{ ruleIndex: number } | null>(null);
+    const [pendingConditionEditorOpen, setPendingConditionEditorOpen] = useState(false);
     const [localAccordion, setLocalAccordion] = useState<AccordionState>(
         () => accordionStateProp ?? { expandedWidgetId: null, selectedRuleIndex: 0 }
     );
@@ -109,6 +112,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return prev;
         });
     }, [widgets, onAccordionChange]);
+
+    // Auto-open condition editor for newly added rules
+    useEffect(() => {
+        if (pendingConditionEditorOpen) {
+            setPendingConditionEditorOpen(false);
+            setConditionEditorState({ ruleIndex: accordion.selectedRuleIndex });
+        }
+    }, [pendingConditionEditorOpen, accordion.selectedRuleIndex]);
 
     const setAccordion = (state: AccordionState) => {
         setLocalAccordion(state);
@@ -220,6 +231,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     };
 
     useInput((input, key) => {
+        // Skip input if condition editor is active - it handles its own input
+        if (conditionEditorState) {
+            return;
+        }
+
         // Skip input if custom editor is active
         if (customEditorWidget) {
             return;
@@ -267,15 +283,24 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 widgets,
                 selectedIndex,
                 selectedRuleIndex: accordion.selectedRuleIndex,
-                onUpdate,
+                onUpdate: (updatedWidgets: WidgetItem[]) => {
+                    onUpdate(updatedWidgets);
+                    // Check if this was an add operation (rule count increased)
+                    const oldRuleCount = selectedWidget.rules?.length ?? 0;
+                    const newWidget = updatedWidgets[selectedIndex];
+                    const newRuleCount = newWidget?.rules?.length ?? 0;
+                    if (newRuleCount > oldRuleCount) {
+                        setPendingConditionEditorOpen(true);
+                    }
+                },
                 onCollapse: () => {
                     setAccordion(collapseAccordion());
                 },
                 onSelectRule: (index: number) => {
                     setAccordion(selectAccordionRule(accordion, index));
                 },
-                onEditCondition: (_ruleIndex: number) => {
-                    // Condition editor will be wired in a later task
+                onEditCondition: (ruleIndex: number) => {
+                    setConditionEditorState({ ruleIndex });
                 }
             });
             return;
@@ -462,6 +487,36 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         : widgetPicker?.action === 'insert'
             ? 'Insert Widget'
             : 'Change Widget Type';
+
+    // If condition editor is active, render it as an overlay
+    if (conditionEditorState !== null) {
+        const targetWidget = widgets[selectedIndex];
+        const targetRule = targetWidget?.rules?.[conditionEditorState.ruleIndex];
+        return (
+            <ConditionEditor
+                widgetType={targetWidget?.type ?? ''}
+                condition={targetRule?.when ?? {}}
+                settings={settings}
+                onSave={(condition) => {
+                    const newWidgets = [...widgets];
+                    const widget = newWidgets[selectedIndex];
+                    if (widget) {
+                        const newRules = [...(widget.rules ?? [])];
+                        const existingRule = newRules[conditionEditorState.ruleIndex];
+                        if (existingRule) {
+                            newRules[conditionEditorState.ruleIndex] = { ...existingRule, when: condition };
+                            newWidgets[selectedIndex] = { ...widget, rules: newRules };
+                            onUpdate(newWidgets);
+                        }
+                    }
+                    setConditionEditorState(null);
+                }}
+                onCancel={() => {
+                    setConditionEditorState(null);
+                }}
+            />
+        );
+    }
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
