@@ -77,6 +77,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'claude-account-email', create: () => new widgets.ClaudeAccountEmailWidget() },
     { type: 'session-name', create: () => new widgets.SessionNameWidget() },
     { type: 'free-memory', create: () => new widgets.FreeMemoryWidget() },
+    { type: 'docker-containers', create: () => new widgets.DockerContainersWidget() },
     { type: 'session-usage', create: () => new widgets.SessionUsageWidget() },
     { type: 'weekly-usage', create: () => new widgets.WeeklyUsageWidget() },
     { type: 'reset-timer', create: () => new widgets.BlockResetTimerWidget() },
