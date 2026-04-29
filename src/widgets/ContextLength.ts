@@ -7,6 +7,8 @@ import type {
 } from '../types/Widget';
 import { getContextWindowContextLengthTokens } from '../utils/context-window';
 import { formatTokens } from '../utils/renderer';
+import { parseTokenCount } from '../utils/value-parsers';
+import { getValueFromRender } from '../utils/widget-values';
 
 export class ContextLengthWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }
@@ -31,6 +33,12 @@ export class ContextLengthWidget implements Widget {
             return item.rawValue ? formatTokens(context.tokenMetrics.contextLength) : `Ctx: ${formatTokens(context.tokenMetrics.contextLength)}`;
         }
         return null;
+    }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | string | boolean | null {
+        return getValueFromRender(this, context, item, parseTokenCount);
     }
 
     supportsRawValue(): boolean { return true; }
