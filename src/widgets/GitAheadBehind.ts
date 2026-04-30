@@ -81,7 +81,9 @@ export class GitAheadBehindWidget implements Widget {
         return getHideNoGitKeybinds();
     }
 
-    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, _item: WidgetItem): number | string | boolean | null {
         if (!isInsideGitWorkTree(context))
             return null;
         const result = getGitAheadBehind(context);

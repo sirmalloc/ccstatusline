@@ -120,6 +120,15 @@ export class WeeklyUsageWidget implements Widget {
         return getUsagePercentCustomKeybinds(item);
     }
 
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, _item: WidgetItem): number | string | boolean | null {
+        const data = context.usageData ?? {};
+        if (data.weeklyUsage === undefined)
+            return null;
+        return Math.max(0, Math.min(100, data.weeklyUsage));
+    }
+
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }

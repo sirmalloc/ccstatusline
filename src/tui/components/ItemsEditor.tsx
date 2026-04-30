@@ -3,8 +3,19 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
+import {
+    OPERATOR_LABELS,
+    getConditionNot,
+    getConditionOperator,
+    getConditionValue,
+    getConditionWidget,
+    isExistenceOperator
+} from '../../types/Condition';
 import type { Settings } from '../../types/Settings';
 import type {
     CustomKeybind,
@@ -22,12 +33,23 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
+import {
+    collapse as collapseAccordion,
+    getRuleCount,
+    isExpanded as isAccordionExpanded,
+    reconcile,
+    selectRule as selectAccordionRule,
+    toggleExpand as toggleExpandAccordion,
+    type AccordionState
+} from '../hooks/useRuleAccordion';
 
+import { ConditionEditor } from './ConditionEditor';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
+    handleRuleInputMode,
     normalizePickerState,
     type CustomEditorWidgetState,
     type WidgetPickerAction,
@@ -40,15 +62,71 @@ export interface ItemsEditorProps {
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
+    onTabSwap?: () => void;
+    onWidgetHighlight?: (widgetId: string | null) => void;
+    initialWidgetId?: string | null;
+    accordionState?: AccordionState;
+    onAccordionChange?: (state: AccordionState) => void;
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId, accordionState: accordionStateProp, onAccordionChange }) => {
+    const [selectedIndex, setSelectedIndex] = useState(() => {
+        if (initialWidgetId) {
+            const index = widgets.findIndex(w => w.id === initialWidgetId);
+            return index >= 0 ? index : 0;
+        }
+        return 0;
+    });
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [conditionEditorState, setConditionEditorState] = useState<{ ruleIndex: number } | null>(null);
+    const [pendingConditionEditorOpen, setPendingConditionEditorOpen] = useState(false);
+    const [localAccordion, setLocalAccordion] = useState<AccordionState>(
+        () => accordionStateProp ?? { expandedWidgetId: null, selectedRuleIndex: 0 }
+    );
+    const accordion = accordionStateProp ?? localAccordion;
     const separatorChars = ['|', '-', ',', ' '];
+
+    useEffect(() => {
+        if (onWidgetHighlight) {
+            const currentWidget = widgets[selectedIndex];
+            onWidgetHighlight(currentWidget?.id ?? null);
+        }
+    }, [selectedIndex, widgets, onWidgetHighlight]);
+
+    // Reconcile accordion state when widgets change (e.g. widget deleted)
+    useEffect(() => {
+        setLocalAccordion((prev) => {
+            const reconciled = reconcile(prev, widgets);
+            if (
+                reconciled.expandedWidgetId !== prev.expandedWidgetId
+                || reconciled.selectedRuleIndex !== prev.selectedRuleIndex
+            ) {
+                if (onAccordionChange) {
+                    onAccordionChange(reconciled);
+                }
+                return reconciled;
+            }
+            return prev;
+        });
+    }, [widgets, onAccordionChange]);
+
+    // Auto-open condition editor for newly added rules
+    useEffect(() => {
+        if (pendingConditionEditorOpen) {
+            setPendingConditionEditorOpen(false);
+            setConditionEditorState({ ruleIndex: accordion.selectedRuleIndex });
+        }
+    }, [pendingConditionEditorOpen, accordion.selectedRuleIndex]);
+
+    const setAccordion = (state: AccordionState) => {
+        setLocalAccordion(state);
+        if (onAccordionChange) {
+            onAccordionChange(state);
+        }
+    };
 
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
@@ -153,6 +231,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     };
 
     useInput((input, key) => {
+        // Skip input if condition editor is active - it handles its own input
+        if (conditionEditorState) {
+            return;
+        }
+
         // Skip input if custom editor is active
         if (customEditorWidget) {
             return;
@@ -188,6 +271,42 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
+        // Route to rule-level input when accordion is expanded for the selected widget
+        const selectedWidget = widgets[selectedIndex];
+        if (
+            accordion.expandedWidgetId !== null
+            && accordion.expandedWidgetId === selectedWidget?.id
+        ) {
+            handleRuleInputMode({
+                input,
+                key,
+                widgets,
+                selectedIndex,
+                selectedRuleIndex: accordion.selectedRuleIndex,
+                onUpdate: (updatedWidgets: WidgetItem[]) => {
+                    onUpdate(updatedWidgets);
+                    // Check if this was an add operation (rule count increased)
+                    const oldRuleCount = selectedWidget.rules?.length ?? 0;
+                    const newWidget = updatedWidgets[selectedIndex];
+                    const newRuleCount = newWidget?.rules?.length ?? 0;
+                    if (newRuleCount > oldRuleCount) {
+                        setPendingConditionEditorOpen(true);
+                    }
+                },
+                onCollapse: () => {
+                    setAccordion(collapseAccordion());
+                },
+                onSelectRule: (index: number) => {
+                    setAccordion(selectAccordionRule(accordion, index));
+                },
+                onEditCondition: (ruleIndex: number) => {
+                    setConditionEditorState({ ruleIndex });
+                },
+                onTabSwap
+            });
+            return;
+        }
+
         handleNormalInputMode({
             input,
             key,
@@ -202,7 +321,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            onTabSwap,
+            onToggleAccordion: () => {
+                const w = widgets[selectedIndex];
+                if (w) {
+                    setAccordion(toggleExpandAccordion(accordion, w.id));
+                }
+            }
         });
     });
 
@@ -226,6 +352,41 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
         // Unknown widget type
         return `Unknown: ${widget.type}`;
+    };
+
+    const formatConditionText = (when: Record<string, unknown>): string => {
+        const widget = getConditionWidget(when);
+        const operator = getConditionOperator(when);
+        const negated = getConditionNot(when);
+
+        if (!operator) {
+            return 'when (invalid condition)';
+        }
+
+        const operatorLabel = OPERATOR_LABELS[operator];
+        const existenceOp = isExistenceOperator(operator);
+
+        if (existenceOp) {
+            const prefix = negated ? `when ${widget} NOT` : `when ${widget}`;
+            return `${prefix} ${operatorLabel}`;
+        }
+
+        const value = getConditionValue(when);
+        const prefix = negated ? `when ${widget} NOT` : `when ${widget}`;
+        return `${prefix} ${operatorLabel} ${String(value)}`;
+    };
+
+    const formatApplyProperties = (apply: Record<string, unknown>): string => {
+        const parts: string[] = [];
+        for (const [key, val] of Object.entries(apply)) {
+            if (val !== undefined) {
+                const display = typeof val === 'object' && val !== null
+                    ? JSON.stringify(val)
+                    : String(val as string | number | boolean | null);
+                parts.push(`${key}: ${display}`);
+            }
+        }
+        return parts.join(', ');
     };
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
@@ -271,25 +432,57 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
 
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
+    const isColorable = Boolean(
+        currentWidget
+        && !isSeparator
+        && !isFlexSeparator
+        && getWidget(currentWidget.type)?.supportsColors(currentWidget)
+    );
     const hasWidgets = widgets.length > 0;
+    const isRuleMode = accordion.expandedWidgetId !== null
+        && accordion.expandedWidgetId === currentWidget?.id;
+    const isNonSeparatorWidget = currentWidget && !isSeparator && !isFlexSeparator;
 
     // Build main help text (without custom keybinds)
-    let helpText = hasWidgets
-        ? '↑↓ select, ←→ open type picker'
-        : '(a)dd via picker, (i)nsert via picker';
-    if (isSeparator) {
-        helpText += ', Space edit separator';
+    let helpText: string;
+    if (isRuleMode) {
+        const currentRules = currentWidget.rules ?? [];
+        const ruleHelpParts = ['↑↓ select rule', '(a)dd'];
+        if (currentRules.length > 0) {
+            ruleHelpParts.push('(d)elete', '(s)top', '(e)dit/Enter condition');
+        }
+        if (currentRules.length > 1) {
+            ruleHelpParts.push('(j)/(k) reorder');
+        }
+        if (isColorable && onTabSwap) {
+            ruleHelpParts.push('⇥ edit colors');
+        }
+        ruleHelpParts.push('ESC collapse');
+        helpText = ruleHelpParts.join(', ');
+    } else {
+        helpText = hasWidgets
+            ? '↑↓ select, ←→ open type picker'
+            : '(a)dd via picker, (i)nsert via picker';
+        if (isSeparator) {
+            helpText += ', Space edit separator';
+        }
+        if (hasWidgets) {
+            helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
+        }
+        if (canToggleRaw) {
+            helpText += ', (r)aw value';
+        }
+        if (canMerge) {
+            helpText += ', (m)erge';
+        }
+        if (isNonSeparatorWidget) {
+            helpText += ', (x) rules';
+        }
+        if (isColorable && onTabSwap) {
+            helpText += ', ⇥ edit colors';
+        }
+        helpText += ', ESC back';
     }
-    if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
-    }
-    if (canToggleRaw) {
-        helpText += ', (r)aw value';
-    }
-    if (canMerge) {
-        helpText += ', (m)erge';
-    }
-    helpText += ', ESC back';
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
@@ -298,6 +491,36 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         : widgetPicker?.action === 'insert'
             ? 'Insert Widget'
             : 'Change Widget Type';
+
+    // If condition editor is active, render it as an overlay
+    if (conditionEditorState !== null) {
+        const targetWidget = widgets[selectedIndex];
+        const targetRule = targetWidget?.rules?.[conditionEditorState.ruleIndex];
+        return (
+            <ConditionEditor
+                widgetType={targetWidget?.type ?? ''}
+                condition={targetRule?.when ?? {}}
+                settings={settings}
+                onSave={(condition) => {
+                    const newWidgets = [...widgets];
+                    const widget = newWidgets[selectedIndex];
+                    if (widget) {
+                        const newRules = [...(widget.rules ?? [])];
+                        const existingRule = newRules[conditionEditorState.ruleIndex];
+                        if (existingRule) {
+                            newRules[conditionEditorState.ruleIndex] = { ...existingRule, when: condition };
+                            newWidgets[selectedIndex] = { ...widget, rules: newRules };
+                            onUpdate(newWidgets);
+                        }
+                    }
+                    setConditionEditorState(null);
+                }}
+                onCancel={() => {
+                    setConditionEditorState(null);
+                }}
+            />
+        );
+    }
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
@@ -527,27 +750,72 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
                                 const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
                                 const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const ruleCount = getRuleCount(widget);
+                                const widgetExpanded = isAccordionExpanded(accordion, widget.id);
 
                                 return (
-                                    <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
-                                        <Box width={3}>
+                                    <React.Fragment key={widget.id}>
+                                        <Box flexDirection='row' flexWrap='nowrap'>
+                                            <Box width={3}>
+                                                <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
+                                                    {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
+                                                </Text>
+                                            </Box>
                                             <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                                {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
+                                                {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
                                             </Text>
+                                            {modifierText && (
+                                                <Text dimColor>
+                                                    {' '}
+                                                    {modifierText}
+                                                </Text>
+                                            )}
+                                            {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
+                                            {widget.merge === true && <Text dimColor> (merged→)</Text>}
+                                            {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                            {ruleCount > 0 && (
+                                                <Text color='yellow'>
+                                                    {' '}
+                                                    {`[${ruleCount} ${ruleCount === 1 ? 'rule' : 'rules'}]`}
+                                                </Text>
+                                            )}
                                         </Box>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                        </Text>
-                                        {modifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {modifierText}
-                                            </Text>
+                                        {widgetExpanded && (
+                                            <Box flexDirection='column'>
+                                                {ruleCount === 0 ? (
+                                                    <Box paddingLeft={5}>
+                                                        <Text dimColor>No rules</Text>
+                                                    </Box>
+                                                ) : (
+                                                    widget.rules?.map((rule, ruleIndex) => {
+                                                        const isRuleSelected = ruleIndex === accordion.selectedRuleIndex;
+                                                        const conditionText = formatConditionText(rule.when);
+                                                        const applyText = formatApplyProperties(rule.apply);
+                                                        return (
+                                                            <Box key={ruleIndex} paddingLeft={5} flexDirection='row' flexWrap='nowrap'>
+                                                                <Text color={isRuleSelected ? 'cyan' : 'gray'}>
+                                                                    {isRuleSelected ? '› ' : '  '}
+                                                                </Text>
+                                                                <Text color={isRuleSelected ? 'cyan' : 'gray'}>
+                                                                    {conditionText}
+                                                                </Text>
+                                                                {applyText && (
+                                                                    <Text color={isRuleSelected ? 'cyan' : 'gray'} dimColor={!isRuleSelected}>
+                                                                        {` -> ${applyText}`}
+                                                                    </Text>
+                                                                )}
+                                                                {rule.stop && (
+                                                                    <Text color={isRuleSelected ? 'red' : 'gray'} dimColor={!isRuleSelected}>
+                                                                        {' [STOP]'}
+                                                                    </Text>
+                                                                )}
+                                                            </Box>
+                                                        );
+                                                    })
+                                                )}
+                                            </Box>
                                         )}
-                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                    </Box>
+                                    </React.Fragment>
                                 );
                             })}
                             {/* Display description for selected widget */}

@@ -7,6 +7,8 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { parseSpeed } from '../utils/value-parsers';
+import { getValueFromRender } from '../utils/widget-values';
 
 import {
     getSpeedWidgetCustomKeybinds,
@@ -37,6 +39,12 @@ export class InputSpeedWidget implements Widget {
 
     renderEditor(props: WidgetEditorProps) {
         return renderSpeedWidgetEditor(props);
+    }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | string | boolean | null {
+        return getValueFromRender(this, context, item, parseSpeed);
     }
 
     supportsRawValue(): boolean { return true; }
