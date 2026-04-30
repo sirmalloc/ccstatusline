@@ -79,6 +79,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'free-memory', create: () => new widgets.FreeMemoryWidget() },
     { type: 'session-usage', create: () => new widgets.SessionUsageWidget() },
     { type: 'weekly-usage', create: () => new widgets.WeeklyUsageWidget() },
+    { type: 'weekly-usage-projected', create: () => new widgets.ProjectedWeeklyUsageWidget() },
     { type: 'reset-timer', create: () => new widgets.BlockResetTimerWidget() },
     { type: 'weekly-reset-timer', create: () => new widgets.WeeklyResetTimerWidget() },
     { type: 'context-bar', create: () => new widgets.ContextBarWidget() },

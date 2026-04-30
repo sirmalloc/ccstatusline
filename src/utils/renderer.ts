@@ -471,6 +471,8 @@ function formatSeparator(sep: string): string {
         return ', ';
     } else if (sep === '-') {
         return ' - ';
+    } else if (sep === '·') {
+        return '·';
     }
     return sep;
 }
