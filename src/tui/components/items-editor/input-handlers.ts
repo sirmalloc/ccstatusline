@@ -348,6 +348,7 @@ export interface HandleNormalInputModeArgs {
     getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
     getUniqueBackgroundColor?: (insertIndex: number) => string | undefined;
+    onTabSwap?: () => void;
 }
 
 export function handleNormalInputMode({
@@ -364,7 +365,8 @@ export function handleNormalInputMode({
     openWidgetPicker,
     getCustomKeybindsForWidget,
     setCustomEditorWidget,
-    getUniqueBackgroundColor
+    getUniqueBackgroundColor,
+    onTabSwap
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1);
@@ -454,6 +456,16 @@ export function handleNormalInputMode({
                 newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
             }
             onUpdate(newWidgets);
+        }
+    } else if (key.tab && onTabSwap && widgets.length > 0) {
+        const currentWidget = widgets[selectedIndex];
+        if (currentWidget
+            && currentWidget.type !== 'separator'
+            && currentWidget.type !== 'flex-separator') {
+            const widgetImpl = getWidget(currentWidget.type);
+            if (widgetImpl?.supportsColors(currentWidget)) {
+                onTabSwap();
+            }
         }
     } else if (key.escape) {
         onBack();

@@ -33,9 +33,12 @@ export interface ColorMenuProps {
     settings: Settings;
     onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
+    onTabSwap?: () => void;
+    onWidgetHighlight?: (widgetId: string | null) => void;
+    initialWidgetId?: string | null;
 }
 
-export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack }) => {
+export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
     const [showSeparators, setShowSeparators] = useState(false);
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
@@ -55,7 +58,15 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         // Include unknown widgets (they might support colors, we just don't know)
         return widgetInstance ? widgetInstance.supportsColors(widget) : true;
     });
-    const [highlightedItemId, setHighlightedItemId] = useState(colorableWidgets[0]?.id ?? null);
+    const [highlightedItemId, setHighlightedItemId] = useState(() => {
+        if (initialWidgetId) {
+            const match = colorableWidgets.find(w => w.id === initialWidgetId);
+            if (match) {
+                return match.id;
+            }
+        }
+        return colorableWidgets[0]?.id ?? null;
+    });
     const [editingBackground, setEditingBackground] = useState(false);
 
     // Handle keyboard input
@@ -148,6 +159,12 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
         // Ignore number keys to prevent SelectInput numerical navigation
         if (input && /^[0-9]$/.test(input)) {
+            return;
+        }
+
+        // Tab to swap to ItemsEditor (always available since all items are colorable)
+        if (key.tab && onTabSwap) {
+            onTabSwap();
             return;
         }
 
@@ -286,6 +303,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
     const handleHighlight = (item: { value: string }) => {
         setHighlightedItemId(item.value);
+        if (onWidgetHighlight) {
+            onWidgetHighlight(item.value === 'back' ? null : item.value);
+        }
     };
 
     // Get current color for highlighted item
@@ -434,7 +454,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         , (f) to toggle bg/fg, (b)old,
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {' '}
-                        (r)eset, (c)lear all, ESC to go back
+                        (r)eset, (c)lear all,
+                        {onTabSwap ? ' ⇥ edit items,' : ''}
+                        {' '}
+                        ESC to go back
                     </Text>
                     {!settings.powerline.enabled && !settings.defaultSeparator && (
                         <Text dimColor>
