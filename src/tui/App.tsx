@@ -238,6 +238,10 @@ export const App: React.FC = () => {
         setActiveWidgetId(widgetId);
     }, []);
 
+    const isThemeManaged = settings?.powerline.enabled
+        && settings.powerline.theme
+        && settings.powerline.theme !== 'custom';
+
     const handleTabSwap = useCallback(() => {
         setScreen(prev => (prev === 'items' ? 'colors' : 'items'));
     }, []);
@@ -417,7 +421,7 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
-                        onTabSwap={handleTabSwap}
+                        onTabSwap={isThemeManaged ? undefined : handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
                     />
@@ -458,7 +462,7 @@ export const App: React.FC = () => {
                             // Go back to line selection for colors
                             setScreen('colorLines');
                         }}
-                        onTabSwap={handleTabSwap}
+                        onTabSwap={isThemeManaged ? undefined : handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
                     />
