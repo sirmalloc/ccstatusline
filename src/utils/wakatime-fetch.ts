@@ -49,6 +49,10 @@ const WAKATIME_API_HOST = 'api.wakatime.com';
 const WAKATIME_API_PATH = '/api/v1/users/current/statusbar/today';
 export const WAKATIME_FETCH_TIMEOUT_MS = 2000;
 export const WAKATIME_CACHE_TTL_MS = 60_000;
+// Failures are cached for a shorter window so transient outages don't stall
+// the statusline render on every refresh, but we don't pin them as long as
+// successes (which are valid for the full minute).
+export const WAKATIME_ERROR_CACHE_TTL_MS = 30_000;
 
 function getCacheDir(deps: WakatimeFetchDeps): string {
     return path.join(deps.getHomedir(), '.cache', 'ccstatusline', 'wakatime');
@@ -176,14 +180,18 @@ function readDiskCache(cachePath: string, deps: WakatimeFetchDeps): WakatimeData
             return null;
         }
         const age = deps.now() - deps.statSync(cachePath).mtimeMs;
-        if (age > WAKATIME_CACHE_TTL_MS) {
-            return null;
-        }
         const content = deps.readFileSync(cachePath, 'utf-8').trim();
         if (content.length === 0) {
             return null;
         }
         const parsed = JSON.parse(content) as WakatimeData;
+        // Errors get a shorter TTL than successes so we eventually retry
+        // when an upstream outage clears, but throttle repeated failures
+        // (each retry costs a 2-second timeout).
+        const ttl = parsed.error ? WAKATIME_ERROR_CACHE_TTL_MS : WAKATIME_CACHE_TTL_MS;
+        if (age > ttl) {
+            return null;
+        }
         return parsed;
     } catch {
         return null;
@@ -289,8 +297,9 @@ export async function fetchWakatimeData(deps: WakatimeFetchDeps = DEFAULT_DEPS):
     }
 
     const result = await performHttpsFetch(apiKey, deps);
-    if (!result.error) {
-        writeDiskCache(cachePath, result, deps);
-    }
+    // Persist both success and failure so transient outages don't trigger a
+    // fresh 2-second-timeout fetch on every render. The negative cache uses
+    // a shorter TTL via readDiskCache.
+    writeDiskCache(cachePath, result, deps);
     return result;
 }

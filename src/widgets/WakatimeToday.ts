@@ -104,6 +104,9 @@ export function formatDigitalAsHuman(digital: string | undefined): string | null
         if (Number.isNaN(h) || Number.isNaN(m)) {
             return digital;
         }
+        if (h === 0) {
+            return `${m}m`;
+        }
         return `${h}h${m.toString().padStart(2, '0')}m`;
     }
     return digital;

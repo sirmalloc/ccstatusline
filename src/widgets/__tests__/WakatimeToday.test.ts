@@ -48,6 +48,10 @@ describe('formatDigitalAsHuman', () => {
         expect(formatDigitalAsHuman('1:06:25')).toBe('1h06m');
     });
 
+    it('drops the leading hour when zero in HH:MM:SS form', () => {
+        expect(formatDigitalAsHuman('0:42:10')).toBe('42m');
+    });
+
     it('returns null for undefined input', () => {
         expect(formatDigitalAsHuman(undefined)).toBeNull();
     });

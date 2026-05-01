@@ -13,6 +13,7 @@ import {
 
 import {
     WAKATIME_CACHE_TTL_MS,
+    WAKATIME_ERROR_CACHE_TTL_MS,
     fetchWakatimeData,
     parseWakatimeApiKey,
     readWakatimeApiKey,
@@ -214,7 +215,8 @@ describe('fetchWakatimeData', () => {
         const controllerRef: { current: FakeRequestController | null } = { current: null };
         const deps = makeDeps({
             getHomedir: () => {
-                // First call resolves config path; later calls go to cache root.
+                // Both config-path resolution and cache-path resolution share
+                // the same temporary home directory in this test.
                 return tempHome;
             },
             getEnv: () => ({}),
@@ -362,5 +364,76 @@ describe('fetchWakatimeData', () => {
         staleControllerRef.current?.succeedWith(JSON.stringify({ data: { grand_total: { digital: '0:45' } } }));
         const result = await refetch;
         expect(result.digital).toBe('0:45');
+    });
+
+    it('caches negative results and skips the network on the next call within the error TTL', async () => {
+        const cfgPath = path.join(tempHome, '.wakatime.cfg');
+        fs.writeFileSync(cfgPath, '[settings]\napi_key = waka_err_key\n');
+
+        const failingControllerRef: { current: FakeRequestController | null } = { current: null };
+        const failingDeps = makeDeps({
+            getHomedir: () => tempHome,
+            getEnv: () => ({}),
+            httpsRequest: makeFakeHttpsRequest(failingControllerRef)
+        });
+
+        const populating = fetchWakatimeData(failingDeps);
+        await new Promise(resolve => setImmediate(resolve));
+        failingControllerRef.current?.timeout();
+        const firstResult = await populating;
+        expect(firstResult).toEqual({ error: 'timeout' });
+
+        const httpsCalls: string[] = [];
+        const fakeHttps: WakatimeFetchDeps['httpsRequest'] = ((options: unknown) => {
+            httpsCalls.push(JSON.stringify(options));
+            const request = new EventEmitter() as EventEmitter & {
+                end: () => void;
+                destroy: () => void;
+            };
+            request.end = () => { /* noop */ };
+            request.destroy = () => { /* noop */ };
+            return request;
+        }) as unknown as WakatimeFetchDeps['httpsRequest'];
+
+        const cachedDeps = makeDeps({
+            getHomedir: () => tempHome,
+            getEnv: () => ({}),
+            httpsRequest: fakeHttps
+        });
+        const cached = await fetchWakatimeData(cachedDeps);
+        expect(cached).toEqual({ error: 'timeout' });
+        expect(httpsCalls).toHaveLength(0);
+    });
+
+    it('expires the negative cache after the error TTL and retries the network', async () => {
+        const cfgPath = path.join(tempHome, '.wakatime.cfg');
+        fs.writeFileSync(cfgPath, '[settings]\napi_key = waka_err_expire_key\n');
+
+        const failingControllerRef: { current: FakeRequestController | null } = { current: null };
+        const failingDeps = makeDeps({
+            getHomedir: () => tempHome,
+            getEnv: () => ({}),
+            httpsRequest: makeFakeHttpsRequest(failingControllerRef)
+        });
+
+        const populating = fetchWakatimeData(failingDeps);
+        await new Promise(resolve => setImmediate(resolve));
+        failingControllerRef.current?.failWith();
+        const firstResult = await populating;
+        expect(firstResult).toEqual({ error: 'api-error' });
+
+        const retryControllerRef: { current: FakeRequestController | null } = { current: null };
+        const retryDeps = makeDeps({
+            getHomedir: () => tempHome,
+            getEnv: () => ({}),
+            now: () => Date.now() + WAKATIME_ERROR_CACHE_TTL_MS + 1_000,
+            httpsRequest: makeFakeHttpsRequest(retryControllerRef)
+        });
+
+        const retry = fetchWakatimeData(retryDeps);
+        await new Promise(resolve => setImmediate(resolve));
+        retryControllerRef.current?.succeedWith(JSON.stringify({ data: { grand_total: { digital: '2:00' } } }));
+        const retryResult = await retry;
+        expect(retryResult.digital).toBe('2:00');
     });
 });
