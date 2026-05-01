@@ -89,7 +89,8 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'worktree-name', create: () => new widgets.GitWorktreeNameWidget() },
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
     { type: 'worktree-original-branch', create: () => new widgets.GitWorktreeOriginalBranchWidget() },
-    { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() }
+    { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() },
+    { type: 'wakatime-today', create: () => new widgets.WakatimeTodayWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
