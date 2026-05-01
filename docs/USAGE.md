@@ -45,6 +45,7 @@ bun run example
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar.
 - **Compaction Counter** - Show how many context compactions have been detected in the current session. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
 - **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
+- **Wakatime Today** - Show today's coding time from Wakatime (e.g. `WK 6h25m`). Reads the API key from `~/.wakatime.cfg` (honors the standard `WAKATIME_HOME` override), caches the result for 60 seconds, and renders empty when the key is missing or the request times out (2-second hard timeout). Configurable format (human/digital/text/decimal), prefix, hide-when-empty, and an optional clickable OSC 8 link to the Wakatime dashboard.
 
 ### Environment, Layout & Custom
 
@@ -160,6 +161,7 @@ Widget-specific shortcuts:
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
 - **Session Usage / Weekly Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
+- **Wakatime Today**: `f` cycle format (human/digital/text/decimal), `p` cycle prefix, `h` hide when empty, `l` toggle clickable dashboard link
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only progress bar

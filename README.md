@@ -47,6 +47,10 @@
 
 ## 🆕 Recent Updates
 
+### Unreleased - Wakatime widget
+
+- **⏱️ New Wakatime Today widget** - Added a `Wakatime Today` widget under the Usage category that reads the API key from `~/.wakatime.cfg` (honoring the standard `WAKATIME_HOME` override), fetches `users/current/statusbar/today`, and renders today's coding time (e.g. `WK 6h25m`). Cached for 60 seconds with a 2-second hard timeout, fail-silent on missing key / network errors, and configurable via the TUI: `f` cycles format (human/digital/text/decimal), `p` cycles prefix, `h` toggles hide-when-empty, `l` toggles a clickable OSC 8 link to the Wakatime dashboard.
+
 ### v2.2.9 - v2.2.12 - GitLab support, reset timers, context, compaction, and git widgets
 
 - **🦊 GitLab PR/MR support** - `Git Branch` and `Git PR/MR` now support GitHub, GitLab, and compatible self-hosted remotes, using `gh` or `glab` as appropriate.

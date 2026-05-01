@@ -19,6 +19,14 @@ export interface RenderUsageData {
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
+export interface RenderWakatimeData {
+    digital?: string;
+    text?: string;
+    decimal?: string;
+    totalSeconds?: number;
+    error?: 'no-credentials' | 'timeout' | 'api-error' | 'parse-error';
+}
+
 export interface CompactionData { count: number }
 
 export interface RenderContext {
@@ -27,6 +35,7 @@ export interface RenderContext {
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
+    wakatimeData?: RenderWakatimeData | null;
     sessionDuration?: string | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
