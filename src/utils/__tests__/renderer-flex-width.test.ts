@@ -44,7 +44,7 @@ function renderLine(
     const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
     const preRenderedWidgets = preRenderedLines[0] ?? [];
 
-    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
+    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths[0] ?? []);
 }
 
 describe('renderer flex width behavior', () => {
