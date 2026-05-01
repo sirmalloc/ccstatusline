@@ -231,6 +231,16 @@ npx -y ccstatusline@latest
 bunx -y ccstatusline@latest
 ```
 
+### Build from source (for custom/forked versions):
+
+```bash
+git clone git@github.com:godlockin/ccstatusline.git
+cd ccstatusline
+./install.sh
+```
+
+`install.sh` builds the project with Bun and automatically wires the local binary into `~/.claude/settings.json`. Restart Claude Code after running it.
+
 <br />
 <details>
 <summary><b>Configure ccstatusline</b></summary>
