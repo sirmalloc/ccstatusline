@@ -21,6 +21,8 @@ import {
     isUsageCompact,
     isUsageInverted,
     isUsageProgressMode,
+    isUsageSliderMode,
+    makeSliderBar,
     toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
@@ -47,7 +49,7 @@ export class BlockTimerWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item, ['compact']);
+            return cycleUsageDisplayMode(item, ['compact'], true);
         }
 
         if (action === 'toggle-invert') {
@@ -75,6 +77,14 @@ export class BlockTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
+            if (isUsageSliderMode(displayMode)) {
+                const slider = makeSliderBar(previewPercent);
+                const sliderDisplay = displayMode === 'slider'
+                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    : slider;
+                return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
+            }
+
             return formatRawOrLabeledValue(item, 'Block: ', compact ? '3h45m' : '3hr 45m');
         }
 
@@ -88,6 +98,14 @@ export class BlockTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] 0.0%`);
             }
 
+            if (isUsageSliderMode(displayMode)) {
+                const emptySlider = makeSliderBar(0);
+                const sliderDisplay = displayMode === 'slider'
+                    ? `${emptySlider} 0.0%`
+                    : emptySlider;
+                return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
+            }
+
             return formatRawOrLabeledValue(item, 'Block: ', compact ? '0h' : '0hr 0m');
         }
 
@@ -97,6 +115,15 @@ export class BlockTimerWidget implements Widget {
             const progressBar = makeTimerProgressBar(percent, barWidth);
             const percentage = percent.toFixed(1);
             return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${percentage}%`);
+        }
+
+        if (isUsageSliderMode(displayMode)) {
+            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
+            const slider = makeSliderBar(percent);
+            const sliderDisplay = displayMode === 'slider'
+                ? `${slider} ${percent.toFixed(1)}%`
+                : slider;
+            return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
         }
 
         const elapsedTime = formatUsageDuration(window.elapsedMs, compact);
