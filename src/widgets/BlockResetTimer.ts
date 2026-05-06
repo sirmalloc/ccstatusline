@@ -38,6 +38,8 @@ import {
     isUsageDateMode,
     isUsageInverted,
     isUsageProgressMode,
+    isUsageSliderMode,
+    makeSliderBar,
     toggleUsageCompact,
     toggleUsageDateMode,
     toggleUsageHourFormat,
@@ -68,7 +70,7 @@ export class BlockResetTimerWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item, ['compact', 'absolute']);
+            return cycleUsageDisplayMode(item, ['compact', 'absolute'], true);
         }
 
         if (action === 'toggle-invert') {
@@ -105,6 +107,14 @@ export class BlockResetTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
+            if (isUsageSliderMode(displayMode)) {
+                const slider = makeSliderBar(previewPercent);
+                const sliderDisplay = displayMode === 'slider'
+                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    : slider;
+                return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
+            }
+
             if (dateMode) {
                 const resetAt = formatUsageResetAt(
                     BLOCK_RESET_PREVIEW_AT,
@@ -136,6 +146,15 @@ export class BlockResetTimerWidget implements Widget {
             const progressBar = makeTimerProgressBar(percent, barWidth);
             const percentage = percent.toFixed(1);
             return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${percentage}%`);
+        }
+
+        if (isUsageSliderMode(displayMode)) {
+            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
+            const slider = makeSliderBar(percent);
+            const sliderDisplay = displayMode === 'slider'
+                ? `${slider} ${percent.toFixed(1)}%`
+                : slider;
+            return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
         }
 
         if (dateMode) {
