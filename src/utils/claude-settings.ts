@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { z } from 'zod';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
 import {
@@ -373,4 +374,84 @@ export async function setRefreshInterval(interval: number | null): Promise<void>
     }
 
     await saveClaudeSettings(settings);
+}
+
+const VoiceConfigSchema = z.object({ enabled: z.boolean().optional() });
+
+function getVoiceConfigCandidatePathsByPriority(cwd: string): string[] {
+    const userDir = getClaudeConfigDir();
+    const projectDir = path.join(cwd, '.claude');
+    // Highest priority first — `getVoiceConfig` returns on the first defined override.
+    const candidates = [
+        path.join(projectDir, 'settings.local.json'),
+        path.join(projectDir, 'settings.json'),
+        path.join(userDir, 'settings.local.json'),
+        path.join(userDir, 'settings.json')
+    ];
+    return Array.from(new Set(candidates));
+}
+
+interface VoiceLayerResult {
+    fileExisted: boolean;
+    enabled: boolean | undefined;
+}
+
+function tryReadVoiceLayer(filePath: string): VoiceLayerResult {
+    let content: string;
+    try {
+        content = fs.readFileSync(filePath, 'utf-8');
+    } catch (error) {
+        // ENOENT is the common case (file just doesn't exist on this layer);
+        // any other I/O error is treated the same — caller has no recovery path.
+        const isMissing = (error as NodeJS.ErrnoException).code === 'ENOENT';
+        return { fileExisted: !isMissing, enabled: undefined };
+    }
+
+    try {
+        const parsed = JSON.parse(content) as { voice?: unknown };
+        const voice = parsed.voice;
+        if (voice === undefined || voice === null) {
+            return { fileExisted: true, enabled: undefined };
+        }
+        const result = VoiceConfigSchema.safeParse(voice);
+        return { fileExisted: true, enabled: result.success ? result.data.enabled : undefined };
+    } catch {
+        // Malformed JSON — file exists but contributes no override.
+        return { fileExisted: true, enabled: undefined };
+    }
+}
+
+/**
+ * Reads the effective `voice.enabled` setting from Claude Code's layered configuration.
+ *
+ * Claude Code merges settings from up to four files, in increasing order of priority:
+ *   1. <user>/settings.json
+ *   2. <user>/settings.local.json
+ *   3. <cwd>/.claude/settings.json
+ *   4. <cwd>/.claude/settings.local.json
+ *
+ * The user dir respects `CLAUDE_CONFIG_DIR` (fallback `~/.claude`).
+ * Lookup walks layers from highest priority to lowest and returns on the first
+ * one that defines `voice.enabled` — so the typical case (one file with the field)
+ * costs a single read instead of four.
+ *
+ * - Returns `null` if no candidate file exists (Claude Code never initialised).
+ * - Returns `{ enabled: false }` if files exist but none defines `voice.enabled`
+ *   (Claude Code's default — `/voice` not yet touched).
+ * - Returns `{ enabled: <bool> }` reflecting the highest-priority override otherwise.
+ *
+ * The `voice.mode` (`hold` / `toggle`) field is not exposed; widgets only need the on/off state.
+ */
+export function getVoiceConfig(cwd: string = process.cwd()): { enabled: boolean } | null {
+    let anyFileExisted = false;
+    for (const filePath of getVoiceConfigCandidatePathsByPriority(cwd)) {
+        const layer = tryReadVoiceLayer(filePath);
+        if (layer.fileExisted) {
+            anyFileExisted = true;
+        }
+        if (layer.enabled !== undefined) {
+            return { enabled: layer.enabled };
+        }
+    }
+    return anyFileExisted ? { enabled: false } : null;
 }
