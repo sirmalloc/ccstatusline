@@ -20,6 +20,7 @@ import {
     getClaudeSettingsPath,
     getExistingStatusLine,
     getRefreshInterval,
+    getVoiceConfig,
     installStatusLine,
     isClaudeCodeVersionAtLeast,
     isInstalled,
@@ -561,5 +562,146 @@ describe('isClaudeCodeVersionAtLeast', () => {
     it('should return false when claude is not installed', () => {
         vi.spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('not found'); });
         expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
+    });
+});
+
+describe('getVoiceConfig', () => {
+    let testProjectDir = '';
+
+    function writeRawUserLocalSettings(content: string): void {
+        const settingsPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectSettings(content: string): void {
+        const settingsPath = path.join(testProjectDir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectLocalSettings(content: string): void {
+        const settingsPath = path.join(testProjectDir, '.claude', 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    beforeEach(() => {
+        testProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-voice-project-'));
+    });
+
+    afterEach(() => {
+        if (testProjectDir) {
+            fs.rmSync(testProjectDir, { recursive: true, force: true });
+        }
+    });
+
+    describe('user-global layer only', () => {
+        it('returns null when no candidate file exists', () => {
+            expect(getVoiceConfig(testProjectDir)).toBeNull();
+        });
+
+        it('returns { enabled: false } when settings.json has no voice field', () => {
+            writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('returns { enabled: true } when voice.enabled is true', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true, mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('returns { enabled: false } when voice.enabled is false', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: false, mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('returns { enabled: false } when voice.enabled is missing but voice exists', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('treats malformed JSON as "no override"', () => {
+            // Malformed file is silently skipped; with no other layers, no override is found
+            // and we fall back to the Claude Code default of `enabled: false`. The file's mere
+            // existence still flips the overall result away from `null`.
+            writeRawClaudeSettings('{ this is not json');
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('treats unexpected voice shape as "no override"', () => {
+            // voice is a string instead of an object — Zod schema fails, no override extracted.
+            writeRawClaudeSettings(JSON.stringify({ voice: 'enabled' }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('respects CLAUDE_CONFIG_DIR env var', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            expect(getClaudeSettingsPath().startsWith(testClaudeConfigDir)).toBe(true);
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+    });
+
+    describe('layer precedence', () => {
+        it('user-local overrides user-global', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawUserLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('project overrides user-local', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: false } }));
+            writeRawUserLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            writeRawProjectSettings(JSON.stringify({ voice: { enabled: true } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('project-local overrides project', () => {
+            writeRawProjectSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('layer without voice.enabled does not override a lower layer', () => {
+            // user-global sets enabled:true, project layer has voice but no `enabled` field
+            // → project should NOT clobber the user-global value.
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('malformed higher-priority layer does not clobber a lower layer', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectLocalSettings('{ corrupt');
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('returns { enabled: false } when only project layer exists with voice but no enabled', () => {
+            writeRawProjectSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('returns null when no candidate file exists in any layer', () => {
+            // testProjectDir is freshly created and empty, testClaudeConfigDir too
+            expect(getVoiceConfig(testProjectDir)).toBeNull();
+        });
+
+        it('full stack: project-local wins over all three lower layers', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawUserLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            writeRawProjectSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('falls through layers without voice.enabled until it finds a defined value', () => {
+            // user-global defines enabled:true; the three higher-priority layers exist but
+            // contribute nothing usable (no voice field, only mode, or unrelated keys).
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawUserLocalSettings(JSON.stringify({ effortLevel: 'high' }));
+            writeRawProjectSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
     });
 });
