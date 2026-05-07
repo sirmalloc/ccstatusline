@@ -33,7 +33,7 @@ interface UsagePercentWidgetSuiteConfig<TWidget extends UsageWidgetLike> {
     rawProgressItem: WidgetItem;
     rawTimeItem: WidgetItem;
     render: (widget: TWidget, item: WidgetItem, context?: RenderContext) => string | null;
-    usageField: 'sessionUsage' | 'weeklyUsage';
+    usageField: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage';
     usageValue: number;
 }
 
@@ -68,10 +68,8 @@ const EXPECTED_TIMER_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
 ];
 
-function getUsageContext(field: 'sessionUsage' | 'weeklyUsage', value: number): RenderContext {
-    return field === 'sessionUsage'
-        ? { usageData: { sessionUsage: value } }
-        : { usageData: { weeklyUsage: value } };
+function getUsageContext(field: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage', value: number): RenderContext {
+    return { usageData: { [field]: value } };
 }
 
 export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(config: UsagePercentWidgetSuiteConfig<TWidget>): void {

@@ -44,7 +44,7 @@ bun run example
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar.
 - **Compaction Counter** - Show how many context compactions have been detected in the current session. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
-- **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
+- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
 
 ### Environment, Layout & Custom
 
@@ -158,7 +158,7 @@ Widget-specific shortcuts:
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Is Fork**: `h` hide when the repo is not a fork
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
-- **Session Usage / Weekly Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
+- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode

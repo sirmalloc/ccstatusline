@@ -12,6 +12,10 @@ export interface RenderUsageData {
     sessionResetAt?: string;
     weeklyUsage?: number;
     weeklyResetAt?: string;
+    weeklySonnetUsage?: number;
+    weeklySonnetResetAt?: string;
+    weeklyOpusUsage?: number;
+    weeklyOpusResetAt?: string;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;
     extraUsageUsed?: number;
