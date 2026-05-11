@@ -43,6 +43,7 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
     expectedDisplayName: string;
     expectedProgressKeybinds?: CustomKeybind[];
     supportsDateMode?: boolean;
+    supportsSliderMode?: boolean;
     expectedModifierText: string;
     modifierItem: WidgetItem;
     expectedTimeKeybinds?: CustomKeybind[];
@@ -227,10 +228,11 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
 
     it('clears invert metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
+        const lastBarMode = config.supportsSliderMode ? 'slider-only' : 'progress-short';
         const updated = widget.handleEditorAction('toggle-progress', {
             ...config.baseItem,
             metadata: {
-                display: 'progress-short',
+                display: lastBarMode,
                 invert: 'true'
             }
         });
@@ -248,7 +250,17 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
 
         expect(first?.metadata?.display).toBe('progress');
         expect(second?.metadata?.display).toBe('progress-short');
-        expect(third?.metadata?.display).toBe('time');
+
+        if (config.supportsSliderMode) {
+            const fourth = widget.handleEditorAction('toggle-progress', third ?? config.baseItem);
+            const fifth = widget.handleEditorAction('toggle-progress', fourth ?? config.baseItem);
+
+            expect(third?.metadata?.display).toBe('slider');
+            expect(fourth?.metadata?.display).toBe('slider-only');
+            expect(fifth?.metadata?.display).toBe('time');
+        } else {
+            expect(third?.metadata?.display).toBe('time');
+        }
     });
 
     it('clears compact metadata when cycling into progress mode', () => {

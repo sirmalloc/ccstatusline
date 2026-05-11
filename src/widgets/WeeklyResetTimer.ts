@@ -44,6 +44,8 @@ import {
     isUsageDateMode,
     isUsageInverted,
     isUsageProgressMode,
+    isUsageSliderMode,
+    makeSliderBar,
     toggleUsageCompact,
     toggleUsageDateMode,
     toggleUsageHourFormat,
@@ -71,19 +73,24 @@ function toggleWeeklyResetHoursOnly(item: WidgetItem): WidgetItem {
 function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
     const displayMode = getUsageDisplayMode(item);
     const dateMode = isUsageDateMode(item);
+    const isBarMode = isUsageProgressMode(displayMode) || isUsageSliderMode(displayMode);
     const modifiers: string[] = [];
 
     if (displayMode === 'progress') {
         modifiers.push('long bar');
     } else if (displayMode === 'progress-short') {
         modifiers.push('medium bar');
+    } else if (displayMode === 'slider') {
+        modifiers.push('short bar');
+    } else if (displayMode === 'slider-only') {
+        modifiers.push('short bar only');
     }
 
     if (isUsageInverted(item)) {
         modifiers.push('inverted');
     }
 
-    if (!isUsageProgressMode(displayMode)) {
+    if (!isBarMode) {
         if (isUsageCompact(item)) {
             modifiers.push('compact');
         }
@@ -100,12 +107,12 @@ function getWeeklyResetModifierText(item: WidgetItem): string | undefined {
     }
 
     const timezoneModifier = getUsageTimezoneModifier(item);
-    if (!isUsageProgressMode(displayMode) && dateMode && timezoneModifier) {
+    if (!isBarMode && dateMode && timezoneModifier) {
         modifiers.push(timezoneModifier);
     }
 
     const localeModifier = getUsageLocaleModifier(item);
-    if (!isUsageProgressMode(displayMode) && dateMode && localeModifier) {
+    if (!isBarMode && dateMode && localeModifier) {
         modifiers.push(localeModifier);
     }
 
@@ -127,7 +134,7 @@ export class WeeklyResetTimerWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item, ['compact', 'hours', 'absolute']);
+            return cycleUsageDisplayMode(item, ['compact', 'hours', 'absolute'], true);
         }
 
         if (action === 'toggle-invert') {
@@ -169,6 +176,14 @@ export class WeeklyResetTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
             }
 
+            if (isUsageSliderMode(displayMode)) {
+                const slider = makeSliderBar(previewPercent);
+                const sliderDisplay = displayMode === 'slider'
+                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    : slider;
+                return formatRawOrLabeledValue(item, 'Weekly Reset ', sliderDisplay);
+            }
+
             if (dateMode) {
                 const resetAt = formatUsageResetAt(
                     WEEKLY_RESET_PREVIEW_AT,
@@ -202,6 +217,15 @@ export class WeeklyResetTimerWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Weekly Reset ', `[${progressBar}] ${percentage}%`);
         }
 
+        if (isUsageSliderMode(displayMode)) {
+            const percent = inverted ? window.remainingPercent : window.elapsedPercent;
+            const slider = makeSliderBar(percent);
+            const sliderDisplay = displayMode === 'slider'
+                ? `${slider} ${percent.toFixed(1)}%`
+                : slider;
+            return formatRawOrLabeledValue(item, 'Weekly Reset ', sliderDisplay);
+        }
+
         if (dateMode) {
             const timezone = getUsageTimezone(item);
             const locale = getUsageLocale(item);
@@ -223,7 +247,9 @@ export class WeeklyResetTimerWidget implements Widget {
             includeTimezone: true
         });
 
-        if (!item || (!isUsageProgressMode(getUsageDisplayMode(item)) && !isUsageDateMode(item))) {
+        const mode = item ? getUsageDisplayMode(item) : 'time';
+        const isBarMode = isUsageProgressMode(mode) || isUsageSliderMode(mode);
+        if (!item || (!isBarMode && !isUsageDateMode(item))) {
             keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
         }
 
