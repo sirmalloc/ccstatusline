@@ -258,6 +258,101 @@ describe('WeeklyResetTimerWidget', () => {
         ]);
     });
 
+    it('renders slider bar with elapsed percentage', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 302400000,
+            remainingMs: 302400000,
+            elapsedPercent: 50,
+            remainingPercent: 50
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset ▓▓▓▓▓░░░░░ 50.0%');
+    });
+
+    it('renders slider-only bar without percentage', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider-only' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 302400000,
+            remainingMs: 302400000,
+            elapsedPercent: 50,
+            remainingPercent: 50
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset ▓▓▓▓▓░░░░░');
+    });
+
+    it('renders inverted slider using remaining percent', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider', invert: 'true' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 483840000,
+            remainingMs: 120960000,
+            elapsedPercent: 80,
+            remainingPercent: 20
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset ▓▓░░░░░░░░ 20.0%');
+    });
+
+    it('exposes invert keybind in slider mode and hides hours-only', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getCustomKeybinds({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider' }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+        ]);
+    });
+
+    it('shows short bar modifier text in slider modes', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider' }
+        }).modifierText).toBe('(short bar)');
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider-only' }
+        }).modifierText).toBe('(short bar only)');
+    });
+
+    it('ignores stale hours-only metadata in slider modes', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider', hours: 'true' }
+        }).modifierText).toBe('(short bar)');
+    });
+
     runUsageTimerEditorSuite({
         baseItem: { id: 'weekly-reset', type: 'weekly-reset-timer' },
         createWidget: () => new WeeklyResetTimerWidget(),
@@ -269,6 +364,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 'h', label: '(h)ours only', action: 'toggle-hours' }
         ],
         supportsDateMode: true,
+        supportsSliderMode: true,
         expectedModifierText: '(medium bar, inverted)',
         expectedProgressKeybinds: [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },

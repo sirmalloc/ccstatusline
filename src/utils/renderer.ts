@@ -106,14 +106,14 @@ function renderPowerlineStatusLine(
     if (themeName && themeName !== 'custom') {
         const theme = getPowerlineTheme(themeName);
         if (theme) {
-            const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+            const colorLevel = getColorLevelString(settings.colorLevel);
             const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
             themeColors = theme[colorLevelKey];
         }
     }
 
     // Get color level from settings
-    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+    const colorLevel = getColorLevelString(settings.colorLevel);
 
     // Filter out separator and flex-separator widgets in powerline mode
     const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
@@ -615,7 +615,7 @@ export function renderStatusLine(
     // No need to override here
 
     // Get color level from settings
-    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+    const colorLevel = getColorLevelString(settings.colorLevel);
 
     // Check if powerline mode is enabled
     const powerlineSettings = settings.powerline as Record<string, unknown> | undefined;
