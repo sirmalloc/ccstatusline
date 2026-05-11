@@ -81,7 +81,7 @@ function render(options: {
         rawValue
     };
 
-    mockedLoadSettings.mockReturnValue(settingsValue as never);
+    mockedLoadSettings.mockReturnValue(settingsValue);
 
     if (transcriptPath && fileContent !== undefined && fileContent !== null) {
         fs.writeFileSync(transcriptPath, fileContent, 'utf-8');
@@ -94,7 +94,7 @@ describe('ThinkingEffortWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-thinking-effort-'));
-        mockedLoadSettings.mockReturnValue({} as never);
+        mockedLoadSettings.mockReturnValue({});
     });
 
     afterEach(() => {
