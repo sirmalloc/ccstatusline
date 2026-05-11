@@ -85,6 +85,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'skills', create: () => new widgets.SkillsWidget() },
     { type: 'thinking-effort', create: () => new widgets.ThinkingEffortWidget() },
     { type: 'vim-mode', create: () => new widgets.VimModeWidget() },
+    { type: 'voice-status', create: () => new widgets.VoiceStatusWidget() },
     { type: 'worktree-mode', create: () => new widgets.GitWorktreeModeWidget() },
     { type: 'worktree-name', create: () => new widgets.GitWorktreeNameWidget() },
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
