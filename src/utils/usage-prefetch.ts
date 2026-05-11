@@ -5,7 +5,10 @@ import type {
     ProxyBudgetData,
     ProxyBudgetFetchOptions
 } from './proxy-budget-fetch';
-import { fetchProxyBudget } from './proxy-budget-fetch';
+import {
+    fetchProxyBudget,
+    isProxyBudgetPreset
+} from './proxy-budget-fetch';
 import type { UsageData } from './usage';
 import { fetchUsageData } from './usage';
 
@@ -151,6 +154,9 @@ function getProxyBudgetOptionsFromLines(lines: WidgetItem[][]): ProxyBudgetFetch
                 continue;
             const md = item.metadata ?? {};
             const opts: ProxyBudgetFetchOptions = {};
+            if (md.preset && isProxyBudgetPreset(md.preset)) {
+                opts.preset = md.preset;
+            }
             if (md.endpoint)
                 opts.endpoint = md.endpoint;
             if (md.baseUrlEnv)

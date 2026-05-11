@@ -11,7 +11,9 @@ import {
 } from 'vitest';
 
 import {
+    PROXY_BUDGET_PRESETS,
     fetchProxyBudget,
+    isProxyBudgetPreset,
     type ProxyBudgetFetchOptions
 } from '../proxy-budget-fetch';
 
@@ -204,5 +206,53 @@ describe('fetchProxyBudget', () => {
         mockHttpsRequest({ error: new Error('network down') });
         const data = await fetchProxyBudget(defaultOpts());
         expect(data).toBeNull();
+    });
+
+    it('preset=litellm uses /key/info with info.spend/info.max_budget paths', async () => {
+        mockHttpsRequest({ body: JSON.stringify({ info: { spend: 4, max_budget: 40, budget_reset_at: '2026-02-01T00:00:00Z' } }) });
+        const data = await fetchProxyBudget({ ...defaultOpts(), preset: 'litellm' });
+        expect(data?.spend).toBe(4);
+        expect(data?.budget).toBe(40);
+        expect(data?.percentage).toBeCloseTo(10);
+        expect(data?.resetAt).toBe('2026-02-01T00:00:00Z');
+    });
+
+    it('preset=openrouter resolves /api/v1/key with data.usage/data.limit/data.limit_reset', async () => {
+        mockHttpsRequest({ body: JSON.stringify({ data: { usage: 8, limit: 20, limit_reset: '2026-03-01T00:00:00Z' } }) });
+        const data = await fetchProxyBudget({ ...defaultOpts(), preset: 'openrouter' });
+        expect(data?.spend).toBe(8);
+        expect(data?.budget).toBe(20);
+        expect(data?.percentage).toBeCloseTo(40);
+        expect(data?.resetAt).toBe('2026-03-01T00:00:00Z');
+    });
+
+    it('user-supplied paths override preset defaults', async () => {
+        mockHttpsRequest({ body: JSON.stringify({ custom: { my_spend: 6, my_cap: 60 } }) });
+        const data = await fetchProxyBudget({
+            ...defaultOpts(),
+            preset: 'openrouter',
+            spendPath: 'custom.my_spend',
+            budgetPath: 'custom.my_cap'
+        });
+        expect(data?.spend).toBe(6);
+        expect(data?.budget).toBe(60);
+    });
+
+    it('isProxyBudgetPreset accepts every registered preset key and rejects unknown ones', () => {
+        for (const key of Object.keys(PROXY_BUDGET_PRESETS)) {
+            expect(isProxyBudgetPreset(key)).toBe(true);
+        }
+        expect(isProxyBudgetPreset('bogus-proxy')).toBe(false);
+        expect(isProxyBudgetPreset('')).toBe(false);
+    });
+
+    it('every registered preset has a fully-specified shape', () => {
+        for (const [name, def] of Object.entries(PROXY_BUDGET_PRESETS)) {
+            expect(def.endpoint, name).toMatch(/\$\{baseUrl\}/);
+            expect(def.spendPath, name).toBeTruthy();
+            expect(def.budgetPath, name).toBeTruthy();
+            expect(def.resetAtPath, name).toBeTruthy();
+            expect(['bearer', 'x-api-key']).toContain(def.authScheme);
+        }
     });
 });

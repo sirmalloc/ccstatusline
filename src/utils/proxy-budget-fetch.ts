@@ -20,7 +20,41 @@ export interface ProxyBudgetData {
     resetAt: string | null;
 }
 
+interface ProxyBudgetPresetDef {
+    endpoint: string;
+    spendPath: string;
+    budgetPath: string;
+    resetAtPath: string;
+    authScheme: 'bearer' | 'x-api-key';
+}
+
+// To add a new preset: add a single entry to this object. The type, the
+// runtime validator, and the test matrix all derive from the keys here.
+export const PROXY_BUDGET_PRESETS = {
+    litellm: {
+        endpoint: '${baseUrl}/key/info',
+        spendPath: 'info.spend',
+        budgetPath: 'info.max_budget',
+        resetAtPath: 'info.budget_reset_at',
+        authScheme: 'bearer'
+    },
+    openrouter: {
+        endpoint: '${baseUrl}/api/v1/key',
+        spendPath: 'data.usage',
+        budgetPath: 'data.limit',
+        resetAtPath: 'data.limit_reset',
+        authScheme: 'bearer'
+    }
+} as const satisfies Record<string, ProxyBudgetPresetDef>;
+
+export type ProxyBudgetPreset = keyof typeof PROXY_BUDGET_PRESETS;
+
+export function isProxyBudgetPreset(value: string): value is ProxyBudgetPreset {
+    return Object.prototype.hasOwnProperty.call(PROXY_BUDGET_PRESETS, value);
+}
+
 export interface ProxyBudgetFetchOptions {
+    preset?: ProxyBudgetPreset;
     endpoint?: string;
     baseUrlEnv?: string;
     tokenEnv?: string;
@@ -30,6 +64,23 @@ export interface ProxyBudgetFetchOptions {
     resetAtPath?: string;
     cacheTtlSec?: number;
     timeoutMs?: number;
+}
+
+function resolveWithPreset(opts: ProxyBudgetFetchOptions): {
+    endpoint: string | undefined;
+    spendPath: string;
+    budgetPath: string;
+    resetAtPath: string;
+    authScheme: 'bearer' | 'x-api-key';
+} {
+    const preset = opts.preset ? PROXY_BUDGET_PRESETS[opts.preset] : PROXY_BUDGET_PRESETS.litellm;
+    return {
+        endpoint: opts.endpoint ?? preset.endpoint,
+        spendPath: opts.spendPath ?? preset.spendPath,
+        budgetPath: opts.budgetPath ?? preset.budgetPath,
+        resetAtPath: opts.resetAtPath ?? preset.resetAtPath,
+        authScheme: opts.authScheme ?? preset.authScheme
+    };
 }
 
 const CachedSchema = z.object({
@@ -188,12 +239,13 @@ export async function fetchProxyBudget(opts: ProxyBudgetFetchOptions = {}): Prom
     const token = process.env[tokenEnv];
     const ttlSec = opts.cacheTtlSec ?? DEFAULT_TTL_SEC;
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const resolved = resolveWithPreset(opts);
 
     if (!token) {
         return null;
     }
 
-    const endpoint = resolveEndpoint(opts.endpoint, baseUrl);
+    const endpoint = resolveEndpoint(resolved.endpoint, baseUrl);
     if (!endpoint) {
         return null;
     }
@@ -214,7 +266,7 @@ export async function fetchProxyBudget(opts: ProxyBudgetFetchOptions = {}): Prom
             'Accept': 'application/json',
             'User-Agent': 'ccstatusline'
         };
-        if (opts.authScheme === 'x-api-key') {
+        if (resolved.authScheme === 'x-api-key') {
             headers['x-api-key'] = token;
         } else {
             headers.Authorization = `Bearer ${token}`;
@@ -232,9 +284,9 @@ export async function fetchProxyBudget(opts: ProxyBudgetFetchOptions = {}): Prom
             return readStaleCache(ttlSec * STALE_FALLBACK_MULTIPLIER);
         }
 
-        const spendRaw = pickPath(body, opts.spendPath ?? 'info.spend');
-        const budgetRaw = pickPath(body, opts.budgetPath ?? 'info.max_budget');
-        const resetAtRaw = pickPath(body, opts.resetAtPath ?? 'info.budget_reset_at');
+        const spendRaw = pickPath(body, resolved.spendPath);
+        const budgetRaw = pickPath(body, resolved.budgetPath);
+        const resetAtRaw = pickPath(body, resolved.resetAtPath);
 
         const spend = typeof spendRaw === 'number' && Number.isFinite(spendRaw) ? spendRaw : null;
         const budget = typeof budgetRaw === 'number' && Number.isFinite(budgetRaw) ? budgetRaw : null;
