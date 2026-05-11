@@ -47,6 +47,13 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.13 - Weekly model usage, voice status, hooks, and docs
+
+- **📊 Weekly Sonnet/Opus usage widgets** - Added separate weekly usage widgets for Sonnet and Opus API buckets, matching Claude Code's `/usage` model split.
+- **🎤 Voice Status widget** - Added a widget that shows whether Claude Code voice input is enabled, with icon, text, word, and optional Nerd Font display modes.
+- **📉 Timer short bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now support compact short-bar progress displays.
+- **🔕 Quieter hook output** - Hook handling now suppresses no-op JSON output so non-status updates stay silent.
+
 ### v2.2.9 - v2.2.12 - GitLab support, reset timers, context, compaction, and git widgets
 
 - **🦊 GitLab PR/MR support** - `Git Branch` and `Git PR/MR` now support GitHub, GitLab, and compatible self-hosted remotes, using `gh` or `glab` as appropriate.
@@ -197,7 +204,7 @@
 
 ## ✨ Features
 
-- **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, compaction count, block timer, and more
+- **📊 Real-time Metrics** - Display model name, git branch, token usage, per-model weekly usage, voice input state, session duration, compaction count, block timer, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure multiple independent status lines
