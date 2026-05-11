@@ -41,7 +41,10 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
-import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
+import {
+    prefetchProxyBudgetIfNeeded,
+    prefetchUsageDataIfNeeded
+} from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
@@ -127,6 +130,7 @@ async function renderMultipleLines(data: StatusJSON) {
     }
 
     const usageData = await prefetchUsageDataIfNeeded(lines, data);
+    const proxyBudgetData = await prefetchProxyBudgetIfNeeded(lines);
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
@@ -172,6 +176,7 @@ async function renderMultipleLines(data: StatusJSON) {
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        proxyBudgetData,
         sessionDuration,
         skillsMetrics,
         compactionData: hasCompactionWidget ? { count: compactionCount } : null,

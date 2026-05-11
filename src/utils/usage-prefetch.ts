@@ -1,6 +1,11 @@
 import type { StatusJSON } from '../types/StatusJSON';
 import type { WidgetItem } from '../types/Widget';
 
+import type {
+    ProxyBudgetData,
+    ProxyBudgetFetchOptions
+} from './proxy-budget-fetch';
+import { fetchProxyBudget } from './proxy-budget-fetch';
 import type { UsageData } from './usage';
 import { fetchUsageData } from './usage';
 
@@ -131,6 +136,58 @@ function getRequiredUsageFields(perModelRequirements: PerModelUsageRequirements)
     }
 
     return requiredFields;
+}
+
+const PROXY_BUDGET_WIDGET_TYPE = 'proxy-budget';
+
+export function hasProxyBudgetWidget(lines: WidgetItem[][]): boolean {
+    return lines.some(line => line.some(item => item.type === PROXY_BUDGET_WIDGET_TYPE));
+}
+
+function getProxyBudgetOptionsFromLines(lines: WidgetItem[][]): ProxyBudgetFetchOptions {
+    for (const line of lines) {
+        for (const item of line) {
+            if (item.type !== PROXY_BUDGET_WIDGET_TYPE)
+                continue;
+            const md = item.metadata ?? {};
+            const opts: ProxyBudgetFetchOptions = {};
+            if (md.endpoint)
+                opts.endpoint = md.endpoint;
+            if (md.baseUrlEnv)
+                opts.baseUrlEnv = md.baseUrlEnv;
+            if (md.tokenEnv)
+                opts.tokenEnv = md.tokenEnv;
+            if (md.authScheme === 'bearer' || md.authScheme === 'x-api-key') {
+                opts.authScheme = md.authScheme;
+            }
+            if (md.spendPath)
+                opts.spendPath = md.spendPath;
+            if (md.budgetPath)
+                opts.budgetPath = md.budgetPath;
+            if (md.resetAtPath)
+                opts.resetAtPath = md.resetAtPath;
+            if (md.cacheTtlSec) {
+                const n = Number.parseInt(md.cacheTtlSec, 10);
+                if (Number.isFinite(n) && n > 0)
+                    opts.cacheTtlSec = n;
+            }
+            if (md.timeoutMs) {
+                const n = Number.parseInt(md.timeoutMs, 10);
+                if (Number.isFinite(n) && n > 0)
+                    opts.timeoutMs = n;
+            }
+            return opts;
+        }
+    }
+    return {};
+}
+
+export async function prefetchProxyBudgetIfNeeded(lines: WidgetItem[][]): Promise<ProxyBudgetData | null> {
+    if (!hasProxyBudgetWidget(lines)) {
+        return null;
+    }
+    const opts = getProxyBudgetOptionsFromLines(lines);
+    return fetchProxyBudget(opts);
 }
 
 export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: StatusJSON): Promise<UsageData | null> {
