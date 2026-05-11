@@ -90,6 +90,16 @@ function formatStatus(enabled: boolean, format: VoiceFormat, nerdFont: boolean):
     }
 }
 
+function resolveVoiceConfigCwd(context: RenderContext): string | undefined {
+    const candidates = [
+        context.data?.workspace?.project_dir,
+        context.data?.cwd,
+        context.data?.workspace?.current_dir
+    ];
+
+    return candidates.find(candidate => typeof candidate === 'string' && candidate.trim().length > 0);
+}
+
 export class VoiceStatusWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
     getDescription(): string { return 'Shows whether Claude Code voice input is enabled'; }
@@ -134,7 +144,7 @@ export class VoiceStatusWidget implements Widget {
             return formatStatus(true, format, nerdFont);
         }
 
-        const config = getVoiceConfig();
+        const config = getVoiceConfig(resolveVoiceConfigCwd(context));
         if (config === null) {
             return null;
         }

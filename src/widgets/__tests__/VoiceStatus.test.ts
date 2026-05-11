@@ -187,6 +187,37 @@ describe('VoiceStatusWidget', () => {
         });
     });
 
+    describe('render() - voice config cwd', () => {
+        it('uses the project dir for project-local Claude settings', () => {
+            const context = makeContext({
+                data: {
+                    cwd: '/repo/subdir',
+                    workspace: {
+                        current_dir: '/repo/current-dir',
+                        project_dir: '/repo'
+                    }
+                }
+            });
+
+            new VoiceStatusWidget().render(ITEM, context, DEFAULT_SETTINGS);
+
+            expect(claudeSettings.getVoiceConfig).toHaveBeenCalledWith('/repo');
+        });
+
+        it('falls back to cwd when project dir is missing', () => {
+            const context = makeContext({
+                data: {
+                    cwd: '/repo/subdir',
+                    workspace: { current_dir: '/repo/current-dir' }
+                }
+            });
+
+            new VoiceStatusWidget().render(ITEM, context, DEFAULT_SETTINGS);
+
+            expect(claudeSettings.getVoiceConfig).toHaveBeenCalledWith('/repo/subdir');
+        });
+    });
+
     describe('render() - preview mode', () => {
         it('renders the ON state for the default format', () => {
             vi.spyOn(claudeSettings, 'getVoiceConfig').mockReturnValue({ enabled: false });
