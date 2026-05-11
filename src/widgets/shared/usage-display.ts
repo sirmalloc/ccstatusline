@@ -277,7 +277,10 @@ export function getUsageTimerCustomKeybinds(
 ): CustomKeybind[] {
     const keybinds = [PROGRESS_TOGGLE_KEYBIND];
 
-    if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
+    const mode = item ? getUsageDisplayMode(item) : 'time';
+    const isBarMode = isUsageProgressMode(mode) || isUsageSliderMode(mode);
+
+    if (item && isBarMode) {
         keybinds.push(INVERT_TOGGLE_KEYBIND);
     } else {
         keybinds.push(COMPACT_TOGGLE_KEYBIND);
@@ -287,7 +290,7 @@ export function getUsageTimerCustomKeybinds(
         }
     }
 
-    if (item && isUsageDateMode(item) && !isUsageProgressMode(getUsageDisplayMode(item))) {
+    if (item && isUsageDateMode(item) && !isBarMode) {
         if (options.includeHourFormat) {
             keybinds.push(HOUR_FORMAT_TOGGLE_KEYBIND);
         }

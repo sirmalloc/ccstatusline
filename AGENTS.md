@@ -99,7 +99,7 @@ All widgets must implement:
 - `isKnownWidgetType()`: Validates if a type is registered
 
 **Available Widgets:**
-- Model, Version, OutputStyle - Claude Code metadata display
+- Model, Version, OutputStyle, VoiceStatus - Claude Code metadata display
 - GitBranch, GitChanges, GitInsertions, GitDeletions, GitWorktree - Git repository status
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
 - ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5 with [1m] suffix, 200k for all other models)

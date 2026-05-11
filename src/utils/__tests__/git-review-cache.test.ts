@@ -101,13 +101,13 @@ function createHarness(): PrCacheHarness {
 
             throw new Error(`Unexpected command: ${cmd} ${commandArgs.join(' ')}`);
         }) as GitReviewCacheDeps['execFileSync'],
-        existsSync: (filePath => cacheFiles.has(String(filePath))) as GitReviewCacheDeps['existsSync'],
+        existsSync: filePath => cacheFiles.has(String(filePath)),
         getHomedir: () => '/tmp/home',
-        mkdirSync: (() => undefined) as GitReviewCacheDeps['mkdirSync'],
+        mkdirSync: () => undefined,
         now: () => now,
         readFileSync: (filePath => cacheFiles.get(String(filePath))?.content ?? '') as GitReviewCacheDeps['readFileSync'],
         statSync: (filePath => ({ mtimeMs: cacheFiles.get(String(filePath))?.mtimeMs ?? now })) as GitReviewCacheDeps['statSync'],
-        writeFileSync: ((filePath, content) => {
+        writeFileSync: (filePath, content) => {
             const normalizedContent = typeof content === 'string'
                 ? content
                 : Buffer.isBuffer(content)
@@ -117,7 +117,7 @@ function createHarness(): PrCacheHarness {
                 content: normalizedContent,
                 mtimeMs: now
             });
-        }) as GitReviewCacheDeps['writeFileSync']
+        }
     };
 
     return {
