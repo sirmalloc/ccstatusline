@@ -198,6 +198,52 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
+    it.each([
+        {
+            apiUsageData: { weeklySonnetUsage: 8 },
+            bucketName: 'seven_day_sonnet' as const,
+            expectedUsage: 8,
+            usageField: 'weeklySonnetUsage' as const,
+            widgetType: 'weekly-sonnet-usage'
+        },
+        {
+            apiUsageData: { weeklyOpusUsage: 2 },
+            bucketName: 'seven_day_opus' as const,
+            expectedUsage: 2,
+            usageField: 'weeklyOpusUsage' as const,
+            widgetType: 'weekly-opus-usage'
+        }
+    ])('falls back to API fetch when $widgetType has only a reset timestamp in rate_limits', async ({
+        apiUsageData,
+        bucketName,
+        expectedUsage,
+        usageField,
+        widgetType
+    }) => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 42,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 15,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z',
+            ...apiUsageData
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: widgetType }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 },
+                [bucketName]: { resets_at: 1774540001 }
+            }
+        });
+
+        expect(usageData?.[usageField]).toBe(expectedUsage);
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+    });
+
     it('does not require per-model buckets when only the all-models weekly widget is present', async () => {
         const lines = makeLines(
             [{ id: '1', type: 'weekly-usage' }]

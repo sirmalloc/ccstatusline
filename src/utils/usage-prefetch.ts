@@ -19,12 +19,36 @@ const PER_MODEL_USAGE_WIDGET_TYPES = new Set<string>([
     'weekly-opus-usage'
 ]);
 
+interface PerModelUsageRequirements {
+    opus: boolean;
+    sonnet: boolean;
+}
+
 export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
     return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type)));
 }
 
-function hasPerModelUsageWidgets(lines: WidgetItem[][]): boolean {
-    return lines.some(line => line.some(item => PER_MODEL_USAGE_WIDGET_TYPES.has(item.type)));
+function getPerModelUsageRequirements(lines: WidgetItem[][]): PerModelUsageRequirements {
+    const requirements: PerModelUsageRequirements = {
+        opus: false,
+        sonnet: false
+    };
+
+    for (const line of lines) {
+        for (const item of line) {
+            if (!PER_MODEL_USAGE_WIDGET_TYPES.has(item.type)) {
+                continue;
+            }
+
+            if (item.type === 'weekly-sonnet-usage') {
+                requirements.sonnet = true;
+            } else if (item.type === 'weekly-opus-usage') {
+                requirements.opus = true;
+            }
+        }
+    }
+
+    return requirements;
 }
 
 function epochSecondsToIsoString(epochSeconds: number | null | undefined): string | undefined {
@@ -68,7 +92,7 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
 
 function hasCompleteRateLimitsUsageData(
     usageData: UsageData | null,
-    perModelRequired: boolean
+    perModelRequirements: PerModelUsageRequirements
 ): usageData is UsageData & {
     sessionUsage: number;
     sessionResetAt: string;
@@ -84,17 +108,12 @@ function hasCompleteRateLimitsUsageData(
         return false;
     }
 
-    // Per-model buckets can legitimately be absent (the user may not have used Opus,
-    // or the host Claude Code may be on a release that doesn't surface them yet).
-    // Only require that *something* — usage or reset — has been populated for
-    // per-model fields when a per-model widget is on screen, so we don't fall
-    // back to the API on every render.
-    if (perModelRequired) {
-        const sonnetPresent = usageData.weeklySonnetUsage !== undefined || usageData.weeklySonnetResetAt !== undefined;
-        const opusPresent = usageData.weeklyOpusUsage !== undefined || usageData.weeklyOpusResetAt !== undefined;
-        if (!sonnetPresent && !opusPresent) {
-            return false;
-        }
+    if (perModelRequirements.sonnet && usageData.weeklySonnetUsage === undefined) {
+        return false;
+    }
+
+    if (perModelRequirements.opus && usageData.weeklyOpusUsage === undefined) {
+        return false;
     }
 
     return true;
@@ -106,7 +125,7 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
     }
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
-    if (hasCompleteRateLimitsUsageData(rateLimitsData, hasPerModelUsageWidgets(lines))) {
+    if (hasCompleteRateLimitsUsageData(rateLimitsData, getPerModelUsageRequirements(lines))) {
         return rateLimitsData;
     }
 
