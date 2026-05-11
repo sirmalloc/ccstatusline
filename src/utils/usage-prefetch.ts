@@ -67,9 +67,9 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
     const sessionResetAt = epochSecondsToIsoString(rateLimits.five_hour?.resets_at);
     const weeklyUsage = rateLimits.seven_day?.used_percentage ?? undefined;
     const weeklyResetAt = epochSecondsToIsoString(rateLimits.seven_day?.resets_at);
-    const weeklySonnetUsage = rateLimits.seven_day_sonnet?.used_percentage ?? undefined;
+    const weeklySonnetUsage = rateLimits.seven_day_sonnet === null ? 0 : rateLimits.seven_day_sonnet?.used_percentage ?? undefined;
     const weeklySonnetResetAt = epochSecondsToIsoString(rateLimits.seven_day_sonnet?.resets_at);
-    const weeklyOpusUsage = rateLimits.seven_day_opus?.used_percentage ?? undefined;
+    const weeklyOpusUsage = rateLimits.seven_day_opus === null ? 0 : rateLimits.seven_day_opus?.used_percentage ?? undefined;
     const weeklyOpusResetAt = epochSecondsToIsoString(rateLimits.seven_day_opus?.resets_at);
 
     if (sessionUsage === undefined && weeklyUsage === undefined) {
@@ -119,15 +119,30 @@ function hasCompleteRateLimitsUsageData(
     return true;
 }
 
+function getRequiredUsageFields(perModelRequirements: PerModelUsageRequirements): ('weeklySonnetUsage' | 'weeklyOpusUsage')[] {
+    const requiredFields: ('weeklySonnetUsage' | 'weeklyOpusUsage')[] = [];
+
+    if (perModelRequirements.sonnet) {
+        requiredFields.push('weeklySonnetUsage');
+    }
+
+    if (perModelRequirements.opus) {
+        requiredFields.push('weeklyOpusUsage');
+    }
+
+    return requiredFields;
+}
+
 export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: StatusJSON): Promise<UsageData | null> {
     if (!hasUsageDependentWidgets(lines)) {
         return null;
     }
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
-    if (hasCompleteRateLimitsUsageData(rateLimitsData, getPerModelUsageRequirements(lines))) {
+    const perModelRequirements = getPerModelUsageRequirements(lines);
+    if (hasCompleteRateLimitsUsageData(rateLimitsData, perModelRequirements)) {
         return rateLimitsData;
     }
 
-    return fetchUsageData();
+    return fetchUsageData({ requiredFields: getRequiredUsageFields(perModelRequirements) });
 }

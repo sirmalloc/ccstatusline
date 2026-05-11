@@ -260,6 +260,25 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
     });
 
+    it('treats null requested per-model buckets as zero usage without fetching', async () => {
+        const lines = makeLines(
+            [{ id: '1', type: 'weekly-sonnet-usage' }, { id: '2', type: 'weekly-opus-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 },
+                seven_day_sonnet: null,
+                seven_day_opus: null
+            }
+        });
+
+        expect(usageData?.weeklySonnetUsage).toBe(0);
+        expect(usageData?.weeklyOpusUsage).toBe(0);
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
     it('falls back to API fetch when sessionResetAt is missing from rate_limits', async () => {
         mockFetchUsageData.mockResolvedValue({
             sessionUsage: 42,
@@ -378,7 +397,7 @@ describe('extractUsageDataFromRateLimits', () => {
         expect(result?.weeklyOpusUsage).toBeUndefined();
     });
 
-    it('treats null per-model buckets as absent', () => {
+    it('treats null per-model buckets as zero usage', () => {
         const result = extractUsageDataFromRateLimits({
             five_hour: { used_percentage: 42, resets_at: 1774020000 },
             seven_day: { used_percentage: 15, resets_at: 1774540000 },
@@ -386,7 +405,7 @@ describe('extractUsageDataFromRateLimits', () => {
             seven_day_opus: null
         });
 
-        expect(result?.weeklySonnetUsage).toBeUndefined();
-        expect(result?.weeklyOpusUsage).toBeUndefined();
+        expect(result?.weeklySonnetUsage).toBe(0);
+        expect(result?.weeklyOpusUsage).toBe(0);
     });
 });

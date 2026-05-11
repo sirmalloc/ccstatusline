@@ -38,6 +38,7 @@ interface ProbeOptions {
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
+    requiredFields?: string[];
     responseBody?: string;
     responseHeaders?: Record<string, string>;
     statusCode?: number;
@@ -136,10 +137,11 @@ const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
+const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
 Date.now = () => nowMs;
 
-const first = await fetchUsageData();
-const second = await fetchUsageData();
+const first = await fetchUsageData({ requiredFields });
+const second = await fetchUsageData({ requiredFields });
 process.stdout.write(JSON.stringify({
     first,
     second,
@@ -189,6 +191,7 @@ process.stdout.write(JSON.stringify({
                 ...process.env,
                 HOME: options.home,
                 PATH: options.pathDir ?? '/nonexistent',
+                TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
                 TEST_NOW_MS: String(options.nowMs),
                 TEST_REQUEST_MODE: options.mode ?? 'success',
                 TEST_RESPONSE_BODY: options.responseBody ?? '',
@@ -240,6 +243,32 @@ describe('fetchUsageData error handling', () => {
             utilization: 21,
             resets_at: '2030-01-08T00:00:00.000Z'
         }
+    });
+    const perModelSuccessResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        seven_day_sonnet: {
+            utilization: 8,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        }
+    });
+    const nullPerModelResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        seven_day_sonnet: null,
+        seven_day_opus: null
     });
     const rateLimitedResponseBody = JSON.stringify({
         error: {
@@ -413,6 +442,83 @@ describe('fetchUsageData error handling', () => {
             expect(cachedSuccessResult.second).toEqual(successResult.first);
             expect(cachedSuccessResult.cacheExists).toBe(true);
             expect(cachedSuccessResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats null API per-model buckets as zero usage', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('null-per-model');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['weeklySonnetUsage', 'weeklyOpusUsage'],
+                responseBody: nullPerModelResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                weeklySonnetUsage: 0,
+                weeklyOpusUsage: 0
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('bypasses fresh aggregate-only cache when requested per-model fields are missing', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('required-fields');
+            const aggregateOnlyResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(aggregateOnlyResult.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(aggregateOnlyResult.requestCount).toBe(1);
+
+            const perModelResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: nowMs + 31000,
+                pathDir: home.bin,
+                requiredFields: ['weeklySonnetUsage'],
+                responseBody: perModelSuccessResponseBody
+            });
+
+            expect(perModelResult.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                weeklySonnetUsage: 8,
+                weeklySonnetResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(perModelResult.second).toEqual(perModelResult.first);
+            expect(perModelResult.requestCount).toBe(1);
         } finally {
             harness.cleanup();
         }
