@@ -5,6 +5,8 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { parseCurrency } from '../utils/value-parsers';
+import { getValueFromRender } from '../utils/widget-values';
 
 export class SessionCostWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -29,6 +31,12 @@ export class SessionCostWidget implements Widget {
         const formattedCost = `$${totalCost.toFixed(2)}`;
 
         return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
+    }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | string | boolean | null {
+        return getValueFromRender(this, context, item, parseCurrency);
     }
 
     supportsRawValue(): boolean { return true; }

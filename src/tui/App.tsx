@@ -59,6 +59,7 @@ import {
     TerminalWidthMenu,
     type MainMenuOption
 } from './components';
+import type { AccordionState } from './hooks/useRuleAccordion';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -108,6 +109,8 @@ export const App: React.FC = () => {
     const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
+    const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
+    const [accordionState, setAccordionState] = useState<AccordionState>({ expandedWidgetId: null, selectedRuleIndex: 0 });
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -231,6 +234,18 @@ export const App: React.FC = () => {
     const handleInstallMenuCancel = useCallback(() => {
         setMenuSelections(clearInstallMenuSelection);
         setScreen('main');
+    }, []);
+
+    const handleWidgetHighlight = useCallback((widgetId: string | null) => {
+        setActiveWidgetId(widgetId);
+    }, []);
+
+    const handleTabSwap = useCallback(() => {
+        setScreen(prev => (prev === 'items' ? 'colors' : 'items'));
+    }, []);
+
+    const handleAccordionChange = useCallback((state: AccordionState) => {
+        setAccordionState(state);
     }, []);
 
     if (!settings) {
@@ -408,6 +423,11 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
+                        onTabSwap={handleTabSwap}
+                        onWidgetHighlight={handleWidgetHighlight}
+                        initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'colorLines' && (
@@ -446,6 +466,11 @@ export const App: React.FC = () => {
                             // Go back to line selection for colors
                             setScreen('colorLines');
                         }}
+                        onTabSwap={handleTabSwap}
+                        onWidgetHighlight={handleWidgetHighlight}
+                        initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'terminalConfig' && (

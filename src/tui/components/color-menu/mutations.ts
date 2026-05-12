@@ -1,4 +1,7 @@
-import type { WidgetItem } from '../../../types/Widget';
+import type {
+    Rule,
+    WidgetItem
+} from '../../../types/Widget';
 import { getWidget } from '../../../utils/widgets';
 
 export function updateWidgetById(
@@ -9,13 +12,41 @@ export function updateWidgetById(
     return widgets.map(widget => widget.id === widgetId ? updater(widget) : widget);
 }
 
+function updateRuleApply(
+    widget: WidgetItem,
+    ruleIndex: number,
+    applyUpdater: (rule: Rule) => Rule
+): WidgetItem {
+    const rules = widget.rules;
+    if (!rules || ruleIndex < 0 || ruleIndex >= rules.length) {
+        return widget;
+    }
+
+    const updatedRules = rules.map((rule, i) => i === ruleIndex ? applyUpdater(rule) : rule);
+
+    return { ...widget, rules: updatedRules };
+}
+
 export function setWidgetColor(
     widgets: WidgetItem[],
     widgetId: string,
     color: string,
-    editingBackground: boolean
+    editingBackground: boolean,
+    ruleIndex?: number
 ): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, rule => ({
+                ...rule,
+                apply: {
+                    ...rule.apply,
+                    ...(editingBackground
+                        ? { backgroundColor: color }
+                        : { color })
+                }
+            }));
+        }
+
         if (editingBackground) {
             return {
                 ...widget,
@@ -30,15 +61,42 @@ export function setWidgetColor(
     });
 }
 
-export function toggleWidgetBold(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
-    return updateWidgetById(widgets, widgetId, widget => ({
-        ...widget,
-        bold: !widget.bold
-    }));
+export function toggleWidgetBold(widgets: WidgetItem[], widgetId: string, ruleIndex?: number): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, rule => ({
+                ...rule,
+                apply: {
+                    ...rule.apply,
+                    bold: !rule.apply.bold
+                }
+            }));
+        }
+
+        return {
+            ...widget,
+            bold: !widget.bold
+        };
+    });
 }
 
-export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
+export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string, ruleIndex?: number): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, (rule) => {
+                const {
+                    color,
+                    backgroundColor,
+                    bold,
+                    ...restApply
+                } = rule.apply;
+                void color;
+                void backgroundColor;
+                void bold;
+                return { ...rule, apply: restApply };
+            });
+        }
+
         const {
             color,
             backgroundColor,
@@ -91,6 +149,7 @@ export interface CycleWidgetColorOptions {
     editingBackground: boolean;
     colors: string[];
     backgroundColors: string[];
+    ruleIndex?: number;
 }
 
 export function cycleWidgetColor({
@@ -99,9 +158,63 @@ export function cycleWidgetColor({
     direction,
     editingBackground,
     colors,
-    backgroundColors
+    backgroundColors,
+    ruleIndex
 }: CycleWidgetColorOptions): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, (rule) => {
+                if (editingBackground) {
+                    if (backgroundColors.length === 0) {
+                        return rule;
+                    }
+
+                    const currentBgColor = rule.apply.backgroundColor ?? widget.backgroundColor ?? '';
+                    let currentBgColorIndex = backgroundColors.indexOf(currentBgColor);
+                    if (currentBgColorIndex === -1) {
+                        currentBgColorIndex = 0;
+                    }
+
+                    const nextBgColorIndex = getNextIndex(currentBgColorIndex, backgroundColors.length, direction);
+                    const nextBgColor = backgroundColors[nextBgColorIndex];
+
+                    return {
+                        ...rule,
+                        apply: {
+                            ...rule.apply,
+                            backgroundColor: nextBgColor === '' ? undefined : nextBgColor
+                        }
+                    };
+                }
+
+                if (colors.length === 0) {
+                    return rule;
+                }
+
+                const defaultColor = getDefaultForegroundColor(widget);
+                let currentColor = rule.apply.color ?? widget.color ?? defaultColor;
+                if (currentColor === 'dim') {
+                    currentColor = defaultColor;
+                }
+
+                let currentColorIndex = colors.indexOf(currentColor);
+                if (currentColorIndex === -1) {
+                    currentColorIndex = 0;
+                }
+
+                const nextColorIndex = getNextIndex(currentColorIndex, colors.length, direction);
+                const nextColor = colors[nextColorIndex];
+
+                return {
+                    ...rule,
+                    apply: {
+                        ...rule.apply,
+                        color: nextColor
+                    }
+                };
+            });
+        }
+
         if (editingBackground) {
             if (backgroundColors.length === 0) {
                 return widget;

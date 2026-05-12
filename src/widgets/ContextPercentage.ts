@@ -7,6 +7,8 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { calculateContextPercentageMetrics } from '../utils/context-percentage';
+import { parsePercentage } from '../utils/value-parsers';
+import { getValueFromRender } from '../utils/widget-values';
 
 import {
     getContextInverseModifierText,
@@ -73,6 +75,12 @@ export class ContextPercentageWidget implements Widget {
             { key: 'u', label: '(u)sed/remaining', action: 'toggle-inverse' },
             ...getContextSliderKeybinds()
         ];
+    }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | string | boolean | null {
+        return getValueFromRender(this, context, item, parsePercentage);
     }
 
     supportsRawValue(): boolean { return true; }

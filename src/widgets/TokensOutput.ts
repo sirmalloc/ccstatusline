@@ -7,6 +7,8 @@ import type {
 } from '../types/Widget';
 import { getContextWindowOutputTotalTokens } from '../utils/context-window';
 import { formatTokens } from '../utils/renderer';
+import { parseTokenCount } from '../utils/value-parsers';
+import { getValueFromRender } from '../utils/widget-values';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
@@ -33,6 +35,12 @@ export class TokensOutputWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
         }
         return null;
+    }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | string | boolean | null {
+        return getValueFromRender(this, context, item, parseTokenCount);
     }
 
     supportsRawValue(): boolean { return true; }

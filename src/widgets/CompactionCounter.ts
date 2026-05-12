@@ -179,6 +179,12 @@ export class CompactionCounterWidget implements Widget {
         return keybinds;
     }
 
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, _item: WidgetItem): number | string | boolean | null {
+        return context.compactionData?.count ?? 0;
+    }
+
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
