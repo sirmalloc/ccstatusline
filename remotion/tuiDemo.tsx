@@ -9,6 +9,7 @@ import {
     useCurrentFrame
 } from 'remotion';
 
+import packageJson from '../package.json';
 import {
     filterFuzzySearchRecords,
     getMatchSegments,
@@ -30,6 +31,8 @@ type ThemeName
         | 'gruvbox'
         | 'onedark'
         | 'tokyonight';
+
+const PACKAGE_VERSION = packageJson.version;
 
 interface Swatch {
     foreground: string;
@@ -1430,7 +1433,10 @@ function TuiScreen({ phase }: { phase: Phase }) {
         <>
             <div style={styles.tuiHeader}>
                 <span style={styles.tuiTitle}>CCStatusline Configuration</span>
-                <span style={styles.version}>&nbsp;|&nbsp;v2.2.13</span>
+                <span style={styles.version}>
+                    &nbsp;|&nbsp;v
+                    {PACKAGE_VERSION}
+                </span>
                 {phase.screen === 'final' && (
                     <span style={styles.savedMessage}>  ✓ Configuration saved</span>
                 )}

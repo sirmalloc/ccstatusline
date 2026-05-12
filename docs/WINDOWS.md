@@ -21,13 +21,9 @@ bunx -y ccstatusline@latest
 ```powershell
 # Using npm
 npx -y ccstatusline@latest
-
-# Or with Yarn
-yarn dlx ccstatusline@latest
-
-# Or with pnpm
-pnpm dlx ccstatusline@latest
 ```
+
+These commands launch the configuration TUI. To pin the install, start the TUI with `bunx -y ccstatusline@latest` or `npx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI installs the active ccstatusline version globally with Bun or npm and configures Claude Code to run `ccstatusline`. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
 
 ## Claude Code Integration
 
@@ -70,6 +66,8 @@ $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
 ```
 
 `refreshInterval` is optional and only supported by Claude Code >=2.1.97. You can configure it from ccstatusline's TUI after installation.
+
+The `bunx` and `npx` examples above follow `@latest`. If you choose **Pinned global install** in the TUI, it writes `"command": "ccstatusline"` instead after installing the selected version globally. You can also run `ccstatusline` directly for future TUI launches.
 
 ## Windows-Specific Features
 

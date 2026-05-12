@@ -15,6 +15,8 @@ import {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
+    buildStatusLineCommand,
+    classifyInstallation,
     getClaudeCodeVersion,
     getClaudeJsonPath,
     getClaudeSettingsPath,
@@ -58,7 +60,7 @@ function writeRawClaudeSettings(content: string): void {
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
-    initConfigPath();
+    initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
 
 afterEach(() => {
@@ -128,6 +130,50 @@ describe('isKnownCommand', () => {
     it('should match command containing a quoted ccstatusline.ts path', () => {
         expect(isKnownCommand('bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"')).toBe(true);
     });
+
+    it('should match global command with --config', () => {
+        expect(isKnownCommand(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config /tmp/settings.json`)).toBe(true);
+    });
+});
+
+describe('classifyInstallation', () => {
+    it('classifies existing npx latest commands as auto-update npm', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.NPM)).toEqual({
+            method: 'auto-update',
+            packageManager: 'npm'
+        });
+    });
+
+    it('classifies existing bunx latest commands as auto-update bun', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.BUNX)).toEqual({
+            method: 'auto-update',
+            packageManager: 'bun'
+        });
+    });
+
+    it('classifies global commands without metadata as self-managed unknown', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.GLOBAL)).toEqual({
+            method: 'self-managed',
+            packageManager: 'unknown'
+        });
+    });
+
+    it('uses pinned metadata for global commands', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.GLOBAL, {
+            method: 'pinned',
+            installedVersion: '2.2.13'
+        })).toEqual({
+            method: 'pinned',
+            installedVersion: '2.2.13'
+        });
+    });
+
+    it('classifies local development commands as self-managed unknown', () => {
+        expect(classifyInstallation('bun run /repo/src/ccstatusline.ts')).toEqual({
+            method: 'self-managed',
+            packageManager: 'unknown'
+        });
+    });
 });
 
 describe('Claude config paths', () => {
@@ -153,38 +199,63 @@ describe('Claude config paths', () => {
 describe('buildCommand via installStatusLine', () => {
     it('should use base command when no custom config path', async () => {
         initConfigPath();
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
 
     it('should append --config with simple path (no quoting needed)', async () => {
         initConfigPath('/tmp/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config /tmp/settings.json`);
     });
 
     it('should quote path with spaces', async () => {
         initConfigPath('/my path/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my path/settings.json'`);
     });
 
     it('should quote path with parentheses', async () => {
         initConfigPath('/my(path)/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my(path)/settings.json'`);
     });
 
     it('should escape embedded single quotes in path', async () => {
         initConfigPath('/my\'path/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my'\\''path/settings.json'`);
     });
 
-    it('should use bunx command when useBunx is true', async () => {
+    it('should use bunx command when commandMode is auto-bunx', async () => {
         initConfigPath('/my path/settings.json');
-        await installStatusLine(true);
+        await installStatusLine({ commandMode: 'auto-bunx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
+    });
+
+    it('should generate global command with custom config path', () => {
+        initConfigPath('/my path/settings.json');
+        expect(buildStatusLineCommand('global')).toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config '/my path/settings.json'`);
+    });
+
+    it('should install global command for pinned installs and save metadata', async () => {
+        const configPath = path.join(testClaudeConfigDir, 'pinned-settings.json');
+        initConfigPath(configPath);
+
+        await installStatusLine({
+            commandMode: 'global',
+            installationMetadata: {
+                method: 'pinned',
+                installedVersion: '2.2.13'
+            }
+        });
+
+        expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config ${configPath}`);
+        const savedSettings = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as { installation?: unknown };
+        expect(savedSettings.installation).toEqual({
+            method: 'pinned',
+            installedVersion: '2.2.13'
+        });
     });
 
     it('should sync hooks on install when settings include hook-enabled widgets', async () => {
@@ -196,7 +267,7 @@ describe('buildCommand via installStatusLine', () => {
         };
         fs.writeFileSync(configPath, JSON.stringify(settingsWithSkills, null, 2), 'utf-8');
 
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
 
         const installedCommand = `${CCSTATUSLINE_COMMANDS.NPM} --config ${configPath}`;
         const claudeSettings = await loadClaudeSettings();
@@ -216,18 +287,47 @@ describe('buildCommand via installStatusLine', () => {
             }
         ]);
     });
+
+    it('should sync hooks from the final global statusline command', async () => {
+        const configPath = path.join(testClaudeConfigDir, 'global-settings.json');
+        initConfigPath(configPath);
+        fs.writeFileSync(configPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        }, null, 2), 'utf-8');
+
+        await installStatusLine({
+            commandMode: 'global',
+            installationMetadata: {
+                method: 'pinned',
+                installedVersion: '2.2.13'
+            }
+        });
+
+        const installedCommand = `${CCSTATUSLINE_COMMANDS.GLOBAL} --config ${configPath}`;
+        const claudeSettings = await loadClaudeSettings();
+        expect(claudeSettings.statusLine?.command).toBe(installedCommand);
+        const hooks = (claudeSettings.hooks ?? {}) as Record<string, unknown[]>;
+        expect(hooks.PreToolUse).toEqual([
+            {
+                _tag: 'ccstatusline-managed',
+                matcher: 'Skill',
+                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+            }
+        ]);
+    });
 });
 
 describe('installStatusLine refreshInterval', () => {
     it('should set refreshInterval to 10 when version is supported', async () => {
         initConfigPath();
-        await installStatusLine(false, true);
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(10);
     });
 
     it('should not set refreshInterval when version is unsupported', async () => {
         initConfigPath();
-        await installStatusLine(false, false);
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
         expect(readInstalledRefreshInterval()).toBeUndefined();
     });
 
@@ -240,7 +340,7 @@ describe('installStatusLine refreshInterval', () => {
                 refreshInterval: 5
             }
         }));
-        await installStatusLine(false, true);
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(5);
     });
 });
@@ -350,7 +450,7 @@ describe('backup and error handling behavior', () => {
             }
         }));
 
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
 
         const settingsPath = getClaudeSettingsPath();
         expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
@@ -392,11 +492,11 @@ describe('backup and error handling behavior', () => {
         writeRawClaudeSettings('{ invalid json');
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         try {
-            await installStatusLine(false);
+            await installStatusLine({ commandMode: 'auto-npx' });
 
             const settingsPath = getClaudeSettingsPath();
             const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string; padding?: number } };
-            expect(installed.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
+            expect(installed.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
             expect(installed.statusLine?.padding).toBe(0);
             expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
             expect(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')).toBe('{ invalid json');

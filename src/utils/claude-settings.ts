@@ -7,12 +7,14 @@ import { z } from 'zod';
 import type { ClaudeSettings } from '../types/ClaudeSettings';
 import {
     SettingsSchema,
+    type InstallationMetadata,
     type Settings
 } from '../types/Settings';
 
 import {
     getConfigPath,
-    isCustomConfigPath
+    isCustomConfigPath,
+    saveInstallationMetadata
 } from './config';
 
 // Re-export for backward compatibility
@@ -24,13 +26,37 @@ const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
 
 export const CCSTATUSLINE_COMMANDS = {
+    AUTO_NPX: 'npx -y ccstatusline@latest',
+    AUTO_BUNX: 'bunx -y ccstatusline@latest',
+    GLOBAL: 'ccstatusline',
+    // Backward-compatible names for existing callers/tests.
     NPM: 'npx -y ccstatusline@latest',
     BUNX: 'bunx -y ccstatusline@latest',
     SELF_MANAGED: 'ccstatusline'
 };
 
+export const PINNED_INSTALL_COMMANDS = {
+    NPM: (version: string) => `npm install -g ccstatusline@${version}`,
+    BUN: (version: string) => `bun add -g ccstatusline@${version}`
+};
+
+export type StatusLineCommandMode = 'auto-npx' | 'auto-bunx' | 'global';
+
+export interface InstallStatusLineOptions {
+    commandMode: StatusLineCommandMode;
+    supportsRefreshInterval?: boolean;
+    installationMetadata?: InstallationMetadata;
+}
+
+export interface PackageCommandAvailability {
+    npm: boolean;
+    npx: boolean;
+    bun: boolean;
+    bunx: boolean;
+}
+
 export function isKnownCommand(command: string): boolean {
-    const prefixes = [CCSTATUSLINE_COMMANDS.NPM, CCSTATUSLINE_COMMANDS.BUNX, CCSTATUSLINE_COMMANDS.SELF_MANAGED];
+    const prefixes = [CCSTATUSLINE_COMMANDS.AUTO_NPX, CCSTATUSLINE_COMMANDS.AUTO_BUNX, CCSTATUSLINE_COMMANDS.GLOBAL];
     // Also match local development commands (e.g., "bun run /path/to/ccstatusline.ts")
     return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `))
         || /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command);
@@ -204,15 +230,39 @@ export async function isInstalled(): Promise<boolean> {
     );
 }
 
-export function isBunxAvailable(): boolean {
+function isExecutableAvailable(executable: string): boolean {
     try {
-        // Use platform-appropriate command to check for bunx availability
-        const command = process.platform === 'win32' ? 'where bunx' : 'which bunx';
+        const command = process.platform === 'win32' ? `where ${executable}` : `which ${executable}`;
         execSync(command, { stdio: 'ignore' });
         return true;
     } catch {
         return false;
     }
+}
+
+export function isNpmAvailable(): boolean {
+    return isExecutableAvailable('npm');
+}
+
+export function isNpxAvailable(): boolean {
+    return isExecutableAvailable('npx');
+}
+
+export function isBunAvailable(): boolean {
+    return isExecutableAvailable('bun');
+}
+
+export function isBunxAvailable(): boolean {
+    return isExecutableAvailable('bunx');
+}
+
+export function getPackageCommandAvailability(): PackageCommandAvailability {
+    return {
+        npm: isNpmAvailable(),
+        npx: isNpxAvailable(),
+        bun: isBunAvailable(),
+        bunx: isBunxAvailable()
+    };
 }
 
 export function getClaudeCodeVersion(): string | null {
@@ -256,6 +306,73 @@ function buildCommand(baseCommand: string): string {
     return baseCommand;
 }
 
+export function getBaseCommandForMode(commandMode: StatusLineCommandMode): string {
+    switch (commandMode) {
+        case 'auto-npx':
+            return CCSTATUSLINE_COMMANDS.AUTO_NPX;
+        case 'auto-bunx':
+            return CCSTATUSLINE_COMMANDS.AUTO_BUNX;
+        case 'global':
+            return CCSTATUSLINE_COMMANDS.GLOBAL;
+    }
+}
+
+export function buildStatusLineCommand(commandMode: StatusLineCommandMode): string {
+    return buildCommand(getBaseCommandForMode(commandMode));
+}
+
+function matchesCommandBase(command: string, baseCommand: string): boolean {
+    return command === baseCommand || command.startsWith(`${baseCommand} --config `);
+}
+
+function isLocalDevelopmentCommand(command: string): boolean {
+    return /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command);
+}
+
+export function classifyInstallation(
+    command: string | null | undefined,
+    metadata?: InstallationMetadata
+): InstallationMetadata {
+    const statusLineCommand = command ?? '';
+
+    if (matchesCommandBase(statusLineCommand, CCSTATUSLINE_COMMANDS.AUTO_NPX)) {
+        return {
+            method: 'auto-update',
+            packageManager: 'npm'
+        };
+    }
+
+    if (matchesCommandBase(statusLineCommand, CCSTATUSLINE_COMMANDS.AUTO_BUNX)) {
+        return {
+            method: 'auto-update',
+            packageManager: 'bun'
+        };
+    }
+
+    if (matchesCommandBase(statusLineCommand, CCSTATUSLINE_COMMANDS.GLOBAL)) {
+        if (metadata?.method === 'pinned') {
+            return metadata;
+        }
+
+        return {
+            method: 'self-managed',
+            packageManager: 'unknown'
+        };
+    }
+
+    if (isLocalDevelopmentCommand(statusLineCommand)) {
+        return {
+            method: 'self-managed',
+            packageManager: 'unknown'
+        };
+    }
+
+    return {
+        method: 'unknown',
+        packageManager: 'unknown'
+    };
+}
+
 async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     const configPath = getConfigPath();
     if (!fs.existsSync(configPath)) {
@@ -275,7 +392,11 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
     }
 }
 
-export async function installStatusLine(useBunx = false, supportsRefreshInterval = false): Promise<void> {
+export async function installStatusLine({
+    commandMode,
+    supportsRefreshInterval = false,
+    installationMetadata
+}: InstallStatusLineOptions): Promise<void> {
     let settings: ClaudeSettings;
 
     const backupPath = await backupClaudeSettings('.orig');
@@ -287,15 +408,11 @@ export async function installStatusLine(useBunx = false, supportsRefreshInterval
         settings = {};
     }
 
-    const baseCommand = useBunx
-        ? CCSTATUSLINE_COMMANDS.BUNX
-        : CCSTATUSLINE_COMMANDS.NPM;
-
     // Update settings with our status line (confirmation already handled in TUI)
     const existingRefreshInterval = settings.statusLine?.refreshInterval;
     settings.statusLine = {
         type: 'command',
-        command: buildCommand(baseCommand),
+        command: buildStatusLineCommand(commandMode),
         padding: 0
     };
 
@@ -305,6 +422,9 @@ export async function installStatusLine(useBunx = false, supportsRefreshInterval
     }
 
     await saveClaudeSettings(settings);
+    if (installationMetadata !== undefined) {
+        await saveInstallationMetadata(installationMetadata);
+    }
 
     const savedSettings = await loadSavedSettingsForHookSync();
     if (savedSettings) {
@@ -327,6 +447,8 @@ export async function uninstallStatusLine(): Promise<void> {
         delete settings.statusLine;
         await saveClaudeSettings(settings);
     }
+
+    await saveInstallationMetadata(undefined);
 
     try {
         const { removeManagedHooks } = await import('./hooks');

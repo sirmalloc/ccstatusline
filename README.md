@@ -47,6 +47,11 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.14 - Version pinning
+
+- **📌 Version pinning support** - Added support for pinned global installs so Claude Code can keep running a specific ccstatusline version.
+- **🔄 Moving from auto-update installs** - If you currently use an auto-updating install, use the TUI uninstall option first, then reinstall to go through the version pinning flow. Your ccstatusline settings are preserved when uninstalling.
+
 ### v2.2.13 - Weekly model usage, voice status, hooks, and docs
 
 - **📊 Weekly Sonnet/Opus usage widgets** - Added separate weekly usage widgets for Sonnet and Opus API buckets, matching Claude Code's `/usage` model split.
@@ -238,6 +243,8 @@ npx -y ccstatusline@latest
 bunx -y ccstatusline@latest
 ```
 
+Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
+
 <br />
 <details>
 <summary><b>Configure ccstatusline</b></summary>
@@ -287,6 +294,8 @@ When you install from the TUI, ccstatusline writes a `statusLine` command object
 Other supported command values are:
 - `bunx -y ccstatusline@latest`
 - `ccstatusline` (for self-managed/global installs)
+
+For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI pins the active version by installing it globally and writing `"command": "ccstatusline"` to `settings.json`; afterward, you can run `ccstatusline` directly to open the TUI.
 
 </details>
 
