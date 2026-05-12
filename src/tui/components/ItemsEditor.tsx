@@ -3,7 +3,10 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
@@ -40,15 +43,31 @@ export interface ItemsEditorProps {
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
+    onTabSwap?: () => void;
+    onWidgetHighlight?: (widgetId: string | null) => void;
+    initialWidgetId?: string | null;
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+    const [selectedIndex, setSelectedIndex] = useState(() => {
+        if (initialWidgetId) {
+            const index = widgets.findIndex(w => w.id === initialWidgetId);
+            return index >= 0 ? index : 0;
+        }
+        return 0;
+    });
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const separatorChars = ['|', '-', ',', ' '];
+
+    useEffect(() => {
+        if (onWidgetHighlight) {
+            const currentWidget = widgets[selectedIndex];
+            onWidgetHighlight(currentWidget?.id ?? null);
+        }
+    }, [selectedIndex, widgets, onWidgetHighlight]);
 
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
@@ -202,7 +221,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            onTabSwap
         });
     });
 
@@ -271,6 +291,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
 
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
+    const isColorable = Boolean(
+        currentWidget
+        && !isSeparator
+        && !isFlexSeparator
+        && getWidget(currentWidget.type)?.supportsColors(currentWidget)
+    );
     const hasWidgets = widgets.length > 0;
 
     // Build main help text (without custom keybinds)
@@ -288,6 +314,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
     if (canMerge) {
         helpText += ', (m)erge';
+    }
+    if (isColorable && onTabSwap) {
+        helpText += ', ⇥ edit colors';
     }
     helpText += ', ESC back';
 
