@@ -40,7 +40,7 @@ export const SettingsSchema = z.object({
             [],
             []
         ]), // Ensure max 3 lines
-    flexMode: FlexModeSchema.default('full-minus-40'),
+    flexMode: FlexModeSchema.default('full'),
     compactThreshold: z.number().min(1).max(99).default(60),
     colorLevel: ColorLevelSchema.default(2),
     defaultSeparator: z.string().optional(),

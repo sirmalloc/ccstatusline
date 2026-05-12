@@ -534,16 +534,18 @@ export function preRenderAllWidgets(
     return preRenderedLines;
 }
 
-// Calculate max widths from pre-rendered widgets for alignment
+// Calculate max widths per line from pre-rendered widgets for alignment.
+// Each line gets its own independent widths so a wide cell on one line does
+// not force the same column wider on other lines.
 export function calculateMaxWidthsFromPreRendered(
     preRenderedLines: PreRenderedWidget[][],
     settings: Settings
-): number[] {
-    const maxWidths: number[] = [];
+): number[][] {
     const defaultPadding = settings.defaultPadding ?? '';
     const paddingLength = defaultPadding.length;
 
-    for (const preRenderedLine of preRenderedLines) {
+    return preRenderedLines.map(preRenderedLine => {
+        const lineMaxWidths: number[] = [];
         const filteredWidgets = preRenderedLine.filter(
             w => w.widget.type !== 'separator' && w.widget.type !== 'flex-separator' && w.content
         );
@@ -574,20 +576,20 @@ export function calculateMaxWidthsFromPreRendered(
                 }
             }
 
-            const currentMax = maxWidths[alignmentPos];
+            const currentMax = lineMaxWidths[alignmentPos];
             if (currentMax === undefined) {
-                maxWidths[alignmentPos] = totalWidth;
+                lineMaxWidths[alignmentPos] = totalWidth;
             } else {
-                maxWidths[alignmentPos] = Math.max(currentMax, totalWidth);
+                lineMaxWidths[alignmentPos] = Math.max(currentMax, totalWidth);
             }
 
             // Skip over merged widgets since we've already processed them
             i = j;
             alignmentPos++;
         }
-    }
 
-    return maxWidths;
+        return lineMaxWidths;
+    });
 }
 
 export function renderStatusLineWithInfo(
