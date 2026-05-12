@@ -103,6 +103,41 @@ describe('global package manager inspection', () => {
         });
     });
 
+    it('ignores transient bunx status line shims when identifying the active global command', () => {
+        mockExecFileSync({
+            'which -a ccstatusline': '/var/folders/demo/T/bunx-501-ccstatusline@latest/node_modules/.bin/ccstatusline\n/Users/alice/.bun/bin/ccstatusline\n',
+            'npm prefix -g': '/Users/alice/.nvm/versions/node/v24.9.0\n',
+            'bun pm bin -g': '/Users/alice/.bun/bin\n'
+        });
+        vi.spyOn(fs, 'existsSync').mockImplementation(filePath => (
+            filePath === '/Users/alice/.bun/install/global/node_modules/ccstatusline/package.json'
+        ));
+        vi.spyOn(fs, 'readFileSync').mockImplementation((filePath) => {
+            if (filePath === '/Users/alice/.bun/install/global/node_modules/ccstatusline/package.json') {
+                return '{"version":"2.2.14"}';
+            }
+
+            throw new Error(`Unexpected read: ${String(filePath)}`);
+        });
+
+        const activeCommand = inspectActiveGlobalCommand({
+            commandAvailability: {
+                npm: true,
+                bun: true
+            },
+            platform: 'darwin'
+        });
+
+        expect(activeCommand).toEqual({
+            packageManager: 'bun',
+            resolvedPath: '/Users/alice/.bun/bin/ccstatusline',
+            resolvedPaths: ['/Users/alice/.bun/bin/ccstatusline'],
+            binDir: '/Users/alice/.bun/bin',
+            version: '2.2.14',
+            warning: null
+        });
+    });
+
     it('uses npm.cmd for Windows npm version lookup', () => {
         mockExecFileSync({
             'where ccstatusline': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.cmd\r\n',

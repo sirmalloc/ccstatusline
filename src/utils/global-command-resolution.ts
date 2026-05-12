@@ -33,6 +33,16 @@ function splitCommandOutput(output: string): string[] {
     return paths;
 }
 
+function isTransientBunxStatusLinePath(filePath: string): boolean {
+    const normalized = filePath.replace(/\\/g, '/');
+
+    return /(?:^|\/)bunx-[^/]*ccstatusline@[^/]+\/node_modules\/\.bin\/ccstatusline(?:\.(?:cmd|ps1))?$/i.test(normalized);
+}
+
+export function getPersistentCommandResolutionPaths(paths: string[]): string[] {
+    return paths.filter(path => !isTransientBunxStatusLinePath(path));
+}
+
 export function getCommandResolutionPaths(
     command: string,
     { platform = process.platform }: ExecOptions = {}
@@ -190,7 +200,7 @@ export function inspectGlobalCommandResolution(
     packageManager: GlobalPackageManager,
     options: ExecOptions = {}
 ): GlobalCommandResolution {
-    const resolvedPaths = getCommandResolutionPaths('ccstatusline', options);
+    const resolvedPaths = getPersistentCommandResolutionPaths(getCommandResolutionPaths('ccstatusline', options));
     const expectedBinDir = getExpectedGlobalBinDir(packageManager, options);
 
     return {

@@ -73,6 +73,19 @@ describe('global command resolution', () => {
         expect(resolution.warning).toContain('/usr/local/bin/ccstatusline');
     });
 
+    it('ignores transient bunx status line shims when resolving global commands', () => {
+        mockExecFileSync({
+            'which -a ccstatusline': '/var/folders/demo/T/bunx-501-ccstatusline@latest/node_modules/.bin/ccstatusline\n/Users/alice/.bun/bin/ccstatusline\n',
+            'bun pm bin -g': '/Users/alice/.bun/bin\n'
+        });
+
+        const resolution = inspectGlobalCommandResolution('bun', { platform: 'darwin' });
+
+        expect(resolution.firstResolvedPath).toBe('/Users/alice/.bun/bin/ccstatusline');
+        expect(resolution.resolvedPaths).toEqual(['/Users/alice/.bun/bin/ccstatusline']);
+        expect(resolution.warning).toBeNull();
+    });
+
     it('compares Windows npm prefixes with WSL /mnt paths', () => {
         mockExecFileSync({
             'which -a ccstatusline': '/mnt/c/Users/Alice/AppData/Roaming/npm/ccstatusline\n',

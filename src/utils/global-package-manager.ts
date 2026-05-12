@@ -8,6 +8,7 @@ import type { PackageCommandAvailability } from './claude-settings';
 import {
     getCommandResolutionPaths,
     getExpectedGlobalBinDir,
+    getPersistentCommandResolutionPaths,
     isPathInsideDir,
     type GlobalPackageManager
 } from './global-command-resolution';
@@ -310,7 +311,7 @@ export function inspectActiveGlobalCommand({
     commandAvailability,
     platform = process.platform
 }: InspectActiveGlobalCommandOptions): ActiveGlobalCommandResolution {
-    const resolvedPaths = getCommandResolutionPaths('ccstatusline', { platform });
+    const resolvedPaths = getPersistentCommandResolutionPaths(getCommandResolutionPaths('ccstatusline', { platform }));
     const resolvedPath = resolvedPaths[0] ?? null;
     const managerBins: Record<GlobalPackageManager, string | null> = {
         npm: getManagerBinDir('npm', commandAvailability.npm, platform),
@@ -336,7 +337,7 @@ export function inspectGlobalPackageInstallations({
     commandAvailability,
     platform = process.platform
 }: InspectGlobalPackageInstallationsOptions): GlobalPackageInstallation[] {
-    const resolvedPaths = getCommandResolutionPaths('ccstatusline', { platform });
+    const resolvedPaths = getPersistentCommandResolutionPaths(getCommandResolutionPaths('ccstatusline', { platform }));
     return [
         inspectPackageManager('npm', commandAvailability.npm, resolvedPaths, platform),
         inspectPackageManager('bun', commandAvailability.bun, resolvedPaths, platform)
