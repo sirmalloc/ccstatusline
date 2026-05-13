@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   publish:
+    if: github.repository == 'sirmalloc/ccstatusline'
     name: Publish to npm
     runs-on: ubuntu-latest
     steps:
