@@ -83,10 +83,11 @@ export class SessionUsageWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (data.sessionUsage === undefined)
+        if (data.sessionUsage === undefined) {
+            if (data.error)
+                return getUsageErrorMessage(data.error);
             return null;
+        }
 
         const percent = Math.max(0, Math.min(100, data.sessionUsage));
         const renderedPercent = inverted ? 100 - percent : percent;

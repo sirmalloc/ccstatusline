@@ -20,6 +20,10 @@ function makeLines(...lineItems: WidgetItem[][]): WidgetItem[][] {
     return lineItems;
 }
 
+function epochToIso(epochSeconds: number): string {
+    return new Date(epochSeconds * 1000).toISOString();
+}
+
 describe('usage prefetch', () => {
     let mockFetchUsageData: {
         mock: { calls: unknown[][] };
@@ -114,7 +118,7 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
-    it('falls back to API fetch when rate_limits has no usable percentages', async () => {
+    it('merges reset-only rate_limits data with API usage data', async () => {
         mockFetchUsageData.mockResolvedValue({ sessionUsage: 42 });
 
         const lines = makeLines(
@@ -123,13 +127,16 @@ describe('usage prefetch', () => {
 
         const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { resets_at: 1774020000 } } });
 
-        expect(usageData).toEqual({ sessionUsage: 42 });
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: epochToIso(1774020000)
+        });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
-    it('falls back to API fetch when seven_day is absent from rate_limits', async () => {
+    it('merges API weekly data under partial statusline data', async () => {
         mockFetchUsageData.mockResolvedValue({
-            sessionUsage: 50,
+            sessionUsage: 99,
             sessionResetAt: '2026-03-20T12:00:00.000Z',
             weeklyUsage: 10,
             weeklyResetAt: '2026-03-27T12:00:00.000Z'
@@ -143,7 +150,7 @@ describe('usage prefetch', () => {
 
         expect(usageData).toEqual({
             sessionUsage: 50,
-            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            sessionResetAt: epochToIso(1774020000),
             weeklyUsage: 10,
             weeklyResetAt: '2026-03-27T12:00:00.000Z'
         });
@@ -195,6 +202,10 @@ describe('usage prefetch', () => {
         });
 
         expect(usageData?.weeklySonnetUsage).toBe(8);
+        expect(usageData?.sessionUsage).toBe(42);
+        expect(usageData?.sessionResetAt).toBe(epochToIso(1774020000));
+        expect(usageData?.weeklyUsage).toBe(15);
+        expect(usageData?.weeklyResetAt).toBe(epochToIso(1774540000));
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
@@ -241,7 +252,84 @@ describe('usage prefetch', () => {
         });
 
         expect(usageData?.[usageField]).toBe(expectedUsage);
+        expect(usageData?.weeklySonnetResetAt ?? usageData?.weeklyOpusResetAt).toBe(epochToIso(1774540001));
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
+    });
+
+    it('uses reset-only rate_limits data without fetching for reset timer widgets', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionResetAt: epochToIso(1774020000) });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('keeps statusline usage when cursor metadata requires a missing reset and API has no credentials', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage', metadata: { cursor: 'true' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42 } } });
+
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            error: 'no-credentials'
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+    });
+
+    it('preserves API errors when statusline data is partial and fetch fails', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage' }, { id: '2', type: 'weekly-sonnet-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42 } } });
+
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            error: 'no-credentials'
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
+    });
+
+    it('preserves API errors when statusline data has no usable usage fields', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: {} });
+
+        expect(usageData).toEqual({ error: 'no-credentials' });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+    });
+
+    it('uses aggregate weekly reset as the per-model cursor fallback without fetching for reset data', async () => {
+        mockFetchUsageData.mockResolvedValue({ weeklySonnetUsage: 8 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'weekly-sonnet-usage', metadata: { cursor: 'true' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { resets_at: 1774540000 } } });
+
+        expect(usageData).toEqual({
+            weeklyResetAt: epochToIso(1774540000),
+            weeklySonnetUsage: 8
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
     });
 
     it('does not require per-model buckets when only the all-models weekly widget is present', async () => {
@@ -302,7 +390,7 @@ describe('usage prefetch', () => {
             sessionUsage: 42,
             sessionResetAt: '2026-03-20T12:00:00.000Z',
             weeklyUsage: 15,
-            weeklyResetAt: '2026-03-27T12:00:00.000Z'
+            weeklyResetAt: epochToIso(1774540000)
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
@@ -338,10 +426,13 @@ describe('extractUsageDataFromRateLimits', () => {
         expect(extractUsageDataFromRateLimits(undefined)).toBeNull();
     });
 
-    it('returns null when both used_percentage values are missing', () => {
+    it('extracts reset-only data when percentages are missing', () => {
         const result = extractUsageDataFromRateLimits({ five_hour: { resets_at: 1774020000 } });
 
-        expect(result).toBeNull();
+        expect(result).not.toBeNull();
+        expect(result?.sessionUsage).toBeUndefined();
+        expect(result?.sessionResetAt).toBe(epochToIso(1774020000));
+        expect(result?.weeklyUsage).toBeUndefined();
     });
 
     it('extracts partial data when only five_hour is present', () => {
@@ -367,10 +458,11 @@ describe('extractUsageDataFromRateLimits', () => {
         expect(result?.sessionUsage).toBe(0);
     });
 
-    it('treats null used_percentage as missing and falls back', () => {
+    it('treats null used_percentage as missing while keeping reset data', () => {
         const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: null, resets_at: 1774020000 } });
 
-        expect(result).toBeNull();
+        expect(result?.sessionUsage).toBeUndefined();
+        expect(result?.sessionResetAt).toBe(epochToIso(1774020000));
     });
 
     it('extracts per-model weekly buckets when present', () => {

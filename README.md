@@ -47,9 +47,10 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.14 - Version pinning
+### v2.2.14 - v2.2.16 - Version pinning and npm trusted publishing with provenance attestation
 
 - **📌 Version pinning support** - Added support for pinned global installs so Claude Code can keep running a specific ccstatusline version.
+- **🔐 npm provenance attestations** - Published packages now use trusted publishing provenance so users can verify where releases were built while avoiding long-lived npm publish tokens.
 - **🔄 Moving from auto-update installs** - If you currently use an auto-updating install, use the TUI uninstall option first, then reinstall to go through the version pinning flow. Your ccstatusline settings are preserved when uninstalling.
 
 ### v2.2.13 - Weekly model usage, voice status, hooks, and docs
