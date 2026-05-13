@@ -85,10 +85,11 @@ export class WeeklySonnetUsageWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (data.weeklySonnetUsage === undefined)
+        if (data.weeklySonnetUsage === undefined) {
+            if (data.error)
+                return getUsageErrorMessage(data.error);
             return null;
+        }
 
         const percent = Math.max(0, Math.min(100, data.weeklySonnetUsage));
         const renderedPercent = inverted ? 100 - percent : percent;

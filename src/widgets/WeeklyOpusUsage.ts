@@ -85,10 +85,11 @@ export class WeeklyOpusUsageWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (data.weeklyOpusUsage === undefined)
+        if (data.weeklyOpusUsage === undefined) {
+            if (data.error)
+                return getUsageErrorMessage(data.error);
             return null;
+        }
 
         const percent = Math.max(0, Math.min(100, data.weeklyOpusUsage));
         const renderedPercent = inverted ? 100 - percent : percent;

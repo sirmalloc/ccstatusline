@@ -83,10 +83,11 @@ export class WeeklyUsageWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (data.weeklyUsage === undefined)
+        if (data.weeklyUsage === undefined) {
+            if (data.error)
+                return getUsageErrorMessage(data.error);
             return null;
+        }
 
         const percent = Math.max(0, Math.min(100, data.weeklyUsage));
         const renderedPercent = inverted ? 100 - percent : percent;
