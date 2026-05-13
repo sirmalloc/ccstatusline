@@ -9,6 +9,7 @@ const USAGE_WIDGET_TYPES = new Set<string>([
     'weekly-usage',
     'weekly-sonnet-usage',
     'weekly-opus-usage',
+    'weekly-budget-buffer',
     'block-timer',
     'reset-timer',
     'weekly-reset-timer'
