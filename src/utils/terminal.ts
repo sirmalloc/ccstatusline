@@ -119,20 +119,35 @@ function getTTYForProcess(pid: number): string | null {
 }
 
 function getWidthForTTY(tty: string): number | null {
-    try {
-        const width = execSync(
-            `stty size < /dev/${tty} | awk '{print $2}'`,
-            {
+    // The shell-redirect form (`stty size < /dev/${tty}`) fails with ENOTTY
+    // when the calling process has no controlling terminal — the case under
+    // Claude Code >= 2.1.139, which spawns statusline/hooks without terminal
+    // access. `stty -F` / `-f` ask stty to open the device itself (with
+    // O_NOCTTY semantics) and succeed regardless of controlling-tty status.
+    const devicePath = `/dev/${tty}`;
+    const attempts = [
+        `stty -F ${devicePath} size`,   // GNU coreutils (Linux)
+        `stty -f ${devicePath} size`,   // BSD stty (macOS, *BSD)
+        `stty size < ${devicePath}`     // legacy fallback
+    ];
+
+    for (const cmd of attempts) {
+        try {
+            const width = execSync(`${cmd} 2>/dev/null | awk '{print $2}'`, {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
                 shell: '/bin/sh'
+            }).trim();
+            const parsed = parsePositiveInteger(width);
+            if (parsed !== null) {
+                return parsed;
             }
-        ).trim();
-
-        return parsePositiveInteger(width);
-    } catch {
-        return null;
+        } catch {
+            // try next strategy
+        }
     }
+
+    return null;
 }
 
 // Get terminal width
