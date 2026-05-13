@@ -59,6 +59,8 @@ export { FreeMemoryWidget } from './FreeMemory';
 export { SessionNameWidget } from './SessionName';
 export { SessionUsageWidget } from './SessionUsage';
 export { WeeklyUsageWidget } from './WeeklyUsage';
+export { ExtraUsageUtilizationWidget } from './ExtraUsageUtilization';
+export { ExtraUsageRemainingWidget } from './ExtraUsageRemaining';
 export { WeeklySonnetUsageWidget } from './WeeklySonnetUsage';
 export { WeeklyOpusUsageWidget } from './WeeklyOpusUsage';
 export { BlockResetTimerWidget } from './BlockResetTimer';

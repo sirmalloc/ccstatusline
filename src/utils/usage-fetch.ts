@@ -55,15 +55,14 @@ const PerModelWeeklyBucketSchema = z.object({
     resets_at: z.string().nullable().optional()
 }).nullable().optional();
 
+const SessionOrWeeklyBucketSchema = z.object({
+    utilization: z.number().nullable().optional(),
+    resets_at: z.string().nullable().optional()
+}).nullable().optional();
+
 const UsageApiResponseSchema = z.object({
-    five_hour: z.object({
-        utilization: z.number().nullable().optional(),
-        resets_at: z.string().nullable().optional()
-    }).optional(),
-    seven_day: z.object({
-        utilization: z.number().nullable().optional(),
-        resets_at: z.string().nullable().optional()
-    }).optional(),
+    five_hour: SessionOrWeeklyBucketSchema,
+    seven_day: SessionOrWeeklyBucketSchema,
     seven_day_sonnet: PerModelWeeklyBucketSchema,
     seven_day_opus: PerModelWeeklyBucketSchema,
     extra_usage: z.object({
@@ -120,9 +119,9 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
     }
 
     return {
-        sessionUsage: parsed.five_hour?.utilization ?? undefined,
+        sessionUsage: parsed.five_hour === null ? 0 : parsed.five_hour?.utilization ?? undefined,
         sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
-        weeklyUsage: parsed.seven_day?.utilization ?? undefined,
+        weeklyUsage: parsed.seven_day === null ? 0 : parsed.seven_day?.utilization ?? undefined,
         weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
         weeklySonnetUsage: parsed.seven_day_sonnet === null ? 0 : parsed.seven_day_sonnet?.utilization ?? undefined,
         weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,

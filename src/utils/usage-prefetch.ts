@@ -11,7 +11,9 @@ const USAGE_WIDGET_TYPES = new Set<string>([
     'weekly-opus-usage',
     'block-timer',
     'reset-timer',
-    'weekly-reset-timer'
+    'weekly-reset-timer',
+    'extra-usage-utilization',
+    'extra-usage-remaining'
 ]);
 
 const PER_MODEL_USAGE_WIDGET_TYPES = new Set<string>([
