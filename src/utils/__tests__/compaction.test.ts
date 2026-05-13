@@ -131,6 +131,16 @@ describe('detectCompaction', () => {
         expect(detectCompaction(-1, prev)).toEqual(prev);
     });
 
+    it('returns state unchanged for zero input (transient glitch)', () => {
+        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
+        expect(detectCompaction(0, prev)).toEqual(prev);
+    });
+
+    it('returns state unchanged for sub-1% input (transient glitch)', () => {
+        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
+        expect(detectCompaction(0.5, prev)).toEqual(prev);
+    });
+
     it('detects drops using non-integer percentages', () => {
         const prev: CompactionState = { count: 0, prevCtxPct: 40.4 };
         // 2.8-point drop, exceeds default threshold of 2
@@ -138,12 +148,12 @@ describe('detectCompaction', () => {
         expect(result.count).toBe(1);
     });
 
-    it('handles a session that starts at 0% (sentinel guards first render)', () => {
-        // sequence: -1 (fresh) -> 0 -> 5 -> 30 -> 10
+    it('handles a session that starts at 1% (sentinel guards first render)', () => {
+        // sequence: -1 (fresh) -> 1 -> 5 -> 30 -> 10
         // First three transitions: no detection. Fourth (30 -> 10) is a real drop.
         let state = fresh;
-        state = detectCompaction(0, state);
-        expect(state).toEqual({ count: 0, prevCtxPct: 0 });
+        state = detectCompaction(1, state);
+        expect(state).toEqual({ count: 0, prevCtxPct: 1 });
         state = detectCompaction(5, state);
         expect(state.count).toBe(0);
         state = detectCompaction(30, state);
