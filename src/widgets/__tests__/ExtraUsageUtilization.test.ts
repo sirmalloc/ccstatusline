@@ -68,6 +68,37 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toBe('Overage: 2.6%');
     });
 
+    it('exposes and toggles hide-if-disabled configuration', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-utilization' };
+
+        expect(widget.getCustomKeybinds(baseItem)).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+        ]);
+        expect(widget.getCustomKeybinds({
+            ...baseItem,
+            metadata: { display: 'progress' }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' },
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+        ]);
+        expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
+
+        const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
+        expect(hidden?.metadata?.hideIfDisabled).toBe('true');
+        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(hide if disabled)');
+        expect(widget.getEditorDisplay({
+            ...baseItem,
+            metadata: { display: 'progress', hideIfDisabled: 'true' }
+        }).modifierText).toBe('(long bar, hide if disabled)');
+
+        const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
+        expect(shown?.metadata?.hideIfDisabled).toBe('false');
+    });
+
     it('shows usage errors only when required extra usage data is missing', () => {
         const widget = new ExtraUsageUtilizationWidget();
 
@@ -77,7 +108,7 @@ describe('ExtraUsageUtilizationWidget', () => {
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData: { extraUsageEnabled: true } })).toBeNull();
     });
 
-    it('does not render when extra usage is disabled', () => {
+    it('renders n/a when extra usage is disabled', () => {
         const widget = new ExtraUsageUtilizationWidget();
 
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, {
@@ -86,7 +117,27 @@ describe('ExtraUsageUtilizationWidget', () => {
                 extraUsageEnabled: false,
                 extraUsageUtilization: 0.25
             }
-        })).toBeNull();
+        })).toBe('Overage: n/a');
+        const rawProgressItem: WidgetItem = {
+            id: 'extra',
+            metadata: { display: 'progress-short' },
+            rawValue: true,
+            type: 'extra-usage-utilization'
+        };
+
+        expect(render(widget, rawProgressItem, { usageData: { extraUsageEnabled: false } })).toBe('n/a');
+    });
+
+    it('hides when extra usage is disabled and hide-if-disabled is enabled', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+
+        const hiddenItem: WidgetItem = {
+            id: 'extra',
+            metadata: { hideIfDisabled: 'true' },
+            type: 'extra-usage-utilization'
+        };
+
+        expect(render(widget, hiddenItem, { usageData: { extraUsageEnabled: false } })).toBeNull();
     });
 
     it('inverts bar rendering', () => {

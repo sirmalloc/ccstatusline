@@ -8,6 +8,12 @@ import type {
 } from '../types/Widget';
 import { getUsageErrorMessage } from '../utils/usage';
 
+import {
+    appendHideDisabledModifier,
+    getHideExtraUsageDisabledKeybind,
+    handleToggleExtraUsageDisabledAction,
+    isHideExtraUsageDisabledEnabled
+} from './shared/extra-usage-disabled';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
@@ -32,11 +38,16 @@ export class ExtraUsageUtilizationWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item)
+            modifierText: appendHideDisabledModifier(getUsageDisplayModifierText(item), item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        const hideDisabledItem = handleToggleExtraUsageDisabledAction(action, item);
+        if (hideDisabledItem) {
+            return hideDisabledItem;
+        }
+
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, [], true);
         }
@@ -72,8 +83,11 @@ export class ExtraUsageUtilizationWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.extraUsageEnabled === false)
-            return null;
+        if (data.extraUsageEnabled === false) {
+            return isHideExtraUsageDisabledEnabled(item)
+                ? null
+                : formatRawOrLabeledValue(item, 'Overage: ', 'n/a');
+        }
         if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
             if (data.error)
                 return getUsageErrorMessage(data.error);
@@ -99,7 +113,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return getUsagePercentCustomKeybinds(item);
+        return [...getUsagePercentCustomKeybinds(item), getHideExtraUsageDisabledKeybind()];
     }
 
     supportsRawValue(): boolean { return true; }

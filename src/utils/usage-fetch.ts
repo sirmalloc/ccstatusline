@@ -27,6 +27,12 @@ type UsageDataField = Exclude<keyof UsageData, 'error'>;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
+const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
+    'extraUsageLimit',
+    'extraUsageUsed',
+    'extraUsageUtilization'
+]);
+
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
@@ -170,8 +176,16 @@ function cacheUsageData(data: UsageData, now: number): UsageData {
     return data;
 }
 
+function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean {
+    if (data[field] !== undefined) {
+        return true;
+    }
+
+    return data.extraUsageEnabled === false && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+}
+
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
-    return requiredFields.every(field => data[field] !== undefined);
+    return requiredFields.every(field => hasRequiredUsageField(data, field));
 }
 
 function getStaleUsageOrError(
@@ -184,6 +198,7 @@ function getStaleUsageOrError(
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
+
     return setCachedUsageError(error, now, errorCacheMaxAge);
 }
 

@@ -189,6 +189,7 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
     const missingFields = getMissingFetchFields(rateLimitsData, requirements);
+
     if (missingFields.length === 0) {
         return rateLimitsData;
     }

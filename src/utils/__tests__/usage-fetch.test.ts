@@ -581,6 +581,50 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('treats disabled extra usage as complete for extra usage widget fields', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('disabled-extra-usage');
+            const requiredFields = ['extraUsageEnabled', 'extraUsageLimit', 'extraUsageUsed', 'extraUsageUtilization'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: cohortResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 52,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 0,
+                weeklySonnetUsage: 0,
+                weeklyOpusUsage: 0,
+                extraUsageEnabled: false
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('keeps parse-error locks distinct from timeout locks', () => {
         const harness = createProbeHarness();
 

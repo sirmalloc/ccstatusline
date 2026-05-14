@@ -59,6 +59,23 @@ describe('ExtraUsageRemainingWidget', () => {
         })).toBe('Overage Left: $0.00');
     });
 
+    it('exposes and toggles hide-if-disabled configuration', () => {
+        const widget = new ExtraUsageRemainingWidget();
+        const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-remaining' };
+
+        expect(widget.getCustomKeybinds()).toEqual([
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+        ]);
+        expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
+
+        const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
+        expect(hidden?.metadata?.hideIfDisabled).toBe('true');
+        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(hide if disabled)');
+
+        const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
+        expect(shown?.metadata?.hideIfDisabled).toBe('false');
+    });
+
     it('renders available remaining budget before unrelated usage errors', () => {
         const widget = new ExtraUsageRemainingWidget();
 
@@ -86,7 +103,7 @@ describe('ExtraUsageRemainingWidget', () => {
         })).toBeNull();
     });
 
-    it('does not render when extra usage is disabled', () => {
+    it('renders n/a when extra usage is disabled', () => {
         const widget = new ExtraUsageRemainingWidget();
 
         expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
@@ -96,6 +113,19 @@ describe('ExtraUsageRemainingWidget', () => {
                 extraUsageLimit: 400000,
                 extraUsageUsed: 106
             }
-        })).toBeNull();
+        })).toBe('Overage Left: n/a');
+        expect(render(widget, { id: 'extra', rawValue: true, type: 'extra-usage-remaining' }, { usageData: { extraUsageEnabled: false } })).toBe('n/a');
+    });
+
+    it('hides when extra usage is disabled and hide-if-disabled is enabled', () => {
+        const widget = new ExtraUsageRemainingWidget();
+
+        const hiddenItem: WidgetItem = {
+            id: 'extra',
+            metadata: { hideIfDisabled: 'true' },
+            type: 'extra-usage-remaining'
+        };
+
+        expect(render(widget, hiddenItem, { usageData: { extraUsageEnabled: false } })).toBeNull();
     });
 });
