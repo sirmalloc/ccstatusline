@@ -26,16 +26,26 @@ export class CurrentWorkingDirWidget implements Widget {
         const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
         const fishStyle = item.metadata?.fishStyle === 'true';
         const abbreviateHome = item.metadata?.abbreviateHome === 'true';
+        const basename = item.metadata?.basename;
         const modifiers: string[] = [];
 
-        if (abbreviateHome) {
-            modifiers.push('~');
-        }
+        if (basename === 'only') {
+            modifiers.push('basename');
+        } else if (basename === 'first') {
+            modifiers.push('basename full');
+            if (abbreviateHome) {
+                modifiers.push('~');
+            }
+        } else {
+            if (abbreviateHome) {
+                modifiers.push('~');
+            }
 
-        if (fishStyle) {
-            modifiers.push('fish-style');
-        } else if (segments && segments > 0) {
-            modifiers.push(`segments: ${segments}`);
+            if (fishStyle) {
+                modifiers.push('fish-style');
+            } else if (segments && segments > 0) {
+                modifiers.push(`segments: ${segments}`);
+            }
         }
 
         return {
@@ -101,6 +111,34 @@ export class CurrentWorkingDirWidget implements Widget {
             }
         }
 
+        if (action === 'cycle-basename') {
+            // Cycle: off → only → first → off
+            const current = item.metadata?.basename;
+            const next = current === undefined ? 'only' : current === 'only' ? 'first' : undefined;
+
+            if (next) {
+                // Clear competing path-display modes; leave abbreviateHome alone (separate preference)
+                const { fishStyle, segments, ...restMetadata } = item.metadata ?? {};
+                void fishStyle;
+                void segments;
+                return {
+                    ...item,
+                    metadata: {
+                        ...restMetadata,
+                        basename: next
+                    }
+                };
+            } else {
+                const { basename, ...restMetadata } = item.metadata ?? {};
+                void basename;
+
+                return {
+                    ...item,
+                    metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
+                };
+            }
+        }
+
         return null;
     }
 
@@ -108,11 +146,18 @@ export class CurrentWorkingDirWidget implements Widget {
         const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
         const fishStyle = item.metadata?.fishStyle === 'true';
         const abbreviateHome = item.metadata?.abbreviateHome === 'true';
+        const basename = item.metadata?.basename;
 
         if (context.isPreview) {
             let previewPath: string;
 
-            if (fishStyle) {
+            if (basename === 'only') {
+                previewPath = 'my-project';
+            } else if (basename === 'first') {
+                previewPath = abbreviateHome
+                    ? 'my-project ~/Documents/Projects'
+                    : 'my-project /Users/example/Documents/Projects';
+            } else if (fishStyle) {
                 previewPath = '~/D/P/my-project';
             } else if (abbreviateHome && segments && segments > 0) {
                 if (segments === 1) {
@@ -138,6 +183,27 @@ export class CurrentWorkingDirWidget implements Widget {
         const cwd = context.data?.cwd;
         if (!cwd)
             return null;
+
+        if (basename === 'only' || basename === 'first') {
+            const useBackslash = cwd.includes('\\') && !cwd.includes('/');
+            const sep = useBackslash ? '\\' : '/';
+            const parts = cwd.split(/[\\/]+/).filter(part => part !== '');
+            const last = parts[parts.length - 1] ?? sep;
+
+            let display = last;
+            if (basename === 'first' && parts.length > 1) {
+                let parent = parts.slice(0, -1).join(sep);
+                if (cwd.startsWith('/') || cwd.startsWith('\\')) {
+                    parent = sep + parent;
+                }
+                if (abbreviateHome) {
+                    parent = this.abbreviateHomeDir(parent);
+                }
+                display = `${last} ${parent}`;
+            }
+
+            return item.rawValue ? display : `cwd: ${display}`;
+        }
 
         let displayPath = cwd;
 
@@ -176,7 +242,8 @@ export class CurrentWorkingDirWidget implements Widget {
         return [
             { key: 'h', label: '(h)ome ~', action: 'toggle-abbreviate-home' },
             { key: 's', label: '(s)egments', action: 'edit-segments' },
-            { key: 'f', label: '(f)ish style', action: 'toggle-fish-style' }
+            { key: 'f', label: '(f)ish style', action: 'toggle-fish-style' },
+            { key: 'b', label: '(b)asename', action: 'cycle-basename' }
         ];
     }
 

@@ -182,6 +182,51 @@ describe('CurrentWorkingDirWidget', () => {
             const display = widget.getEditorDisplay(item);
             expect(display.modifierText).toBe('(fish-style)');
         });
+
+        it('should show basename modifier when basename is only', () => {
+            const item = createItem({ basename: 'only' });
+            const display = widget.getEditorDisplay(item);
+            expect(display.modifierText).toBe('(basename)');
+        });
+
+        it('should show basename full modifier when basename is first', () => {
+            const item = createItem({ basename: 'first' });
+            const display = widget.getEditorDisplay(item);
+            expect(display.modifierText).toBe('(basename full)');
+        });
+    });
+
+    describe('basename mode', () => {
+        it('should render only the final directory name in "only" mode', () => {
+            const item = createItem({ basename: 'only' }, true);
+            const result = widget.render(
+                item,
+                createContext('/home/chris/src/ccstatusline'),
+                defaultSettings
+            );
+            expect(result).toBe('ccstatusline');
+        });
+
+        it('should render basename then parent path in "first" mode', () => {
+            const item = createItem({ basename: 'first' }, true);
+            const result = widget.render(
+                item,
+                createContext('/home/chris/src/ccstatusline'),
+                defaultSettings
+            );
+            expect(result).toBe('ccstatusline /home/chris/src');
+        });
+
+        it('should abbreviate the parent home dir in "first" mode when abbreviateHome is on', () => {
+            mockHomedir.mockReturnValue('/home/chris');
+            const item = createItem({ basename: 'first', abbreviateHome: 'true' }, true);
+            const result = widget.render(
+                item,
+                createContext('/home/chris/src/ccstatusline'),
+                defaultSettings
+            );
+            expect(result).toBe('ccstatusline ~/src');
+        });
     });
 
     describe('handleEditorAction', () => {
@@ -203,6 +248,26 @@ describe('CurrentWorkingDirWidget', () => {
             const result = widget.handleEditorAction('toggle-fish-style', item);
             expect(result?.metadata?.fishStyle).toBe('true');
             expect(result?.metadata?.abbreviateHome).toBeUndefined();
+        });
+
+        it('should cycle basename mode off → only → first → off', () => {
+            const off = createItem();
+            const toOnly = widget.handleEditorAction('cycle-basename', off);
+            expect(toOnly?.metadata?.basename).toBe('only');
+
+            const toFirst = toOnly && widget.handleEditorAction('cycle-basename', toOnly);
+            expect(toFirst?.metadata?.basename).toBe('first');
+
+            const backToOff = toFirst && widget.handleEditorAction('cycle-basename', toFirst);
+            expect(backToOff?.metadata?.basename).toBeUndefined();
+        });
+
+        it('should clear fishStyle and segments when entering basename mode', () => {
+            const item = createItem({ fishStyle: 'true', segments: '2' });
+            const result = widget.handleEditorAction('cycle-basename', item);
+            expect(result?.metadata?.basename).toBe('only');
+            expect(result?.metadata?.fishStyle).toBeUndefined();
+            expect(result?.metadata?.segments).toBeUndefined();
         });
     });
 
