@@ -72,10 +72,13 @@ export class ExtraUsageUtilizationWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (!data.extraUsageEnabled || data.extraUsageUtilization === undefined)
+        if (data.extraUsageEnabled === false)
             return null;
+        if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
+            if (data.error)
+                return getUsageErrorMessage(data.error);
+            return null;
+        }
 
         const percent = Math.max(0, Math.min(100, data.extraUsageUtilization * 100));
         const renderedPercent = inverted ? 100 - percent : percent;

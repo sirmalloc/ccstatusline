@@ -25,10 +25,13 @@ export class ExtraUsageRemainingWidget implements Widget {
         }
 
         const data = context.usageData ?? {};
-        if (data.error)
-            return getUsageErrorMessage(data.error);
-        if (!data.extraUsageEnabled || data.extraUsageLimit === undefined || data.extraUsageUsed === undefined)
+        if (data.extraUsageEnabled === false)
             return null;
+        if (data.extraUsageEnabled !== true || data.extraUsageLimit === undefined || data.extraUsageUsed === undefined) {
+            if (data.error)
+                return getUsageErrorMessage(data.error);
+            return null;
+        }
 
         // extraUsageLimit is in cents; extraUsageUsed is in dollars
         const limitDollars = data.extraUsageLimit / 100;

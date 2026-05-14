@@ -270,6 +270,48 @@ describe('fetchUsageData error handling', () => {
         seven_day_sonnet: null,
         seven_day_opus: null
     });
+    const cohortResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 52,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: null,
+        seven_day_oauth_apps: null,
+        seven_day_sonnet: null,
+        seven_day_opus: null,
+        seven_day_cowork: null,
+        seven_day_omelette: {
+            utilization: 0,
+            resets_at: null
+        },
+        tangelo: null,
+        iguana_necktie: null,
+        omelette_promotional: null,
+        extra_usage: {
+            is_enabled: false,
+            monthly_limit: null,
+            used_credits: null,
+            utilization: null,
+            currency: null,
+            disabled_reason: null
+        }
+    });
+    const extraUsageResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        extra_usage: {
+            is_enabled: true,
+            monthly_limit: 400000,
+            used_credits: 106,
+            utilization: 0.026
+        }
+    });
     const rateLimitedResponseBody = JSON.stringify({
         error: {
             message: 'Rate limited. Please try again later.',
@@ -472,6 +514,105 @@ describe('fetchUsageData error handling', () => {
             });
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('parses null aggregate buckets and cohort fields from the usage API', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('cohort-fields');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['weeklyUsage', 'weeklySonnetUsage', 'weeklyOpusUsage', 'extraUsageEnabled'],
+                responseBody: cohortResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 52,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 0,
+                weeklySonnetUsage: 0,
+                weeklyOpusUsage: 0,
+                extraUsageEnabled: false
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('parses extra usage budget fields from the usage API', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('extra-usage');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['extraUsageEnabled', 'extraUsageLimit', 'extraUsageUsed', 'extraUsageUtilization'],
+                responseBody: extraUsageResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                extraUsageEnabled: true,
+                extraUsageLimit: 400000,
+                extraUsageUsed: 106,
+                extraUsageUtilization: 0.026
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps parse-error locks distinct from timeout locks', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('parse-error-lock');
+            const parseErrorResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: '{'
+            });
+
+            expect(parseErrorResult.first).toEqual({ error: 'parse-error' });
+            expect(parseErrorResult.second).toEqual({ error: 'parse-error' });
+            expect(parseLockContents(parseErrorResult.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'parse-error'
+            });
+
+            const activeLockResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs,
+                pathDir: home.bin
+            });
+
+            expect(activeLockResult.first).toEqual({ error: 'parse-error' });
+            expect(activeLockResult.second).toEqual({ error: 'parse-error' });
+            expect(activeLockResult.requestCount).toBe(0);
         } finally {
             harness.cleanup();
         }

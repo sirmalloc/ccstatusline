@@ -129,6 +129,18 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, config.baseItem, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
+    it('renders available usage data before unrelated usage errors', () => {
+        const widget = config.createWidget();
+        const context: RenderContext = {
+            usageData: {
+                [config.usageField]: config.usageValue,
+                error: 'timeout'
+            }
+        };
+
+        expect(config.render(widget, config.baseItem, context)).toBe(config.expectedTime);
+    });
+
     it('clears invert and cursor metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
