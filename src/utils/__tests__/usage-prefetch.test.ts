@@ -49,6 +49,14 @@ describe('usage prefetch', () => {
             name: 'detects when usage widgets are present'
         },
         {
+            expected: true,
+            lines: makeLines(
+                [{ id: '1', type: 'model' }],
+                [{ id: '2', type: 'extra-usage-remaining' }]
+            ),
+            name: 'detects when extra usage widgets are present'
+        },
+        {
             expected: false,
             lines: makeLines(
                 [{ id: '1', type: 'model' }],
@@ -330,6 +338,63 @@ describe('usage prefetch', () => {
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
         expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
+    });
+
+    it('fetches extra usage fields while preserving statusline usage data', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            extraUsageEnabled: true,
+            extraUsageLimit: 400000,
+            extraUsageUsed: 106,
+            extraUsageUtilization: 0.026
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'extra-usage-utilization' }, { id: '2', type: 'extra-usage-remaining' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42 } } });
+
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            extraUsageEnabled: true,
+            extraUsageLimit: 400000,
+            extraUsageUsed: 106,
+            extraUsageUtilization: 0.026
+        });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{
+                requiredFields: [
+                    'extraUsageEnabled',
+                    'extraUsageUtilization',
+                    'extraUsageLimit',
+                    'extraUsageUsed'
+                ]
+            }]
+        ]);
+    });
+
+    it('preserves API errors when extra usage fields are missing', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage' }, { id: '2', type: 'extra-usage-remaining' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42 } } });
+
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            error: 'no-credentials'
+        });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{
+                requiredFields: [
+                    'extraUsageEnabled',
+                    'extraUsageLimit',
+                    'extraUsageUsed'
+                ]
+            }]
+        ]);
     });
 
     it('does not require per-model buckets when only the all-models weekly widget is present', async () => {

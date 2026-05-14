@@ -13,7 +13,9 @@ const USAGE_WIDGET_TYPES = new Set<string>([
     'weekly-opus-usage',
     'block-timer',
     'reset-timer',
-    'weekly-reset-timer'
+    'weekly-reset-timer',
+    'extra-usage-utilization',
+    'extra-usage-remaining'
 ]);
 
 const USAGE_DATA_FIELDS: UsageDataField[] = [
@@ -45,7 +47,16 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'weekly-opus-usage': [{ field: 'weeklyOpusUsage' }],
     'block-timer': [{ field: 'sessionResetAt' }],
     'reset-timer': [{ field: 'sessionResetAt' }],
-    'weekly-reset-timer': [{ field: 'weeklyResetAt' }]
+    'weekly-reset-timer': [{ field: 'weeklyResetAt' }],
+    'extra-usage-utilization': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageUtilization' }
+    ],
+    'extra-usage-remaining': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageLimit' },
+        { field: 'extraUsageUsed' }
+    ]
 };
 
 const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
@@ -178,6 +189,7 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
     const missingFields = getMissingFetchFields(rateLimitsData, requirements);
+
     if (missingFields.length === 0) {
         return rateLimitsData;
     }
