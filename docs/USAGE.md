@@ -46,6 +46,7 @@ bun run example
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar.
 - **Compaction Counter** - Show how many context compactions have been detected in the current session. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
 - **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
+- **Proxy Budget** - Show spend vs configured budget from a LiteLLM-compatible proxy (LiteLLM, OpenRouter, Portkey, Helicone, …). Native widget with green/yellow/red threshold tiers and 60s disk cache; opt-in via metadata.
 
 ### Environment, Layout & Custom
 
@@ -230,6 +231,76 @@ Create clickable links in terminals that support OSC 8 hyperlinks:
 ![ccusage integration](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/ccusage.png)
 
 > 📄 **How it works:** The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
+
+## Proxy Budget Widget
+
+When Claude Code traffic is routed through a proxy (LiteLLM, OpenRouter, Portkey, Helicone, or anything that exposes a JSON spend/budget endpoint behind a bearer token), the Proxy Budget widget shows your current spend against the proxy-side cap with green/yellow/red threshold tiers.
+
+The widget is configured entirely through `metadata` keys on the widget item. v1 ships two verified presets — `litellm` (the default) and `openrouter` — and lets you point at any other proxy with custom JSON paths.
+
+### Presets
+
+```jsonc
+// LiteLLM (default — no preset key needed)
+"metadata": { }
+
+// OpenRouter (GET /api/v1/key)
+"metadata": { "preset": "openrouter" }
+```
+
+Each preset bundles an endpoint suffix and the JSON paths for spend / cap / reset:
+
+| Preset | Endpoint | Spend path | Cap path | Reset path |
+|---|---|---|---|---|
+| `litellm` (default) | `${baseUrl}/key/info` | `info.spend` | `info.max_budget` | `info.budget_reset_at` |
+| `openrouter` | `${baseUrl}/api/v1/key` | `data.usage` | `data.limit` | `data.limit_reset` |
+
+### Configuration
+
+All settings live in `metadata` (strings; defaults applied at read time):
+
+| Key | Default | Description |
+|---|---|---|
+| `preset` | _(unset → litellm)_ | One of `litellm`, `openrouter`. Sets endpoint suffix + JSON paths. User-supplied per-key values override the preset. |
+| `endpoint` | preset default | Full URL or template with `${baseUrl}` placeholder. |
+| `baseUrlEnv` | `ANTHROPIC_BASE_URL` | Env var holding the proxy base URL. Same env var Claude Code already uses to route, so the typical setup works out of the box. |
+| `tokenEnv` | `ANTHROPIC_AUTH_TOKEN` | Env var holding the bearer token. Value never enters the config file or the disk cache. |
+| `authScheme` | preset default (`bearer`) | `bearer` (Authorization header) or `x-api-key`. |
+| `spendPath` | preset default | Dotted JSON path to current spend. |
+| `budgetPath` | preset default | Dotted JSON path to the budget cap. |
+| `resetAtPath` | preset default | Dotted JSON path to the ISO-8601 reset timestamp. |
+| `warningThreshold` | `80` | Percent at which the segment turns yellow. |
+| `criticalThreshold` | `95` | Percent at which the segment turns red. |
+| `format` | `spend-percent` | `spend-percent` (`$5.00/$100.00 (5%)`), `percent` (`5%`), or `spend` (`$5.00`). |
+| `cacheTtlSec` | `60` | Disk-cache TTL for proxy responses. |
+| `timeoutMs` | `3000` | HTTP timeout. On timeout, non-2xx, or parse error the widget falls back to a stale cache (up to `10 ×` TTL old), then hides. |
+
+### Example
+
+For a LiteLLM proxy already wired into Claude Code via `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, no env vars or extra config are needed — add the widget and enable it.
+
+For OpenRouter direct, set:
+
+```sh
+export ANTHROPIC_BASE_URL="https://openrouter.ai"
+export ANTHROPIC_AUTH_TOKEN="sk-or-v1-..."
+```
+
+and configure `"metadata": { "preset": "openrouter" }`.
+
+### Why a native widget vs Custom Command?
+
+The Custom Command widget can run a script that hits the same endpoint, but:
+
+- Spawns a separate shell process per render (~1–3s).
+- Cache, lock-file, and timeout handling have to be reimplemented in the user's script for every install.
+- Threshold-aware coloring, raw-value mode, preview mode, and editor metadata become script bookkeeping rather than first-class widget features.
+
+The native widget pays a one-time integration cost for repeated correctness.
+
+### Out of scope (v1)
+
+Cloud-native cost APIs that don't fit the bearer-token-JSON pattern (AWS Bedrock SigV4 + Cost Explorer, Vertex AI service-account JWT + Cloud Billing, Azure RBAC + Cost Management) need different auth and a multi-call shape. Use this widget for proxies; cloud-native cost reporting is a separate concern.
 
 ## Integration Example: AIWatch
 
