@@ -47,8 +47,13 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
         return gitCommandCache.get(cacheKey) ?? null;
     }
 
+    // --no-optional-locks prevents read-only commands (diff, status, rev-list, ...)
+    // from racing on .git/index.lock when another git process is writing it.
+    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
+    const gitArgs = ['--no-optional-locks', ...args];
+
     try {
-        const output = execFileSync('git', args, {
+        const output = execFileSync('git', gitArgs, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             ...(cwd ? { cwd } : {})
@@ -108,7 +113,7 @@ export interface GitStatus {
 }
 
 export function getGitStatus(context: RenderContext): GitStatus {
-    const output = runGit('--no-optional-locks status --porcelain -z', context);
+    const output = runGit('status --porcelain -z', context);
 
     if (!output) {
         return { staged: false, unstaged: false, untracked: false, conflicts: false };
@@ -146,7 +151,7 @@ export function getGitStatus(context: RenderContext): GitStatus {
 }
 
 export function getGitFileStatusCounts(context: RenderContext): GitFileStatusCounts {
-    const output = runGit('--no-optional-locks status --porcelain -z', context);
+    const output = runGit('status --porcelain -z', context);
 
     if (!output) {
         return { staged: 0, unstaged: 0, untracked: 0 };

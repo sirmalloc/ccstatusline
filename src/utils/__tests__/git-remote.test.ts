@@ -229,7 +229,7 @@ describe('git-remote utils', () => {
             getRemoteInfo(remoteName, {});
 
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['remote', 'get-url', '--', remoteName]);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--no-optional-locks', 'remote', 'get-url', '--', remoteName]);
         });
 
         it('returns null when remote does not exist', () => {

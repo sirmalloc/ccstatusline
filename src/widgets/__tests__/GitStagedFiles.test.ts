@@ -66,7 +66,7 @@ describe('GitStagedFilesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('M  a.ts\0A  b.ts\0 M c.ts\0?? d.ts\0');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('S:2');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--no-optional-locks', 'rev-parse', '--is-inside-work-tree']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],

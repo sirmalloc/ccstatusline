@@ -74,14 +74,14 @@ describe('GitRootDirWidget', () => {
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('my-repo');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--no-optional-locks', 'rev-parse', '--is-inside-work-tree']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd: '/tmp/worktree'
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['rev-parse', '--show-toplevel']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--no-optional-locks', 'rev-parse', '--show-toplevel']);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],

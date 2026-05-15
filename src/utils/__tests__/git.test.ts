@@ -99,7 +99,7 @@ describe('git utils', () => {
 
             expect(result).toBe('feature/worktree');
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['branch', '--show-current']);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--no-optional-locks', 'branch', '--show-current']);
             expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
