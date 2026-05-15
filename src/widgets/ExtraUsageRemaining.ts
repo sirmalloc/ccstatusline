@@ -50,9 +50,10 @@ export class ExtraUsageRemainingWidget implements Widget {
             return null;
         }
 
-        // extraUsageLimit is in cents; extraUsageUsed is in dollars
+        // Both extraUsageLimit and extraUsageUsed are in cents
         const limitDollars = data.extraUsageLimit / 100;
-        const remaining = Math.max(0, limitDollars - data.extraUsageUsed);
+        const usedDollars = data.extraUsageUsed / 100;
+        const remaining = Math.max(0, limitDollars - usedDollars);
         const formatted = `$${remaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
         return formatRawOrLabeledValue(item, 'Overage Left: ', formatted);
