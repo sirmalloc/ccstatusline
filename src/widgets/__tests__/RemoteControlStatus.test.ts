@@ -83,16 +83,18 @@ describe('RemoteControlStatusWidget', () => {
             });
         });
 
-        it('cycles icon -> icon-text -> text -> word -> icon', () => {
+        it('cycles icon -> icon-text -> text -> word -> label-check -> icon', () => {
             const widget = new RemoteControlStatusWidget();
             const iconText = widget.handleEditorAction('cycle-format', ITEM);
             const text = widget.handleEditorAction('cycle-format', iconText ?? ITEM);
             const word = widget.handleEditorAction('cycle-format', text ?? ITEM);
-            const back = widget.handleEditorAction('cycle-format', word ?? ITEM);
+            const labelCheck = widget.handleEditorAction('cycle-format', word ?? ITEM);
+            const back = widget.handleEditorAction('cycle-format', labelCheck ?? ITEM);
 
             expect(iconText?.metadata?.format).toBe('icon-text');
             expect(text?.metadata?.format).toBe('text');
             expect(word?.metadata?.format).toBe('word');
+            expect(labelCheck?.metadata?.format).toBe('label-check');
             expect(back?.metadata?.format).toBeUndefined();
         });
 
@@ -175,6 +177,20 @@ describe('RemoteControlStatusWidget', () => {
         it('renders "remote on" when ON', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
             expect(new RemoteControlStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('remote on');
+        });
+    });
+
+    describe('render() - format label-check', () => {
+        const FORMAT_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'label-check' } };
+
+        it('renders "remote ❌" when OFF', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            expect(new RemoteControlStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('remote ❌');
+        });
+
+        it('renders "remote ✅" when ON', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            expect(new RemoteControlStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('remote ✅');
         });
     });
 
