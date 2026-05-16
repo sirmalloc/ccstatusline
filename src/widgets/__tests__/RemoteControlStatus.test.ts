@@ -83,18 +83,20 @@ describe('RemoteControlStatusWidget', () => {
             });
         });
 
-        it('cycles icon -> icon-text -> text -> word -> label-check -> icon', () => {
+        it('cycles icon -> icon-text -> text -> word -> label-check -> label-mark -> icon', () => {
             const widget = new RemoteControlStatusWidget();
             const iconText = widget.handleEditorAction('cycle-format', ITEM);
             const text = widget.handleEditorAction('cycle-format', iconText ?? ITEM);
             const word = widget.handleEditorAction('cycle-format', text ?? ITEM);
             const labelCheck = widget.handleEditorAction('cycle-format', word ?? ITEM);
-            const back = widget.handleEditorAction('cycle-format', labelCheck ?? ITEM);
+            const labelMark = widget.handleEditorAction('cycle-format', labelCheck ?? ITEM);
+            const back = widget.handleEditorAction('cycle-format', labelMark ?? ITEM);
 
             expect(iconText?.metadata?.format).toBe('icon-text');
             expect(text?.metadata?.format).toBe('text');
             expect(word?.metadata?.format).toBe('word');
             expect(labelCheck?.metadata?.format).toBe('label-check');
+            expect(labelMark?.metadata?.format).toBe('label-mark');
             expect(back?.metadata?.format).toBeUndefined();
         });
 
@@ -191,6 +193,20 @@ describe('RemoteControlStatusWidget', () => {
         it('renders "remote ✅" when ON', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
             expect(new RemoteControlStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('remote ✅');
+        });
+    });
+
+    describe('render() - format label-mark', () => {
+        const FORMAT_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'label-mark' } };
+
+        it('renders "remote ✗" when OFF', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            expect(new RemoteControlStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('remote ✗');
+        });
+
+        it('renders "remote ✓" when ON', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            expect(new RemoteControlStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('remote ✓');
         });
     });
 

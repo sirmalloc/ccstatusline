@@ -14,9 +14,11 @@ const SATELLITE_SLASH_NERD_FONT = '';
 const STATE_DOT_OFF = '○';
 const STATE_DOT_ON = '◉';
 
-const FORMATS = ['icon', 'icon-text', 'text', 'word', 'label-check'] as const;
+const FORMATS = ['icon', 'icon-text', 'text', 'word', 'label-check', 'label-mark'] as const;
 const CHECK_EMOJI = '✅';
 const CROSS_EMOJI = '❌';
+const CHECK_MARK = '✓';
+const CROSS_MARK = '✗';
 type RemoteFormat = typeof FORMATS[number];
 
 const DEFAULT_FORMAT: RemoteFormat = 'icon';
@@ -91,6 +93,8 @@ function formatStatus(enabled: boolean, format: RemoteFormat, nerdFont: boolean)
             return `remote ${stateText}`;
         case 'label-check':
             return `remote ${enabled ? CHECK_EMOJI : CROSS_EMOJI}`;
+        case 'label-mark':
+            return `remote ${enabled ? CHECK_MARK : CROSS_MARK}`;
     }
 }
 
