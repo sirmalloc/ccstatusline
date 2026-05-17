@@ -58,6 +58,7 @@ describe('JjInsertionsWidget', () => {
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true,
             cwd: '/my/project'
         });
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);

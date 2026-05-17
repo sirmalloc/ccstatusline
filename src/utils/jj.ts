@@ -15,6 +15,7 @@ export function runJjArgs(args: string[], context: RenderContext, allowEmpty = f
         const output = execFileSync('jj', args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
 

@@ -233,7 +233,7 @@ export async function isInstalled(): Promise<boolean> {
 function isExecutableAvailable(executable: string): boolean {
     try {
         const command = process.platform === 'win32' ? `where ${executable}` : `which ${executable}`;
-        execSync(command, { stdio: 'ignore' });
+        execSync(command, { stdio: 'ignore', windowsHide: true });
         return true;
     } catch {
         return false;
@@ -267,7 +267,12 @@ export function getPackageCommandAvailability(): PackageCommandAvailability {
 
 export function getClaudeCodeVersion(): string | null {
     try {
-        const output = execSync('claude --version', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        const output = execSync('claude --version', {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5000,
+            windowsHide: true
+        }).trim();
         // Output is like "2.1.97 (Claude Code)" — extract the version number
         const match = /^(\d+\.\d+\.\d+)/.exec(output);
         return match?.[1] ?? null;

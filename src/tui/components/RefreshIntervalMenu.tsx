@@ -12,7 +12,7 @@ import {
     type ListEntry
 } from './List';
 
-type ConfigureStatusLineValue = 'refreshInterval';
+type ConfigureStatusLineValue = 'refreshInterval' | 'gitCacheTtl';
 
 function getRefreshInputValue(interval: number | null): string {
     return interval === null ? '' : String(interval);
@@ -30,9 +30,16 @@ function getRefreshIntervalSublabel(interval: number | null, supported: boolean)
     return `(${interval}s)`;
 }
 
+function getGitCacheTtlSublabel(ttlSeconds: number): string {
+    return ttlSeconds === 0
+        ? '(mtime only)'
+        : `(${ttlSeconds}s)`;
+}
+
 export function buildConfigureStatusLineItems(
     refreshInterval: number | null,
-    supportsRefreshInterval: boolean
+    supportsRefreshInterval: boolean,
+    gitCacheTtlSeconds: number
 ): ListEntry<ConfigureStatusLineValue>[] {
     return [
         {
@@ -43,6 +50,12 @@ export function buildConfigureStatusLineItems(
             description: supportsRefreshInterval
                 ? 'How often Claude Code refreshes the status line by re-running the command. Enter value in seconds (1-60), or leave empty to remove.'
                 : 'This setting requires Claude Code version 2.1.97 or later. Please update Claude Code to use this feature.'
+        },
+        {
+            label: '🧮 Git Cache TTL',
+            sublabel: getGitCacheTtlSublabel(gitCacheTtlSeconds),
+            value: 'gitCacheTtl',
+            description: 'How long git widget subprocess output can be reused while .git/HEAD and .git/index are unchanged. Enter 0-60 seconds;\n0 disables age-based expiry, so cached output is reused until those git metadata mtimes change.'
         }
     ];
 }
@@ -69,21 +82,45 @@ export function validateRefreshIntervalInput(value: string): string | null {
     return null;
 }
 
+export function validateGitCacheTtlInput(value: string): string | null {
+    const parsed = parseInt(value, 10);
+
+    if (value === '' || isNaN(parsed)) {
+        return 'Please enter a valid number';
+    }
+
+    if (parsed < 0) {
+        return `Minimum Git cache TTL is 0s (you entered ${parsed}s)`;
+    }
+
+    if (parsed > 60) {
+        return `Maximum Git cache TTL is 60s (you entered ${parsed}s)`;
+    }
+
+    return null;
+}
+
 export interface RefreshIntervalMenuProps {
     currentInterval: number | null;
     supportsRefreshInterval: boolean;
+    gitCacheTtlSeconds: number;
     onUpdate: (interval: number | null) => void;
+    onGitCacheTtlUpdate: (ttlSeconds: number) => void;
     onBack: () => void;
 }
 
 export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     currentInterval,
     supportsRefreshInterval,
+    gitCacheTtlSeconds,
     onUpdate,
+    onGitCacheTtlUpdate,
     onBack
 }) => {
     const [editingRefreshInterval, setEditingRefreshInterval] = useState(false);
+    const [editingGitCacheTtl, setEditingGitCacheTtl] = useState(false);
     const [refreshInput, setRefreshInput] = useState(() => getRefreshInputValue(currentInterval));
+    const [gitCacheTtlInput, setGitCacheTtlInput] = useState(() => String(gitCacheTtlSeconds));
     const [validationError, setValidationError] = useState<string | null>(null);
 
     useInput((input, key) => {
@@ -125,6 +162,37 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
             return;
         }
 
+        if (editingGitCacheTtl) {
+            if (key.return) {
+                const error = validateGitCacheTtlInput(gitCacheTtlInput);
+
+                if (error) {
+                    setValidationError(error);
+                } else {
+                    const value = parseInt(gitCacheTtlInput, 10);
+                    onGitCacheTtlUpdate(value);
+                    setEditingGitCacheTtl(false);
+                    setValidationError(null);
+                }
+            } else if (key.escape) {
+                setGitCacheTtlInput(String(gitCacheTtlSeconds));
+                setEditingGitCacheTtl(false);
+                setValidationError(null);
+            } else if (key.backspace) {
+                setGitCacheTtlInput(gitCacheTtlInput.slice(0, -1));
+                setValidationError(null);
+            } else if (key.delete) {
+                // No cursor position in simple input
+            } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
+                const newValue = gitCacheTtlInput + input;
+                if (newValue.length <= 2) {
+                    setGitCacheTtlInput(newValue);
+                    setValidationError(null);
+                }
+            }
+            return;
+        }
+
         if (key.escape) {
             onBack();
         }
@@ -149,18 +217,45 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                         <Text dimColor>Press Enter to confirm, ESC to cancel. Leave empty to remove.</Text>
                     )}
                 </Box>
+            ) : editingGitCacheTtl ? (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>
+                        Enter Git cache TTL in seconds (0-60):
+                        {' '}
+                        {gitCacheTtlInput}
+                        {gitCacheTtlInput.length > 0 ? 's' : ''}
+                    </Text>
+                    <Text> </Text>
+                    <Text dimColor wrap='wrap'>
+                        This affects how quickly git widgets notice unstaged and untracked working-tree changes.
+                    </Text>
+                    {validationError ? (
+                        <Text color='red'>{validationError}</Text>
+                    ) : (
+                        <Text dimColor>
+                            0 disables age-based expiry; cache validity uses .git/HEAD and .git/index mtimes only.
+                        </Text>
+                    )}
+                    <Text dimColor>Press Enter to confirm, ESC to cancel.</Text>
+                </Box>
             ) : (
                 <List
                     marginTop={1}
-                    items={buildConfigureStatusLineItems(currentInterval, supportsRefreshInterval)}
+                    items={buildConfigureStatusLineItems(currentInterval, supportsRefreshInterval, gitCacheTtlSeconds)}
                     onSelect={(value) => {
                         if (value === 'back') {
                             onBack();
                             return;
                         }
 
-                        setRefreshInput(getRefreshInputValue(currentInterval));
-                        setEditingRefreshInterval(true);
+                        if (value === 'refreshInterval') {
+                            setRefreshInput(getRefreshInputValue(currentInterval));
+                            setEditingRefreshInterval(true);
+                            return;
+                        }
+
+                        setGitCacheTtlInput(String(gitCacheTtlSeconds));
+                        setEditingGitCacheTtl(true);
                     }}
                     showBackButton={true}
                 />

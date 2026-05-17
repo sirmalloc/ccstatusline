@@ -4,6 +4,7 @@ export function expectGitExecOptions(options: unknown, cwd?: string): void {
     expect(options).toEqual(expect.objectContaining({
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'ignore'],
+        windowsHide: true,
         ...(cwd ? { cwd } : {})
     }));
 
