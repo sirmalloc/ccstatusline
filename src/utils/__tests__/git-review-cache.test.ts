@@ -59,7 +59,7 @@ function createHarness(): PrCacheHarness {
                 }
                 return `${originRemoteUrl}\n`;
             }
-            if (cmd === 'git' && commandArgs[0] === 'branch')
+            if (cmd === 'git' && commandArgs[0] === 'symbolic-ref')
                 return `${currentRef}\n`;
             if (cmd === 'git' && commandArgs[0] === 'rev-parse')
                 return 'abc123\n';

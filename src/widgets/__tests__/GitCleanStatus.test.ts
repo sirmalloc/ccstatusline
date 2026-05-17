@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitCleanStatusWidget } from '../GitCleanStatus';
 
@@ -66,12 +67,8 @@ describe('GitCleanStatusWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('✓');
-        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--no-optional-locks', 'status', '--porcelain', '-z']);
+        expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['status', '--porcelain', '-z']);
     });
 
     it('renders dirty status', () => {
