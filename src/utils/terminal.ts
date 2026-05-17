@@ -33,6 +33,20 @@ export function getPackageVersion(): string {
 }
 
 function probeTerminalWidth(): number | null {
+    // Explicit override. Useful when ccstatusline is spawned in a context where
+    // no ancestor process owns a TTY at all — e.g. some Claude Code >= 2.1.139
+    // spawn paths, IDE integrations, or nested-shell scenarios where both the
+    // ancestor-walk probe and `tput cols` return nothing usable. Users can set
+    // CCSTATUSLINE_WIDTH on the statusLine command (e.g.
+    // `CCSTATUSLINE_WIDTH=200 ccstatusline ...`) to bypass probing entirely.
+    const overrideRaw = process.env.CCSTATUSLINE_WIDTH;
+    if (overrideRaw) {
+        const override = parsePositiveInteger(overrideRaw);
+        if (override !== null) {
+            return override;
+        }
+    }
+
     // Preserve historical behavior on Windows: width detection is unavailable.
     // This avoids Unix fallback command behavior (e.g. 2>/dev/null) on Windows.
     if (process.platform === 'win32') {

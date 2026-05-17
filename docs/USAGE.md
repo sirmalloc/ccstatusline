@@ -60,6 +60,14 @@ These settings affect where long lines are truncated, and where right-alignment 
 - **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping (default)
 - **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
 
+If ccstatusline cannot detect your terminal width, set `CCSTATUSLINE_WIDTH` to a positive integer to override probing:
+
+```bash
+CCSTATUSLINE_WIDTH=160 ccstatusline
+```
+
+The override is checked before automatic width detection, so it also works in wrapper processes, IDE integrations, nested PTYs, and Windows environments where probing may be unavailable. Invalid values such as `0`, negative numbers, or non-numeric strings are ignored and ccstatusline falls back to normal detection.
+
 ## Global Options
 
 Configure global formatting preferences that apply to all widgets:
