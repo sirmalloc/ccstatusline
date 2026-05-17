@@ -47,15 +47,18 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
         return gitCommandCache.get(cacheKey) ?? null;
     }
 
-    // --no-optional-locks prevents read-only commands (diff, status, rev-list, ...)
-    // from racing on .git/index.lock when another git process is writing it.
+    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
+    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
+    // git process is writing it.
+    // We use the environment variable instead of the CLI flag because older Git
+    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
     // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
-    const gitArgs = ['--no-optional-locks', ...args];
 
     try {
-        const output = execFileSync('git', gitArgs, {
+        const output = execFileSync('git', args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
             ...(cwd ? { cwd } : {})
         }).trimEnd();
 

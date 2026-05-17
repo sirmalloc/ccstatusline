@@ -119,7 +119,8 @@ export class GitBranchWidget implements Widget {
     }
 
     private getGitBranch(context: RenderContext): string | null {
-        return runGit('branch --show-current', context);
+        const branch = runGit('rev-parse --abbrev-ref HEAD', context);
+        return branch === 'HEAD' ? null : branch;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
