@@ -141,7 +141,7 @@ describe('InstallMenu', () => {
         }
     });
 
-    it('always starts update style selection on the first item', async () => {
+    it('shows pinned global install first and selected by default', async () => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();
         const stderr = createMockStdout();
@@ -166,8 +166,10 @@ describe('InstallMenu', () => {
         try {
             await flushInk();
 
-            expect(stdout.getOutput()).toContain('▶  Auto-update');
-            expect(stdout.getOutput()).not.toContain('▶  Pinned global install');
+            const output = stdout.getOutput();
+            expect(output.indexOf('Pinned global install')).toBeLessThan(output.indexOf('Auto-update'));
+            expect(output).toContain('▶  Pinned global install');
+            expect(output).not.toContain('▶  Auto-update');
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -210,10 +212,10 @@ describe('InstallMenu', () => {
             await flushInk();
 
             const output = stdout.getOutput();
-            expect(output).toContain('npx -y ccstatusline@latest');
-            expect(output).toContain('(npx not installed)');
-            expect(output).toContain('bunx -y ccstatusline@latest');
-            expect(output).toContain('(bunx not installed)');
+            expect(output).toContain('npm install -g ccstatusline@2.2.13');
+            expect(output).not.toContain('(npm not installed)');
+            expect(output).toContain('bun add -g ccstatusline@2.2.13');
+            expect(output).not.toContain('(bun not installed)');
         } finally {
             instance.unmount();
             instance.cleanup();

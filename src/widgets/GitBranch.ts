@@ -119,7 +119,7 @@ export class GitBranchWidget implements Widget {
     }
 
     private getGitBranch(context: RenderContext): string | null {
-        return runGit('branch --show-current', context);
+        return runGit('symbolic-ref --short HEAD', context);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

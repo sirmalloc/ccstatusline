@@ -68,6 +68,7 @@ export const SettingsSchema = z.object({
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
     globalBold: z.boolean().default(false),
+    gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
     minimalistMode: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,

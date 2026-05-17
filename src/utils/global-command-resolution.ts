@@ -49,8 +49,16 @@ export function getCommandResolutionPaths(
 ): string[] {
     try {
         const output = platform === 'win32'
-            ? execFileSync('where', [command], { encoding: 'utf-8', timeout: COMMAND_LOOKUP_TIMEOUT_MS })
-            : execFileSync('which', ['-a', command], { encoding: 'utf-8', timeout: COMMAND_LOOKUP_TIMEOUT_MS });
+            ? execFileSync('where', [command], {
+                encoding: 'utf-8',
+                timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+                windowsHide: true
+            })
+            : execFileSync('which', ['-a', command], {
+                encoding: 'utf-8',
+                timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+                windowsHide: true
+            });
 
         return splitCommandOutput(output);
     } catch {
@@ -62,7 +70,8 @@ function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
     try {
         const prefix = execFileSync(getPackageManagerExecutable('npm', platform), ['prefix', '-g'], {
             encoding: 'utf-8',
-            timeout: COMMAND_LOOKUP_TIMEOUT_MS
+            timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+            windowsHide: true
         }).trim();
 
         if (!prefix) {
@@ -81,7 +90,8 @@ function getBunGlobalBinDir(): string | null {
     try {
         const binDir = execFileSync('bun', ['pm', 'bin', '-g'], {
             encoding: 'utf-8',
-            timeout: COMMAND_LOOKUP_TIMEOUT_MS
+            timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+            windowsHide: true
         }).trim();
 
         return binDir || null;

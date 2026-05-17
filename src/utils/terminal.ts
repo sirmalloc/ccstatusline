@@ -80,7 +80,8 @@ function probeTerminalWidth(): number | null {
     try {
         const width = execSync('tput cols 2>/dev/null', {
             encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
+            stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true
         }).trim();
 
         return parsePositiveInteger(width);
@@ -105,7 +106,8 @@ function getParentProcessId(pid: number): number | null {
         const parentPidOutput = execSync(`ps -o ppid= -p ${pid}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
+            shell: '/bin/sh',
+            windowsHide: true
         }).trim();
 
         return parsePositiveInteger(parentPidOutput);
@@ -119,7 +121,8 @@ function getTTYForProcess(pid: number): string | null {
         const tty = execSync(`ps -o tty= -p ${pid}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
+            shell: '/bin/sh',
+            windowsHide: true
         }).replace(/\s+/g, '');
 
         if (!tty || tty === '??' || tty === '?') {
@@ -150,7 +153,8 @@ function getWidthForTTY(tty: string): number | null {
             const width = execSync(`${cmd} 2>/dev/null | awk '{print $2}'`, {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
-                shell: '/bin/sh'
+                shell: '/bin/sh',
+                windowsHide: true
             }).trim();
             const parsed = parsePositiveInteger(width);
             if (parsed !== null) {

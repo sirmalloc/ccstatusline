@@ -83,6 +83,8 @@ describe('config utilities', () => {
         };
         expect(onDisk.version).toBe(CURRENT_VERSION);
         expect(Array.isArray(onDisk.lines)).toBe(true);
+        expect(settings.gitCacheTtlSeconds).toBe(5);
+        expect((onDisk as { gitCacheTtlSeconds?: number }).gitCacheTtlSeconds).toBe(5);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
             expect.stringContaining('Default settings written to')
         );
