@@ -18,6 +18,8 @@ import {
     runGit
 } from '../git';
 
+import { expectGitExecOptions } from './git-test-helpers';
+
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
@@ -95,16 +97,12 @@ describe('git utils', () => {
             mockExecFileSync.mockReturnValueOnce('feature/worktree\n');
             const context: RenderContext = { data: { cwd: '/tmp/repo' } };
 
-            const result = runGit('branch --show-current', context);
+            const result = runGit('symbolic-ref --short HEAD', context);
 
             expect(result).toBe('feature/worktree');
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--no-optional-locks', 'branch', '--show-current']);
-            expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore'],
-                cwd: '/tmp/repo'
-            });
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['symbolic-ref', '--short', 'HEAD']);
+            expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/repo');
         });
 
         it('runs git command without cwd when no context directory exists', () => {
@@ -113,10 +111,7 @@ describe('git utils', () => {
             const result = runGit('rev-parse --is-inside-work-tree', {});
 
             expect(result).toBe('true');
-            expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
-                encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
-            });
+            expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2]);
         });
 
         it('returns null when the command fails', () => {

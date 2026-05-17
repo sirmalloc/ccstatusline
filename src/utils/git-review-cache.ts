@@ -71,8 +71,8 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
 }
 
 function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const branch = runGitForCache(['rev-parse', '--abbrev-ref', 'HEAD'], cwd, deps);
-    return branch.length > 0 && branch !== 'HEAD' ? branch : null;
+    const branch = runGitForCache(['symbolic-ref', '--short', 'HEAD'], cwd, deps);
+    return branch.length > 0 ? branch : null;
 }
 
 function getCacheRef(cwd: string, deps: GitReviewCacheDeps): string {

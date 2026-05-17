@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitDeletionsWidget } from '../GitDeletions';
 
@@ -61,21 +62,9 @@ describe('GitDeletionsWidget', () => {
         mockExecFileSync.mockReturnValueOnce('1 file changed, 3 insertions(+), 4 deletions(-)');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('-5');
-        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecFileSync.mock.calls[2]?.[2]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
+        expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
+        expectGitExecOptions(mockExecFileSync.mock.calls[1]?.[2], '/tmp/worktree');
+        expectGitExecOptions(mockExecFileSync.mock.calls[2]?.[2], '/tmp/worktree');
     });
 
     it('should render zero count when repo is clean', () => {
