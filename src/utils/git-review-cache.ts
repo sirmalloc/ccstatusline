@@ -63,7 +63,8 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         }).trim();
     } catch {
         return '';
@@ -71,7 +72,7 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
 }
 
 function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const branch = runGitForCache(['branch', '--show-current'], cwd, deps);
+    const branch = runGitForCache(['symbolic-ref', '--short', 'HEAD'], cwd, deps);
     return branch.length > 0 ? branch : null;
 }
 
@@ -188,7 +189,8 @@ function isCliAvailable(cli: GitReviewProvider, deps: GitReviewCacheDeps): boole
     try {
         deps.execFileSync(cli, ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         });
         return true;
     } catch {
@@ -200,7 +202,8 @@ function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitRevie
     try {
         deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
             stdio: ['pipe', 'pipe', 'ignore'],
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         });
         return true;
     } catch {
@@ -239,7 +242,8 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         }
     ).trim();
 
@@ -280,7 +284,8 @@ function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCache
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         }
     ).trim();
 

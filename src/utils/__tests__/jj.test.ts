@@ -41,6 +41,7 @@ describe('jj utils', () => {
             expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true,
                 cwd: '/tmp/repo'
             });
         });
@@ -53,7 +54,8 @@ describe('jj utils', () => {
             expect(result).toBe('/tmp/repo');
             expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
                 encoding: 'utf8',
-                stdio: ['pipe', 'pipe', 'ignore']
+                stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true
             });
         });
 

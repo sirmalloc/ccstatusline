@@ -84,7 +84,7 @@ async function ensureWindowsUtf8CodePage() {
 
     try {
         const { execFileSync } = await import('child_process');
-        execFileSync('chcp.com', ['65001'], { stdio: 'ignore' });
+        execFileSync('chcp.com', ['65001'], { stdio: 'ignore', windowsHide: true });
     } catch {
         // Ignore failures to preserve statusline output even in restricted shells.
     }
@@ -176,7 +176,8 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics,
         compactionData: hasCompactionWidget ? { count: compactionCount } : null,
         isPreview: false,
-        minimalist: settings.minimalistMode
+        minimalist: settings.minimalistMode,
+        gitCacheTtlSeconds: settings.gitCacheTtlSeconds
     };
 
     // Always pre-render all widgets once (for efficiency)

@@ -66,7 +66,8 @@ export class CustomCommandWidget implements Widget {
                     input: jsonInput,
                     timeout: timeout,
                     stdio: ['pipe', 'pipe', 'ignore'],
-                    env: process.env
+                    env: process.env,
+                    windowsHide: true
                 }).trim();
 
                 // Strip ANSI codes if preserveColors is false

@@ -18,6 +18,8 @@ import {
     parseRemoteUrl
 } from '../git-remote';
 
+import { expectGitExecOptions } from './git-test-helpers';
+
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
@@ -229,7 +231,8 @@ describe('git-remote utils', () => {
             getRemoteInfo(remoteName, {});
 
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--no-optional-locks', 'remote', 'get-url', '--', remoteName]);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['remote', 'get-url', '--', remoteName]);
+            expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2]);
         });
 
         it('returns null when remote does not exist', () => {

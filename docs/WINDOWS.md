@@ -106,6 +106,16 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 
 ### Common Issues & Solutions
 
+**Issue**: Status lines wrap because terminal width cannot be detected
+
+```powershell
+# Set an explicit width before launching Claude Code
+$env:CCSTATUSLINE_WIDTH="160"
+claude
+```
+
+`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. This is useful on Windows because native width probing is disabled when ccstatusline runs outside WSL.
+
 **Issue**: Powerline symbols showing as question marks or boxes
 
 ```powershell

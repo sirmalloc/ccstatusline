@@ -296,7 +296,7 @@ function readMacKeychainSecret(service: string): string | null {
         return execFileSync(
             'security',
             ['find-generic-password', '-s', service, '-w'],
-            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
         ).trim();
     } catch {
         return null;
@@ -316,7 +316,8 @@ function listMacKeychainCredentialCandidates(): string[] {
             {
                 encoding: 'utf8',
                 maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
-                stdio: ['pipe', 'pipe', 'ignore']
+                stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true
             }
         );
 
