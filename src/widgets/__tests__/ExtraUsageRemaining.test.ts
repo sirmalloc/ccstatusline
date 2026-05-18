@@ -35,7 +35,7 @@ describe('ExtraUsageRemainingWidget', () => {
             usageData: {
                 extraUsageEnabled: true,
                 extraUsageLimit: 400000,
-                extraUsageUsed: 106
+                extraUsageUsed: 10600
             }
         };
 
@@ -54,7 +54,7 @@ describe('ExtraUsageRemainingWidget', () => {
             usageData: {
                 extraUsageEnabled: true,
                 extraUsageLimit: 1000,
-                extraUsageUsed: 15
+                extraUsageUsed: 1500
             }
         })).toBe('Overage Left: $0.00');
     });
@@ -84,7 +84,7 @@ describe('ExtraUsageRemainingWidget', () => {
                 error: 'timeout',
                 extraUsageEnabled: true,
                 extraUsageLimit: 400000,
-                extraUsageUsed: 106
+                extraUsageUsed: 10600
             }
         })).toBe('Overage Left: $3,894.00');
     });
