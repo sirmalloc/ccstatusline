@@ -112,7 +112,10 @@ export function getModelContextIdentifier(model?: string | ModelIdentifier): str
  *   1. `overrides.effectiveWindow` — Claude Code compaction window override
  *      (`CLAUDE_CODE_AUTO_COMPACT_WINDOW` env or `autoCompactWindow` settings.json).
  *      This shrinks the *effective* window CC will let the conversation grow into,
- *      so it takes precedence over the model's actual capacity.
+ *      so it takes precedence over the model's actual capacity. **Clamped to the
+ *      native window** when a status-JSON / model-inferred native signal is
+ *      available — mirrors Claude Code, which silently caps `autoCompactWindow`
+ *      values larger than the model's actual capacity.
  *   2. `contextWindowSize` — status JSON's reported `context_window_size`.
  *   3. Window inferred from the model identifier (e.g. `[1m]` suffix).
  *   4. `DEFAULT_CONTEXT_WINDOW_SIZE` (200k) for older / unknown models.
@@ -130,7 +133,20 @@ export function getContextConfig(
 
     const overrideWindow = toValidWindowSize(overrides?.effectiveWindow);
     if (overrideWindow !== null) {
-        return buildConfig(overrideWindow, ratio);
+        // Mirror Claude Code's cap: `autoCompactWindow > nativeWindow` is a
+        // no-op in CC. Concrete case — a user sets `autoCompactWindow: 300000`
+        // because they mostly run Opus 4.7 (1M native) and want to compact
+        // earlier than the default. When the same user switches to Sonnet 4.5
+        // (200k native) for a different task, CC silently caps the threshold
+        // back to ~200k. Without this clamp the widget would compute
+        // `tokens / 240000` and under-report Ctx(u) by ~33% relative to what
+        // CC actually does.
+        const nativeWindow = toValidWindowSize(contextWindowSize)
+            ?? (modelIdentifier ? parseContextWindowSize(modelIdentifier) : null);
+        const effectiveWindow = nativeWindow !== null
+            ? Math.min(overrideWindow, nativeWindow)
+            : overrideWindow;
+        return buildConfig(effectiveWindow, ratio);
     }
 
     const statusWindowSize = toValidWindowSize(contextWindowSize);
