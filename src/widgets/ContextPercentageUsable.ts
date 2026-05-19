@@ -29,7 +29,7 @@ import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact, or respects autoCompactWindow / CLAUDE_AUTOCOMPACT_PCT_OVERRIDE / DISABLE_AUTO_COMPACT when set)'; }
+    getDescription(): string { return 'Shows used/remaining percentage of usable context (80% of window, respects Claude Code\'s autoCompactWindow / compaction env vars)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
     getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
