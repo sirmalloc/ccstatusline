@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getCompactionOverrides } from '../utils/claude-compaction';
 import { getContextWindowMetrics } from '../utils/context-window';
 import {
     getContextConfig,
@@ -28,7 +29,7 @@ import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
+    getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact, or respects autoCompactWindow / CLAUDE_AUTOCOMPACT_PCT_OVERRIDE / DISABLE_AUTO_COMPACT when set)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
     getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -55,7 +56,8 @@ export class ContextPercentageUsableWidget implements Widget {
         const sliderMode = getContextSliderMode(item);
         const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
-        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
+        const compactionOverrides = getCompactionOverrides();
+        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize, compactionOverrides);
 
         const formatContextPercentage = (displayPercentage: number): string => {
             const sliderResult = renderContextSlider(sliderMode, displayPercentage);

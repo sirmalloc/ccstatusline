@@ -126,6 +126,98 @@ describe('getContextConfig', () => {
             expect(config.usableTokens).toBe(160000);
         });
     });
+
+    describe('Compaction overrides', () => {
+        it('uses overrides.effectiveWindow over the model native window', () => {
+            // 1M model, but autoCompactWindow=200k shrinks the effective window.
+            const config = getContextConfig(
+                'claude-opus-4-6[1m]',
+                null,
+                { effectiveWindow: 200000, ratio: null }
+            );
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(160000);
+        });
+
+        it('uses overrides.effectiveWindow over the status-JSON context_window_size', () => {
+            const config = getContextConfig(
+                'claude-sonnet-4-5-20250929',
+                1000000,
+                { effectiveWindow: 150000 }
+            );
+
+            expect(config.maxTokens).toBe(150000);
+            expect(config.usableTokens).toBe(120000);
+        });
+
+        it('uses overrides.ratio to replace the default 0.8 usable ratio', () => {
+            // CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=60 → ratio=0.6 → 200k * 0.6 = 120k.
+            const config = getContextConfig(
+                'claude-sonnet-4-5-20250929',
+                null,
+                { ratio: 0.6 }
+            );
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(120000);
+        });
+
+        it('uses ratio=1.0 (DISABLE_AUTO_COMPACT) to treat the entire window as usable', () => {
+            const config = getContextConfig(
+                'claude-sonnet-4-5-20250929',
+                null,
+                { ratio: 1.0 }
+            );
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(200000);
+        });
+
+        it('clamps ratio above 1.0 to avoid usableTokens > maxTokens', () => {
+            const config = getContextConfig(
+                'claude-sonnet-4-5-20250929',
+                null,
+                { ratio: 1.5 }
+            );
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(200000);
+        });
+
+        it('falls back to default ratio when overrides.ratio is null/undefined/invalid', () => {
+            const baseline = getContextConfig('claude-sonnet-4-5-20250929');
+
+            expect(getContextConfig('claude-sonnet-4-5-20250929', null, { ratio: null }))
+                .toEqual(baseline);
+            expect(getContextConfig('claude-sonnet-4-5-20250929', null, { ratio: 0 }))
+                .toEqual(baseline);
+            expect(getContextConfig('claude-sonnet-4-5-20250929', null, { ratio: -0.5 }))
+                .toEqual(baseline);
+        });
+
+        it('falls back to status/model window when overrides.effectiveWindow is null', () => {
+            const config = getContextConfig(
+                'claude-opus-4-6[1m]',
+                null,
+                { effectiveWindow: null, ratio: 0.5 }
+            );
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(500000);
+        });
+
+        it('combines effectiveWindow + ratio for the full override case', () => {
+            const config = getContextConfig(
+                'claude-opus-4-6[1m]',
+                null,
+                { effectiveWindow: 200000, ratio: 0.6 }
+            );
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(120000);
+        });
+    });
 });
 
 describe('getModelContextIdentifier', () => {
