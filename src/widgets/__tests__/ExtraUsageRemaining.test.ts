@@ -111,7 +111,7 @@ describe('ExtraUsageRemainingWidget', () => {
                 error: 'timeout',
                 extraUsageEnabled: false,
                 extraUsageLimit: 400000,
-                extraUsageUsed: 106
+                extraUsageUsed: 10600
             }
         })).toBe('Overage Left: n/a');
         expect(render(widget, { id: 'extra', rawValue: true, type: 'extra-usage-remaining' }, { usageData: { extraUsageEnabled: false } })).toBe('n/a');

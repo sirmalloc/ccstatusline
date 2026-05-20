@@ -115,7 +115,7 @@ describe('ExtraUsageUtilizationWidget', () => {
             usageData: {
                 error: 'timeout',
                 extraUsageEnabled: false,
-                extraUsageUtilization: 0.25
+                extraUsageUtilization: 25
             }
         })).toBe('Overage: n/a');
         const rawProgressItem: WidgetItem = {

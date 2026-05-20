@@ -17,8 +17,8 @@ export interface UsageData {
     weeklyOpusResetAt?: string;   // seven_day_opus.resets_at
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;      // in cents (divide by 100 for dollars)
-    extraUsageUsed?: number;       // in dollars
-    extraUsageUtilization?: number;
+    extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
+    extraUsageUtilization?: number; // percentage 0-100
     error?: UsageError;
 }
 
