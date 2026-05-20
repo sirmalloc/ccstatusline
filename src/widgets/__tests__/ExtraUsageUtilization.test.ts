@@ -34,7 +34,7 @@ describe('ExtraUsageUtilizationWidget', () => {
         const context: RenderContext = {
             usageData: {
                 extraUsageEnabled: true,
-                extraUsageUtilization: 0.25
+                extraUsageUtilization: 25
             }
         };
 
@@ -63,7 +63,7 @@ describe('ExtraUsageUtilizationWidget', () => {
             usageData: {
                 error: 'timeout',
                 extraUsageEnabled: true,
-                extraUsageUtilization: 0.026
+                extraUsageUtilization: 2.6
             }
         })).toBe('Overage: 2.6%');
     });
@@ -115,7 +115,7 @@ describe('ExtraUsageUtilizationWidget', () => {
             usageData: {
                 error: 'timeout',
                 extraUsageEnabled: false,
-                extraUsageUtilization: 0.25
+                extraUsageUtilization: 25
             }
         })).toBe('Overage: n/a');
         const rawProgressItem: WidgetItem = {
@@ -150,7 +150,7 @@ describe('ExtraUsageUtilizationWidget', () => {
         }, {
             usageData: {
                 extraUsageEnabled: true,
-                extraUsageUtilization: 0.25
+                extraUsageUtilization: 25
             }
         })).toBe('Overage: [████████████░░░░] 75.0%');
     });

@@ -308,8 +308,8 @@ describe('fetchUsageData error handling', () => {
         extra_usage: {
             is_enabled: true,
             monthly_limit: 400000,
-            used_credits: 106,
-            utilization: 0.026
+            used_credits: 10600,
+            utilization: 2.6
         }
     });
     const rateLimitedResponseBody = JSON.stringify({
@@ -571,8 +571,8 @@ describe('fetchUsageData error handling', () => {
                 weeklyResetAt: '2030-01-07T00:00:00.000Z',
                 extraUsageEnabled: true,
                 extraUsageLimit: 400000,
-                extraUsageUsed: 106,
-                extraUsageUtilization: 0.026
+                extraUsageUsed: 10600,
+                extraUsageUtilization: 2.6
             });
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);

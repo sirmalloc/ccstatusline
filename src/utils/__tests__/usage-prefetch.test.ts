@@ -344,8 +344,8 @@ describe('usage prefetch', () => {
         mockFetchUsageData.mockResolvedValue({
             extraUsageEnabled: true,
             extraUsageLimit: 400000,
-            extraUsageUsed: 106,
-            extraUsageUtilization: 0.026
+            extraUsageUsed: 10600,
+            extraUsageUtilization: 2.6
         });
 
         const lines = makeLines(
@@ -358,8 +358,8 @@ describe('usage prefetch', () => {
             sessionUsage: 42,
             extraUsageEnabled: true,
             extraUsageLimit: 400000,
-            extraUsageUsed: 106,
-            extraUsageUtilization: 0.026
+            extraUsageUsed: 10600,
+            extraUsageUtilization: 2.6
         });
         expect(mockFetchUsageData.mock.calls).toEqual([
             [{

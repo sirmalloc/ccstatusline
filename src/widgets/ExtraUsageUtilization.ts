@@ -94,7 +94,8 @@ export class ExtraUsageUtilizationWidget implements Widget {
             return null;
         }
 
-        const percent = Math.max(0, Math.min(100, data.extraUsageUtilization * 100));
+        // extraUsageUtilization is already a percentage (0-100), not a fraction
+        const percent = Math.max(0, Math.min(100, data.extraUsageUtilization));
         const renderedPercent = inverted ? 100 - percent : percent;
 
         if (isUsageProgressMode(displayMode)) {
