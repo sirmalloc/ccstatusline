@@ -582,3 +582,72 @@ export function getVoiceConfig(cwd: string = process.cwd()): { enabled: boolean 
     }
     return anyFileExisted ? { enabled: false } : null;
 }
+
+const RemoteSessionFileSchema = z.object({
+    sessionId: z.string().optional(),
+    bridgeSessionId: z.string().nullable().optional()
+});
+
+/**
+ * Reads the per-PID session manifests Claude Code writes to `<config>/sessions/<pid>.json`
+ * and returns whether the session matching `sessionId` currently has a remote-control
+ * bridge attached.
+ *
+ * Claude Code writes one file per running interactive session. The `bridgeSessionId`
+ * field is populated when remote control (e.g. the mobile/web bridge) is connected
+ * for that session. Matching by `sessionId` ensures the result reflects the *current*
+ * session rather than any other concurrent Claude Code process.
+ *
+ * Claude Code's observed behavior on disconnect: the field is set to `null` (not removed)
+ * and the file is rewritten within ~1s, so the on-disconnect transition is reflected
+ * promptly at the next status-line refresh.
+ *
+ * - Returns `null` when the sessions directory is missing or no manifest matches —
+ *   widgets should hide themselves in that case rather than render a misleading "off".
+ * - Returns `{ enabled: false }` when the manifest exists but `bridgeSessionId` is
+ *   missing, `null`, or empty (disconnected).
+ * - Returns `{ enabled: true }` when a non-empty `bridgeSessionId` is set.
+ */
+export function getRemoteControlStatus(sessionId: string | undefined): { enabled: boolean } | null {
+    if (!sessionId) {
+        return null;
+    }
+
+    const sessionsDir = path.join(getClaudeConfigDir(), 'sessions');
+    let entries: string[];
+    try {
+        entries = fs.readdirSync(sessionsDir);
+    } catch {
+        return null;
+    }
+
+    for (const entry of entries) {
+        if (!entry.endsWith('.json')) {
+            continue;
+        }
+
+        let content: string;
+        try {
+            content = fs.readFileSync(path.join(sessionsDir, entry), 'utf-8');
+        } catch {
+            continue;
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(content);
+        } catch {
+            continue;
+        }
+
+        const result = RemoteSessionFileSchema.safeParse(parsed);
+        if (!result.success || result.data.sessionId !== sessionId) {
+            continue;
+        }
+
+        const bridge = result.data.bridgeSessionId;
+        return { enabled: typeof bridge === 'string' && bridge.length > 0 };
+    }
+
+    return null;
+}

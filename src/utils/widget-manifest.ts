@@ -90,6 +90,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'thinking-effort', create: () => new widgets.ThinkingEffortWidget() },
     { type: 'vim-mode', create: () => new widgets.VimModeWidget() },
     { type: 'voice-status', create: () => new widgets.VoiceStatusWidget() },
+    { type: 'remote-control-status', create: () => new widgets.RemoteControlStatusWidget() },
     { type: 'worktree-mode', create: () => new widgets.GitWorktreeModeWidget() },
     { type: 'worktree-name', create: () => new widgets.GitWorktreeNameWidget() },
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
