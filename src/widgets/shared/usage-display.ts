@@ -24,6 +24,7 @@ const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time',
 const CURSOR_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' };
 const DATE_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)imestamp', action: 'toggle-date' };
 const HOUR_FORMAT_TOGGLE_KEYBIND: CustomKeybind = { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' };
+const WEEKDAY_TOGGLE_KEYBIND: CustomKeybind = { key: 'w', label: '(w)eekday', action: 'toggle-weekday' };
 const TIMEZONE_KEYBIND: CustomKeybind = { key: 'z', label: 'time(z)one', action: 'edit-timezone' };
 const LOCALE_KEYBIND: CustomKeybind = { key: 'l', label: '(l)ocale', action: 'edit-locale' };
 
@@ -155,6 +156,14 @@ export function toggleUsageHourFormat(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'hour12');
 }
 
+export function isUsageWeekdayEnabled(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'weekday');
+}
+
+export function toggleUsageWeekday(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'weekday');
+}
+
 interface UsageDisplayModifierOptions {
     includeCompact?: boolean;
     includeDate?: boolean;
@@ -269,6 +278,7 @@ interface UsageTimerCustomKeybindOptions {
     includeHourFormat?: boolean;
     includeLocale?: boolean;
     includeTimezone?: boolean;
+    includeWeekday?: boolean;
 }
 
 export function getUsageTimerCustomKeybinds(
@@ -293,6 +303,10 @@ export function getUsageTimerCustomKeybinds(
     if (item && isUsageDateMode(item) && !isBarMode) {
         if (options.includeHourFormat) {
             keybinds.push(HOUR_FORMAT_TOGGLE_KEYBIND);
+        }
+
+        if (options.includeWeekday) {
+            keybinds.push(WEEKDAY_TOGGLE_KEYBIND);
         }
 
         if (options.includeTimezone) {
