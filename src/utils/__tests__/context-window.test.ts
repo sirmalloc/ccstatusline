@@ -72,4 +72,64 @@ describe('getContextWindowMetrics', () => {
             totalTokens: 6000
         });
     });
+
+    describe('all-zero transient frame filtering', () => {
+        it('returns null usage for all-zero frame with current_usage object', () => {
+            const metrics = getContextWindowMetrics({
+                context_window: {
+                    context_window_size: 200000,
+                    total_input_tokens: 0,
+                    total_output_tokens: 0,
+                    current_usage: {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0
+                    },
+                    used_percentage: 0,
+                    remaining_percentage: 100
+                }
+            });
+
+            expect(metrics.windowSize).toBe(200000);
+            expect(metrics.usedTokens).toBeNull();
+            expect(metrics.contextLengthTokens).toBeNull();
+            expect(metrics.usedPercentage).toBeNull();
+            expect(metrics.remainingPercentage).toBeNull();
+            expect(metrics.cachedTokens).toBeNull();
+            expect(metrics.totalTokens).toBeNull();
+        });
+
+        it('returns null usage for all-zero frame with scalar current_usage=0', () => {
+            const metrics = getContextWindowMetrics({
+                context_window: {
+                    context_window_size: 200000,
+                    current_usage: 0,
+                    used_percentage: 0
+                }
+            });
+
+            expect(metrics.usedTokens).toBeNull();
+            expect(metrics.contextLengthTokens).toBeNull();
+            expect(metrics.usedPercentage).toBeNull();
+        });
+
+        it('preserves non-zero usage even when used_percentage is 0', () => {
+            const metrics = getContextWindowMetrics({
+                context_window: {
+                    context_window_size: 200000,
+                    current_usage: {
+                        input_tokens: 100,
+                        output_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0
+                    },
+                    used_percentage: 0
+                }
+            });
+
+            expect(metrics.usedTokens).toBe(100);
+            expect(metrics.usedPercentage).toBe(0);
+        });
+    });
 });

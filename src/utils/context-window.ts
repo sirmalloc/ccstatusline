@@ -79,6 +79,25 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
             ? clampPercentage((usedTokens / windowSize) * 100)
             : null;
 
+    // Treat all-zero usage frames as missing data — Claude Code occasionally
+    // emits transient frames where used_percentage is 0 and all token counts
+    // are 0 mid-session. Returning null forces callers to fall through to
+    // transcript-based metrics instead of flashing "0k".
+    const isAllZero = usedPercentage === 0 && (usedTokens === null || usedTokens === 0);
+    if (isAllZero) {
+        return {
+            windowSize,
+            usedTokens: null,
+            contextLengthTokens: null,
+            usedPercentage: null,
+            remainingPercentage: null,
+            totalInputTokens,
+            totalOutputTokens,
+            cachedTokens: null,
+            totalTokens: null
+        };
+    }
+
     const remainingPercentage = rawRemainingPercentage !== null
         ? clampPercentage(rawRemainingPercentage)
         : usedPercentage !== null
