@@ -203,6 +203,7 @@ Add a single symbol or emoji to your status line when you want a compact visual 
 Execute shell commands and display their output dynamically:
 - Refreshes whenever the statusline is updated by Claude Code
 - Receives the full Claude Code JSON data via stdin (model info, session ID, transcript path, etc.)
+- Also includes `terminal_width` — the detected terminal width in columns, added by ccstatusline (omitted when it can't be determined) — so scripts can adapt their output to the available space
 - Displays command output inline in your status line
 - Configurable timeout (default: 1000ms)
 - Optional max-width truncation
@@ -217,7 +218,7 @@ Execute shell commands and display their output dynamically:
 
 > ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
 
-> 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters. They receive the same JSON via stdin that `ccstatusline` receives from Claude Code, allowing you to chain or combine multiple status line tools.
+> 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters. They receive the same JSON via stdin that `ccstatusline` receives from Claude Code (augmented with a `terminal_width` field), allowing you to chain or combine multiple status line tools.
 
 ### Link Widget
 
