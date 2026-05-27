@@ -29,6 +29,7 @@ export { TokensInputWidget } from './TokensInput';
 export { TokensOutputWidget } from './TokensOutput';
 export { TokensCachedWidget } from './TokensCached';
 export { TokensTotalWidget } from './TokensTotal';
+export { CacheHitRateWidget } from './CacheHitRate';
 export { ContextLengthWidget } from './ContextLength';
 export { ContextWindowWidget } from './ContextWindow';
 export { ContextPercentageWidget } from './ContextPercentage';

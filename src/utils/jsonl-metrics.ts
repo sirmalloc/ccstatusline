@@ -152,7 +152,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
     try {
         // Use Node.js-compatible file reading
         if (!fs.existsSync(transcriptPath)) {
-            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
         }
 
         const lines = await readJsonlLines(transcriptPath);
@@ -160,6 +160,8 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         let inputTokens = 0;
         let outputTokens = 0;
         let cachedTokens = 0;
+        let cacheReadTokens = 0;
+        let cacheCreationTokens = 0;
         let contextLength = 0;
 
         // Parse each line and sum up token usage for totals.
@@ -200,6 +202,8 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 
             inputTokens += usage.input_tokens || 0;
             outputTokens += usage.output_tokens || 0;
+            cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+            cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
             cachedTokens += usage.cache_read_input_tokens ?? 0;
             cachedTokens += usage.cache_creation_input_tokens ?? 0;
 
@@ -224,9 +228,9 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 
         const totalTokens = inputTokens + outputTokens + cachedTokens;
 
-        return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength };
+        return { inputTokens, outputTokens, cachedTokens, cacheReadTokens, cacheCreationTokens, totalTokens, contextLength };
     } catch {
-        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
     }
 }
 

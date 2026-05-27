@@ -17,6 +17,8 @@ export interface TokenMetrics {
     inputTokens: number;
     outputTokens: number;
     cachedTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
     totalTokens: number;
     contextLength: number;
 }
