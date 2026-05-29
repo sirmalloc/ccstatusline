@@ -2,6 +2,12 @@ import chalk, { type ChalkInstance } from 'chalk';
 
 import type { ColorEntry } from '../types/ColorEntry';
 
+import {
+    applyGradientToText,
+    parseGradientSpec,
+    rgbToAnsi256
+} from './gradient';
+
 // Re-export for backward compatibility
 export type { ColorEntry };
 
@@ -154,6 +160,14 @@ export function applyColors(
 
     // Apply foreground color
     if (foregroundColor) {
+        // Per-character gradient foreground. Only possible with a real color palette;
+        // at ansi16 (or for an unparseable spec) we fall through to a solid first stop
+        // via getColorAnsiCode below.
+        const gradientSpec = foregroundColor.startsWith('gradient:') ? parseGradientSpec(foregroundColor) : null;
+        if (gradientSpec && colorLevel !== 'ansi16') {
+            return prefix + applyGradientToText(text, gradientSpec, colorLevel) + '\x1b[39m' + suffix;
+        }
+
         const fgCode = getColorAnsiCode(foregroundColor, colorLevel, false);
         if (fgCode) {
             prefix += fgCode;
@@ -168,6 +182,27 @@ export function applyColors(
 export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16', isBackground = false): string {
     if (!colorName)
         return '';
+
+    // Handle gradient:<name> / gradient:RRGGBB-RRGGBB format.
+    // A single ANSI code cannot represent a gradient, so collapse to the first stop
+    // as a solid color. The per-character gradient is produced in applyColors(); this
+    // path is what the powerline renderer (which calls getColorAnsiCode directly) sees.
+    if (colorName.startsWith('gradient:')) {
+        const spec = parseGradientSpec(colorName);
+        if (!spec)
+            return '';
+        const hex = spec.stops[0]?.replace(/^#/, '') ?? '';
+        if (!/^[0-9A-Fa-f]{6}$/.test(hex))
+            return '';
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        if (colorLevel === 'ansi256') {
+            const code = rgbToAnsi256(r, g, b);
+            return isBackground ? `\x1b[48;5;${code}m` : `\x1b[38;5;${code}m`;
+        }
+        return isBackground ? `\x1b[48;2;${r};${g};${b}m` : `\x1b[38;2;${r};${g};${b}m`;
+    }
 
     // Handle ansi256:X format
     if (colorName.startsWith('ansi256:')) {

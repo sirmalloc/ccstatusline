@@ -53,6 +53,21 @@ describe('color sanitize helpers', () => {
         expect(sanitized[0]?.[1]?.backgroundColor).toBe('hex:112233');
     });
 
+    it('leaves gradient colors untouched at every color level (they self-degrade at render time)', () => {
+        const lines: WidgetItem[][] = [[
+            { id: '1', type: 'model', color: 'gradient:retro' },
+            { id: '2', type: 'context-length', color: 'gradient:ff0000-0000ff' }
+        ]];
+
+        for (const level of [1, 2, 3] as const) {
+            const sanitized = sanitizeLinesForColorLevel(lines, level);
+            expect(sanitized[0]?.[0]?.color).toBe('gradient:retro');
+            expect(sanitized[0]?.[1]?.color).toBe('gradient:ff0000-0000ff');
+        }
+
+        expect(hasCustomWidgetColors(lines)).toBe(false);
+    });
+
     it('sanitizes all custom colors when moving to basic/no-color modes', () => {
         const lines: WidgetItem[][] = [[
             { id: '1', type: 'model', color: 'ansi256:99', backgroundColor: 'hex:123456' },
