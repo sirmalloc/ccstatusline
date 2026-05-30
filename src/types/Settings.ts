@@ -84,7 +84,10 @@ export const SettingsSchema = z.object({
         message: z.string().nullable().optional(),
         remaining: z.number().nullable().optional()
     }).optional(),
-    installation: InstallationMetadataSchema.optional()
+    installation: InstallationMetadataSchema.optional(),
+    // Usable context ratio as a percentage (e.g., 80 = 80% = 0.8 ratio)
+    // Used by ContextPercentageUsable widget for auto-compact threshold calculation
+    autoCompactWindow: z.number().min(1).max(99).default(80)
 });
 
 // Inferred type from schema
