@@ -91,7 +91,7 @@ Configure global formatting preferences that apply to all widgets:
   - Press **(o)** to toggle
 - **Minimalist Mode** - Force widgets into raw-value rendering globally for a cleaner, label-free status line
   - Press **(m)** to toggle
-- **Override Foreground Color** - Force all widgets to use the same text color
+- **Override Foreground Color** - Force all widgets to use the same text color, or a whole-line **gradient** (see below)
   - Press **(f)** to cycle through colors
   - Press **(g)** to clear override
 - **Override Background Color** - Force all widgets to use the same background color
@@ -103,6 +103,21 @@ Configure global formatting preferences that apply to all widgets:
 > 💡 **Note:** These settings are applied during rendering and don't add widgets to your widget list. They provide a consistent look across your entire status line without modifying individual widget configurations.
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
+
+## Gradient Colors
+
+A foreground color can be a multi-stop **gradient** instead of a solid. Colors interpolate in OKLab for perceptually even blends. A gradient value takes one of three forms, all prefixed `gradient:`:
+
+- **Named preset** — `gradient:atlas` (case-insensitive). Built-in presets: `atlas`, `cristal`, `teen`, `mind`, `morning`, `vice`, `passion`, `fruit`, `instagram`, `retro`, `summer`, `rainbow`, `pastel`.
+- **Dash stops** — `gradient:RRGGBB-RRGGBB[-RRGGBB...]` (two or more bare or `#`-prefixed hex stops).
+- **Comma stops** — `gradient:hex:RRGGBB,#RRGGBB,RRGGBB` (two or more `hex:`/`#`/bare stops).
+
+Gradients apply at **two scopes**:
+
+- **Per-widget** — set a widget's color to a gradient so its text carries its own self-contained sweep. In the color menu (foreground, 256-color or truecolor mode), press **(g)** to open the gradient picker, then choose a preset or enter custom start/end hex stops.
+- **Whole line** — set `overrideForegroundColor` to a gradient spec to paint the entire status line with one continuous sweep, each character colored by its column position. (Authored in `settings.json`; the TUI's override cycler covers solid colors only.)
+
+Gradients self-degrade where they can't render: at the basic 16-color level a per-widget gradient collapses to its first stop and a whole-line gradient is skipped; in Powerline mode the whole-line gradient is ignored (separators derive their foreground from adjacent backgrounds) and per-widget gradients collapse to their first stop.
 
 ## Claude Code Status Line Settings
 

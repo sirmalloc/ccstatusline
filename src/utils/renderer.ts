@@ -20,7 +20,10 @@ import {
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
-import { parseGradientSpec } from './gradient';
+import {
+    isGradientSpec,
+    parseGradientSpec
+} from './gradient';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -35,7 +38,8 @@ export function formatTokens(count: number): string {
 
 // Paint a foreground gradient across a finished line when overrideForegroundColor
 // is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.
-// Applied after assembly but before truncation so the gradient spans the full line.
+// Applied as the final step, after truncation, so the trailing reset is not sliced
+// off (see the call site for why ordering matters).
 function maybeApplyForegroundGradient(
     line: string,
     settings: Settings,
@@ -226,7 +230,7 @@ function renderPowerlineStatusLine(
             // Apply override FG color if set (overrides theme). A gradient: spec is a
             // standard-mode whole-line gradient, not a solid color — ignore it in powerline.
             if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                && !settings.overrideForegroundColor.startsWith('gradient:')) {
+                && !isGradientSpec(settings.overrideForegroundColor)) {
                 fgColor = settings.overrideForegroundColor;
             }
 
@@ -660,7 +664,7 @@ export function renderStatusLine(
         let fgColor = foregroundColor;
         const fgOverride = settings.overrideForegroundColor;
         if (fgOverride && fgOverride !== 'none') {
-            if (!fgOverride.startsWith('gradient:')) {
+            if (!isGradientSpec(fgOverride)) {
                 fgColor = fgOverride;
             } else if (colorLevel !== 'ansi16') {
                 fgColor = undefined;
@@ -925,9 +929,6 @@ export function renderStatusLine(
         }
     }
 
-    // Apply a foreground gradient across the whole line if configured
-    statusLine = maybeApplyForegroundGradient(statusLine, settings, colorLevel);
-
     // Truncate if the line exceeds the terminal width
     // Use terminalWidth if available (already accounts for flex mode adjustments), otherwise use detectedWidth
     const maxWidth = terminalWidth ?? detectedWidth;
@@ -939,6 +940,16 @@ export function renderStatusLine(
             statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
         }
     }
+
+    // Apply a foreground gradient across the whole line if configured. This runs
+    // AFTER truncation, not before: truncateStyledText cuts from the right and
+    // appends a raw "..." with no trailing reset, so a gradient applied earlier
+    // would have its closing \x1b[39m sliced off — leaking the last color past the
+    // line. Gradient codes are zero-width (getVisibleWidth strips them), so the
+    // truncation measurement above is unaffected by deferring the gradient, and
+    // coloring the already-truncated line sweeps the ellipsis too and keeps the
+    // reset at the true end.
+    statusLine = maybeApplyForegroundGradient(statusLine, settings, colorLevel);
 
     return statusLine;
 }

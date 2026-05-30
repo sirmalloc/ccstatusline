@@ -4,6 +4,7 @@ import type { ColorEntry } from '../types/ColorEntry';
 
 import {
     applyGradientToText,
+    isGradientSpec,
     parseGradientSpec,
     rgbToAnsi256
 } from './gradient';
@@ -162,8 +163,9 @@ export function applyColors(
     if (foregroundColor) {
         // Per-character gradient foreground. Only representable with a real color
         // palette; at ansi16 (or for an unparseable spec) we fall through to a
-        // solid first stop via getColorAnsiCode below.
-        const gradientStops = foregroundColor.startsWith('gradient:') ? parseGradientSpec(foregroundColor) : null;
+        // solid first stop via getColorAnsiCode below. parseGradientSpec returns
+        // null for non-gradient values, so it doubles as the prefix guard.
+        const gradientStops = parseGradientSpec(foregroundColor);
         if (gradientStops && colorLevel !== 'ansi16') {
             return prefix + applyGradientToText(text, gradientStops, colorLevel) + '\x1b[39m' + suffix;
         }
@@ -188,7 +190,7 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
     // stop as a solid color. The per-character gradient is produced in applyColors();
     // this path is what the powerline renderer (which calls getColorAnsiCode
     // directly) sees, and the ansi16 fallback for the standard renderer.
-    if (colorName.startsWith('gradient:')) {
+    if (isGradientSpec(colorName)) {
         const stops = parseGradientSpec(colorName);
         const first = stops?.[0];
         if (!first)
@@ -197,6 +199,13 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
             const code = rgbToAnsi256(first);
             return isBackground ? `\x1b[48;5;${code}m` : `\x1b[38;5;${code}m`;
         }
+        // Note: at colorLevel 'ansi16' this intentionally still emits a truecolor
+        // (38;2/48;2) escape for the first stop rather than a real 16-color SGR — we
+        // don't quantize to the 16-color palette here. Both gradient render paths
+        // degrade before reaching a true ansi16 terminal (the standard renderer makes
+        // applyLineGradient a no-op at ansi16; powerline filters gradient specs out),
+        // so this branch is the defensive fallback and its truecolor output is only
+        // reached at levels that can display it.
         return isBackground ? `\x1b[48;2;${first.r};${first.g};${first.b}m` : `\x1b[38;2;${first.r};${first.g};${first.b}m`;
     }
 
