@@ -13,17 +13,54 @@ interface Oklab {
 const GRADIENT_PREFIX = 'gradient:';
 const HEX_PATTERN = /^[0-9A-Fa-f]{6}$/;
 
-// Parse a "gradient:<stop>,<stop>,..." foreground spec into RGB color stops.
-// Stops are hex (`hex:RRGGBB`, `#RRGGBB`, or bare `RRGGBB`). Returns null when
-// the value is not a gradient spec or resolves to fewer than two usable stops.
+// Named gradient presets, addressable as `gradient:<name>`. The stop lists mirror
+// the named gradients shipped by `gradient-string` (pulled in transitively through
+// `ink-gradient`), reproduced here as raw hex so the renderer can interpolate them
+// without going through the React/Ink layer.
+// Source: gradient-string (MIT) - https://github.com/bokub/gradient-string
+//
+// `gradient-string` renders `rainbow` and `pastel` via a full HSV hue-spin. We
+// interpolate in OKLab (no hue-spin), so those two are re-expressed as explicit
+// multi-stop hue wheels that sweep the spectrum directly.
+export const GRADIENT_PRESETS: Record<string, string[]> = {
+    atlas: ['#feac5e', '#c779d0', '#4bc0c8'],
+    cristal: ['#bdfff3', '#4ac29a'],
+    teen: ['#77a1d3', '#79cbca', '#e684ae'],
+    mind: ['#473b7b', '#3584a7', '#30d2be'],
+    morning: ['#ff5f6d', '#ffc371'],
+    vice: ['#5ee7df', '#b490ca'],
+    passion: ['#f43b47', '#453a94'],
+    fruit: ['#ff4e50', '#f9d423'],
+    instagram: ['#833ab4', '#fd1d1d', '#fcb045'],
+    retro: ['#3f51b1', '#5a55ae', '#7b5fac', '#8f6aae', '#a86aa4', '#cc6b8e', '#f18271', '#f3a469', '#f7c978'],
+    summer: ['#fdbb2d', '#22c1c3'],
+    rainbow: ['#ff0000', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff', '#ff0000'],
+    pastel: ['#aee9d8', '#cdeeb0', '#f6f0a8', '#f7c8a8', '#f3aecb', '#c3b6f0', '#aee9d8']
+};
+
+export const GRADIENT_PRESET_NAMES: string[] = Object.keys(GRADIENT_PRESETS);
+
+// Parse a gradient foreground spec into RGB color stops. Three forms are
+// accepted, all prefixed `gradient:`
+//   - named preset            `gradient:atlas`              (case-insensitive)
+//   - dash-separated stops     `gradient:RRGGBB-RRGGBB[-…]`  (bare or #-prefixed hex)
+//   - comma-separated stops    `gradient:hex:RRGGBB,#RRGGBB,RRGGBB`
+// Returns null when the value is not a gradient spec or resolves to fewer than
+// two usable stops.
 export function parseGradientSpec(value: string | undefined): Rgb[] | null {
     if (!value?.startsWith(GRADIENT_PREFIX)) {
         return null;
     }
 
-    const stops = value
-        .slice(GRADIENT_PREFIX.length)
-        .split(',')
+    const body = value.slice(GRADIENT_PREFIX.length).trim();
+    if (!body) {
+        return null;
+    }
+
+    const preset = GRADIENT_PRESETS[body.toLowerCase()];
+    const rawStops = preset ?? body.split(body.includes(',') ? ',' : '-');
+
+    const stops = rawStops
         .map(stop => stop.trim())
         .filter(stop => stop.length > 0)
         .map(resolveStopToRgb)
@@ -168,4 +205,48 @@ export function gradientCodeAt(
         return `\x1b[38;2;${rgb.r};${rgb.g};${rgb.b}m`;
     }
     return `\x1b[38;5;${rgbToAnsi256(rgb)}m`;
+}
+
+const WHITESPACE = /\s/;
+
+// Apply a gradient across the visible characters of a single widget's text,
+// emitting one opening color code per non-whitespace character. Whitespace is
+// passed through uncolored and does not consume a gradient step (matching
+// gradient-string's behavior). The gradient restarts at t=0 for each call, so
+// every widget spans its own self-contained sweep.
+//
+// No trailing reset is emitted here - the caller appends `\x1b[39m`. At ansi16
+// (or for empty/blank text) the input is returned unchanged.
+export function applyGradientToText(
+    text: string,
+    stops: Rgb[],
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor'
+): string {
+    if (colorLevel === 'ansi16' || text.length === 0) {
+        return text;
+    }
+
+    let visibleCount = 0;
+    for (const ch of text) {
+        if (!WHITESPACE.test(ch)) {
+            visibleCount++;
+        }
+    }
+    if (visibleCount === 0) {
+        return text;
+    }
+
+    const denominator = Math.max(1, visibleCount - 1);
+    let result = '';
+    let index = 0;
+    for (const ch of text) {
+        if (WHITESPACE.test(ch)) {
+            result += ch;
+            continue;
+        }
+        result += gradientCodeAt(stops, index / denominator, colorLevel) + ch;
+        index++;
+    }
+
+    return result;
 }

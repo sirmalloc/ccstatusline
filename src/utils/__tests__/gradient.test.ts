@@ -15,6 +15,8 @@ import {
     getVisibleWidth
 } from '../ansi';
 import {
+    GRADIENT_PRESET_NAMES,
+    applyGradientToText,
     gradientCodeAt,
     parseGradientSpec,
     rgbToAnsi256,
@@ -53,6 +55,52 @@ describe('parseGradientSpec', () => {
             { r: 0, g: 255, b: 0 },
             { r: 0, g: 0, b: 255 }
         ]);
+    });
+
+    it('parses dash-separated bare hex stops', () => {
+        const stops = parseGradientSpec('gradient:FF0000-0000FF');
+        expect(stops).toEqual([
+            { r: 255, g: 0, b: 0 },
+            { r: 0, g: 0, b: 255 }
+        ]);
+    });
+
+    it('resolves named presets (case-insensitive) to their stop list', () => {
+        const retro = parseGradientSpec('gradient:retro');
+        expect(retro).toHaveLength(9);
+        expect(parseGradientSpec('gradient:RAINBOW')).toHaveLength(7);
+        // every shipped preset resolves to >= 2 usable stops
+        for (const name of GRADIENT_PRESET_NAMES) {
+            expect((parseGradientSpec(`gradient:${name}`) ?? []).length).toBeGreaterThanOrEqual(2);
+        }
+    });
+});
+
+describe('applyGradientToText', () => {
+    const stops = [{ r: 255, g: 0, b: 0 }, { r: 0, g: 0, b: 255 }];
+
+    it('emits one code per non-whitespace character and leaves whitespace uncolored', () => {
+        const out = applyGradientToText('ab cd', stops, 'truecolor');
+        expect(countMatches(out, TRUECOLOR_CODE)).toBe(4);
+        // the space follows the visible char directly, with no color code in between
+        expect(out).toContain('b ');
+    });
+
+    it('emits no trailing reset (the caller appends it)', () => {
+        const out = applyGradientToText('abc', stops, 'truecolor');
+        expect(out.endsWith('\x1b[39m')).toBe(false);
+    });
+
+    it('restarts the sweep per call (first visible code identical for two calls)', () => {
+        const first = applyGradientToText('abc', stops, 'truecolor').match(TRUECOLOR_CODE)?.[0];
+        const second = applyGradientToText('xyz', stops, 'truecolor').match(TRUECOLOR_CODE)?.[0];
+        expect(first).toBe(second);
+    });
+
+    it('is a no-op for ansi16, empty, and blank-only text', () => {
+        expect(applyGradientToText('abc', stops, 'ansi16')).toBe('abc');
+        expect(applyGradientToText('', stops, 'truecolor')).toBe('');
+        expect(applyGradientToText('   ', stops, 'truecolor')).toBe('   ');
     });
 });
 
