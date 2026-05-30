@@ -8,6 +8,7 @@ import { getColorLevelString } from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
 import {
+    applyLineGradient,
     getVisibleWidth,
     stripSgrCodes,
     truncateStyledText
@@ -19,6 +20,7 @@ import {
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import { parseGradientSpec } from './gradient';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -29,6 +31,18 @@ export function formatTokens(count: number): string {
     if (count >= 1000)
         return `${(count / 1000).toFixed(1)}k`;
     return count.toString();
+}
+
+// Paint a foreground gradient across a finished line when overrideForegroundColor
+// is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.
+// Applied after assembly but before truncation so the gradient spans the full line.
+function maybeApplyForegroundGradient(
+    line: string,
+    settings: Settings,
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor'
+): string {
+    const stops = parseGradientSpec(settings.overrideForegroundColor);
+    return stops ? applyLineGradient(line, stops, colorLevel) : line;
 }
 
 function resolveEffectiveTerminalWidth(
@@ -209,8 +223,10 @@ function renderPowerlineStatusLine(
                 }
             }
 
-            // Apply override FG color if set (overrides theme)
-            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+            // Apply override FG color if set (overrides theme). A gradient: spec is a
+            // standard-mode whole-line gradient, not a solid color — ignore it in powerline.
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                && !settings.overrideForegroundColor.startsWith('gradient:')) {
                 fgColor = settings.overrideForegroundColor;
             }
 
@@ -636,10 +652,19 @@ export function renderStatusLine(
 
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
-        // Override foreground color takes precedence over EVERYTHING, including passed foreground color
+        // Override foreground color takes precedence over EVERYTHING, including passed foreground
+        // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
+        // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
+        // no per-widget foreground and let the gradient own it; at ansi16 the gradient is a no-op, so
+        // the widget's own foreground is kept.
         let fgColor = foregroundColor;
-        if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
-            fgColor = settings.overrideForegroundColor;
+        const fgOverride = settings.overrideForegroundColor;
+        if (fgOverride && fgOverride !== 'none') {
+            if (!fgOverride.startsWith('gradient:')) {
+                fgColor = fgOverride;
+            } else if (colorLevel !== 'ansi16') {
+                fgColor = undefined;
+            }
         }
 
         // Override background color takes precedence over EVERYTHING, including passed background color
@@ -899,6 +924,9 @@ export function renderStatusLine(
             statusLine = finalElements.join('');
         }
     }
+
+    // Apply a foreground gradient across the whole line if configured
+    statusLine = maybeApplyForegroundGradient(statusLine, settings, colorLevel);
 
     // Truncate if the line exceeds the terminal width
     // Use terminalWidth if available (already accounts for flex mode adjustments), otherwise use detectedWidth
