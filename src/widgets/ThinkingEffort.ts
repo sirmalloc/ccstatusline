@@ -15,6 +15,15 @@ import {
 
 export type ThinkingEffortLevel = TranscriptThinkingEffort;
 
+function resolveThinkingEffortFromStatusJson(context: RenderContext): ResolvedThinkingEffort | null | undefined {
+    const effort = context.data?.effort;
+    if (!effort || !('level' in effort)) {
+        return undefined;
+    }
+
+    return typeof effort.level === 'string' ? normalizeThinkingEffort(effort.level) : null;
+}
+
 function resolveThinkingEffortFromSettings(): ResolvedThinkingEffort | undefined {
     try {
         const settings = loadClaudeSettingsSync({ logErrors: false });
@@ -27,6 +36,11 @@ function resolveThinkingEffortFromSettings(): ResolvedThinkingEffort | undefined
 }
 
 function resolveThinkingEffort(context: RenderContext): ResolvedThinkingEffort | null {
+    const statusEffort = resolveThinkingEffortFromStatusJson(context);
+    if (statusEffort !== undefined) {
+        return statusEffort;
+    }
+
     return getTranscriptThinkingEffort(context.data?.transcript_path)
         ?? resolveThinkingEffortFromSettings()
         ?? null;

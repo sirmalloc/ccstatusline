@@ -5,7 +5,10 @@ import {
 } from 'vitest';
 
 import type { RenderContext } from '../../types';
-import { calculateContextPercentage } from '../context-percentage';
+import {
+    calculateContextPercentage,
+    calculateContextPercentageMetrics
+} from '../context-percentage';
 
 describe('calculateContextPercentage', () => {
     describe('Status JSON context_window', () => {
@@ -31,6 +34,20 @@ describe('calculateContextPercentage', () => {
             expect(percentage).toBe(12.5);
         });
 
+        it('should infer the window size for raw percentage metrics when size is missing', () => {
+            const context: RenderContext = {
+                data: {
+                    model: { id: 'claude-sonnet-4-5-20250929[1m]' },
+                    context_window: { used_percentage: 4.2 }
+                }
+            };
+
+            expect(calculateContextPercentageMetrics(context)).toEqual({
+                usedPercentage: 4.2,
+                windowSize: 1000000
+            });
+        });
+
         it('should derive percentage from current usage and window size when used_percentage is missing', () => {
             const context: RenderContext = {
                 data: {
@@ -50,6 +67,27 @@ describe('calculateContextPercentage', () => {
             expect(percentage).toBe(20);
         });
 
+        it('should return derived percentage metrics from current usage when used_percentage is missing', () => {
+            const context: RenderContext = {
+                data: {
+                    context_window: {
+                        context_window_size: 200000,
+                        current_usage: {
+                            input_tokens: 20000,
+                            output_tokens: 10000,
+                            cache_creation_input_tokens: 5000,
+                            cache_read_input_tokens: 5000
+                        }
+                    }
+                }
+            };
+
+            expect(calculateContextPercentageMetrics(context)).toEqual({
+                usedPercentage: 20,
+                windowSize: 200000
+            });
+        });
+
         it('should use context_window_size as denominator when falling back to token metrics', () => {
             const context: RenderContext = {
                 data: {
@@ -67,6 +105,27 @@ describe('calculateContextPercentage', () => {
 
             const percentage = calculateContextPercentage(context);
             expect(percentage).toBe(4.2);
+        });
+
+        it('should return token-metric fallback metrics with the denominator used', () => {
+            const context: RenderContext = {
+                data: {
+                    model: { id: 'claude-3-5-sonnet-20241022' },
+                    context_window: { context_window_size: 1000000 }
+                },
+                tokenMetrics: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cachedTokens: 0,
+                    totalTokens: 0,
+                    contextLength: 42000
+                }
+            };
+
+            expect(calculateContextPercentageMetrics(context)).toEqual({
+                usedPercentage: 4.2,
+                windowSize: 1000000
+            });
         });
     });
 
@@ -179,6 +238,7 @@ describe('calculateContextPercentage', () => {
 
             const percentage = calculateContextPercentage(context);
             expect(percentage).toBe(0);
+            expect(calculateContextPercentageMetrics(context)).toBeNull();
         });
 
         it('should use default 200k context when model ID is undefined', () => {

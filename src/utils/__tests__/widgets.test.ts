@@ -8,7 +8,6 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../types/Settings';
-import type { WidgetItemType } from '../../types/Widget';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
@@ -92,6 +91,7 @@ describe('widget catalog', () => {
 
         expect(categories).toContain('Core');
         expect(categories).toContain('Git');
+        expect(categories).toContain('Jujutsu');
         expect(categories).toContain('Context');
         expect(categories).toContain('Tokens');
         expect(categories).toContain('Token Speed');
@@ -114,11 +114,40 @@ describe('widget catalog', () => {
         }
     });
 
+    it('returns unique widget identifiers', () => {
+        const types = getAllWidgetTypes(baseSettings);
+
+        expect(new Set(types).size).toBe(types.length);
+    });
+
     it('recognizes known widget and layout types', () => {
         expect(isKnownWidgetType('model')).toBe(true);
         expect(isKnownWidgetType('separator')).toBe(true);
         expect(isKnownWidgetType('flex-separator')).toBe(true);
         expect(isKnownWidgetType('unknown-widget-type')).toBe(false);
+    });
+});
+
+describe('legacy widget type aliases', () => {
+    it('resolves legacy git-pr type to the git-review widget instance', () => {
+        const canonical = getWidget('git-review');
+        const legacy = getWidget('git-pr');
+        expect(canonical).not.toBeNull();
+        expect(legacy).toBe(canonical);
+    });
+
+    it('treats legacy git-pr as a known widget type', () => {
+        expect(isKnownWidgetType('git-pr')).toBe(true);
+    });
+
+    it('does not list the legacy git-pr type in the catalog', () => {
+        const catalog = getWidgetCatalog({
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        });
+        const types = new Set(catalog.map(entry => entry.type));
+        expect(types.has('git-review')).toBe(true);
+        expect(types.has('git-pr')).toBe(false);
     });
 });
 
@@ -167,14 +196,14 @@ describe('widget catalog filtering', () => {
     it('ranks exact substring matches above fuzzy matches', () => {
         const rankingCatalog: WidgetCatalogEntry[] = [
             {
-                type: 'exact-match' as WidgetItemType,
+                type: 'exact-match',
                 displayName: 'Git Branch',
                 description: 'Exact substring match',
                 category: 'Core',
                 searchText: 'git branch exact substring match exact-match'
             },
             {
-                type: 'fuzzy-match' as WidgetItemType,
+                type: 'fuzzy-match',
                 displayName: 'Global Input Timer',
                 description: 'Fuzzy-only match',
                 category: 'Core',
@@ -187,28 +216,28 @@ describe('widget catalog filtering', () => {
     });
 
     it('returns no results when query chars cannot form a subsequence in any entry', () => {
-        const results = filterWidgetCatalog(catalog, 'All', 'zzz');
+        const results = filterWidgetCatalog(catalog, 'All', 'zzzz');
         expect(results).toHaveLength(0);
     });
 
     it('prioritizes name match before type and description matches', () => {
         const rankingCatalog: WidgetCatalogEntry[] = [
             {
-                type: 'alpha' as WidgetItemType,
+                type: 'alpha',
                 displayName: 'Git Branch',
                 description: 'Primary match',
                 category: 'Core',
                 searchText: 'git branch primary match alpha'
             },
             {
-                type: 'git-type-only' as WidgetItemType,
+                type: 'git-type-only',
                 displayName: 'Branch',
                 description: 'Type fallback match',
                 category: 'Core',
                 searchText: 'branch type fallback match git-type-only'
             },
             {
-                type: 'desc-only' as WidgetItemType,
+                type: 'desc-only',
                 displayName: 'Branch',
                 description: 'Description contains git',
                 category: 'Core',

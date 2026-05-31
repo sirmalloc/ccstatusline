@@ -131,7 +131,10 @@ export async function checkPowerlineFontsAsync(): Promise<PowerlineFontStatus> {
                 const { promisify } = await import('util');
                 const execAsync = promisify(exec);
 
-                const { stdout } = await execAsync('fc-list 2>/dev/null | grep -i powerline', { encoding: 'utf8' });
+                const { stdout } = await execAsync('fc-list 2>/dev/null | grep -i powerline', {
+                    encoding: 'utf8',
+                    windowsHide: true
+                });
 
                 if (stdout.trim()) {
                     return {
@@ -201,7 +204,8 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                 `git clone --depth=1 https://github.com/powerline/fonts.git "${tempDir}"`,
                 {
                     stdio: 'pipe',
-                    encoding: 'utf8'
+                    encoding: 'utf8',
+                    windowsHide: true
                 }
             );
 
@@ -217,7 +221,8 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     execSync(`cd "${tempDir}" && ./install.sh`, {
                         stdio: 'pipe',
                         encoding: 'utf8',
-                        shell: '/bin/bash'
+                        shell: '/bin/bash',
+                        windowsHide: true
                     });
 
                     // On Linux, update font cache
@@ -225,7 +230,8 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                         try {
                             execSync('fc-cache -f -v', {
                                 stdio: 'pipe',
-                                encoding: 'utf8'
+                                encoding: 'utf8',
+                                windowsHide: true
                             });
                         } catch {
                             // fc-cache might not be available

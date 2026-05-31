@@ -11,6 +11,13 @@ import {
 
 import { InstallMenu } from '../InstallMenu';
 
+const ALL_AVAILABLE = {
+    npm: true,
+    npx: true,
+    bun: true,
+    bunx: true
+};
+
 class MockTtyStream extends PassThrough {
     isTTY = true;
     columns = 120;
@@ -64,10 +71,10 @@ describe('InstallMenu', () => {
         const onCancel = vi.fn();
         const instance = render(
             React.createElement(InstallMenu, {
-                bunxAvailable: true,
+                commandAvailability: ALL_AVAILABLE,
+                currentVersion: '2.2.13',
                 existingStatusLine: null,
-                onSelectNpx: vi.fn(),
-                onSelectBunx: vi.fn(),
+                onSelect: vi.fn(),
                 onCancel
             }),
             {
@@ -96,18 +103,17 @@ describe('InstallMenu', () => {
         }
     });
 
-    it('respects the provided initial selection', async () => {
+    it('renders both update styles without a recommendation label', async () => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();
         const stderr = createMockStdout();
         const instance = render(
             React.createElement(InstallMenu, {
-                bunxAvailable: true,
+                commandAvailability: ALL_AVAILABLE,
+                currentVersion: '2.2.13',
                 existingStatusLine: null,
-                onSelectNpx: vi.fn(),
-                onSelectBunx: vi.fn(),
-                onCancel: vi.fn(),
-                initialSelection: 1
+                onSelect: vi.fn(),
+                onCancel: vi.fn()
             }),
             {
                 stdin,
@@ -122,8 +128,137 @@ describe('InstallMenu', () => {
         try {
             await flushInk();
 
-            expect(stdout.getOutput()).toContain('▶  bunx - Bun Package Execute');
-            expect(stdout.getOutput()).not.toContain('▶  npx - Node Package Execute');
+            const output = stdout.getOutput();
+            expect(output).toContain('Auto-update');
+            expect(output).toContain('Pinned global install');
+            expect(output.toLowerCase()).not.toContain('recommended');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('shows pinned global install first and selected by default', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(InstallMenu, {
+                commandAvailability: ALL_AVAILABLE,
+                currentVersion: '2.2.13',
+                existingStatusLine: null,
+                onSelect: vi.fn(),
+                onCancel: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+
+            const output = stdout.getOutput();
+            expect(output.indexOf('Pinned global install')).toBeLessThan(output.indexOf('Auto-update'));
+            expect(output).toContain('▶  Pinned global install');
+            expect(output).not.toContain('▶  Auto-update');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('shows unavailable package managers as disabled in step two', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(InstallMenu, {
+                commandAvailability: {
+                    npm: true,
+                    npx: false,
+                    bun: true,
+                    bunx: false
+                },
+                currentVersion: '2.2.13',
+                existingStatusLine: null,
+                onSelect: vi.fn(),
+                onCancel: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('\r');
+            await flushInk();
+
+            const output = stdout.getOutput();
+            expect(output).toContain('npm install -g ccstatusline@2.2.13');
+            expect(output).not.toContain('(npm not installed)');
+            expect(output).toContain('bun add -g ccstatusline@2.2.13');
+            expect(output).not.toContain('(bun not installed)');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('returns from package manager selection to update style on escape', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onCancel = vi.fn();
+        const instance = render(
+            React.createElement(InstallMenu, {
+                commandAvailability: ALL_AVAILABLE,
+                currentVersion: '2.2.13',
+                existingStatusLine: null,
+                onSelect: vi.fn(),
+                onCancel
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('\r');
+            await flushInk();
+            expect(stdout.getOutput()).toContain('Select package manager');
+
+            stdin.write('\u001B');
+            await flushInk();
+
+            expect(onCancel).not.toHaveBeenCalled();
+            expect(stdout.getOutput()).toContain('Select update style');
         } finally {
             instance.unmount();
             instance.cleanup();

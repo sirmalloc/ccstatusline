@@ -15,10 +15,14 @@ import {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
+    buildStatusLineCommand,
+    classifyInstallation,
     getClaudeCodeVersion,
+    getClaudeJsonPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
     getRefreshInterval,
+    getVoiceConfig,
     installStatusLine,
     isClaudeCodeVersionAtLeast,
     isInstalled,
@@ -56,7 +60,7 @@ function writeRawClaudeSettings(content: string): void {
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
-    initConfigPath();
+    initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
 
 afterEach(() => {
@@ -126,43 +130,132 @@ describe('isKnownCommand', () => {
     it('should match command containing a quoted ccstatusline.ts path', () => {
         expect(isKnownCommand('bun run "/Users/Jane Doe/ccstatusline/src/ccstatusline.ts"')).toBe(true);
     });
+
+    it('should match global command with --config', () => {
+        expect(isKnownCommand(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config /tmp/settings.json`)).toBe(true);
+    });
+});
+
+describe('classifyInstallation', () => {
+    it('classifies existing npx latest commands as auto-update npm', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.NPM)).toEqual({
+            method: 'auto-update',
+            packageManager: 'npm'
+        });
+    });
+
+    it('classifies existing bunx latest commands as auto-update bun', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.BUNX)).toEqual({
+            method: 'auto-update',
+            packageManager: 'bun'
+        });
+    });
+
+    it('classifies global commands without metadata as self-managed unknown', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.GLOBAL)).toEqual({
+            method: 'self-managed',
+            packageManager: 'unknown'
+        });
+    });
+
+    it('uses pinned metadata for global commands', () => {
+        expect(classifyInstallation(CCSTATUSLINE_COMMANDS.GLOBAL, {
+            method: 'pinned',
+            installedVersion: '2.2.13'
+        })).toEqual({
+            method: 'pinned',
+            installedVersion: '2.2.13'
+        });
+    });
+
+    it('classifies local development commands as self-managed unknown', () => {
+        expect(classifyInstallation('bun run /repo/src/ccstatusline.ts')).toEqual({
+            method: 'self-managed',
+            packageManager: 'unknown'
+        });
+    });
+});
+
+describe('Claude config paths', () => {
+    it('should resolve .claude.json inside CLAUDE_CONFIG_DIR when configured', () => {
+        expect(getClaudeJsonPath()).toBe(path.join(testClaudeConfigDir, '.claude.json'));
+    });
+
+    it('should resolve .claude.json beside the default Claude config dir when CLAUDE_CONFIG_DIR is unset', () => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+
+        expect(getClaudeJsonPath()).toBe(path.join(os.homedir(), '.claude.json'));
+    });
+
+    it('should use default .claude.json path when CLAUDE_CONFIG_DIR points to a file', () => {
+        const invalidConfigDir = path.join(testClaudeConfigDir, 'not-a-dir');
+        fs.writeFileSync(invalidConfigDir, 'not a directory', 'utf-8');
+        process.env.CLAUDE_CONFIG_DIR = invalidConfigDir;
+
+        expect(getClaudeJsonPath()).toBe(path.join(os.homedir(), '.claude.json'));
+    });
 });
 
 describe('buildCommand via installStatusLine', () => {
     it('should use base command when no custom config path', async () => {
         initConfigPath();
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
 
     it('should append --config with simple path (no quoting needed)', async () => {
         initConfigPath('/tmp/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config /tmp/settings.json`);
     });
 
     it('should quote path with spaces', async () => {
         initConfigPath('/my path/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my path/settings.json'`);
     });
 
     it('should quote path with parentheses', async () => {
         initConfigPath('/my(path)/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my(path)/settings.json'`);
     });
 
     it('should escape embedded single quotes in path', async () => {
         initConfigPath('/my\'path/settings.json');
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my'\\''path/settings.json'`);
     });
 
-    it('should use bunx command when useBunx is true', async () => {
+    it('should use bunx command when commandMode is auto-bunx', async () => {
         initConfigPath('/my path/settings.json');
-        await installStatusLine(true);
+        await installStatusLine({ commandMode: 'auto-bunx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
+    });
+
+    it('should generate global command with custom config path', () => {
+        initConfigPath('/my path/settings.json');
+        expect(buildStatusLineCommand('global')).toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config '/my path/settings.json'`);
+    });
+
+    it('should install global command for pinned installs and save metadata', async () => {
+        const configPath = path.join(testClaudeConfigDir, 'pinned-settings.json');
+        initConfigPath(configPath);
+
+        await installStatusLine({
+            commandMode: 'global',
+            installationMetadata: {
+                method: 'pinned',
+                installedVersion: '2.2.13'
+            }
+        });
+
+        expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config ${configPath}`);
+        const savedSettings = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as { installation?: unknown };
+        expect(savedSettings.installation).toEqual({
+            method: 'pinned',
+            installedVersion: '2.2.13'
+        });
     });
 
     it('should sync hooks on install when settings include hook-enabled widgets', async () => {
@@ -174,7 +267,7 @@ describe('buildCommand via installStatusLine', () => {
         };
         fs.writeFileSync(configPath, JSON.stringify(settingsWithSkills, null, 2), 'utf-8');
 
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
 
         const installedCommand = `${CCSTATUSLINE_COMMANDS.NPM} --config ${configPath}`;
         const claudeSettings = await loadClaudeSettings();
@@ -194,18 +287,47 @@ describe('buildCommand via installStatusLine', () => {
             }
         ]);
     });
+
+    it('should sync hooks from the final global statusline command', async () => {
+        const configPath = path.join(testClaudeConfigDir, 'global-settings.json');
+        initConfigPath(configPath);
+        fs.writeFileSync(configPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        }, null, 2), 'utf-8');
+
+        await installStatusLine({
+            commandMode: 'global',
+            installationMetadata: {
+                method: 'pinned',
+                installedVersion: '2.2.13'
+            }
+        });
+
+        const installedCommand = `${CCSTATUSLINE_COMMANDS.GLOBAL} --config ${configPath}`;
+        const claudeSettings = await loadClaudeSettings();
+        expect(claudeSettings.statusLine?.command).toBe(installedCommand);
+        const hooks = (claudeSettings.hooks ?? {}) as Record<string, unknown[]>;
+        expect(hooks.PreToolUse).toEqual([
+            {
+                _tag: 'ccstatusline-managed',
+                matcher: 'Skill',
+                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+            }
+        ]);
+    });
 });
 
 describe('installStatusLine refreshInterval', () => {
     it('should set refreshInterval to 10 when version is supported', async () => {
         initConfigPath();
-        await installStatusLine(false, true);
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(10);
     });
 
     it('should not set refreshInterval when version is unsupported', async () => {
         initConfigPath();
-        await installStatusLine(false, false);
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
         expect(readInstalledRefreshInterval()).toBeUndefined();
     });
 
@@ -218,7 +340,7 @@ describe('installStatusLine refreshInterval', () => {
                 refreshInterval: 5
             }
         }));
-        await installStatusLine(false, true);
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(5);
     });
 });
@@ -328,7 +450,7 @@ describe('backup and error handling behavior', () => {
             }
         }));
 
-        await installStatusLine(false);
+        await installStatusLine({ commandMode: 'auto-npx' });
 
         const settingsPath = getClaudeSettingsPath();
         expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
@@ -370,11 +492,11 @@ describe('backup and error handling behavior', () => {
         writeRawClaudeSettings('{ invalid json');
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         try {
-            await installStatusLine(false);
+            await installStatusLine({ commandMode: 'auto-npx' });
 
             const settingsPath = getClaudeSettingsPath();
             const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string; padding?: number } };
-            expect(installed.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
+            expect(installed.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
             expect(installed.statusLine?.padding).toBe(0);
             expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
             expect(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')).toBe('{ invalid json');
@@ -540,5 +662,146 @@ describe('isClaudeCodeVersionAtLeast', () => {
     it('should return false when claude is not installed', () => {
         vi.spyOn(childProcess, 'execSync').mockImplementation(() => { throw new Error('not found'); });
         expect(isClaudeCodeVersionAtLeast('2.1.97')).toBe(false);
+    });
+});
+
+describe('getVoiceConfig', () => {
+    let testProjectDir = '';
+
+    function writeRawUserLocalSettings(content: string): void {
+        const settingsPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectSettings(content: string): void {
+        const settingsPath = path.join(testProjectDir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectLocalSettings(content: string): void {
+        const settingsPath = path.join(testProjectDir, '.claude', 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    beforeEach(() => {
+        testProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-voice-project-'));
+    });
+
+    afterEach(() => {
+        if (testProjectDir) {
+            fs.rmSync(testProjectDir, { recursive: true, force: true });
+        }
+    });
+
+    describe('user-global layer only', () => {
+        it('returns null when no candidate file exists', () => {
+            expect(getVoiceConfig(testProjectDir)).toBeNull();
+        });
+
+        it('returns { enabled: false } when settings.json has no voice field', () => {
+            writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('returns { enabled: true } when voice.enabled is true', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true, mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('returns { enabled: false } when voice.enabled is false', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: false, mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('returns { enabled: false } when voice.enabled is missing but voice exists', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('treats malformed JSON as "no override"', () => {
+            // Malformed file is silently skipped; with no other layers, no override is found
+            // and we fall back to the Claude Code default of `enabled: false`. The file's mere
+            // existence still flips the overall result away from `null`.
+            writeRawClaudeSettings('{ this is not json');
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('treats unexpected voice shape as "no override"', () => {
+            // voice is a string instead of an object — Zod schema fails, no override extracted.
+            writeRawClaudeSettings(JSON.stringify({ voice: 'enabled' }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('respects CLAUDE_CONFIG_DIR env var', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            expect(getClaudeSettingsPath().startsWith(testClaudeConfigDir)).toBe(true);
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+    });
+
+    describe('layer precedence', () => {
+        it('user-local overrides user-global', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawUserLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('project overrides user-local', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: false } }));
+            writeRawUserLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            writeRawProjectSettings(JSON.stringify({ voice: { enabled: true } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('project-local overrides project', () => {
+            writeRawProjectSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('layer without voice.enabled does not override a lower layer', () => {
+            // user-global sets enabled:true, project layer has voice but no `enabled` field
+            // → project should NOT clobber the user-global value.
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('malformed higher-priority layer does not clobber a lower layer', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectLocalSettings('{ corrupt');
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
+
+        it('returns { enabled: false } when only project layer exists with voice but no enabled', () => {
+            writeRawProjectSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('returns null when no candidate file exists in any layer', () => {
+            // testProjectDir is freshly created and empty, testClaudeConfigDir too
+            expect(getVoiceConfig(testProjectDir)).toBeNull();
+        });
+
+        it('full stack: project-local wins over all three lower layers', () => {
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawUserLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            writeRawProjectSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawProjectLocalSettings(JSON.stringify({ voice: { enabled: false } }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: false });
+        });
+
+        it('falls through layers without voice.enabled until it finds a defined value', () => {
+            // user-global defines enabled:true; the three higher-priority layers exist but
+            // contribute nothing usable (no voice field, only mode, or unrelated keys).
+            writeRawClaudeSettings(JSON.stringify({ voice: { enabled: true } }));
+            writeRawUserLocalSettings(JSON.stringify({ effortLevel: 'high' }));
+            writeRawProjectSettings(JSON.stringify({ voice: { mode: 'hold' } }));
+            writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
+            expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
+        });
     });
 });

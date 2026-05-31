@@ -21,6 +21,12 @@ interface HookEntry {
     hooks?: { type: string; command: string }[];
 }
 
+type WidgetWithHooks = Widget & { getHooks(): WidgetHookDef[] };
+
+function hasWidgetHooks(widget: Widget | null): widget is WidgetWithHooks {
+    return Boolean(widget && 'getHooks' in widget && typeof widget.getHooks === 'function');
+}
+
 function stripManagedHooks(hooks: Record<string, HookEntry[]>): void {
     for (const event of Object.keys(hooks)) {
         hooks[event] = (hooks[event] ?? []).filter(entry => entry._tag !== HOOK_TAG);
@@ -36,8 +42,8 @@ function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
     const defs: WidgetHookDef[] = [];
     for (const line of settings.lines) {
         for (const item of line) {
-            const widget = getWidget(item.type) as (Widget & { getHooks?: () => WidgetHookDef[] }) | null;
-            if (!widget?.getHooks) {
+            const widget = getWidget(item.type);
+            if (!hasWidgetHooks(widget)) {
                 continue;
             }
             for (const hook of widget.getHooks()) {

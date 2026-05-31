@@ -21,13 +21,9 @@ bunx -y ccstatusline@latest
 ```powershell
 # Using npm
 npx -y ccstatusline@latest
-
-# Or with Yarn
-yarn dlx ccstatusline@latest
-
-# Or with pnpm
-pnpm dlx ccstatusline@latest
 ```
+
+These commands launch the configuration TUI. To pin the install, start the TUI with `bunx -y ccstatusline@latest` or `npx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI installs the active ccstatusline version globally with Bun or npm and configures Claude Code to run `ccstatusline`. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
 
 ## Claude Code Integration
 
@@ -50,7 +46,8 @@ $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
   "statusLine": {
     "type": "command",
     "command": "bunx -y ccstatusline@latest",
-    "padding": 0
+    "padding": 0,
+    "refreshInterval": 10
   }
 }
 ```
@@ -62,10 +59,15 @@ $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
   "statusLine": {
     "type": "command",
     "command": "npx -y ccstatusline@latest",
-    "padding": 0
+    "padding": 0,
+    "refreshInterval": 10
   }
 }
 ```
+
+`refreshInterval` is optional and only supported by Claude Code >=2.1.97. You can configure it from ccstatusline's TUI after installation.
+
+The `bunx` and `npx` examples above follow `@latest`. If you choose **Pinned global install** in the TUI, it writes `"command": "ccstatusline"` instead after installing the selected version globally. You can also run `ccstatusline` directly for future TUI launches.
 
 ## Windows-Specific Features
 
@@ -103,6 +105,16 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 ## Windows Troubleshooting
 
 ### Common Issues & Solutions
+
+**Issue**: Status lines wrap because terminal width cannot be detected
+
+```powershell
+# Set an explicit width before launching Claude Code
+$env:CCSTATUSLINE_WIDTH="160"
+claude
+```
+
+`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. This is useful on Windows because native width probing is disabled when ccstatusline runs outside WSL.
 
 **Issue**: Powerline symbols showing as question marks or boxes
 

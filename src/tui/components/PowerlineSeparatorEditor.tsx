@@ -146,10 +146,10 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
             // Normal mode
             if (key.escape) {
                 onBack();
-            } else if (key.upArrow) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
+            } else if (key.upArrow && separators.length > 0) {
+                setSelectedIndex(selectedIndex - 1 < 0 ? separators.length - 1 : selectedIndex - 1);
             } else if (key.downArrow && separators.length > 0) {
-                setSelectedIndex(Math.min(separators.length - 1, selectedIndex + 1));
+                setSelectedIndex(selectedIndex + 1 > separators.length - 1 ? 0 : selectedIndex + 1);
             } else if ((key.leftArrow || key.rightArrow) && separators.length > 0) {
                 // Cycle through preset separators
                 const currentChar = separators[selectedIndex] ?? '\uE0B0';
@@ -184,8 +184,8 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 }
 
                 updateSeparators(newSeparators, mode === 'separator' ? newInvertBgs : undefined);
-            } else if ((input === 'a' || input === 'A') && (mode === 'separator' || separators.length < 3)) {
-                // Add after current (max 3 for caps)
+            } else if (input === 'a' || input === 'A') {
+                // Add after current
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
                 const defaultChar = presetSeparators[0]?.char ?? '\uE0B0';
@@ -207,8 +207,8 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(selectedIndex + 1);
                 }
-            } else if ((input === 'i' || input === 'I') && (mode === 'separator' || separators.length < 3)) {
-                // Insert before current (max 3 for caps)
+            } else if (input === 'i' || input === 'I') {
+                // Insert before current
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
                 const defaultChar = presetSeparators[0]?.char ?? '\uE0B0';
@@ -270,7 +270,6 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
         }
     };
 
-    const canAdd = mode === 'separator' || separators.length < 3;
     const canDelete = mode !== 'separator' || separators.length > 1;
 
     return (
@@ -300,7 +299,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 <>
                     <Box>
                         <Text dimColor>
-                            {`↑↓ select, ← → cycle${canAdd ? ', (a)dd, (i)nsert' : ''}${canDelete ? ', (d)elete' : ''}, (c)lear, (h)ex${mode === 'separator' ? ', (t)oggle invert' : ''}, ESC back`}
+                            {`↑↓ select, ← → cycle, (a)dd, (i)nsert${canDelete ? ', (d)elete' : ''}, (c)lear, (h)ex${mode === 'separator' ? ', (t)oggle invert' : ''}, ESC back`}
                         </Text>
                     </Box>
 
