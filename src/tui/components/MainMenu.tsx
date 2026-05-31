@@ -4,7 +4,10 @@ import {
 } from 'ink';
 import React from 'react';
 
-import type { Settings } from '../../types/Settings';
+import type {
+    InstallationMetadata,
+    Settings
+} from '../../types/Settings';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 
 import { List } from './List';
@@ -15,6 +18,9 @@ export type MainMenuOption = 'lines'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'install'
+    | 'manageInstallation'
+    | 'checkUpdates'
+    | 'configureStatusLine'
     | 'starGithub'
     | 'save'
     | 'exit';
@@ -26,24 +32,57 @@ export interface MainMenuProps {
     initialSelection?: number;
     powerlineFontStatus: PowerlineFontStatus;
     settings: Settings | null;
+    installation?: InstallationMetadata;
     previewIsTruncated?: boolean;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({
-    onSelect,
-    isClaudeInstalled,
-    hasChanges,
-    initialSelection = 0,
-    powerlineFontStatus,
-    settings,
-    previewIsTruncated
-}) => {
-    // Build menu structure with visual gaps
-    const menuItems: ({
-        label: string;
-        value: MainMenuOption;
-        description: string;
-    } | '-')[] = [
+interface MainMenuItem {
+    label: string;
+    sublabel?: string;
+    disabled?: boolean;
+    value: MainMenuOption;
+    description: string;
+}
+
+export type MainMenuEntry = MainMenuItem | '-';
+
+function usesManageInstallation(installation?: InstallationMetadata): boolean {
+    return installation?.method === 'pinned' || installation?.method === 'self-managed';
+}
+
+function getInstallationMenuItem(
+    isClaudeInstalled: boolean,
+    installation?: InstallationMetadata
+): MainMenuItem {
+    if (!isClaudeInstalled) {
+        return {
+            label: '📦 Install to Claude Code',
+            value: 'install',
+            description: 'Add ccstatusline to your Claude Code settings for automatic status line rendering'
+        };
+    }
+
+    if (usesManageInstallation(installation)) {
+        return {
+            label: '🧰 Manage Installation',
+            value: 'manageInstallation',
+            description: 'Check pinned global package updates or uninstall ccstatusline'
+        };
+    }
+
+    return {
+        label: '🔌 Uninstall from Claude Code',
+        value: 'install',
+        description: 'Remove ccstatusline from your Claude Code settings'
+    };
+}
+
+export function buildMainMenuItems(
+    isClaudeInstalled: boolean,
+    hasChanges: boolean,
+    installation?: InstallationMetadata
+): MainMenuEntry[] {
+    const menuItems: MainMenuEntry[] = [
         {
             label: '📝 Edit Lines',
             value: 'lines',
@@ -62,7 +101,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             description:
                 'Install Powerline fonts for enhanced visual separators and symbols in your status line'
         },
-        '-' as const,
+        '-',
         {
             label: '💻 Terminal Options',
             value: 'terminalConfig',
@@ -74,20 +113,20 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             description:
                 'Set global padding, separators, and color overrides that apply to all widgets'
         },
-        '-' as const,
         {
-            label: isClaudeInstalled
-                ? '🔌 Uninstall from Claude Code'
-                : '📦 Install to Claude Code',
-            value: 'install',
-            description: isClaudeInstalled
-                ? 'Remove ccstatusline from your Claude Code settings'
-                : 'Add ccstatusline to your Claude Code settings for automatic status line rendering'
-        }
+            label: '🔧 Configure Status Line',
+            sublabel: isClaudeInstalled ? undefined : '(install first)',
+            disabled: !isClaudeInstalled,
+            value: 'configureStatusLine',
+            description: 'Configure Claude Code status line settings like refresh interval'
+        },
+        '-',
+        getInstallationMenuItem(isClaudeInstalled, installation)
     ];
 
     if (hasChanges) {
         menuItems.push(
+            '-',
             {
                 label: '💾 Save & Exit',
                 value: 'save',
@@ -98,7 +137,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 value: 'exit',
                 description: 'Exit without saving your changes'
             },
-            '-' as const,
+            '-',
             {
                 label: '⭐ Like ccstatusline? Star us on GitHub',
                 value: 'starGithub',
@@ -107,12 +146,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         );
     } else {
         menuItems.push(
+            '-',
             {
                 label: '🚪 Exit',
                 value: 'exit',
                 description: 'Exit the configuration tool'
             },
-            '-' as const,
+            '-',
             {
                 label: '⭐ Like ccstatusline? Star us on GitHub',
                 value: 'starGithub',
@@ -120,6 +160,52 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             }
         );
     }
+
+    return menuItems;
+}
+
+export function getMainMenuSelectionIndex(items: MainMenuEntry[], option: MainMenuOption): number {
+    let selectionIndex = 0;
+
+    for (const item of items) {
+        if (item === '-') {
+            continue;
+        }
+
+        if (item.value === option) {
+            return selectionIndex;
+        }
+
+        if (!item.disabled) {
+            selectionIndex += 1;
+        }
+    }
+
+    return 0;
+}
+
+export function getMainMenuInstallSelectionIndex(
+    isClaudeInstalled: boolean,
+    installation?: InstallationMetadata
+): number {
+    const option = isClaudeInstalled && usesManageInstallation(installation)
+        ? 'manageInstallation'
+        : 'install';
+
+    return getMainMenuSelectionIndex(buildMainMenuItems(isClaudeInstalled, false, installation), option);
+}
+
+export const MainMenu: React.FC<MainMenuProps> = ({
+    onSelect,
+    isClaudeInstalled,
+    hasChanges,
+    initialSelection = 0,
+    powerlineFontStatus,
+    settings,
+    installation,
+    previewIsTruncated
+}) => {
+    const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation);
 
     // Check if we should show the truncation warning
     const showTruncationWarning

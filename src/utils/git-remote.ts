@@ -1,6 +1,9 @@
 import type { RenderContext } from '../types/RenderContext';
 
-import { runGit } from './git';
+import {
+    runGit,
+    runGitArgs
+} from './git';
 
 export interface RemoteInfo {
     name: string;
@@ -75,7 +78,9 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
         }
 
         return {
-            host: parsedUrl.hostname,
+            host: parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:'
+                ? parsedUrl.host
+                : parsedUrl.hostname,
             owner,
             repo
         };
@@ -88,7 +93,7 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
  * Get information about a specific remote.
  */
 export function getRemoteInfo(remoteName: string, context: RenderContext): RemoteInfo | null {
-    const url = runGit(`remote get-url ${remoteName}`, context);
+    const url = runGitArgs(['remote', 'get-url', '--', remoteName], context, `remote get-url -- ${remoteName}`);
     if (!url) {
         return null;
     }
@@ -174,11 +179,12 @@ export function listRemotes(context: RenderContext): string[] {
     return output.split('\n').filter(Boolean);
 }
 
-/**
- * Build a web URL for a repository on GitHub-like hosts.
- * Returns null if the host doesn't appear to be GitHub-like.
- */
 export function buildRepoWebUrl(remote: RemoteInfo): string {
-    // Assume HTTPS for the web URL
     return `https://${remote.host}/${remote.owner}/${remote.repo}`;
+}
+
+// GitLab redirects /tree/<branch> to its canonical /-/tree/<branch>, so one
+// suffix works for both GitHub and GitLab.
+export function buildBranchWebUrl(remote: RemoteInfo, encodedBranch: string): string {
+    return `${buildRepoWebUrl(remote)}/tree/${encodedBranch}`;
 }

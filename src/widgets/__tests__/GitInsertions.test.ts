@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     beforeEach,
     describe,
@@ -10,12 +10,17 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitInsertionsWidget } from '../GitInsertions';
 
-vi.mock('child_process', () => ({ execSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
-const mockExecSync = execSync as unknown as {
+const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
@@ -52,50 +57,38 @@ describe('GitInsertionsWidget', () => {
     });
 
     it('should render combined staged and unstaged insertions', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('1 file changed, 2 insertions(+), 1 deletion(-)');
-        mockExecSync.mockReturnValueOnce('1 file changed, 3 insertions(+), 4 deletions(-)');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('1 file changed, 2 insertions(+), 1 deletion(-)');
+        mockExecFileSync.mockReturnValueOnce('1 file changed, 3 insertions(+), 4 deletions(-)');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('+5');
-        expect(mockExecSync.mock.calls[0]?.[1]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecSync.mock.calls[1]?.[1]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
-        expect(mockExecSync.mock.calls[2]?.[1]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            cwd: '/tmp/worktree'
-        });
+        expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
+        expectGitExecOptions(mockExecFileSync.mock.calls[1]?.[2], '/tmp/worktree');
+        expectGitExecOptions(mockExecFileSync.mock.calls[2]?.[2], '/tmp/worktree');
     });
 
     it('should render zero count when repo is clean', () => {
-        mockExecSync.mockReturnValueOnce('true\n');
-        mockExecSync.mockReturnValueOnce('');
-        mockExecSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('+0');
     });
 
     it('should render no git when probe returns false', () => {
-        mockExecSync.mockReturnValue('false\n');
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render()).toBe('(no git)');
     });
 
     it('should hide no git when configured', () => {
-        mockExecSync.mockReturnValue('false\n');
+        mockExecFileSync.mockReturnValue('false\n');
 
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
     it('should render no git when command fails', () => {
-        mockExecSync.mockImplementation(() => { throw new Error('No git'); });
+        mockExecFileSync.mockImplementation(() => { throw new Error('No git'); });
 
         expect(render()).toBe('(no git)');
     });

@@ -10,7 +10,11 @@ import {
 
 import { openExternalUrl } from '../open-url';
 
-vi.mock('child_process', () => ({ spawnSync: vi.fn() }));
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn()
+}));
 
 const mockSpawnSync = spawnSync as unknown as {
     mock: { calls: unknown[][] };

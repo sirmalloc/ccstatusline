@@ -11,10 +11,14 @@ export interface UsageData {
     sessionResetAt?: string; // five_hour.resets_at
     weeklyUsage?: number;   // seven_day.utilization (percentage)
     weeklyResetAt?: string; // seven_day.resets_at
+    weeklySonnetUsage?: number;   // seven_day_sonnet.utilization (percentage)
+    weeklySonnetResetAt?: string; // seven_day_sonnet.resets_at
+    weeklyOpusUsage?: number;     // seven_day_opus.utilization (percentage)
+    weeklyOpusResetAt?: string;   // seven_day_opus.resets_at
     extraUsageEnabled?: boolean;
-    extraUsageLimit?: number;      // in cents
-    extraUsageUsed?: number;       // in cents
-    extraUsageUtilization?: number;
+    extraUsageLimit?: number;      // in cents (divide by 100 for dollars)
+    extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
+    extraUsageUtilization?: number; // percentage 0-100
     error?: UsageError;
 }
 

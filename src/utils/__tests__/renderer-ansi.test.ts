@@ -13,6 +13,7 @@ import type { WidgetItem } from '../../types/Widget';
 import {
     getVisibleText,
     getVisibleWidth,
+    stripOscCodes,
     truncateStyledText
 } from '../ansi';
 import {
@@ -62,6 +63,11 @@ describe('renderer ANSI/OSC handling', () => {
         const text = `A ${OSC8_OPEN}click${OSC8_CLOSE} B`;
         expect(getVisibleText(text)).toBe('A click B');
         expect(getVisibleWidth(text)).toBe(getVisibleWidth('A click B'));
+    });
+
+    it('strips OSC controls while preserving SGR styling', () => {
+        const text = `\x1b[31m${OSC8_OPEN}click${OSC8_CLOSE}\x1b[39m`;
+        expect(stripOscCodes(text)).toBe('\x1b[31mclick\x1b[39m');
     });
 
     it('treats text-presentation pictographs as narrow unless explicitly emoji-style', () => {

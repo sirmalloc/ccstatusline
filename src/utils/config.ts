@@ -6,6 +6,7 @@ import {
     CURRENT_VERSION,
     SettingsSchema,
     SettingsSchema_v1,
+    type InstallationMetadata,
     type Settings
 } from '../types/Settings';
 
@@ -13,6 +14,7 @@ import {
     migrateConfig,
     needsMigration
 } from './migrations';
+import { upgradeLegacyWidgetTypes } from './widgets';
 
 // Use fs.promises directly (always available in modern Node.js)
 const readFile = fs.promises.readFile;
@@ -140,7 +142,10 @@ export async function loadSettings(): Promise<Settings> {
             return await recoverWithDefaults(paths);
         }
 
-        return result.data;
+        return {
+            ...result.data,
+            lines: upgradeLegacyWidgetTypes(result.data.lines)
+        };
     } catch (error) {
         // Any other error, backup and write defaults
         console.error('Error loading settings:', error);
@@ -164,4 +169,25 @@ export async function saveSettings(settings: Settings): Promise<void> {
         const { syncWidgetHooks } = await import('./hooks');
         await syncWidgetHooks(settings);
     } catch { /* ignore hook sync failures */ }
+}
+
+export async function saveInstallationMetadata(metadata: InstallationMetadata | undefined): Promise<void> {
+    const paths = getSettingsPaths();
+    if (!metadata && !fs.existsSync(paths.settingsPath)) {
+        return;
+    }
+
+    const settings = await loadSettings();
+    const settingsWithVersion: Settings & { version: number } = {
+        ...settings,
+        version: CURRENT_VERSION
+    };
+
+    if (metadata) {
+        settingsWithVersion.installation = metadata;
+    } else {
+        delete settingsWithVersion.installation;
+    }
+
+    await writeSettingsJson(settingsWithVersion, paths);
 }

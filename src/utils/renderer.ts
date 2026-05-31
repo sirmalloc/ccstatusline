@@ -106,14 +106,14 @@ function renderPowerlineStatusLine(
     if (themeName && themeName !== 'custom') {
         const theme = getPowerlineTheme(themeName);
         if (theme) {
-            const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+            const colorLevel = getColorLevelString(settings.colorLevel);
             const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
             themeColors = theme[colorLevelKey];
         }
     }
 
     // Get color level from settings
-    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+    const colorLevel = getColorLevelString(settings.colorLevel);
 
     // Filter out separator and flex-separator widgets in powerline mode
     const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
@@ -615,7 +615,7 @@ export function renderStatusLine(
     // No need to override here
 
     // Get color level from settings
-    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+    const colorLevel = getColorLevelString(settings.colorLevel);
 
     // Check if powerline mode is enabled
     const powerlineSettings = settings.powerline as Record<string, unknown> | undefined;
@@ -668,18 +668,21 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
-            // Check if there's any widget before this separator that actually rendered content
-            // Look backwards to find ANY widget that produced content
+            // Look backwards to the immediately-prior non-separator widget and
+            // emit this separator only if that widget actually rendered content.
+            // This collapses separators around hide-capable widgets that rendered
+            // empty (e.g., git-changes with no changes, conditional widgets with
+            // hide-when-zero semantics) and also suppresses a leading separator
+            // when no prior widget has rendered.
             let hasContentBefore = false;
             for (let j = i - 1; j >= 0; j--) {
                 const prevWidget = widgets[j];
-                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
-                    if (preRenderedWidgets[j]?.content) {
-                        hasContentBefore = true;
-                        break;
-                    }
-                    // Continue looking backwards even if this widget didn't render content
-                }
+                if (!prevWidget)
+                    continue;
+                if (prevWidget.type === 'separator' || prevWidget.type === 'flex-separator')
+                    continue;
+                hasContentBefore = Boolean(preRenderedWidgets[j]?.content);
+                break;
             }
             if (!hasContentBefore)
                 continue;

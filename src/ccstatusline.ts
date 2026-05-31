@@ -13,10 +13,17 @@ import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
+    detectCompaction,
+    loadCompactionState,
+    saveCompactionState
+} from './utils/compaction';
+import {
     initConfigPath,
     loadSettings,
     saveSettings
 } from './utils/config';
+import { calculateContextPercentageMetrics } from './utils/context-percentage';
+import { handleHookInput } from './utils/hook-handler';
 import {
     getSessionDuration,
     getSpeedMetricsCollection,
@@ -29,10 +36,7 @@ import {
     renderStatusLine
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
-import {
-    getSkillsFilePath,
-    getSkillsMetrics
-} from './utils/skills';
+import { getSkillsMetrics } from './utils/skills';
 import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
@@ -80,7 +84,7 @@ async function ensureWindowsUtf8CodePage() {
 
     try {
         const { execFileSync } = await import('child_process');
-        execFileSync('chcp.com', ['65001'], { stdio: 'ignore' });
+        execFileSync('chcp.com', ['65001'], { stdio: 'ignore', windowsHide: true });
     } catch {
         // Ignore failures to preserve statusline output even in restricted shells.
     }
@@ -141,6 +145,26 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
+    // Compaction detection — track context percentage drops between renders
+    let compactionCount = 0;
+    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    if (hasCompactionWidget && data.session_id) {
+        const prevState = loadCompactionState(data.session_id);
+        compactionCount = prevState.count;
+        const contextPercentageMetrics = calculateContextPercentageMetrics({ data, tokenMetrics });
+        if (contextPercentageMetrics !== null) {
+            const newState = detectCompaction(contextPercentageMetrics.usedPercentage, prevState, { windowSize: contextPercentageMetrics.windowSize });
+            if (
+                newState.count !== prevState.count
+                || newState.prevCtxPct !== prevState.prevCtxPct
+                || newState.prevWindowSize !== prevState.prevWindowSize
+            ) {
+                saveCompactionState(data.session_id, newState);
+            }
+            compactionCount = newState.count;
+        }
+    }
+
     // Create render context
     const context: RenderContext = {
         data,
@@ -150,8 +174,10 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
+        compactionData: hasCompactionWidget ? { count: compactionCount } : null,
         isPreview: false,
-        minimalist: settings.minimalistMode
+        minimalist: settings.minimalistMode,
+        gitCacheTtlSeconds: settings.gitCacheTtlSeconds
     };
 
     // Always pre-render all widgets once (for efficiency)
@@ -235,55 +261,9 @@ function parseConfigArg(): string | undefined {
     return configPath;
 }
 
-interface HookInput {
-    session_id?: string;
-    hook_event_name?: string;
-    tool_name?: string;
-    tool_input?: { skill?: string };
-    prompt?: string;
-}
-
 async function handleHook(): Promise<void> {
     const input = await readStdin();
-    if (!input) {
-        console.log('{}');
-        return;
-    }
-    try {
-        const data = JSON.parse(input) as HookInput;
-        const sessionId = data.session_id;
-        if (!sessionId) {
-            console.log('{}');
-            return;
-        }
-
-        let skillName = '';
-        if (data.hook_event_name === 'PreToolUse' && data.tool_name === 'Skill') {
-            skillName = data.tool_input?.skill ?? '';
-        } else if (data.hook_event_name === 'UserPromptSubmit') {
-            const match = /^\/([a-zA-Z0-9_:-]+)(?:\s|$)/.exec(data.prompt ?? '');
-            if (match) {
-                skillName = match[1] ?? '';
-            }
-        }
-        if (!skillName) {
-            console.log('{}');
-            return;
-        }
-
-        const filePath = getSkillsFilePath(sessionId);
-        const fs = await import('fs');
-        const path = await import('path');
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const entry = JSON.stringify({
-            timestamp: new Date().toISOString(),
-            session_id: sessionId,
-            skill: skillName,
-            source: data.hook_event_name
-        });
-        fs.appendFileSync(filePath, entry + '\n');
-    } catch { /* ignore parse errors */ }
-    console.log('{}');
+    handleHookInput(input);
 }
 
 async function main() {
