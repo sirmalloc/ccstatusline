@@ -26,7 +26,7 @@ function formatBytes(bytes: number): string {
 // Get memory usage like htop does on macOS (Active + Wired)
 function getUsedMemoryMacOS(): number | null {
     try {
-        const output = execSync('vm_stat', { encoding: 'utf8' });
+        const output = execSync('vm_stat', { encoding: 'utf8', windowsHide: true });
         const lines = output.split('\n');
 
         // Parse page size from first line: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"

@@ -6,6 +6,7 @@ import {
     CURRENT_VERSION,
     SettingsSchema,
     SettingsSchema_v1,
+    type InstallationMetadata,
     type Settings
 } from '../types/Settings';
 
@@ -168,4 +169,25 @@ export async function saveSettings(settings: Settings): Promise<void> {
         const { syncWidgetHooks } = await import('./hooks');
         await syncWidgetHooks(settings);
     } catch { /* ignore hook sync failures */ }
+}
+
+export async function saveInstallationMetadata(metadata: InstallationMetadata | undefined): Promise<void> {
+    const paths = getSettingsPaths();
+    if (!metadata && !fs.existsSync(paths.settingsPath)) {
+        return;
+    }
+
+    const settings = await loadSettings();
+    const settingsWithVersion: Settings & { version: number } = {
+        ...settings,
+        version: CURRENT_VERSION
+    };
+
+    if (metadata) {
+        settingsWithVersion.installation = metadata;
+    } else {
+        delete settingsWithVersion.installation;
+    }
+
+    await writeSettingsJson(settingsWithVersion, paths);
 }

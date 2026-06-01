@@ -30,10 +30,12 @@ describe('terminal utils', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.restoreAllMocks();
+        delete process.env.CCSTATUSLINE_WIDTH;
     });
 
     afterEach(() => {
         vi.restoreAllMocks();
+        delete process.env.CCSTATUSLINE_WIDTH;
     });
 
     it('returns width from the immediate parent tty when available', () => {
@@ -46,7 +48,7 @@ describe('terminal utils', () => {
                 return 'ttys001\n';
             }
 
-            if (command === `stty size < /dev/ttys001 | awk '{print $2}'`) {
+            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
                 return '120\n';
             }
 
@@ -57,7 +59,7 @@ describe('terminal utils', () => {
         expect(mockExecSync.mock.calls.map(([command]) => command)).toEqual([
             `ps -o ppid= -p ${process.pid}`,
             'ps -o tty= -p 1234',
-            `stty size < /dev/ttys001 | awk '{print $2}'`
+            `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`
         ]);
     });
 
@@ -79,7 +81,7 @@ describe('terminal utils', () => {
                 return ' ttys009 \n';
             }
 
-            if (command === `stty size < /dev/ttys009 | awk '{print $2}'`) {
+            if (command === `stty -F /dev/ttys009 size 2>/dev/null | awk '{print $2}'`) {
                 return '104\n';
             }
 
@@ -87,6 +89,32 @@ describe('terminal utils', () => {
         });
 
         expect(getTerminalWidth()).toBe(104);
+    });
+
+    it('falls back through stty variants when the first form returns no value', () => {
+        // Simulates BSD/macOS, where `stty -F` exits with an error and yields
+        // empty output via the `2>/dev/null | awk` pipeline; `stty -f` succeeds.
+        mockExecSync.mockImplementation((command: string) => {
+            if (command === `ps -o ppid= -p ${process.pid}`) {
+                return '1234\n';
+            }
+
+            if (command === 'ps -o tty= -p 1234') {
+                return 'ttys003\n';
+            }
+
+            if (command === `stty -F /dev/ttys003 size 2>/dev/null | awk '{print $2}'`) {
+                return '\n';
+            }
+
+            if (command === `stty -f /dev/ttys003 size 2>/dev/null | awk '{print $2}'`) {
+                return '142\n';
+            }
+
+            throw new Error(`Unexpected command: ${command}`);
+        });
+
+        expect(getTerminalWidth()).toBe(142);
     });
 
     it('falls back to tput cols when ancestor probing fails', () => {
@@ -107,7 +135,9 @@ describe('terminal utils', () => {
                 return 'ttys001\n';
             }
 
-            if (command === `stty size < /dev/ttys001 | awk '{print $2}'`) {
+            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`
+                || command === `stty -f /dev/ttys001 size 2>/dev/null | awk '{print $2}'`
+                || command === `stty size < /dev/ttys001 2>/dev/null | awk '{print $2}'`) {
                 return 'not-a-number\n';
             }
 
@@ -143,7 +173,7 @@ describe('terminal utils', () => {
                 return 'ttys010\n';
             }
 
-            if (command === `stty size < /dev/ttys010 | awk '{print $2}'`) {
+            if (command === `stty -F /dev/ttys010 size 2>/dev/null | awk '{print $2}'`) {
                 return '80\n';
             }
 
@@ -158,6 +188,66 @@ describe('terminal utils', () => {
         mockExecSync.mockImplementationOnce(() => { throw new Error('tput unavailable'); });
 
         expect(canDetectTerminalWidth()).toBe(false);
+    });
+
+    it('honors CCSTATUSLINE_WIDTH override before probing', () => {
+        process.env.CCSTATUSLINE_WIDTH = '220';
+
+        expect(getTerminalWidth()).toBe(220);
+        expect(mockExecSync.mock.calls.length).toBe(0);
+    });
+
+    it('ignores a non-positive CCSTATUSLINE_WIDTH and falls back to probing', () => {
+        process.env.CCSTATUSLINE_WIDTH = '0';
+
+        mockExecSync.mockImplementation((command: string) => {
+            if (command === `ps -o ppid= -p ${process.pid}`) {
+                return '1234\n';
+            }
+
+            if (command === 'ps -o tty= -p 1234') {
+                return 'ttys001\n';
+            }
+
+            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
+                return '160\n';
+            }
+
+            throw new Error(`Unexpected command: ${command}`);
+        });
+
+        expect(getTerminalWidth()).toBe(160);
+    });
+
+    it('ignores a non-numeric CCSTATUSLINE_WIDTH and falls back to probing', () => {
+        process.env.CCSTATUSLINE_WIDTH = 'wide';
+
+        mockExecSync.mockImplementation((command: string) => {
+            if (command === `ps -o ppid= -p ${process.pid}`) {
+                return '1234\n';
+            }
+
+            if (command === 'ps -o tty= -p 1234') {
+                return 'ttys001\n';
+            }
+
+            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
+                return '160\n';
+            }
+
+            throw new Error(`Unexpected command: ${command}`);
+        });
+
+        expect(getTerminalWidth()).toBe(160);
+    });
+
+    it('CCSTATUSLINE_WIDTH override applies on Windows where probing is disabled', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        process.env.CCSTATUSLINE_WIDTH = '180';
+
+        expect(getTerminalWidth()).toBe(180);
+        expect(canDetectTerminalWidth()).toBe(true);
+        expect(mockExecSync.mock.calls.length).toBe(0);
     });
 
     it('disables width detection on Windows', () => {

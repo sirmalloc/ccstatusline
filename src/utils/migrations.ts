@@ -87,7 +87,7 @@ function toWidgetLine(line: unknown[], stripSeparators: boolean): WidgetItem[] {
                 ...item,
                 id: generateGuid(),
                 type: item.type
-            } as WidgetItem);
+            });
         }
     }
 

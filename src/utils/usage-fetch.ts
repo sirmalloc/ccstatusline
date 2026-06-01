@@ -23,8 +23,18 @@ const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 
+type UsageDataField = Exclude<keyof UsageData, 'error'>;
+
+export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
+
+const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
+    'extraUsageLimit',
+    'extraUsageUsed',
+    'extraUsageUtilization'
+]);
+
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
-const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited']);
+const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
     blockedUntil: z.number(),
     error: UsageLockErrorSchema.optional()
@@ -35,6 +45,10 @@ const CachedUsageDataSchema = z.object({
     sessionResetAt: z.string().nullable().optional(),
     weeklyUsage: z.number().nullable().optional(),
     weeklyResetAt: z.string().nullable().optional(),
+    weeklySonnetUsage: z.number().nullable().optional(),
+    weeklySonnetResetAt: z.string().nullable().optional(),
+    weeklyOpusUsage: z.number().nullable().optional(),
+    weeklyOpusResetAt: z.string().nullable().optional(),
     extraUsageEnabled: z.boolean().nullable().optional(),
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
@@ -42,22 +56,29 @@ const CachedUsageDataSchema = z.object({
     error: z.string().nullable().optional()
 });
 
-const UsageApiResponseSchema = z.object({
-    five_hour: z.object({
-        utilization: z.number().nullable().optional(),
-        resets_at: z.string().nullable().optional()
-    }).optional(),
-    seven_day: z.object({
-        utilization: z.number().nullable().optional(),
-        resets_at: z.string().nullable().optional()
-    }).optional(),
-    extra_usage: z.object({
+const UsageApiBucketSchema = z.looseObject({
+    utilization: z.number().nullable().optional(),
+    resets_at: z.string().nullable().optional()
+}).nullable().optional();
+
+type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
+
+const UsageApiResponseSchema = z.looseObject({
+    five_hour: UsageApiBucketSchema,
+    seven_day: UsageApiBucketSchema,
+    seven_day_sonnet: UsageApiBucketSchema,
+    seven_day_opus: UsageApiBucketSchema,
+    extra_usage: z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
         used_credits: z.number().nullable().optional(),
         utilization: z.number().nullable().optional()
-    }).optional()
+    }).nullable().optional()
 });
+
+function getUsageApiBucketUtilization(bucket: UsageApiBucket): number | undefined {
+    return bucket === null ? 0 : bucket?.utilization ?? undefined;
+}
 
 function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
     try {
@@ -86,6 +107,10 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         sessionResetAt: parsed.sessionResetAt ?? undefined,
         weeklyUsage: parsed.weeklyUsage ?? undefined,
         weeklyResetAt: parsed.weeklyResetAt ?? undefined,
+        weeklySonnetUsage: parsed.weeklySonnetUsage ?? undefined,
+        weeklySonnetResetAt: parsed.weeklySonnetResetAt ?? undefined,
+        weeklyOpusUsage: parsed.weeklyOpusUsage ?? undefined,
+        weeklyOpusResetAt: parsed.weeklyOpusResetAt ?? undefined,
         extraUsageEnabled: parsed.extraUsageEnabled ?? undefined,
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
@@ -101,10 +126,14 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
     }
 
     return {
-        sessionUsage: parsed.five_hour?.utilization ?? undefined,
+        sessionUsage: getUsageApiBucketUtilization(parsed.five_hour),
         sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
-        weeklyUsage: parsed.seven_day?.utilization ?? undefined,
+        weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day),
         weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
+        weeklySonnetUsage: getUsageApiBucketUtilization(parsed.seven_day_sonnet),
+        weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
+        weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
+        weeklyOpusResetAt: parsed.seven_day_opus?.resets_at ?? undefined,
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
@@ -147,11 +176,29 @@ function cacheUsageData(data: UsageData, now: number): UsageData {
     return data;
 }
 
-function getStaleUsageOrError(error: UsageError, now: number, errorCacheMaxAge = LOCK_MAX_AGE): UsageData {
+function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean {
+    if (data[field] !== undefined) {
+        return true;
+    }
+
+    return data.extraUsageEnabled === false && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+}
+
+function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
+    return requiredFields.every(field => hasRequiredUsageField(data, field));
+}
+
+function getStaleUsageOrError(
+    error: UsageError,
+    now: number,
+    errorCacheMaxAge = LOCK_MAX_AGE,
+    requiredFields: readonly UsageDataField[] = []
+): UsageData {
     const stale = readStaleUsageCache();
-    if (stale && !stale.error) {
+    if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
+
     return setCachedUsageError(error, now, errorCacheMaxAge);
 }
 
@@ -249,7 +296,7 @@ function readMacKeychainSecret(service: string): string | null {
         return execFileSync(
             'security',
             ['find-generic-password', '-s', service, '-w'],
-            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
         ).trim();
     } catch {
         return null;
@@ -269,7 +316,8 @@ function listMacKeychainCredentialCandidates(): string[] {
             {
                 encoding: 'utf8',
                 maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
-                stdio: ['pipe', 'pipe', 'ignore']
+                stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true
             }
         );
 
@@ -475,13 +523,14 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
     });
 }
 
-export async function fetchUsageData(): Promise<UsageData> {
+export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promise<UsageData> {
     const now = Math.floor(Date.now() / 1000);
+    const requiredFields = options.requiredFields ?? [];
 
     // Check memory cache (fast path)
     if (cachedUsageData) {
         const cacheAge = now - usageCacheTime;
-        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE) {
+        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE && hasRequiredUsageFields(cachedUsageData, requiredFields)) {
             return cachedUsageData;
         }
         if (cachedUsageData.error && cacheAge < usageErrorCacheMaxAge) {
@@ -495,7 +544,7 @@ export async function fetchUsageData(): Promise<UsageData> {
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         if (fileAge < CACHE_MAX_AGE) {
             const fileData = parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
-            if (fileData && !fileData.error) {
+            if (fileData && !fileData.error && hasRequiredUsageFields(fileData, requiredFields)) {
                 return cacheUsageData(fileData, now);
             }
         }
@@ -506,7 +555,7 @@ export async function fetchUsageData(): Promise<UsageData> {
     // Get token before lock/rate-limit checks so auth failures are not masked as timeout.
     const token = getUsageToken();
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now);
+        return getStaleUsageOrError('no-credentials', now, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -514,7 +563,8 @@ export async function fetchUsageData(): Promise<UsageData> {
         return getStaleUsageOrError(
             activeLock.error,
             now,
-            Math.max(1, activeLock.blockedUntil - now)
+            Math.max(1, activeLock.blockedUntil - now),
+            requiredFields
         );
     }
 
@@ -526,21 +576,23 @@ export async function fetchUsageData(): Promise<UsageData> {
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, response.retryAfterSeconds);
+            return getStaleUsageOrError('rate-limited', now, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now);
+            return getStaleUsageOrError('api-error', now, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
-            return getStaleUsageOrError('parse-error', now);
+            writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
+            return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
-            return getStaleUsageOrError('parse-error', now);
+            writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
+            return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
@@ -553,6 +605,7 @@ export async function fetchUsageData(): Promise<UsageData> {
 
         return cacheUsageData(usageData, now);
     } catch {
-        return getStaleUsageOrError('parse-error', now);
+        writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
+        return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
     }
 }

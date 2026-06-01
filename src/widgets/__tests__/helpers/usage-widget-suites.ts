@@ -33,7 +33,7 @@ interface UsagePercentWidgetSuiteConfig<TWidget extends UsageWidgetLike> {
     rawProgressItem: WidgetItem;
     rawTimeItem: WidgetItem;
     render: (widget: TWidget, item: WidgetItem, context?: RenderContext) => string | null;
-    usageField: 'sessionUsage' | 'weeklyUsage';
+    usageField: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage';
     usageValue: number;
 }
 
@@ -43,6 +43,7 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
     expectedDisplayName: string;
     expectedProgressKeybinds?: CustomKeybind[];
     supportsDateMode?: boolean;
+    supportsSliderMode?: boolean;
     expectedModifierText: string;
     modifierItem: WidgetItem;
     expectedTimeKeybinds?: CustomKeybind[];
@@ -68,10 +69,8 @@ const EXPECTED_TIMER_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
 ];
 
-function getUsageContext(field: 'sessionUsage' | 'weeklyUsage', value: number): RenderContext {
-    return field === 'sessionUsage'
-        ? { usageData: { sessionUsage: value } }
-        : { usageData: { weeklyUsage: value } };
+function getUsageContext(field: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage', value: number): RenderContext {
+    return { usageData: { [field]: value } };
 }
 
 export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(config: UsagePercentWidgetSuiteConfig<TWidget>): void {
@@ -128,6 +127,18 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
 
         config.errorMessageMock.mockReturnValue('[Timeout]');
         expect(config.render(widget, config.baseItem, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
+    });
+
+    it('renders available usage data before unrelated usage errors', () => {
+        const widget = config.createWidget();
+        const context: RenderContext = {
+            usageData: {
+                [config.usageField]: config.usageValue,
+                error: 'timeout'
+            }
+        };
+
+        expect(config.render(widget, config.baseItem, context)).toBe(config.expectedTime);
     });
 
     it('clears invert and cursor metadata when cycling back to time mode', () => {
@@ -227,10 +238,11 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
 
     it('clears invert metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
+        const lastBarMode = config.supportsSliderMode ? 'slider-only' : 'progress-short';
         const updated = widget.handleEditorAction('toggle-progress', {
             ...config.baseItem,
             metadata: {
-                display: 'progress-short',
+                display: lastBarMode,
                 invert: 'true'
             }
         });
@@ -248,7 +260,17 @@ export function runUsageTimerEditorSuite<TWidget extends UsageWidgetLike & { get
 
         expect(first?.metadata?.display).toBe('progress');
         expect(second?.metadata?.display).toBe('progress-short');
-        expect(third?.metadata?.display).toBe('time');
+
+        if (config.supportsSliderMode) {
+            const fourth = widget.handleEditorAction('toggle-progress', third ?? config.baseItem);
+            const fifth = widget.handleEditorAction('toggle-progress', fourth ?? config.baseItem);
+
+            expect(third?.metadata?.display).toBe('slider');
+            expect(fourth?.metadata?.display).toBe('slider-only');
+            expect(fifth?.metadata?.display).toBe('time');
+        } else {
+            expect(third?.metadata?.display).toBe('time');
+        }
     });
 
     it('clears compact metadata when cycling into progress mode', () => {

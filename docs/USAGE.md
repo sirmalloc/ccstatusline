@@ -25,6 +25,7 @@ bun run example
 
 - **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version. Model names omit trailing context suffixes like `(1M context)`; use **Context Window** when you want the total window size shown.
 - **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email.
+- **Voice Status** - Show whether Claude Code voice input is enabled. It can render as an icon, icon plus text, plain text, or `voice on/off`, with optional Nerd Font microphone icons.
 - **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort reads live status JSON first, then `/model` or `/effort` transcript output, then settings fallback; it supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`.
 - **Session Clock** / **Session Cost** - Show elapsed session time and the current session cost in USD.
 
@@ -44,7 +45,7 @@ bun run example
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar.
 - **Compaction Counter** - Show how many context compactions have been detected in the current session. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
-- **Session Usage** / **Weekly Usage** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages plus current block/reset timing. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
+- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
 
 ### Environment, Layout & Custom
 
@@ -58,6 +59,14 @@ These settings affect where long lines are truncated, and where right-alignment 
 - **Full width always** - Uses full terminal width (may wrap if auto-compact message appears or IDE integration adds text)
 - **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping (default)
 - **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
+
+If ccstatusline cannot detect your terminal width, set `CCSTATUSLINE_WIDTH` to a positive integer to override probing:
+
+```bash
+CCSTATUSLINE_WIDTH=160 ccstatusline
+```
+
+The override is checked before automatic width detection, so it also works in wrapper processes, IDE integrations, nested PTYs, and Windows environments where probing may be unavailable. Invalid values such as `0`, negative numbers, or non-numeric strings are ignored and ccstatusline falls back to normal detection.
 
 ## Global Options
 
@@ -158,12 +167,13 @@ Widget-specific shortcuts:
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Is Fork**: `h` hide when the repo is not a fork
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
-- **Session Usage / Weekly Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
+- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only progress bar
 - **Compaction Counter**: `f` cycle format, `n` toggle Nerd Font icon in icon mode, `h` hide when zero
+- **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
 - **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
@@ -228,6 +238,24 @@ Create clickable links in terminals that support OSC 8 hyperlinks:
 ![ccusage integration](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/ccusage.png)
 
 > 📄 **How it works:** The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
+
+## Integration Example: AIWatch
+
+[AIWatch](https://ai-watch.dev) monitors the live status of 30+ AI APIs and apps (Claude, GPT, Gemini, …). Surfacing it in your status line answers "is Claude slow because of me, or because the API is degraded?" without leaving the terminal.
+
+1. Add a Custom Command widget
+2. Set command:
+
+   ```bash
+   ( curl -sf --max-time 2 https://ai-watch.dev/api/status/cached | jq -r '[.services[] | select(.status != "operational") | "🔴 " + .name] | .[0:3] | join(" ")' ) 2>/dev/null || true
+   ```
+
+3. Set timeout: `2000` (the `curl` itself caps at 2s; the outer `|| true` keeps the widget silent on any failure)
+4. Leave "preserve colors" off — the output is a plain emoji + name list
+
+When every tracked service is operational the command prints nothing, so the widget renders empty and manual separators collapse around it. The endpoint is JSON, CORS-enabled, and served with a ~5-minute cache.
+
+> 📄 **Variants:** See [ai-watch.dev/#statusline](https://ai-watch.dev/#statusline) for count-only, compact, provider-scoped, and clickable OSC 8 link presets.
 
 ## Smart Truncation
 

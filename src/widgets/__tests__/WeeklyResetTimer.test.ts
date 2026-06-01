@@ -160,7 +160,7 @@ describe('WeeklyResetTimerWidget', () => {
             { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { absolute: 'true', timezone: 'Asia/Tokyo', locale: 'ja-JP', hour12: 'true' } },
             { usageData: { weeklyResetAt: '2026-03-15T08:30:00.000Z' } }
         )).toBe('Weekly Reset: 2026-03-15 08:30 UTC');
-        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true);
+        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true, false);
     });
 
     it('shows configured timestamp settings in editor display only in timestamp mode', () => {
@@ -209,6 +209,67 @@ describe('WeeklyResetTimerWidget', () => {
         expect(cleared?.metadata?.hour12).toBe('false');
     });
 
+    it('toggles weekday metadata', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const baseItem: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true' }
+        };
+
+        const withWeekday = widget.handleEditorAction('toggle-weekday', baseItem);
+        const cleared = widget.handleEditorAction('toggle-weekday', withWeekday ?? baseItem);
+
+        expect(withWeekday?.metadata?.weekday).toBe('true');
+        expect(cleared?.metadata?.weekday).toBe('false');
+    });
+
+    it('shows weekday modifier text when weekday is enabled in date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true', weekday: 'true' }
+        }).modifierText).toBe('(date, weekday)');
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true', hour12: 'true', weekday: 'true' }
+        }).modifierText).toBe('(date, 12hr, weekday)');
+    });
+
+    it('renders weekday format in preview date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockFormatUsageResetAt.mockReturnValue('Sun 08:30 UTC');
+
+        expect(render(widget, {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true', weekday: 'true' }
+        }, { isPreview: true })).toBe('Weekly Reset: Sun 08:30 UTC');
+    });
+
+    it('renders weekday format in live date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 171900000,
+            remainingMs: 432900000,
+            elapsedPercent: 28.4216269841,
+            remainingPercent: 71.5783730159
+        });
+        mockFormatUsageResetAt.mockReturnValue('Sun 5:30 PM GMT+9');
+
+        expect(render(widget,
+            { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { absolute: 'true', weekday: 'true', hour12: 'true', timezone: 'Asia/Tokyo' } },
+            { usageData: { weeklyResetAt: '2026-03-15T08:30:00.000Z' } }
+        )).toBe('Weekly Reset: Sun 5:30 PM GMT+9');
+        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', undefined, true, true);
+    });
+
     it('clears compact and hours-only metadata when cycling into progress mode', () => {
         const widget = new WeeklyResetTimerWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
@@ -253,9 +314,105 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 't', label: '(t)imestamp', action: 'toggle-date' },
             { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' },
+            { key: 'w', label: '(w)eekday', action: 'toggle-weekday' },
             { key: 'z', label: 'time(z)one', action: 'edit-timezone' },
             { key: 'l', label: '(l)ocale', action: 'edit-locale' }
         ]);
+    });
+
+    it('renders slider bar with elapsed percentage', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 302400000,
+            remainingMs: 302400000,
+            elapsedPercent: 50,
+            remainingPercent: 50
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset ▓▓▓▓▓░░░░░ 50.0%');
+    });
+
+    it('renders slider-only bar without percentage', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider-only' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 302400000,
+            remainingMs: 302400000,
+            elapsedPercent: 50,
+            remainingPercent: 50
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset ▓▓▓▓▓░░░░░');
+    });
+
+    it('renders inverted slider using remaining percent', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider', invert: 'true' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 483840000,
+            remainingMs: 120960000,
+            elapsedPercent: 80,
+            remainingPercent: 20
+        });
+
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset ▓▓░░░░░░░░ 20.0%');
+    });
+
+    it('exposes invert keybind in slider mode and hides hours-only', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getCustomKeybinds({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider' }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
+        ]);
+    });
+
+    it('shows short bar modifier text in slider modes', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider' }
+        }).modifierText).toBe('(short bar)');
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider-only' }
+        }).modifierText).toBe('(short bar only)');
+    });
+
+    it('ignores stale hours-only metadata in slider modes', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'slider', hours: 'true' }
+        }).modifierText).toBe('(short bar)');
     });
 
     runUsageTimerEditorSuite({
@@ -269,6 +426,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 'h', label: '(h)ours only', action: 'toggle-hours' }
         ],
         supportsDateMode: true,
+        supportsSliderMode: true,
         expectedModifierText: '(medium bar, inverted)',
         expectedProgressKeybinds: [
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },

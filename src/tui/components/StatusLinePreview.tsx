@@ -45,6 +45,7 @@ const renderSingleLine = (
         terminalWidth,
         isPreview: true,
         minimalist: settings.minimalistMode,
+        gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
         lineIndex,
         globalSeparatorIndex,
         globalPowerlineThemeIndex
@@ -69,7 +70,12 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             return { renderedLines: [], anyTruncated: false };
 
         // Always pre-render all widgets once (for efficiency)
-        const preRenderedLines = preRenderAllWidgets(lines, settings, { terminalWidth, isPreview: true, minimalist: settings.minimalistMode });
+        const preRenderedLines = preRenderAllWidgets(lines, settings, {
+            terminalWidth,
+            isPreview: true,
+            minimalist: settings.minimalistMode,
+            gitCacheTtlSeconds: settings.gitCacheTtlSeconds
+        });
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
         let globalSeparatorIndex = 0;

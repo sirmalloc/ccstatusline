@@ -12,6 +12,10 @@ export interface RenderUsageData {
     sessionResetAt?: string;
     weeklyUsage?: number;
     weeklyResetAt?: string;
+    weeklySonnetUsage?: number;
+    weeklySonnetResetAt?: string;
+    weeklyOpusUsage?: number;
+    weeklyOpusResetAt?: string;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;
     extraUsageUsed?: number;
@@ -34,6 +38,7 @@ export interface RenderContext {
     terminalWidth?: number | null;
     isPreview?: boolean;
     minimalist?: boolean;
+    gitCacheTtlSeconds?: number;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
 
