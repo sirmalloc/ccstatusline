@@ -111,3 +111,77 @@ describe('renderer flex width behavior', () => {
         expect(line.endsWith('...')).toBe(true);
     });
 });
+
+describe('flex-separator widget', () => {
+    const leftWidget: WidgetItem = {
+        id: 'left',
+        type: 'custom-text',
+        customText: 'LEFT',
+        backgroundColor: 'bgBlue',
+        color: 'white'
+    };
+    const rightWidget: WidgetItem = {
+        id: 'right',
+        type: 'custom-text',
+        customText: 'RIGHT',
+        backgroundColor: 'bgGreen',
+        color: 'white'
+    };
+    const flexWidget: WidgetItem = { id: 'flex', type: 'flex-separator' };
+
+    it('distributes remaining width across a flex-separator in powerline mode', () => {
+        const line = renderLine([leftWidget, flexWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true
+            }
+        }, { terminalWidth: 50 });
+
+        // flexMode 'full' reserves 6 columns for trailing UI, so the effective
+        // render width is terminalWidth - 6.
+        expect(getVisibleWidth(line)).toBe(50 - 6);
+    });
+
+    it('distributes space across multiple flex-separators in powerline mode', () => {
+        const middleWidget: WidgetItem = {
+            id: 'middle',
+            type: 'custom-text',
+            customText: 'MID',
+            backgroundColor: 'bgYellow',
+            color: 'black'
+        };
+        const line = renderLine([leftWidget, flexWidget, middleWidget, flexWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true
+            }
+        }, { terminalWidth: 60 });
+
+        expect(getVisibleWidth(line)).toBe(60 - 6);
+    });
+
+    it('strips flex-separator markers when terminal width is unknown', () => {
+        const line = renderLine([leftWidget, flexWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true
+            }
+        }, { terminalWidth: undefined });
+
+        // No marker characters should leak into the output.
+        expect(line).not.toContain('FLEX');
+        expect(line).not.toContain('');
+    });
+
+    it('still works in non-powerline mode (no regression)', () => {
+        const line = renderLine([leftWidget, flexWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: { ...DEFAULT_SETTINGS.powerline, enabled: false }
+        }, { terminalWidth: 50 });
+
+        expect(getVisibleWidth(line)).toBe(50 - 6);
+    });
+});
