@@ -184,6 +184,7 @@ describe('update checker', () => {
 
         expect(execFileSpy.mock.calls[0]?.[0]).toBe('npm.cmd');
         expect(execFileSpy.mock.calls[0]?.[1]).toEqual(['install', '-g', 'ccstatusline@2.3.0']);
+        expect(execFileSpy.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ shell: true }));
     });
 
     it('does not offer global actions for auto-update installs', () => {
