@@ -57,6 +57,18 @@ describe('ExtraUsageUsedWidget', () => {
         })).toBe('Overage Used: $5.42');
     });
 
+    it('formats used budget in the currency reported by the API', () => {
+        const widget = new ExtraUsageUsedWidget();
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, {
+            usageData: {
+                extraUsageCurrency: 'EUR',
+                extraUsageEnabled: true,
+                extraUsageUsed: 542
+            }
+        })).toBe('Overage Used: €5.42');
+    });
+
     it('exposes and toggles hide-if-disabled configuration', () => {
         const widget = new ExtraUsageUsedWidget();
         const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-used' };

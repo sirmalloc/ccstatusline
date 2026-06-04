@@ -8,6 +8,7 @@ import type {
 } from '../types/Widget';
 import { getUsageErrorMessage } from '../utils/usage';
 
+import { formatUsageCurrency } from './shared/currency';
 import {
     appendHideDisabledModifier,
     getHideExtraUsageDisabledKeybind,
@@ -52,7 +53,7 @@ export class ExtraUsageUsedWidget implements Widget {
 
         // extraUsageUsed is in cents
         const usedDollars = data.extraUsageUsed / 100;
-        const formatted = `$${usedDollars.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const formatted = formatUsageCurrency(usedDollars, data.extraUsageCurrency);
 
         return formatRawOrLabeledValue(item, 'Overage Used: ', formatted);
     }
