@@ -326,7 +326,6 @@ describe('fetchUsageData error handling', () => {
             monthly_limit: null,
             used_credits: 542,
             utilization: null,
-            currency: 'EUR',
             disabled_reason: null
         }
     });
