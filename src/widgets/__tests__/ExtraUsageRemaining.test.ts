@@ -47,6 +47,19 @@ describe('ExtraUsageRemainingWidget', () => {
         }, context)).toBe('$3,894.00');
     });
 
+    it('formats remaining budget in the currency reported by the API', () => {
+        const widget = new ExtraUsageRemainingWidget();
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
+            usageData: {
+                extraUsageCurrency: 'EUR',
+                extraUsageEnabled: true,
+                extraUsageLimit: 400000,
+                extraUsageUsed: 10600
+            }
+        })).toBe('Overage Left: €3,894.00');
+    });
+
     it('clamps remaining budget at zero', () => {
         const widget = new ExtraUsageRemainingWidget();
 

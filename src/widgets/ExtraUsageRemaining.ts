@@ -8,6 +8,7 @@ import type {
 } from '../types/Widget';
 import { getUsageErrorMessage } from '../utils/usage';
 
+import { formatUsageCurrency } from './shared/currency';
 import {
     appendHideDisabledModifier,
     getHideExtraUsageDisabledKeybind,
@@ -54,7 +55,7 @@ export class ExtraUsageRemainingWidget implements Widget {
         const limitDollars = data.extraUsageLimit / 100;
         const usedDollars = data.extraUsageUsed / 100;
         const remaining = Math.max(0, limitDollars - usedDollars);
-        const formatted = `$${remaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const formatted = formatUsageCurrency(remaining, data.extraUsageCurrency);
 
         return formatRawOrLabeledValue(item, 'Overage Left: ', formatted);
     }
