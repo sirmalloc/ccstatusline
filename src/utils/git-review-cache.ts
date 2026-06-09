@@ -140,26 +140,58 @@ function getOriginUrl(cwd: string, deps: GitReviewCacheDeps): string | null {
     return url.length > 0 ? url : null;
 }
 
+function isSshRemoteUrl(url: string): boolean {
+    const trimmed = url.trim().toLowerCase();
+    return trimmed.startsWith('ssh://') || !trimmed.includes('://');
+}
+
+function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
+    try {
+        const output = deps.execFileSync('ssh', ['-G', host], {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
+        }).trim();
+
+        for (const line of output.split(/\r?\n/)) {
+            const match = /^hostname\s+(.+)$/i.exec(line.trim());
+            if (match?.[1]) {
+                return match[1].toLowerCase();
+            }
+        }
+    } catch {
+        // Leave the parsed remote host unchanged when ssh is unavailable or
+        // cannot resolve the alias.
+    }
+
+    return host.toLowerCase();
+}
+
+function getEffectiveRemoteHost(url: string, host: string, deps: GitReviewCacheDeps): string {
+    return isSshRemoteUrl(url) ? resolveSshHostAlias(host, deps) : host.toLowerCase();
+}
+
 function getOriginHost(cwd: string, deps: GitReviewCacheDeps): string | null {
     const url = getOriginUrl(cwd, deps);
     if (!url) {
         return null;
     }
     const parsed = parseRemoteUrl(url);
-    return parsed ? parsed.host.toLowerCase() : null;
+    return parsed ? getEffectiveRemoteHost(url, parsed.host, deps) : null;
 }
 
-function toHttpsRepoRef(url: string): string | null {
+function toHttpsRepoRef(url: string, deps: GitReviewCacheDeps): string | null {
     const parsed = parseRemoteUrl(url);
     if (!parsed) {
         return null;
     }
-    return `https://${parsed.host}/${parsed.owner}/${parsed.repo}`;
+    return `https://${getEffectiveRemoteHost(url, parsed.host, deps)}/${parsed.owner}/${parsed.repo}`;
 }
 
 function getOriginRepoRef(cwd: string, deps: GitReviewCacheDeps): string | null {
     const url = getOriginUrl(cwd, deps);
-    return url ? toHttpsRepoRef(url) : null;
+    return url ? toHttpsRepoRef(url, deps) : null;
 }
 
 // Self-hosted hosts that name neither forge are resolved by probing each CLI's
