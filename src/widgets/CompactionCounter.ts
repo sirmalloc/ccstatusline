@@ -106,7 +106,7 @@ function formatCount(count: number, format: CompactionCounterFormat, icon: strin
  *
  * Claude Code periodically compacts (summarizes) conversation context when it
  * approaches the context window limit. This widget tracks how many times
- * compaction has occurred by detecting drops in used_percentage between renders.
+ * compaction has occurred by counting compact_boundary markers in the transcript.
  *
  * Shows ↻ N by default, including ↻ 0 before compaction occurs. Can be
  * configured to hide when count is 0.
