@@ -71,6 +71,13 @@ describe('countCompactionsInLines', () => {
         ];
         expect(countCompactionsInLines(lines)).toBe(0);
     });
+
+    it('counts a compact_boundary record with explicit isSidechain false', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', isSidechain: false, compactMetadata: { trigger: 'manual', preTokens: 100000 } })
+        ];
+        expect(countCompactionsInLines(lines)).toBe(1);
+    });
 });
 
 describe('getCompactionCount', () => {
