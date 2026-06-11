@@ -34,11 +34,15 @@ import {
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
 import {
+    applyImport,
+    exportConfig,
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
     saveInstallationMetadata,
-    saveSettings
+    saveSettings,
+    validateImportFile,
+    type ImportValidationResult
 } from '../utils/config';
 import {
     inspectGlobalCommandResolution,
@@ -72,7 +76,10 @@ import { loadClaudeStatusLineState } from './claude-status';
 import {
     ColorMenu,
     ConfirmDialog,
+    ExportConfigDialog,
     GlobalOverridesMenu,
+    ImportConfigDialog,
+    ImportPreviewDialog,
     InstallMenu,
     ItemsEditor,
     LineSelector,
@@ -118,7 +125,10 @@ type AppScreen = 'main'
     | 'manageInstallation'
     | 'uninstallOptions'
     | 'updates'
-    | 'refreshInterval';
+    | 'refreshInterval'
+    | 'exportConfig'
+    | 'importConfig'
+    | 'importPreview';
 
 type PinnedVersionMismatchAction = 'update' | 'exit';
 
@@ -439,6 +449,7 @@ export const App: React.FC = () => {
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
+    const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
 
     useEffect(() => {
         void loadClaudeStatusLineState()
@@ -698,6 +709,55 @@ export const App: React.FC = () => {
         setScreen('confirm');
     }, [getGlobalResolutionWarning]);
 
+    const handleExportConfig = useCallback(async (filePath: string) => {
+        try {
+            await exportConfig(filePath);
+            setFlashMessage({ text: `Config exported to ${filePath}`, color: 'green' });
+        } catch (err) {
+            setFlowNotice({
+                title: 'Export Failed',
+                message: err instanceof Error ? err.message : String(err),
+                color: 'red',
+                continueScreen: 'main'
+            });
+            setScreen('flowNotice');
+            return;
+        }
+        setScreen('main');
+    }, []);
+
+    const handleImportFileChosen = useCallback(async (filePath: string) => {
+        const result = await validateImportFile(filePath);
+        if (result.status === 'invalid') {
+            setFlowNotice({
+                title: 'Import Failed',
+                message: result.reason,
+                color: 'red',
+                continueScreen: 'main'
+            });
+            setScreen('flowNotice');
+        } else {
+            setImportValidation(result);
+            setScreen('importPreview');
+        }
+    }, []);
+
+    const handleImportApply = useCallback((mode: 'replace' | 'merge') => {
+        if (importValidation?.status !== 'valid') {
+            return;
+        }
+        setSettings((prev) => {
+            if (!prev) {
+                return prev;
+            }
+            return applyImport(prev, importValidation.data, mode);
+        });
+        setHasChanges(true);
+        setImportValidation(null);
+        setFlashMessage({ text: 'Config imported — review and save', color: 'green' });
+        setScreen('main');
+    }, [importValidation]);
+
     if (!settings || !hasLoadedClaudeStatus || !hasLoadedInstalledState) {
         return <Text>Loading settings...</Text>;
     }
@@ -870,6 +930,12 @@ export const App: React.FC = () => {
                 break;
             case 'configureStatusLine':
                 setScreen('refreshInterval');
+                break;
+            case 'exportConfig':
+                setScreen('exportConfig');
+                break;
+            case 'importConfig':
+                setScreen('importConfig');
                 break;
             case 'starGithub':
                 setConfirmDialog({
@@ -1248,6 +1314,32 @@ export const App: React.FC = () => {
                         installingFonts={installingFonts}
                         fontInstallMessage={fontInstallMessage}
                         onClearMessage={() => { setFontInstallMessage(null); }}
+                    />
+                )}
+
+                {screen === 'exportConfig' && (
+                    <ExportConfigDialog
+                        onExport={(filePath) => { void handleExportConfig(filePath); }}
+                        onCancel={() => { setScreen('main'); }}
+                    />
+                )}
+
+                {screen === 'importConfig' && (
+                    <ImportConfigDialog
+                        onFileChosen={(filePath) => { void handleImportFileChosen(filePath); }}
+                        onCancel={() => { setScreen('main'); }}
+                    />
+                )}
+
+                {screen === 'importPreview' && importValidation?.status === 'valid' && (
+                    <ImportPreviewDialog
+                        validation={importValidation}
+                        currentSettings={settings}
+                        onApply={(mode) => { handleImportApply(mode); }}
+                        onCancel={() => {
+                            setImportValidation(null);
+                            setScreen('main');
+                        }}
                     />
                 )}
             </Box>

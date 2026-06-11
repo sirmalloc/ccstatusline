@@ -169,6 +169,9 @@ describe('Main menu structure', () => {
             'globalOverrides',
             'configureStatusLine',
             '-',
+            'exportConfig',
+            'importConfig',
+            '-',
             'install',
             '-',
             'exit',
@@ -186,6 +189,9 @@ describe('Main menu structure', () => {
             'terminalConfig',
             'globalOverrides',
             'configureStatusLine',
+            '-',
+            'exportConfig',
+            'importConfig',
             '-',
             'install',
             '-',
@@ -209,6 +215,9 @@ describe('Main menu structure', () => {
             'terminalConfig',
             'globalOverrides',
             'configureStatusLine',
+            '-',
+            'exportConfig',
+            'importConfig',
             '-',
             'manageInstallation',
             '-',
@@ -240,13 +249,13 @@ describe('Main menu structure', () => {
             sublabel: '(install first)'
         }));
         expect(buildManageInstallationItems()[0]).toEqual(expect.objectContaining({ label: '🔄 Check for Updates' }));
-        expect(getMainMenuInstallSelectionIndex(false)).toBe(5);
-        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(6);
-        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(6);
-        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(6);
+        expect(getMainMenuInstallSelectionIndex(false)).toBe(7);
+        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(8);
+        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(8);
+        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(8);
         expect(getMainMenuSelectionIndex(
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
-        )).toBe(6);
+        )).toBe(8);
     });
 });
