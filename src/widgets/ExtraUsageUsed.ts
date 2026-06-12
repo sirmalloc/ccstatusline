@@ -1,7 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
-    CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -9,13 +9,10 @@ import type {
 import { getUsageErrorMessage } from '../utils/usage';
 
 import { formatUsageCurrency } from './shared/currency';
-import {
-    appendHideDisabledModifier,
-    getHideExtraUsageDisabledKeybind,
-    handleToggleExtraUsageDisabledAction,
-    isHideExtraUsageDisabledEnabled
-} from './shared/extra-usage-disabled';
+import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
+import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import { USAGE_NO_DATA_HIDEABLE_STATE } from './shared/usage-display';
 
 export class ExtraUsageUsedWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -24,14 +21,11 @@ export class ExtraUsageUsedWidget implements Widget {
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: appendHideDisabledModifier(undefined, item)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleExtraUsageDisabledAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -41,13 +35,16 @@ export class ExtraUsageUsedWidget implements Widget {
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
-            return isHideExtraUsageDisabledEnabled(item)
+            return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
                 : formatRawOrLabeledValue(item, 'Overage Used: ', 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageUsed === undefined) {
-            if (data.error)
-                return getUsageErrorMessage(data.error);
+            if (data.error) {
+                return isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)
+                    ? null
+                    : getUsageErrorMessage(data.error);
+            }
             return null;
         }
 
@@ -56,10 +53,6 @@ export class ExtraUsageUsedWidget implements Widget {
         const formatted = formatUsageCurrency(usedDollars, data.extraUsageCurrency);
 
         return formatRawOrLabeledValue(item, 'Overage Used: ', formatted);
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
-        return [getHideExtraUsageDisabledKeybind()];
     }
 
     supportsRawValue(): boolean { return true; }
