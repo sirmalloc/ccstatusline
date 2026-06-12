@@ -29,6 +29,7 @@ const mockExecFileSync = execFileSync as unknown as {
 
 function render(options: {
     cwd?: string;
+    hide?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
 } = {}) {
@@ -40,7 +41,7 @@ function render(options: {
     const item: WidgetItem = {
         id: 'git-changes',
         type: 'git-changes',
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hide ? { hide: options.hide } : (options.hideNoGit ? { hide: 'no-git' } : undefined)
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
@@ -73,6 +74,22 @@ describe('GitChangesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('(+0,-0)');
+    });
+
+    it('should hide zero changes when the zero state is enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBeNull();
+    });
+
+    it('should keep non-zero changes visible with the zero state enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('1 file changed, 2 insertions(+), 1 deletion(-)');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBe('(+2,-1)');
     });
 
     it('should render no git when probe returns false', () => {

@@ -8,6 +8,10 @@ import {
 import type { WidgetItem } from '../../../../types/Widget';
 import type { WidgetCatalogEntry } from '../../../../utils/widgets';
 import {
+    EDIT_HIDE_STATES_ACTION,
+    getHideKeybind
+} from '../../../../widgets/shared/hideable';
+import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
@@ -696,6 +700,40 @@ describe('items-editor input handlers', () => {
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
         expect(updated?.[0]?.metadata?.mode).toBe('count');
+    });
+
+    it('opens the shared hide-states editor for the injected hide keybind', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setCustomEditorWidget = vi.fn();
+
+        handleNormalInputMode({
+            input: 'h',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => [
+                ...(widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : []),
+                getHideKeybind()
+            ],
+            setCustomEditorWidget
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+        const customEditorState = setCustomEditorWidget.mock.calls[0]?.[0] as
+            | { action?: string; widget?: WidgetItem }
+            | undefined;
+        expect(customEditorState?.action).toBe(EDIT_HIDE_STATES_ACTION);
+        expect(customEditorState?.widget?.type).toBe('git-branch');
     });
 
     it('opens custom editor for skills list limit action', () => {

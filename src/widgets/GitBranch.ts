@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -22,11 +23,9 @@ import {
 
 import { makeModifierText } from './shared/editor-display';
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import { isMetadataFlagEnabled } from './shared/metadata';
 import {
     formatSymbolPrefix,
@@ -73,9 +72,6 @@ export class GitBranchWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isLink = isLinkEnabled(item);
         const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
         if (isLink)
             modifiers.push('repo link');
         return {
@@ -84,16 +80,20 @@ export class GitBranchWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_LINK_ACTION) {
             return toggleLink(item);
         }
-        return handleToggleNoGitAction(action, item);
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         void settings;
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const isLink = isLinkEnabled(item);
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
@@ -132,7 +132,6 @@ export class GitBranchWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            ...getHideNoGitKeybinds(),
             { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION },
             getSymbolKeybind()
         ];

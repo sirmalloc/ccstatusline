@@ -1,6 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -12,11 +13,9 @@ import {
 } from '../utils/git';
 
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import {
     formatSymbolPrefix,
     getSymbolKeybind,
@@ -31,18 +30,15 @@ export class GitWorktreeWidget implements Widget {
     getDisplayName(): string { return 'Git Worktree'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview)
@@ -89,10 +85,7 @@ export class GitWorktreeWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            ...getHideNoGitKeybinds(),
-            getSymbolKeybind()
-        ];
+        return [getSymbolKeybind()];
     }
 
     renderEditor(props: WidgetEditorProps) {

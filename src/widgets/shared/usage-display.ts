@@ -1,5 +1,6 @@
 import type {
     CustomKeybind,
+    HideableState,
     WidgetItem
 } from '../../types/Widget';
 import {
@@ -15,6 +16,11 @@ import {
 } from './metadata';
 
 export type UsageDisplayMode = 'time' | 'progress' | 'progress-short' | 'slider' | 'slider-only';
+
+// Shared by the usage percentage widgets. The reset timers render the same
+// error placeholders but cannot declare this state: they bind 'h' for the
+// hour-format toggle, which would shadow the shared hide keybind
+export const USAGE_NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when usage data is unavailable' };
 
 const SLIDER_WIDTH = 10;
 

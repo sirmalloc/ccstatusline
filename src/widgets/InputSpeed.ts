@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -13,6 +14,7 @@ import {
     getSpeedWidgetDescription,
     getSpeedWidgetDisplayName,
     getSpeedWidgetEditorDisplay,
+    getSpeedWidgetHideableStates,
     renderSpeedWidgetEditor,
     renderSpeedWidgetValue
 } from './shared/speed-widget';
@@ -33,6 +35,10 @@ export class InputSpeedWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return getSpeedWidgetCustomKeybinds();
+    }
+
+    getHideableStates(): HideableState[] {
+        return getSpeedWidgetHideableStates();
     }
 
     renderEditor(props: WidgetEditorProps) {

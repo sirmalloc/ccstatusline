@@ -8,6 +8,7 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../types/Settings';
+import { getHideKeybind } from '../../widgets/shared/hideable';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
@@ -148,6 +149,32 @@ describe('legacy widget type aliases', () => {
         const types = new Set(catalog.map(entry => entry.type));
         expect(types.has('git-review')).toBe(true);
         expect(types.has('git-pr')).toBe(false);
+    });
+});
+
+describe('hideable state keybind reservation', () => {
+    it('widgets declaring hideable states leave the shared hide key free', () => {
+        const reservedKey = getHideKeybind().key;
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+        const runtimeTypes = getAllWidgetTypes(settings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            if ((widget?.getHideableStates?.().length ?? 0) === 0) {
+                continue;
+            }
+
+            // The items editor appends the shared hide keybind last and
+            // keybind matching takes the first hit, so a widget-level binding
+            // would shadow the hide editor
+            const keys = (widget?.getCustomKeybinds?.() ?? []).map(keybind => keybind.key);
+            expect(keys).not.toContain(reservedKey);
+        }
     });
 });
 

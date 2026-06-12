@@ -120,6 +120,152 @@ function copyV1Fields(data: Record<string, unknown>, target: Record<string, unkn
     }
 }
 
+// v3 -> v4: per-widget boolean hide flags become the unified metadata.hide
+// list. The tables are a frozen snapshot of v3 semantics keyed by widget type
+// (including the pre-existing 'git-pr' alias for 'git-review', which is only
+// upgraded in memory at load time and can persist on disk). hideNoGit expands
+// to several states where one flag covered multiple placeholders: Git
+// Ahead/Behind also hid '(no upstream)' and Git PR also hid the no-PR
+// placeholder. defaultEnabled lists states a widget hides without any
+// metadata (Git Ahead/Behind's previously hardcoded 0/0 auto-hide); they are
+// folded into a written hide list because a present list is authoritative and
+// would otherwise turn them off.
+interface HideFlagRule {
+    legacy: Record<string, string[]>;
+    stateOrder: string[];
+    defaultEnabled?: string[];
+}
+
+const NO_GIT_HIDE_RULE: HideFlagRule = { legacy: { hideNoGit: ['no-git'] }, stateOrder: ['no-git'] };
+const NO_JJ_HIDE_RULE: HideFlagRule = { legacy: { hideNoJj: ['no-jj'] }, stateOrder: ['no-jj'] };
+const NO_REMOTE_HIDE_RULE: HideFlagRule = { legacy: { hideNoRemote: ['no-remote'] }, stateOrder: ['no-remote'] };
+const NO_UPSTREAM_HIDE_RULE: HideFlagRule = { legacy: { hideNoRemote: ['no-upstream'] }, stateOrder: ['no-upstream'] };
+const GIT_REVIEW_HIDE_RULE: HideFlagRule = {
+    legacy: {
+        hideNoGit: ['no-git', 'no-data'],
+        hideStatus: ['status'],
+        hideTitle: ['title']
+    },
+    stateOrder: ['no-git', 'no-data', 'status', 'title']
+};
+const EXTRA_USAGE_HIDE_RULE: HideFlagRule = { legacy: { hideIfDisabled: ['disabled'] }, stateOrder: ['disabled'] };
+const CACHE_HIDE_RULE: HideFlagRule = { legacy: { hideWhenEmpty: ['empty'] }, stateOrder: ['empty'] };
+
+const V4_HIDE_FLAG_RULES: Record<string, HideFlagRule> = {
+    'git-branch': NO_GIT_HIDE_RULE,
+    'git-changes': NO_GIT_HIDE_RULE,
+    'git-insertions': NO_GIT_HIDE_RULE,
+    'git-deletions': NO_GIT_HIDE_RULE,
+    'git-staged-files': NO_GIT_HIDE_RULE,
+    'git-unstaged-files': NO_GIT_HIDE_RULE,
+    'git-untracked-files': NO_GIT_HIDE_RULE,
+    'git-clean-status': NO_GIT_HIDE_RULE,
+    'git-root-dir': NO_GIT_HIDE_RULE,
+    'git-worktree': NO_GIT_HIDE_RULE,
+    'git-status': NO_GIT_HIDE_RULE,
+    'git-staged': NO_GIT_HIDE_RULE,
+    'git-unstaged': NO_GIT_HIDE_RULE,
+    'git-untracked': NO_GIT_HIDE_RULE,
+    'git-conflicts': NO_GIT_HIDE_RULE,
+    'git-sha': NO_GIT_HIDE_RULE,
+    'git-ahead-behind': {
+        legacy: { hideNoGit: ['no-git', 'no-upstream'] },
+        stateOrder: ['no-git', 'no-upstream', 'zero'],
+        defaultEnabled: ['zero']
+    },
+    'git-review': GIT_REVIEW_HIDE_RULE,
+    'git-pr': GIT_REVIEW_HIDE_RULE,
+    'git-origin-owner': NO_REMOTE_HIDE_RULE,
+    'git-origin-repo': NO_REMOTE_HIDE_RULE,
+    'git-origin-owner-repo': NO_REMOTE_HIDE_RULE,
+    'git-upstream-owner': NO_UPSTREAM_HIDE_RULE,
+    'git-upstream-repo': NO_UPSTREAM_HIDE_RULE,
+    'git-upstream-owner-repo': NO_UPSTREAM_HIDE_RULE,
+    'git-is-fork': { legacy: { hideWhenNotFork: ['not-fork'] }, stateOrder: ['not-fork'] },
+    'jj-bookmarks': NO_JJ_HIDE_RULE,
+    'jj-workspace': NO_JJ_HIDE_RULE,
+    'jj-root-dir': NO_JJ_HIDE_RULE,
+    'jj-changes': NO_JJ_HIDE_RULE,
+    'jj-insertions': NO_JJ_HIDE_RULE,
+    'jj-deletions': NO_JJ_HIDE_RULE,
+    'jj-description': NO_JJ_HIDE_RULE,
+    'jj-revision': NO_JJ_HIDE_RULE,
+    'compaction-counter': { legacy: { hideZero: ['zero'] }, stateOrder: ['zero'] },
+    'skills': { legacy: { hideWhenEmpty: ['empty'] }, stateOrder: ['empty'] },
+    'cache-read': CACHE_HIDE_RULE,
+    'cache-write': CACHE_HIDE_RULE,
+    'cache-hit-rate': CACHE_HIDE_RULE,
+    'extra-usage-utilization': EXTRA_USAGE_HIDE_RULE,
+    'extra-usage-remaining': EXTRA_USAGE_HIDE_RULE,
+    'extra-usage-used': EXTRA_USAGE_HIDE_RULE
+};
+
+const V4_LEGACY_HIDE_KEYS = [
+    'hideNoGit',
+    'hideNoJj',
+    'hideNoRemote',
+    'hideZero',
+    'hideWhenEmpty',
+    'hideIfDisabled',
+    'hideStatus',
+    'hideTitle',
+    'hideWhenNotFork'
+];
+
+function migrateItemHideFlags(item: unknown): unknown {
+    if (!isRecord(item) || typeof item.type !== 'string' || !isRecord(item.metadata)) {
+        return item;
+    }
+
+    const rule = V4_HIDE_FLAG_RULES[item.type];
+    if (!rule) {
+        return item;
+    }
+
+    const metadata = item.metadata;
+    const presentKeys = V4_LEGACY_HIDE_KEYS.filter(key => key in metadata);
+    if (presentKeys.length === 0) {
+        return item;
+    }
+
+    const enabled = new Set<string>(rule.defaultEnabled ?? []);
+    // A hand-written hide list takes part in the union so it is never lost
+    if (typeof metadata.hide === 'string') {
+        for (const key of metadata.hide.split(',')) {
+            if (key.trim().length > 0) {
+                enabled.add(key.trim());
+            }
+        }
+    }
+    for (const key of presentKeys) {
+        if (metadata[key] === 'true') {
+            for (const state of rule.legacy[key] ?? []) {
+                enabled.add(state);
+            }
+        }
+    }
+
+    const nextMetadata: Record<string, unknown> = Object.fromEntries(
+        Object.entries(metadata).filter(([key]) => !V4_LEGACY_HIDE_KEYS.includes(key) && key !== 'hide')
+    );
+    const orderedEnabled = rule.stateOrder.filter(state => enabled.has(state));
+    const defaults = rule.defaultEnabled ?? [];
+    const matchesDefaults = orderedEnabled.length === defaults.length
+        && orderedEnabled.every(state => defaults.includes(state));
+    if (!matchesDefaults) {
+        nextMetadata.hide = orderedEnabled.join(',');
+    }
+
+    const migratedItem: Record<string, unknown> = { ...item };
+    if (Object.keys(nextMetadata).length > 0) {
+        migratedItem.metadata = nextMetadata;
+    } else {
+        delete migratedItem.metadata;
+    }
+
+    return migratedItem;
+}
+
 // Define all migrations here
 export const migrations: Migration[] = [
     {
@@ -167,6 +313,27 @@ export const migrations: Migration[] = [
                 message: 'ccstatusline updated to v2.0.2, 5hr block timer widget added',
                 remaining: 12
             };
+
+            return migrated;
+        }
+    },
+    {
+        fromVersion: 3,
+        toVersion: 4,
+        description: 'Migrate from v3 to v4',
+        migrate: (data) => {
+            const migrated: Record<string, unknown> = { ...data };
+
+            // Convert per-widget hide flags to the unified metadata.hide list.
+            // No updatemessage: rendering is unchanged, so there is nothing
+            // for users to act on.
+            if (Array.isArray(data.lines)) {
+                migrated.lines = data.lines.map((line: unknown) => (Array.isArray(line)
+                    ? line.map(migrateItemHideFlags)
+                    : line));
+            }
+
+            migrated.version = 4;
 
             return migrated;
         }

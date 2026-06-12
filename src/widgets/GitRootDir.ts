@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -19,11 +20,9 @@ import {
 
 import { makeModifierText } from './shared/editor-display';
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import { isMetadataFlagEnabled } from './shared/metadata';
 
 const IDE_LINK_KEY = 'linkToIDE';
@@ -42,9 +41,6 @@ export class GitRootDirWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const ideLinkMode = this.getIdeLinkMode(item);
         const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
         if (ideLinkMode)
             modifiers.push(IDE_LINK_LABELS[ideLinkMode]);
         return {
@@ -53,15 +49,19 @@ export class GitRootDirWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_LINK_ACTION) {
             return this.cycleIdeLinkMode(item);
         }
-        return handleToggleNoGitAction(action, item);
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const ideLinkMode = this.getIdeLinkMode(item);
 
         if (context.isPreview) {
@@ -101,7 +101,6 @@ export class GitRootDirWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            ...getHideNoGitKeybinds(),
             { key: 'l', label: '(l)ink to IDE', action: TOGGLE_LINK_ACTION }
         ];
     }
