@@ -1,10 +1,15 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+
+import { isHidden } from './shared/hideable';
+
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when under 1 minute' };
 
 function formatDurationFromMs(durationMs: number): string {
     const totalMinutes = Math.floor(durationMs / (1000 * 60));
@@ -35,18 +40,30 @@ export class SessionClockWidget implements Widget {
         return { displayText: this.getDisplayName() };
     }
 
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
+    }
+
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '2hr 15m' : 'Session: 2hr 15m';
         }
 
+        const hideZero = isHidden(item, ZERO_HIDEABLE_STATE.key);
+
         const durationMs = context.data?.cost?.total_duration_ms;
         if (typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0) {
+            if (durationMs < 60000 && hideZero) {
+                return null;
+            }
             const formatted = formatDurationFromMs(durationMs);
             return item.rawValue ? formatted : `Session: ${formatted}`;
         }
 
         const duration = context.sessionDuration ?? '0m';
+        if (duration === '0m' && hideZero) {
+            return null;
+        }
         return item.rawValue ? duration : `Session: ${duration}`;
     }
 

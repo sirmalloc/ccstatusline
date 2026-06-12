@@ -89,7 +89,7 @@ All widgets must implement:
 - `render()`: Core rendering logic that produces the widget output
 - `supportsRawValue()`: Whether widget supports raw value mode
 - `supportsColors()`: Whether widget supports color customization
-- Optional: `renderEditor()`, `getCustomKeybinds()`, `handleEditorAction()`
+- Optional: `renderEditor()`, `getCustomKeybinds()`, `getHideableStates()`, `handleEditorAction()`
 
 **Widget Registry Pattern:**
 - Located in src/utils/widgets.ts

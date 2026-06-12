@@ -131,7 +131,7 @@ describe('Cache widgets', () => {
     it('hides missing turn data when hide-when-empty is enabled', async () => {
         const w = await loadWidgets();
         const context: RenderContext = {};
-        const hidden = { metadata: { hideWhenEmpty: 'true' } };
+        const hidden = { metadata: { hide: 'empty' } };
 
         expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate', hidden), context, DEFAULT_SETTINGS)).toBeNull();
         expect(new w.CacheReadWidget().render(turnItem('cache-read', hidden), context, DEFAULT_SETTINGS)).toBeNull();
@@ -171,7 +171,7 @@ describe('Cache widgets', () => {
                 }
             }
         };
-        const hidden = { metadata: { hideWhenEmpty: 'true' } };
+        const hidden = { metadata: { hide: 'empty' } };
 
         expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate', hidden), context, DEFAULT_SETTINGS)).toBeNull();
         expect(new w.CacheReadWidget().render(turnItem('cache-read', hidden), context, DEFAULT_SETTINGS)).toBeNull();
@@ -191,30 +191,26 @@ describe('Cache widgets', () => {
                 }
             }
         };
-        const hidden = { metadata: { hideWhenEmpty: 'true' } };
+        const hidden = { metadata: { hide: 'empty' } };
 
         expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate', hidden), context, DEFAULT_SETTINGS)).toBeNull();
         expect(new w.CacheReadWidget().render(turnItem('cache-read', hidden), context, DEFAULT_SETTINGS)).toBeNull();
         expect(new w.CacheWriteWidget().render(turnItem('cache-write', hidden), context, DEFAULT_SETTINGS)).toBe('Cache Write: fmt:2000 (80.0%)');
     });
 
-    it('toggles cache options via custom keybind actions', async () => {
+    it('exposes the scope keybind and the empty hideable state', async () => {
         const w = await loadWidgets();
         const widget = new w.CacheHitRateWidget();
         expect(widget.getCustomKeybinds()).toEqual([
-            { key: 't', label: '(t)urn/session', action: 'toggle-cache-scope' },
-            { key: 'h', label: '(h)ide when empty', action: 'toggle-hide-empty' }
+            { key: 't', label: '(t)urn/session', action: 'toggle-cache-scope' }
         ]);
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['empty']);
 
         const toggled = widget.handleEditorAction('toggle-cache-scope', turnItem('cache-hit-rate'));
         expect(toggled?.metadata?.cacheScopeSession).toBe('true');
 
-        const hidden = widget.handleEditorAction('toggle-hide-empty', turnItem('cache-hit-rate'));
-        expect(hidden?.metadata?.hideWhenEmpty).toBe('true');
-        expect(widget.getEditorDisplay(hidden ?? turnItem('cache-hit-rate')).modifierText).toBe('(hide when empty)');
-
-        const sessionHidden = sessionItem('cache-hit-rate', { metadata: { cacheScopeSession: 'true', hideWhenEmpty: 'true' } });
-        expect(widget.getEditorDisplay(sessionHidden).modifierText).toBe('(session, hide when empty)');
+        expect(widget.getEditorDisplay(turnItem('cache-hit-rate')).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay(sessionItem('cache-hit-rate')).modifierText).toBe('(session)');
     });
 
     it('renders preview labels and raw values', async () => {
