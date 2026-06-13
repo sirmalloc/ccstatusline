@@ -126,6 +126,19 @@ describe('applyGradientToText', () => {
         expect(applyGradientToText('', stops, 'truecolor')).toBe('');
         expect(applyGradientToText('   ', stops, 'truecolor')).toBe('   ');
     });
+
+    it('passes ANSI and OSC 8 escape sequences through untouched', () => {
+        const openLink = '\x1b]8;;https://example.com\x1b\\';
+        const closeLink = '\x1b]8;;\x1b\\';
+        const styledLink = `\x1b[1m${openLink}branch${closeLink}\x1b[22m`;
+        const out = applyGradientToText(styledLink, stops, 'truecolor');
+
+        expect(out).toContain('\x1b[1m');
+        expect(out).toContain(openLink);
+        expect(out).toContain(closeLink);
+        expect(out).toContain('\x1b[22m');
+        expect(countMatches(out, TRUECOLOR_CODE)).toBe('branch'.length);
+    });
 });
 
 describe('sampleGradient', () => {

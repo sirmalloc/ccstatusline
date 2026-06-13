@@ -12,6 +12,16 @@ interface Oklab {
 
 const GRADIENT_PREFIX = 'gradient:';
 const HEX_PATTERN = /^[0-9A-Fa-f]{6}$/;
+const ESC = '\x1b';
+const BEL = '\x07';
+const C1_CSI = '\x9b';
+const C1_OSC = '\x9d';
+const ST = '\x9c';
+
+interface ParsedEscapeSequence {
+    nextIndex: number;
+    sequence: string;
+}
 
 // Named gradient presets, addressable as `gradient:<name>`. The stop lists mirror
 // the named gradients shipped by `gradient-string` (pulled in transitively through
@@ -219,11 +229,105 @@ export function gradientCodeAt(
 
 const WHITESPACE = /\s/;
 
+function isCsiFinalByte(codePoint: number): boolean {
+    return codePoint >= 0x40 && codePoint <= 0x7e;
+}
+
+function consumeCsi(input: string, start: number, bodyStart: number): ParsedEscapeSequence {
+    let index = bodyStart;
+    while (index < input.length) {
+        const codePoint = input.charCodeAt(index);
+        if (isCsiFinalByte(codePoint)) {
+            const end = index + 1;
+            return {
+                nextIndex: end,
+                sequence: input.slice(start, end)
+            };
+        }
+        index++;
+    }
+
+    return {
+        nextIndex: input.length,
+        sequence: input.slice(start)
+    };
+}
+
+function consumeOsc(input: string, start: number, bodyStart: number): ParsedEscapeSequence {
+    let index = bodyStart;
+    while (index < input.length) {
+        const current = input[index];
+        if (!current) {
+            break;
+        }
+
+        if (current === BEL || current === ST) {
+            const end = index + 1;
+            return {
+                nextIndex: end,
+                sequence: input.slice(start, end)
+            };
+        }
+
+        if (current === ESC && input[index + 1] === '\\') {
+            const end = index + 2;
+            return {
+                nextIndex: end,
+                sequence: input.slice(start, end)
+            };
+        }
+
+        index++;
+    }
+
+    return {
+        nextIndex: input.length,
+        sequence: input.slice(start)
+    };
+}
+
+function consumeEscapeSequence(input: string, index: number): ParsedEscapeSequence | null {
+    const current = input[index];
+    if (!current) {
+        return null;
+    }
+
+    if (current === ESC) {
+        const next = input[index + 1];
+        if (next === '[') {
+            return consumeCsi(input, index, index + 2);
+        }
+        if (next === ']') {
+            return consumeOsc(input, index, index + 2);
+        }
+        if (next) {
+            return {
+                nextIndex: index + 2,
+                sequence: input.slice(index, index + 2)
+            };
+        }
+        return {
+            nextIndex: input.length,
+            sequence: current
+        };
+    }
+
+    if (current === C1_CSI) {
+        return consumeCsi(input, index, index + 1);
+    }
+
+    if (current === C1_OSC) {
+        return consumeOsc(input, index, index + 1);
+    }
+
+    return null;
+}
+
 // Apply a gradient across the visible characters of a single widget's text,
 // emitting one opening color code per non-whitespace character. Whitespace is
-// passed through uncolored and does not consume a gradient step (matching
-// gradient-string's behavior). The gradient restarts at t=0 for each call, so
-// every widget spans its own self-contained sweep.
+// passed through uncolored and does not consume a gradient step, and ANSI/OSC
+// escape sequences pass through untouched. The gradient restarts at t=0 for
+// each call, so every widget spans its own self-contained sweep.
 //
 // No trailing reset is emitted here - the caller appends `\x1b[39m`. At ansi16
 // (or for empty/blank text) the input is returned unchanged.
@@ -258,10 +362,24 @@ export function applyGradientToText(
     }
 
     let visibleCount = 0;
-    for (const ch of text) {
+    let scanIndex = 0;
+    while (scanIndex < text.length) {
+        const escape = consumeEscapeSequence(text, scanIndex);
+        if (escape) {
+            scanIndex = escape.nextIndex;
+            continue;
+        }
+
+        const codePoint = text.codePointAt(scanIndex);
+        if (codePoint === undefined) {
+            break;
+        }
+
+        const ch = String.fromCodePoint(codePoint);
         if (!WHITESPACE.test(ch)) {
             visibleCount++;
         }
+        scanIndex += ch.length;
     }
     if (visibleCount === 0) {
         return text;
@@ -270,13 +388,29 @@ export function applyGradientToText(
     const denominator = Math.max(1, visibleCount - 1);
     let result = '';
     let index = 0;
-    for (const ch of text) {
+    let textIndex = 0;
+    while (textIndex < text.length) {
+        const escape = consumeEscapeSequence(text, textIndex);
+        if (escape) {
+            result += escape.sequence;
+            textIndex = escape.nextIndex;
+            continue;
+        }
+
+        const codePoint = text.codePointAt(textIndex);
+        if (codePoint === undefined) {
+            break;
+        }
+
+        const ch = String.fromCodePoint(codePoint);
         if (WHITESPACE.test(ch)) {
             result += ch;
+            textIndex += ch.length;
             continue;
         }
         result += gradientCodeAt(stops, index / denominator, colorLevel) + ch;
         index++;
+        textIndex += ch.length;
     }
 
     return result;
