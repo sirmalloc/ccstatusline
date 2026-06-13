@@ -377,6 +377,40 @@ describe('git-review-cache', () => {
         expect(ghPrCalls[1]?.args).toContain('https://github.com/owner/repo');
     });
 
+    it('preserves canonical GitHub SSH hosts when SSH config points at a transport endpoint', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@github.com:owner/repo.git');
+        harness.setSshHostAlias('github.com', 'ssh.github.com');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(JSON.stringify({
+            number: 1486,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Canonical GitHub PR',
+            url: 'https://github.com/owner/repo/pull/1486'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 1486,
+            provider: 'gh',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Canonical GitHub PR',
+            url: 'https://github.com/owner/repo/pull/1486'
+        });
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        expect(sshCalls).toHaveLength(0);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/owner/repo');
+        expect(ghPrCalls[1]?.args).not.toContain('https://ssh.github.com/owner/repo');
+    });
+
     it('falls back to --repo <origin> for forked GitLab repos when glab\'s default resolves elsewhere', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('git@gitlab.com:fork-owner/example-fork.git');

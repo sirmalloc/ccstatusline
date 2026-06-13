@@ -168,8 +168,23 @@ function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
     return host.toLowerCase();
 }
 
+function getNamedForgeProvider(host: string): GitReviewProvider | null {
+    if (host.includes('github')) {
+        return 'gh';
+    }
+    if (host.includes('gitlab')) {
+        return 'glab';
+    }
+    return null;
+}
+
 function getEffectiveRemoteHost(url: string, host: string, deps: GitReviewCacheDeps): string {
-    return isSshRemoteUrl(url) ? resolveSshHostAlias(host, deps) : host.toLowerCase();
+    const normalizedHost = host.toLowerCase();
+    if (!isSshRemoteUrl(url) || getNamedForgeProvider(normalizedHost)) {
+        return normalizedHost;
+    }
+
+    return resolveSshHostAlias(normalizedHost, deps);
 }
 
 function getOriginHost(cwd: string, deps: GitReviewCacheDeps): string | null {
@@ -201,11 +216,9 @@ function getProviderCandidates(cwd: string, deps: GitReviewCacheDeps): GitReview
     if (!host) {
         return ['gh', 'glab'];
     }
-    if (host.includes('github')) {
-        return ['gh'];
-    }
-    if (host.includes('gitlab')) {
-        return ['glab'];
+    const namedForgeProvider = getNamedForgeProvider(host);
+    if (namedForgeProvider) {
+        return [namedForgeProvider];
     }
     const authed: GitReviewProvider[] = [];
     if (isCliAuthedForHost('glab', host, deps)) {
