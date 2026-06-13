@@ -373,6 +373,117 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('excludes subagents by default (back-compat) and counts them when enabled', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-token-sub-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'main.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100, output: 50, cacheRead: 20, cacheCreate: 10
+            }),
+            // inline sidechain entry that ALSO lives in the separate file below
+            makeUsageLine({
+                timestamp: '2026-01-01T10:05:00.000Z',
+                input: 500, output: 60, cacheRead: 5, cacheCreate: 5,
+                isSidechain: true
+            }),
+            JSON.stringify({ type: 'progress', data: { agentId: 'x' } })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-x.jsonl'), [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:05:00.000Z',
+                input: 500, output: 60, cacheRead: 5, cacheCreate: 5,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        // Default: inline sidechain counted, separate file NOT read.
+        const mainOnly = await getTokenMetrics(transcriptPath);
+        expect(mainOnly).toEqual({
+            inputTokens: 600,   // 100 + 500
+            outputTokens: 110,  // 50 + 60
+            cachedTokens: 40,   // (20+10) + (5+5)
+            totalTokens: 750,
+            contextLength: 130  // latest main-chain non-sidechain: 100 + 20 + 10
+        });
+
+        // Included: inline sidechain dropped from main (separate file present), file added once.
+        const withSubs = await getTokenMetrics(transcriptPath, { includeSubagents: true });
+        expect(withSubs).toEqual({
+            inputTokens: 600,   // main 100 (sidechain dropped) + file 500
+            outputTokens: 110,  // main 50 + file 60
+            cachedTokens: 40,   // main 30 + file 10
+            totalTokens: 750,
+            contextLength: 130  // unchanged — main-chain concept
+        });
+    });
+
+    it('counts inline sidechain entries when included but no separate files exist', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-token-sub-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'main-no-files.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100, output: 50, cacheRead: 20, cacheCreate: 10
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:05:00.000Z',
+                input: 500, output: 60, cacheRead: 5, cacheCreate: 5,
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        // No subagents dir → skipMainSidechain=false → inline sidechain still counted.
+        const withSubs = await getTokenMetrics(transcriptPath, { includeSubagents: true });
+        expect(withSubs).toEqual({
+            inputTokens: 600,
+            outputTokens: 110,
+            cachedTokens: 40,
+            totalTokens: 750,
+            contextLength: 130
+        });
+    });
+
+    it('sums multiple referenced subagent token files and ignores unreferenced ones', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-token-sub-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'main-multi.jsonl');
+        const subagentsDir = path.join(root, 'subagents');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10, output: 5, cacheRead: 0, cacheCreate: 0
+            }),
+            JSON.stringify({ type: 'progress', data: { agentId: 'a' } }),
+            JSON.stringify({ type: 'progress', data: { agentId: 'b' } })
+        ].join('\n'));
+
+        fs.mkdirSync(subagentsDir, { recursive: true });
+        fs.writeFileSync(path.join(subagentsDir, 'agent-a.jsonl'),
+            makeUsageLine({ timestamp: '2026-01-01T10:01:00.000Z', input: 100, output: 200, cacheRead: 0, cacheCreate: 0 }));
+        fs.writeFileSync(path.join(subagentsDir, 'agent-b.jsonl'),
+            makeUsageLine({ timestamp: '2026-01-01T10:02:00.000Z', input: 30, output: 40, cacheRead: 0, cacheCreate: 0 }));
+        fs.writeFileSync(path.join(subagentsDir, 'agent-unreferenced.jsonl'),
+            makeUsageLine({ timestamp: '2026-01-01T10:03:00.000Z', input: 9999, output: 9999, cacheRead: 0, cacheCreate: 0 }));
+
+        const withSubs = await getTokenMetrics(transcriptPath, { includeSubagents: true });
+        expect(withSubs).toEqual({
+            inputTokens: 140,   // 10 + 100 + 30
+            outputTokens: 245,  // 5 + 200 + 40
+            cachedTokens: 0,
+            totalTokens: 385,
+            contextLength: 10   // 10 + 0 + 0
+        });
+    });
+
     it('calculates speed metrics from user-to-assistant processing windows', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
