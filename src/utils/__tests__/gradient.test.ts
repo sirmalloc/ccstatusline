@@ -12,6 +12,7 @@ import {
 import type { WidgetItem } from '../../types/Widget';
 import {
     applyLineGradient,
+    getVisibleText,
     getVisibleWidth
 } from '../ansi';
 import {
@@ -26,7 +27,8 @@ import {
 import {
     calculateMaxWidthsFromPreRendered,
     preRenderAllWidgets,
-    renderStatusLine
+    renderStatusLine,
+    renderStatusLineWithInfo
 } from '../renderer';
 
 const TRUECOLOR_CODE = /\x1b\[38;2;\d+;\d+;\d+m/g;
@@ -276,6 +278,14 @@ describe('renderStatusLine with a gradient override', () => {
         return renderStatusLine(widgets, settings, context, preRenderedLines[0] ?? [], preCalculatedMaxWidths);
     }
 
+    function renderLineWithInfo(widgets: WidgetItem[], settingsOverrides: Partial<Settings> = {}, terminalWidth = 200) {
+        const settings = createSettings(settingsOverrides);
+        const context: RenderContext = { isPreview: false, terminalWidth };
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        return renderStatusLineWithInfo(widgets, settings, context, preRenderedLines[0] ?? [], preCalculatedMaxWidths);
+    }
+
     const widgets: WidgetItem[] = [
         { id: 'a', type: 'custom-text', customText: 'model', color: 'hex:A89278' },
         { id: 'b', type: 'custom-text', customText: ' branch', color: 'hex:A89278' }
@@ -308,5 +318,14 @@ describe('renderStatusLine with a gradient override', () => {
         expect(getVisibleWidth(truncated)).toBeLessThan(getVisibleWidth(full));
         // and the gradient's trailing reset survived
         expect(truncated.endsWith('\x1b[39m')).toBe(true);
+    });
+
+    it('reports truncation after the gradient colors the ellipsis', () => {
+        const gradient = 'gradient:hex:dbbb6f,hex:c4808a,hex:9070d0,hex:b8cad4,hex:4a8a5e';
+        const result = renderLineWithInfo(widgets, { overrideForegroundColor: gradient }, 9);
+
+        expect(result.wasTruncated).toBe(true);
+        expect(result.line.includes('...')).toBe(false);
+        expect(getVisibleText(result.line)).toContain('...');
     });
 });

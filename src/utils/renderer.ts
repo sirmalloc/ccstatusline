@@ -9,6 +9,7 @@ import type { Settings } from '../types/Settings';
 
 import {
     applyLineGradient,
+    getVisibleText,
     getVisibleWidth,
     stripSgrCodes,
     truncateStyledText
@@ -619,7 +620,7 @@ export function renderStatusLineWithInfo(
 ): RenderResult {
     const line = renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
     // Check if line contains the truncation ellipsis
-    const wasTruncated = line.includes('...');
+    const wasTruncated = getVisibleText(line).includes('...');
     return { line, wasTruncated };
 }
 
