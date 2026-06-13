@@ -31,11 +31,11 @@ describe('applyColors with a per-widget gradient foreground', () => {
         expect(countMatches(out, TRUECOLOR_CODE)).toBe(0);
     });
 
-    it('collapses to a single solid first-stop code at ansi16', () => {
+    it('emits no gradient color at ansi16', () => {
         const out = applyColors('abcd', gradient, undefined, false, 'ansi16');
-        // gradient cannot render at ansi16, so the first stop is applied once
-        expect(countMatches(out, TRUECOLOR_CODE)).toBe(1);
-        expect(out).toContain('\x1b[38;2;255;0;0m');
+        expect(out).toBe('abcd');
+        expect(countMatches(out, TRUECOLOR_CODE)).toBe(0);
+        expect(countMatches(out, ANSI256_CODE)).toBe(0);
     });
 
     it('preserves a resolvable named preset', () => {
@@ -55,6 +55,11 @@ describe('getColorAnsiCode gradient first-stop fallback (powerline / ansi16 path
 
     it('maps the first stop into the 256-color palette at ansi256', () => {
         expect(getColorAnsiCode('gradient:FF0000-0000FF', 'ansi256', false)).toBe('\x1b[38;5;196m');
+    });
+
+    it('returns empty at ansi16 so gradients do not leak higher color levels', () => {
+        expect(getColorAnsiCode('gradient:FF0000-0000FF', 'ansi16', false)).toBe('');
+        expect(getColorAnsiCode('gradient:FF0000-0000FF', 'ansi16', true)).toBe('');
     });
 
     it('returns empty for an unparseable gradient spec', () => {
