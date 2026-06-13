@@ -328,4 +328,25 @@ describe('renderStatusLine with a gradient override', () => {
         expect(result.line.includes('...')).toBe(false);
         expect(getVisibleText(result.line)).toContain('...');
     });
+
+    it('applies global foreground gradients to widget text in powerline mode', () => {
+        const gradient = 'gradient:FF0000-0000FF';
+        const powerlineWidgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', customText: 'abc' },
+            { id: 'b', type: 'custom-text', customText: 'def' }
+        ];
+        const line = renderLine(powerlineWidgets, {
+            overrideForegroundColor: gradient,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true
+            }
+        });
+        const codes = line.match(TRUECOLOR_CODE) ?? [];
+
+        expect(getVisibleText(line)).toContain('abc');
+        expect(getVisibleText(line)).toContain('def');
+        expect(codes).toHaveLength(6);
+        expect(codes[0]).not.toBe(codes[3]);
+    });
 });

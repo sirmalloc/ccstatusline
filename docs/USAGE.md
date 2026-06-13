@@ -93,7 +93,8 @@ Configure global formatting preferences that apply to all widgets:
   - Press **(m)** to toggle
 - **Override Foreground Color** - Force all widgets to use the same text color, or a whole-line **gradient** (see below)
   - Press **(f)** to cycle through colors
-  - Press **(g)** to clear override
+  - Press **(g)** to choose a gradient
+  - Press **(x)** to clear override
 - **Override Background Color** - Force all widgets to use the same background color
   - Press **(b)** to cycle through colors
   - Press **(c)** to clear override
@@ -115,9 +116,9 @@ A foreground color can be a multi-stop **gradient** instead of a solid. Colors i
 Gradients apply at **two scopes**:
 
 - **Per-widget** — set a widget's color to a gradient so its text carries its own self-contained sweep. In the color menu (foreground, 256-color or truecolor mode), press **(g)** to open the gradient picker, then choose a preset or enter custom start/end hex stops.
-- **Whole line** — set `overrideForegroundColor` to a gradient spec to paint the entire status line with one continuous sweep, each character colored by its column position. (Authored in `settings.json`; the TUI's override cycler covers solid colors only.)
+- **Whole line** — set `overrideForegroundColor` to a gradient spec to paint the entire status line with one continuous sweep, each character colored by its column position. In the Global Overrides menu, press **(g)** on Override FG Color to open the same gradient picker, or author the value directly in `settings.json`.
 
-Gradients self-degrade where they can't render: at the basic 16-color level a per-widget gradient collapses to its first stop and a whole-line gradient is skipped; in Powerline mode the whole-line gradient is ignored (separators derive their foreground from adjacent backgrounds) and per-widget gradients collapse to their first stop.
+Gradients self-degrade where they can't render: at Basic or No Color levels, gradient settings are preserved but render as plain text. In Powerline mode, global foreground gradients color widget text while separators and caps keep Powerline's normal foreground/background contrast rules; per-widget gradients collapse to their first stop when using 256-color or truecolor output.
 
 ## Claude Code Status Line Settings
 
