@@ -17,6 +17,7 @@ import {
 } from './ansi';
 import {
     applyColors,
+    applyParensDim,
     bgToFg,
     getColorAnsiCode,
     getPowerlineTheme
@@ -324,6 +325,7 @@ function renderPowerlineStatusLine(
         // Apply colors to widget content using raw ANSI codes for powerline mode
         // This avoids reset codes that interfere with separator rendering
         const shouldBold = (settings.globalBold) || widget.widget.bold;
+        const shouldDim = widget.widget.dim === true;
 
         // Check if we need a separator after this widget
         const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
@@ -335,6 +337,9 @@ function renderPowerlineStatusLine(
 
         if (shouldBold && !isPreserveColors) {
             widgetContent += '\x1b[1m';
+        }
+        if (shouldDim && !isPreserveColors) {
+            widgetContent += '\x1b[2m';
         }
         const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
             ? overrideForegroundGradientStops
@@ -357,6 +362,8 @@ function renderPowerlineStatusLine(
             );
             widgetContent += gradientResult.text;
             powerlineGradientColumn = gradientResult.nextColumn;
+        } else if (widget.widget.dim === 'parens' && !isPreserveColors) {
+            widgetContent += applyParensDim(widget.content, shouldBold);
         } else {
             widgetContent += widget.content;
         }
@@ -367,10 +374,10 @@ function renderPowerlineStatusLine(
             widgetContent += '\x1b[0m';
         } else {
             widgetContent += '\x1b[49m\x1b[39m';
-            // Only reset bold if there's no separator following AND no end cap
+            // Only reset bold/dim if there's no separator following AND no end cap
             const isLastWidget = i === widgetElements.length - 1;
             const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-            if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+            if ((shouldBold || shouldDim) && !needsSeparator && !(isLastWidget && hasEndCap)) {
                 widgetContent += '\x1b[22m';
             }
         }
@@ -461,8 +468,8 @@ function renderPowerlineStatusLine(
 
             result += separatorOutput;
 
-            // Reset bold after separator if it was set
-            if (shouldBold) {
+            // Reset bold/dim after separator if either was set
+            if (shouldBold || shouldDim) {
                 result += '\x1b[22m';
             }
         }
@@ -481,9 +488,10 @@ function renderPowerlineStatusLine(
             result += endCap;
         }
 
-        // Reset bold after end cap if needed
+        // Reset bold/dim after end cap if needed
         const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
-        if (lastWidgetBold) {
+        const lastWidgetDim = lastWidget?.widget.dim === true;
+        if (lastWidgetBold || lastWidgetDim) {
             result += '\x1b[22m';
         }
     }
@@ -675,8 +683,8 @@ export function renderStatusLine(
             preCalculatedMaxWidths
         );
 
-    // Helper to apply colors with optional background and bold override
-    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
+    // Helper to apply colors with optional background, bold, and dim
+    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground
         // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
         // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
@@ -699,7 +707,7 @@ export function renderStatusLine(
         }
 
         const shouldBold = (settings.globalBold) || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel);
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
     };
 
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
@@ -744,6 +752,7 @@ export function renderStatusLine(
             let separatorColor = widget.color ?? 'gray';
             let separatorBg = widget.backgroundColor;
             let separatorBold = widget.bold;
+            let separatorDim = widget.dim;
 
             if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
@@ -758,10 +767,11 @@ export function renderStatusLine(
                     separatorColor = widgetColor;
                     separatorBg = prevWidget.backgroundColor;
                     separatorBold = prevWidget.bold;
+                    separatorDim = prevWidget.dim;
                 }
             }
 
-            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold), type: 'separator', widget });
+            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold, separatorDim), type: 'separator', widget });
             continue;
         }
 
@@ -803,7 +813,7 @@ export function renderStatusLine(
                 } else {
                     // Normal widget rendering with colors
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
                         type: widget.type,
                         widget
                     });
@@ -848,7 +858,7 @@ export function renderStatusLine(
                         const widgetImpl = getWidget(prevElem.widget.type);
                         widgetColor = widgetImpl ? widgetImpl.getDefaultColor() : 'white';
                     }
-                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
+                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold, prevElem.widget.dim);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);

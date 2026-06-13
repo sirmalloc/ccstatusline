@@ -128,15 +128,25 @@ export function getChalkColor(colorName: string | undefined, colorLevel: 'ansi16
     }
 }
 
+// Dim each (...) span within the text. \x1b[22m clears bold along with dim,
+// so bold is re-asserted after each span when the surrounding text is bold.
+export function applyParensDim(text: string, bold?: boolean): string {
+    const restoreBold = bold ? '\x1b[1m' : '';
+    return text.replace(/\([^()]*\)/g, span => `\x1b[2m${span}\x1b[22m${restoreBold}`);
+}
+
 export function applyColors(
     text: string,
     foregroundColor?: string,
     backgroundColor?: string,
     bold?: boolean,
-    colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16'
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16',
+    dim?: boolean | 'parens'
 ): string {
-    if (!foregroundColor && !backgroundColor && !bold) {
-        return text;
+    const styledText = dim === 'parens' ? applyParensDim(text, bold) : text;
+
+    if (!foregroundColor && !backgroundColor && !bold && dim !== true) {
+        return styledText;
     }
 
     // Use raw ANSI codes for precise reset sequencing.
@@ -144,9 +154,15 @@ export function applyColors(
     let prefix = '';
     let suffix = '';
 
-    // Apply bold first so it can be reset independently before color resets.
+    // Apply bold/dim first so they can be reset independently before color
+    // resets. A single \x1b[22m clears both attributes.
     if (bold) {
         prefix += '\x1b[1m';
+    }
+    if (dim === true) {
+        prefix += '\x1b[2m';
+    }
+    if (bold || dim === true) {
         suffix = '\x1b[22m' + suffix;
     }
 
@@ -178,7 +194,7 @@ export function applyColors(
         }
     }
 
-    return prefix + text + suffix;
+    return prefix + styledText + suffix;
 }
 
 // Get raw ANSI codes for a color without the reset codes
