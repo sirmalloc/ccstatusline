@@ -57,6 +57,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'tokens-output', create: () => new widgets.TokensOutputWidget() },
     { type: 'tokens-cached', create: () => new widgets.TokensCachedWidget() },
     { type: 'tokens-total', create: () => new widgets.TokensTotalWidget() },
+    { type: 'tokens-session-total', create: () => new widgets.SessionTotalTokensWidget() },
     { type: 'input-speed', create: () => new widgets.InputSpeedWidget() },
     { type: 'output-speed', create: () => new widgets.OutputSpeedWidget() },
     { type: 'total-speed', create: () => new widgets.TotalSpeedWidget() },
