@@ -51,7 +51,6 @@ bun run docs
 - `~/.config/ccstatusline/settings.json` - ccstatusline UI/render settings
 - `~/.claude/settings.json` - Claude Code settings (`statusLine` command object)
 - `~/.cache/ccstatusline/block-cache-*.json` - block timer cache (keyed by Claude config directory hash)
-- `~/.cache/ccstatusline/compaction/compaction-*.json` - per-session compaction counter state
 - `~/.cache/ccstatusline/git-cache/git-*.json` - persistent git widget command cache
 - `~/.cache/ccstatusline/git-review/git-review-*.json` - cached Git PR/MR lookup results
 - `~/.cache/ccstatusline/usage.json` and `~/.cache/ccstatusline/usage.lock` - usage API data cache and fetch backoff lock
