@@ -208,6 +208,13 @@ describe('CompactionCounterWidget', () => {
             })).toBe('↻ 2');
         });
 
+        it('appends tokens reclaimed to non-default formats too', () => {
+            expect(render({
+                compactionData: { count: 3, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { format: 'number', showReclaimed: 'true' } }
+            })).toBe('3 ↓887.0k');
+        });
+
         it('stacks trigger split and tokens reclaimed', () => {
             expect(render({
                 compactionData: { count: 3, byTrigger: { auto: 2, manual: 1, unknown: 0 }, tokensReclaimed: 887000 },
