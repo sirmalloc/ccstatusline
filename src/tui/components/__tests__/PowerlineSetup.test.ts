@@ -179,6 +179,56 @@ describe('PowerlineSetup helpers', () => {
             stderr.destroy();
         }
     });
+
+    it('warns when a global foreground override is active', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>();
+        const onBack = vi.fn();
+        const onInstallFonts = vi.fn();
+        const onClearMessage = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineSetup, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    overrideForegroundColor: 'gradient:atlas',
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true
+                    }
+                },
+                powerlineFontStatus: { installed: true },
+                onUpdate,
+                onBack,
+                onInstallFonts,
+                installingFonts: false,
+                fontInstallMessage: null,
+                onClearMessage
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+
+            expect(stdout.getOutput()).toContain('Powerline Setup');
+            expect(stdout.getOutput()).toContain('⚠ Global override for FG active');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
 
 describe('PowerlineSeparatorEditor', () => {

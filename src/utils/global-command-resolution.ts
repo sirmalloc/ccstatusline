@@ -1,7 +1,10 @@
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 
-import { getPackageManagerExecutable } from './package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from './package-manager-executable';
 
 export type GlobalPackageManager = 'npm' | 'bun';
 
@@ -49,8 +52,16 @@ export function getCommandResolutionPaths(
 ): string[] {
     try {
         const output = platform === 'win32'
-            ? execFileSync('where', [command], { encoding: 'utf-8', timeout: COMMAND_LOOKUP_TIMEOUT_MS })
-            : execFileSync('which', ['-a', command], { encoding: 'utf-8', timeout: COMMAND_LOOKUP_TIMEOUT_MS });
+            ? execFileSync('where', [command], {
+                encoding: 'utf-8',
+                timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+                windowsHide: true
+            })
+            : execFileSync('which', ['-a', command], {
+                encoding: 'utf-8',
+                timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+                windowsHide: true
+            });
 
         return splitCommandOutput(output);
     } catch {
@@ -60,9 +71,12 @@ export function getCommandResolutionPaths(
 
 function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
     try {
-        const prefix = execFileSync(getPackageManagerExecutable('npm', platform), ['prefix', '-g'], {
+        const executable = getPackageManagerExecutable('npm', platform);
+        const prefix = execFileSync(executable, ['prefix', '-g'], {
             encoding: 'utf-8',
-            timeout: COMMAND_LOOKUP_TIMEOUT_MS
+            timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+            windowsHide: true,
+            ...getPackageManagerShellOptions(executable, platform)
         }).trim();
 
         if (!prefix) {
@@ -81,7 +95,8 @@ function getBunGlobalBinDir(): string | null {
     try {
         const binDir = execFileSync('bun', ['pm', 'bin', '-g'], {
             encoding: 'utf-8',
-            timeout: COMMAND_LOOKUP_TIMEOUT_MS
+            timeout: COMMAND_LOOKUP_TIMEOUT_MS,
+            windowsHide: true
         }).trim();
 
         return binDir || null;

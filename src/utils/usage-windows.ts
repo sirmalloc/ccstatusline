@@ -114,21 +114,36 @@ function pad(value: number): string {
     return value.toString().padStart(2, '0');
 }
 
-function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean): string {
+const UTC_WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean, weekday = false): string {
     const year = date.getUTCFullYear();
     const month = pad(date.getUTCMonth() + 1);
     const day = pad(date.getUTCDate());
     const hours = pad(date.getUTCHours());
     const minutes = pad(date.getUTCMinutes());
+    const weekdayName = weekday ? UTC_WEEKDAY_NAMES[date.getUTCDay()] : '';
 
     if (hour12) {
         const hour = date.getUTCHours();
         const displayHour = (hour % 12) || 12;
         const period = hour >= 12 ? 'PM' : 'AM';
 
+        if (weekday) {
+            return compact
+                ? `${weekdayName} ${displayHour}:${minutes} ${period}Z`
+                : `${weekdayName} ${displayHour}:${minutes} ${period} UTC`;
+        }
+
         return compact
             ? `${month}-${day} ${displayHour}:${minutes} ${period}Z`
             : `${year}-${month}-${day} ${displayHour}:${minutes} ${period} UTC`;
+    }
+
+    if (weekday) {
+        return compact
+            ? `${weekdayName} ${hours}:${minutes}Z`
+            : `${weekdayName} ${hours}:${minutes} UTC`;
     }
 
     return compact
@@ -147,29 +162,58 @@ function formatResetAtInTimezone(
     compact: boolean,
     timezone: string | undefined,
     locale: string,
-    hour12: boolean
+    hour12: boolean,
+    weekday = false
 ): string | null {
     try {
-        const formatter = new Intl.DateTimeFormat(locale, {
+        const options: Intl.DateTimeFormatOptions = {
             timeZone: timezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
             hour: '2-digit',
             minute: '2-digit',
             hour12,
             timeZoneName: 'short'
-        });
+        };
+
+        if (weekday) {
+            options.weekday = 'short';
+        } else {
+            options.year = 'numeric';
+            options.month = '2-digit';
+            options.day = '2-digit';
+        }
+
+        const formatter = new Intl.DateTimeFormat(locale, options);
         const parts = formatter.formatToParts(date);
         const get = (type: string): string => parts.find(p => p.type === type)?.value ?? '';
 
-        const year = get('year');
-        const month = get('month');
-        const day = get('day');
         const hour = get('hour');
         const minute = get('minute');
         const dayPeriod = get('dayPeriod');
         const tzName = get('timeZoneName');
+
+        if (weekday) {
+            const weekdayName = get('weekday');
+            if (!weekdayName || !hour || !minute) {
+                return null;
+            }
+
+            if (hour12) {
+                const displayHour = hour.startsWith('0') ? hour.slice(1) : hour;
+                const normalizedDayPeriod = dayPeriod ? normalizeDayPeriod(dayPeriod) : '';
+                const time = `${displayHour}:${minute}${normalizedDayPeriod ? ` ${normalizedDayPeriod}` : ''}`;
+                return compact
+                    ? `${weekdayName} ${time}`
+                    : `${weekdayName} ${time} ${tzName}`;
+            }
+
+            return compact
+                ? `${weekdayName} ${hour}:${minute}`
+                : `${weekdayName} ${hour}:${minute} ${tzName}`;
+        }
+
+        const year = get('year');
+        const month = get('month');
+        const day = get('day');
 
         if (!year || !month || !day || !hour || !minute) {
             return null;
@@ -197,7 +241,8 @@ export function formatUsageResetAt(
     compact = false,
     timezone?: string,
     localeOrHour12?: string | boolean,
-    hour12Arg = false
+    hour12Arg = false,
+    weekday = false
 ): string | null {
     if (!resetAt) {
         return null;
@@ -213,24 +258,24 @@ export function formatUsageResetAt(
     const hour12 = typeof localeOrHour12 === 'boolean' ? localeOrHour12 : hour12Arg;
 
     if (!timezone || timezone === 'UTC') {
-        return formatResetAtUtc(date, compact, hour12);
+        return formatResetAtUtc(date, compact, hour12, weekday);
     }
 
     const resolvedTimezone = timezone === 'local' ? undefined : timezone;
     const resolvedLocale = locale && locale.length > 0 ? locale : DEFAULT_TZ_LOCALE;
-    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone, resolvedLocale, hour12);
+    const localized = formatResetAtInTimezone(date, compact, resolvedTimezone, resolvedLocale, hour12, weekday);
     if (localized) {
         return localized;
     }
 
     if (resolvedLocale !== DEFAULT_TZ_LOCALE) {
-        const fallback = formatResetAtInTimezone(date, compact, resolvedTimezone, DEFAULT_TZ_LOCALE, hour12);
+        const fallback = formatResetAtInTimezone(date, compact, resolvedTimezone, DEFAULT_TZ_LOCALE, hour12, weekday);
         if (fallback) {
             return fallback;
         }
     }
 
-    return formatResetAtUtc(date, compact, hour12);
+    return formatResetAtUtc(date, compact, hour12, weekday);
 }
 
 export function getUsageErrorMessage(error: UsageError): string {

@@ -27,8 +27,14 @@ type UsageDataField = Exclude<keyof UsageData, 'error'>;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
+const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
+    'extraUsageLimit',
+    'extraUsageUsed',
+    'extraUsageUtilization'
+]);
+
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
-const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited']);
+const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
     blockedUntil: z.number(),
     error: UsageLockErrorSchema.optional()
@@ -50,29 +56,29 @@ const CachedUsageDataSchema = z.object({
     error: z.string().nullable().optional()
 });
 
-const PerModelWeeklyBucketSchema = z.object({
+const UsageApiBucketSchema = z.looseObject({
     utilization: z.number().nullable().optional(),
     resets_at: z.string().nullable().optional()
 }).nullable().optional();
 
-const UsageApiResponseSchema = z.object({
-    five_hour: z.object({
-        utilization: z.number().nullable().optional(),
-        resets_at: z.string().nullable().optional()
-    }).optional(),
-    seven_day: z.object({
-        utilization: z.number().nullable().optional(),
-        resets_at: z.string().nullable().optional()
-    }).optional(),
-    seven_day_sonnet: PerModelWeeklyBucketSchema,
-    seven_day_opus: PerModelWeeklyBucketSchema,
-    extra_usage: z.object({
+type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
+
+const UsageApiResponseSchema = z.looseObject({
+    five_hour: UsageApiBucketSchema,
+    seven_day: UsageApiBucketSchema,
+    seven_day_sonnet: UsageApiBucketSchema,
+    seven_day_opus: UsageApiBucketSchema,
+    extra_usage: z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
         used_credits: z.number().nullable().optional(),
         utilization: z.number().nullable().optional()
-    }).optional()
+    }).nullable().optional()
 });
+
+function getUsageApiBucketUtilization(bucket: UsageApiBucket): number | undefined {
+    return bucket === null ? 0 : bucket?.utilization ?? undefined;
+}
 
 function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
     try {
@@ -120,13 +126,13 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
     }
 
     return {
-        sessionUsage: parsed.five_hour?.utilization ?? undefined,
+        sessionUsage: getUsageApiBucketUtilization(parsed.five_hour),
         sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
-        weeklyUsage: parsed.seven_day?.utilization ?? undefined,
+        weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day),
         weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
-        weeklySonnetUsage: parsed.seven_day_sonnet === null ? 0 : parsed.seven_day_sonnet?.utilization ?? undefined,
+        weeklySonnetUsage: getUsageApiBucketUtilization(parsed.seven_day_sonnet),
         weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
-        weeklyOpusUsage: parsed.seven_day_opus === null ? 0 : parsed.seven_day_opus?.utilization ?? undefined,
+        weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
         weeklyOpusResetAt: parsed.seven_day_opus?.resets_at ?? undefined,
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
@@ -170,8 +176,16 @@ function cacheUsageData(data: UsageData, now: number): UsageData {
     return data;
 }
 
+function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean {
+    if (data[field] !== undefined) {
+        return true;
+    }
+
+    return data.extraUsageEnabled === false && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+}
+
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
-    return requiredFields.every(field => data[field] !== undefined);
+    return requiredFields.every(field => hasRequiredUsageField(data, field));
 }
 
 function getStaleUsageOrError(
@@ -184,6 +198,7 @@ function getStaleUsageOrError(
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
+
     return setCachedUsageError(error, now, errorCacheMaxAge);
 }
 
@@ -281,7 +296,7 @@ function readMacKeychainSecret(service: string): string | null {
         return execFileSync(
             'security',
             ['find-generic-password', '-s', service, '-w'],
-            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
         ).trim();
     } catch {
         return null;
@@ -301,7 +316,8 @@ function listMacKeychainCredentialCandidates(): string[] {
             {
                 encoding: 'utf8',
                 maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
-                stdio: ['pipe', 'pipe', 'ignore']
+                stdio: ['pipe', 'pipe', 'ignore'],
+                windowsHide: true
             }
         );
 
@@ -569,11 +585,13 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
+            writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
             return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
+            writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
             return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
         }
 
@@ -587,6 +605,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         return cacheUsageData(usageData, now);
     } catch {
+        writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
         return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
     }
 }

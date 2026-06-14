@@ -59,6 +59,7 @@ describe('JjChangesWidget', () => {
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true,
             cwd: '/tmp/repo'
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
@@ -66,6 +67,7 @@ describe('JjChangesWidget', () => {
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true,
             cwd: '/tmp/repo'
         });
     });

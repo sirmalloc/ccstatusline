@@ -33,6 +33,20 @@ export function getPackageVersion(): string {
 }
 
 function probeTerminalWidth(): number | null {
+    // Explicit override. Useful when ccstatusline is spawned in a context where
+    // no ancestor process owns a TTY at all — e.g. some Claude Code >= 2.1.139
+    // spawn paths, IDE integrations, or nested-shell scenarios where both the
+    // ancestor-walk probe and `tput cols` return nothing usable. Users can set
+    // CCSTATUSLINE_WIDTH on the statusLine command (e.g.
+    // `CCSTATUSLINE_WIDTH=200 ccstatusline ...`) to bypass probing entirely.
+    const overrideRaw = process.env.CCSTATUSLINE_WIDTH;
+    if (overrideRaw) {
+        const override = parsePositiveInteger(overrideRaw);
+        if (override !== null) {
+            return override;
+        }
+    }
+
     // Preserve historical behavior on Windows: width detection is unavailable.
     // This avoids Unix fallback command behavior (e.g. 2>/dev/null) on Windows.
     if (process.platform === 'win32') {
@@ -66,7 +80,8 @@ function probeTerminalWidth(): number | null {
     try {
         const width = execSync('tput cols 2>/dev/null', {
             encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
+            stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true
         }).trim();
 
         return parsePositiveInteger(width);
@@ -91,7 +106,8 @@ function getParentProcessId(pid: number): number | null {
         const parentPidOutput = execSync(`ps -o ppid= -p ${pid}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
+            shell: '/bin/sh',
+            windowsHide: true
         }).trim();
 
         return parsePositiveInteger(parentPidOutput);
@@ -105,7 +121,8 @@ function getTTYForProcess(pid: number): string | null {
         const tty = execSync(`ps -o tty= -p ${pid}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
+            shell: '/bin/sh',
+            windowsHide: true
         }).replace(/\s+/g, '');
 
         if (!tty || tty === '??' || tty === '?') {
@@ -119,20 +136,36 @@ function getTTYForProcess(pid: number): string | null {
 }
 
 function getWidthForTTY(tty: string): number | null {
-    try {
-        const width = execSync(
-            `stty size < /dev/${tty} | awk '{print $2}'`,
-            {
+    // The shell-redirect form (`stty size < /dev/${tty}`) fails with ENOTTY
+    // when the calling process has no controlling terminal — the case under
+    // Claude Code >= 2.1.139, which spawns statusline/hooks without terminal
+    // access. `stty -F` / `-f` ask stty to open the device itself (with
+    // O_NOCTTY semantics) and succeed regardless of controlling-tty status.
+    const devicePath = `/dev/${tty}`;
+    const attempts = [
+        `stty -F ${devicePath} size`,   // GNU coreutils (Linux)
+        `stty -f ${devicePath} size`,   // BSD stty (macOS, *BSD)
+        `stty size < ${devicePath}`     // legacy fallback
+    ];
+
+    for (const cmd of attempts) {
+        try {
+            const width = execSync(`${cmd} 2>/dev/null | awk '{print $2}'`, {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
-                shell: '/bin/sh'
+                shell: '/bin/sh',
+                windowsHide: true
+            }).trim();
+            const parsed = parsePositiveInteger(width);
+            if (parsed !== null) {
+                return parsed;
             }
-        ).trim();
-
-        return parsePositiveInteger(width);
-    } catch {
-        return null;
+        } catch {
+            // try next strategy
+        }
     }
+
+    return null;
 }
 
 // Get terminal width

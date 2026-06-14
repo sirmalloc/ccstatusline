@@ -233,7 +233,7 @@ export async function isInstalled(): Promise<boolean> {
 function isExecutableAvailable(executable: string): boolean {
     try {
         const command = process.platform === 'win32' ? `where ${executable}` : `which ${executable}`;
-        execSync(command, { stdio: 'ignore' });
+        execSync(command, { stdio: 'ignore', windowsHide: true });
         return true;
     } catch {
         return false;
@@ -267,7 +267,12 @@ export function getPackageCommandAvailability(): PackageCommandAvailability {
 
 export function getClaudeCodeVersion(): string | null {
     try {
-        const output = execSync('claude --version', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        const output = execSync('claude --version', {
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5000,
+            windowsHide: true
+        }).trim();
         // Output is like "2.1.97 (Claude Code)" — extract the version number
         const match = /^(\d+\.\d+\.\d+)/.exec(output);
         return match?.[1] ?? null;
@@ -576,4 +581,73 @@ export function getVoiceConfig(cwd: string = process.cwd()): { enabled: boolean 
         }
     }
     return anyFileExisted ? { enabled: false } : null;
+}
+
+const RemoteSessionFileSchema = z.object({
+    sessionId: z.string().optional(),
+    bridgeSessionId: z.string().nullable().optional()
+});
+
+/**
+ * Reads the per-PID session manifests Claude Code writes to `<config>/sessions/<pid>.json`
+ * and returns whether the session matching `sessionId` currently has a remote-control
+ * bridge attached.
+ *
+ * Claude Code writes one file per running interactive session. The `bridgeSessionId`
+ * field is populated when remote control (e.g. the mobile/web bridge) is connected
+ * for that session. Matching by `sessionId` ensures the result reflects the *current*
+ * session rather than any other concurrent Claude Code process.
+ *
+ * Claude Code's observed behavior on disconnect: the field is set to `null` (not removed)
+ * and the file is rewritten within ~1s, so the on-disconnect transition is reflected
+ * promptly at the next status-line refresh.
+ *
+ * - Returns `null` when the sessions directory is missing or no manifest matches —
+ *   widgets should hide themselves in that case rather than render a misleading "off".
+ * - Returns `{ enabled: false }` when the manifest exists but `bridgeSessionId` is
+ *   missing, `null`, or empty (disconnected).
+ * - Returns `{ enabled: true }` when a non-empty `bridgeSessionId` is set.
+ */
+export function getRemoteControlStatus(sessionId: string | undefined): { enabled: boolean } | null {
+    if (!sessionId) {
+        return null;
+    }
+
+    const sessionsDir = path.join(getClaudeConfigDir(), 'sessions');
+    let entries: string[];
+    try {
+        entries = fs.readdirSync(sessionsDir);
+    } catch {
+        return null;
+    }
+
+    for (const entry of entries) {
+        if (!entry.endsWith('.json')) {
+            continue;
+        }
+
+        let content: string;
+        try {
+            content = fs.readFileSync(path.join(sessionsDir, entry), 'utf-8');
+        } catch {
+            continue;
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(content);
+        } catch {
+            continue;
+        }
+
+        const result = RemoteSessionFileSchema.safeParse(parsed);
+        if (!result.success || result.data.sessionId !== sessionId) {
+            continue;
+        }
+
+        const bridge = result.data.bridgeSessionId;
+        return { enabled: typeof bridge === 'string' && bridge.length > 0 };
+    }
+
+    return null;
 }

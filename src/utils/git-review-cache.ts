@@ -63,7 +63,8 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         }).trim();
     } catch {
         return '';
@@ -71,7 +72,7 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
 }
 
 function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const branch = runGitForCache(['branch', '--show-current'], cwd, deps);
+    const branch = runGitForCache(['symbolic-ref', '--short', 'HEAD'], cwd, deps);
     return branch.length > 0 ? branch : null;
 }
 
@@ -139,26 +140,73 @@ function getOriginUrl(cwd: string, deps: GitReviewCacheDeps): string | null {
     return url.length > 0 ? url : null;
 }
 
+function isSshRemoteUrl(url: string): boolean {
+    const trimmed = url.trim().toLowerCase();
+    return trimmed.startsWith('ssh://') || !trimmed.includes('://');
+}
+
+function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
+    try {
+        const output = deps.execFileSync('ssh', ['-G', host], {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
+        }).trim();
+
+        for (const line of output.split(/\r?\n/)) {
+            const match = /^hostname\s+(.+)$/i.exec(line.trim());
+            if (match?.[1]) {
+                return match[1].toLowerCase();
+            }
+        }
+    } catch {
+        // Leave the parsed remote host unchanged when ssh is unavailable or
+        // cannot resolve the alias.
+    }
+
+    return host.toLowerCase();
+}
+
+function getNamedForgeProvider(host: string): GitReviewProvider | null {
+    if (host.includes('github')) {
+        return 'gh';
+    }
+    if (host.includes('gitlab')) {
+        return 'glab';
+    }
+    return null;
+}
+
+function getEffectiveRemoteHost(url: string, host: string, deps: GitReviewCacheDeps): string {
+    const normalizedHost = host.toLowerCase();
+    if (!isSshRemoteUrl(url) || getNamedForgeProvider(normalizedHost)) {
+        return normalizedHost;
+    }
+
+    return resolveSshHostAlias(normalizedHost, deps);
+}
+
 function getOriginHost(cwd: string, deps: GitReviewCacheDeps): string | null {
     const url = getOriginUrl(cwd, deps);
     if (!url) {
         return null;
     }
     const parsed = parseRemoteUrl(url);
-    return parsed ? parsed.host.toLowerCase() : null;
+    return parsed ? getEffectiveRemoteHost(url, parsed.host, deps) : null;
 }
 
-function toHttpsRepoRef(url: string): string | null {
+function toHttpsRepoRef(url: string, deps: GitReviewCacheDeps): string | null {
     const parsed = parseRemoteUrl(url);
     if (!parsed) {
         return null;
     }
-    return `https://${parsed.host}/${parsed.owner}/${parsed.repo}`;
+    return `https://${getEffectiveRemoteHost(url, parsed.host, deps)}/${parsed.owner}/${parsed.repo}`;
 }
 
 function getOriginRepoRef(cwd: string, deps: GitReviewCacheDeps): string | null {
     const url = getOriginUrl(cwd, deps);
-    return url ? toHttpsRepoRef(url) : null;
+    return url ? toHttpsRepoRef(url, deps) : null;
 }
 
 // Self-hosted hosts that name neither forge are resolved by probing each CLI's
@@ -168,11 +216,9 @@ function getProviderCandidates(cwd: string, deps: GitReviewCacheDeps): GitReview
     if (!host) {
         return ['gh', 'glab'];
     }
-    if (host.includes('github')) {
-        return ['gh'];
-    }
-    if (host.includes('gitlab')) {
-        return ['glab'];
+    const namedForgeProvider = getNamedForgeProvider(host);
+    if (namedForgeProvider) {
+        return [namedForgeProvider];
     }
     const authed: GitReviewProvider[] = [];
     if (isCliAuthedForHost('glab', host, deps)) {
@@ -188,7 +234,8 @@ function isCliAvailable(cli: GitReviewProvider, deps: GitReviewCacheDeps): boole
     try {
         deps.execFileSync(cli, ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         });
         return true;
     } catch {
@@ -200,7 +247,8 @@ function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitRevie
     try {
         deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
             stdio: ['pipe', 'pipe', 'ignore'],
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         });
         return true;
     } catch {
@@ -239,7 +287,8 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         }
     ).trim();
 
@@ -280,7 +329,8 @@ function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCache
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT
+            timeout: CLI_TIMEOUT,
+            windowsHide: true
         }
     ).trim();
 

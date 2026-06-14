@@ -139,7 +139,7 @@ describe('global package manager inspection', () => {
     });
 
     it('uses npm.cmd for Windows npm version lookup', () => {
-        mockExecFileSync({
+        const execFileSyncSpy = mockExecFileSync({
             'where ccstatusline': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.cmd\r\n',
             'npm.cmd prefix -g': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\r\n',
             'npm.cmd root -g': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\\node_modules\r\n'
@@ -171,6 +171,11 @@ describe('global package manager inspection', () => {
             version: '2.2.13',
             warning: null
         });
+        expect(execFileSyncSpy).toHaveBeenCalledWith(
+            'npm.cmd',
+            ['root', '-g'],
+            expect.objectContaining({ shell: true })
+        );
     });
 
     it('uses npm.cmd for Windows npm uninstalls', async () => {
@@ -184,5 +189,6 @@ describe('global package manager inspection', () => {
 
         expect(execFileSpy.mock.calls[0]?.[0]).toBe('npm.cmd');
         expect(execFileSpy.mock.calls[0]?.[1]).toEqual(['uninstall', '-g', 'ccstatusline']);
+        expect(execFileSpy.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ shell: true }));
     });
 });

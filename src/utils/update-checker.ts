@@ -12,7 +12,10 @@ import {
     classifyInstallation,
     type PackageCommandAvailability
 } from './claude-settings';
-import { getPackageManagerExecutable } from './package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from './package-manager-executable';
 
 export const NPM_REGISTRY_LATEST_URL = 'https://registry.npmjs.org/ccstatusline/latest';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5000;
@@ -301,14 +304,23 @@ export function runGlobalPackageInstall(
         : ['add', '-g', `ccstatusline@${version}`];
 
     return new Promise((resolve, reject) => {
-        execFile(executable, args, { timeout: GLOBAL_UPDATE_TIMEOUT_MS }, (error) => {
-            if (error) {
-                reject(error instanceof Error ? error : new Error('Global update command failed'));
-                return;
-            }
+        execFile(
+            executable,
+            args,
+            {
+                timeout: GLOBAL_UPDATE_TIMEOUT_MS,
+                windowsHide: true,
+                ...getPackageManagerShellOptions(executable, platform)
+            },
+            (error) => {
+                if (error) {
+                    reject(error instanceof Error ? error : new Error('Global update command failed'));
+                    return;
+                }
 
-            resolve();
-        });
+                resolve();
+            }
+        );
     });
 }
 

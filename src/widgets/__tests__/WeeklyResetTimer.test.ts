@@ -160,7 +160,7 @@ describe('WeeklyResetTimerWidget', () => {
             { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { absolute: 'true', timezone: 'Asia/Tokyo', locale: 'ja-JP', hour12: 'true' } },
             { usageData: { weeklyResetAt: '2026-03-15T08:30:00.000Z' } }
         )).toBe('Weekly Reset: 2026-03-15 08:30 UTC');
-        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true);
+        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', 'ja-JP', true, false);
     });
 
     it('shows configured timestamp settings in editor display only in timestamp mode', () => {
@@ -209,6 +209,67 @@ describe('WeeklyResetTimerWidget', () => {
         expect(cleared?.metadata?.hour12).toBe('false');
     });
 
+    it('toggles weekday metadata', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const baseItem: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true' }
+        };
+
+        const withWeekday = widget.handleEditorAction('toggle-weekday', baseItem);
+        const cleared = widget.handleEditorAction('toggle-weekday', withWeekday ?? baseItem);
+
+        expect(withWeekday?.metadata?.weekday).toBe('true');
+        expect(cleared?.metadata?.weekday).toBe('false');
+    });
+
+    it('shows weekday modifier text when weekday is enabled in date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true', weekday: 'true' }
+        }).modifierText).toBe('(date, weekday)');
+        expect(widget.getEditorDisplay({
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true', hour12: 'true', weekday: 'true' }
+        }).modifierText).toBe('(date, 12hr, weekday)');
+    });
+
+    it('renders weekday format in preview date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockFormatUsageResetAt.mockReturnValue('Sun 08:30 UTC');
+
+        expect(render(widget, {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { absolute: 'true', weekday: 'true' }
+        }, { isPreview: true })).toBe('Weekly Reset: Sun 08:30 UTC');
+    });
+
+    it('renders weekday format in live date mode', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 171900000,
+            remainingMs: 432900000,
+            elapsedPercent: 28.4216269841,
+            remainingPercent: 71.5783730159
+        });
+        mockFormatUsageResetAt.mockReturnValue('Sun 5:30 PM GMT+9');
+
+        expect(render(widget,
+            { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { absolute: 'true', weekday: 'true', hour12: 'true', timezone: 'Asia/Tokyo' } },
+            { usageData: { weeklyResetAt: '2026-03-15T08:30:00.000Z' } }
+        )).toBe('Weekly Reset: Sun 5:30 PM GMT+9');
+        expect(mockFormatUsageResetAt).toHaveBeenCalledWith('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', undefined, true, true);
+    });
+
     it('clears compact and hours-only metadata when cycling into progress mode', () => {
         const widget = new WeeklyResetTimerWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
@@ -253,6 +314,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 't', label: '(t)imestamp', action: 'toggle-date' },
             { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' },
+            { key: 'w', label: '(w)eekday', action: 'toggle-weekday' },
             { key: 'z', label: 'time(z)one', action: 'edit-timezone' },
             { key: 'l', label: '(l)ocale', action: 'edit-locale' }
         ]);

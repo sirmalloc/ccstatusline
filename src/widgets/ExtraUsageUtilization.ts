@@ -6,11 +6,14 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import {
-    getUsageErrorMessage,
-    resolveWeeklyOpusUsageWindow
-} from '../utils/usage';
+import { getUsageErrorMessage } from '../utils/usage';
 
+import {
+    appendHideDisabledModifier,
+    getHideExtraUsageDisabledKeybind,
+    handleToggleExtraUsageDisabledAction,
+    isHideExtraUsageDisabledEnabled
+} from './shared/extra-usage-disabled';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
@@ -19,31 +22,32 @@ import {
     getUsageDisplayModifierText,
     getUsagePercentCustomKeybinds,
     getUsageProgressBarWidth,
-    isUsageCursorEnabled,
     isUsageInverted,
     isUsageProgressMode,
     isUsageSliderMode,
     makeSliderBar,
-    toggleUsageCursor,
     toggleUsageInverted
 } from './shared/usage-display';
 
-const LABEL = 'Weekly Opus: ';
-
-export class WeeklyOpusUsageWidget implements Widget {
-    getDefaultColor(): string { return 'brightBlue'; }
-    getDescription(): string { return 'Shows weekly Opus API usage percentage'; }
-    getDisplayName(): string { return 'Weekly Opus Usage'; }
+export class ExtraUsageUtilizationWidget implements Widget {
+    getDefaultColor(): string { return 'green'; }
+    getDescription(): string { return 'Shows extra usage (pay-as-you-go) utilization percentage'; }
+    getDisplayName(): string { return 'Extra Usage Utilization'; }
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item)
+            modifierText: appendHideDisabledModifier(getUsageDisplayModifierText(item), item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        const hideDisabledItem = handleToggleExtraUsageDisabledAction(action, item);
+        if (hideDisabledItem) {
+            return hideDisabledItem;
+        }
+
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, [], true);
         }
@@ -52,75 +56,65 @@ export class WeeklyOpusUsageWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
-        if (action === 'toggle-cursor') {
-            return toggleUsageCursor(item);
-        }
-
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
-        const showCursor = isUsageCursorEnabled(item);
 
         if (context.isPreview) {
-            const previewPercent = 4;
+            const previewPercent = 2.6;
             const renderedPercent = inverted ? 100 - previewPercent : previewPercent;
 
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
-                const progressBar = makeTimerProgressBar(renderedPercent, width, showCursor ? { cursorPercent: 50 } : undefined);
-                const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
-                return formatRawOrLabeledValue(item, LABEL, progressDisplay);
+                const progressBar = makeTimerProgressBar(renderedPercent, width);
+                return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${renderedPercent.toFixed(1)}%`);
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
+                const slider = makeSliderBar(renderedPercent);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
-                return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
+                return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, LABEL, `${previewPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Overage: ', `${previewPercent.toFixed(1)}%`);
         }
 
         const data = context.usageData ?? {};
-        if (data.weeklyOpusUsage === undefined) {
+        if (data.extraUsageEnabled === false) {
+            return isHideExtraUsageDisabledEnabled(item)
+                ? null
+                : formatRawOrLabeledValue(item, 'Overage: ', 'n/a');
+        }
+        if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
             if (data.error)
                 return getUsageErrorMessage(data.error);
             return null;
         }
 
-        const percent = Math.max(0, Math.min(100, data.weeklyOpusUsage));
+        // extraUsageUtilization is already a percentage (0-100), not a fraction
+        const percent = Math.max(0, Math.min(100, data.extraUsageUtilization));
         const renderedPercent = inverted ? 100 - percent : percent;
-        const getCursorOptions = (): { cursorPercent: number } | undefined => {
-            if (!showCursor) {
-                return undefined;
-            }
-
-            const window = resolveWeeklyOpusUsageWindow(data);
-            return window ? { cursorPercent: window.elapsedPercent } : undefined;
-        };
 
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
-
-            const progressBar = makeTimerProgressBar(renderedPercent, width, getCursorOptions());
-            const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
-            return formatRawOrLabeledValue(item, LABEL, progressDisplay);
+            const progressBar = makeTimerProgressBar(renderedPercent, width);
+            return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${renderedPercent.toFixed(1)}%`);
         }
 
         if (isUsageSliderMode(displayMode)) {
-            const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
+            const slider = makeSliderBar(renderedPercent);
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
-            return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
+            return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, LABEL, `${percent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Overage: ', `${percent.toFixed(1)}%`);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return getUsagePercentCustomKeybinds(item);
+        return [...getUsagePercentCustomKeybinds(item), getHideExtraUsageDisabledKeybind()];
     }
 
     supportsRawValue(): boolean { return true; }
