@@ -1,7 +1,10 @@
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 
-import { getPackageManagerExecutable } from './package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from './package-manager-executable';
 
 export type GlobalPackageManager = 'npm' | 'bun';
 
@@ -68,10 +71,12 @@ export function getCommandResolutionPaths(
 
 function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
     try {
-        const prefix = execFileSync(getPackageManagerExecutable('npm', platform), ['prefix', '-g'], {
+        const executable = getPackageManagerExecutable('npm', platform);
+        const prefix = execFileSync(executable, ['prefix', '-g'], {
             encoding: 'utf-8',
             timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-            windowsHide: true
+            windowsHide: true,
+            ...getPackageManagerShellOptions(executable, platform)
         }).trim();
 
         if (!prefix) {

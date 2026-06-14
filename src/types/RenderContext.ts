@@ -20,6 +20,7 @@ export interface RenderUsageData {
     extraUsageLimit?: number;
     extraUsageUsed?: number;
     extraUsageUtilization?: number;
+    extraUsageCurrency?: string;
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 

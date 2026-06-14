@@ -11,15 +11,15 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
-import { ExtraUsageRemainingWidget } from '../ExtraUsageRemaining';
+import { ExtraUsageUsedWidget } from '../ExtraUsageUsed';
 
 let mockGetUsageErrorMessage: { mockReturnValue: (value: string) => void };
 
-function render(widget: ExtraUsageRemainingWidget, item: WidgetItem, context: RenderContext = {}): string | null {
+function render(widget: ExtraUsageUsedWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
-describe('ExtraUsageRemainingWidget', () => {
+describe('ExtraUsageUsedWidget', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
@@ -29,52 +29,49 @@ describe('ExtraUsageRemainingWidget', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders remaining extra usage budget', () => {
-        const widget = new ExtraUsageRemainingWidget();
+    it('renders used extra usage budget', () => {
+        const widget = new ExtraUsageUsedWidget();
         const context: RenderContext = {
             usageData: {
                 extraUsageEnabled: true,
-                extraUsageLimit: 400000,
                 extraUsageUsed: 10600
             }
         };
 
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, context)).toBe('Overage Left: $3,894.00');
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, context)).toBe('Overage Used: $106.00');
         expect(render(widget, {
             id: 'extra',
             rawValue: true,
-            type: 'extra-usage-remaining'
-        }, context)).toBe('$3,894.00');
+            type: 'extra-usage-used'
+        }, context)).toBe('$106.00');
     });
 
-    it('formats remaining budget in the currency reported by the API', () => {
-        const widget = new ExtraUsageRemainingWidget();
+    it('renders used budget without a configured monthly limit', () => {
+        const widget = new ExtraUsageUsedWidget();
 
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageUsed: 542
+            }
+        })).toBe('Overage Used: $5.42');
+    });
+
+    it('formats used budget in the currency reported by the API', () => {
+        const widget = new ExtraUsageUsedWidget();
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, {
             usageData: {
                 extraUsageCurrency: 'EUR',
                 extraUsageEnabled: true,
-                extraUsageLimit: 400000,
-                extraUsageUsed: 10600
+                extraUsageUsed: 542
             }
-        })).toBe('Overage Left: €3,894.00');
-    });
-
-    it('clamps remaining budget at zero', () => {
-        const widget = new ExtraUsageRemainingWidget();
-
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
-            usageData: {
-                extraUsageEnabled: true,
-                extraUsageLimit: 1000,
-                extraUsageUsed: 1500
-            }
-        })).toBe('Overage Left: $0.00');
+        })).toBe('Overage Used: €5.42');
     });
 
     it('exposes and toggles hide-if-disabled configuration', () => {
-        const widget = new ExtraUsageRemainingWidget();
-        const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-remaining' };
+        const widget = new ExtraUsageUsedWidget();
+        const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-used' };
 
         expect(widget.getCustomKeybinds()).toEqual([
             { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
@@ -89,54 +86,47 @@ describe('ExtraUsageRemainingWidget', () => {
         expect(shown?.metadata?.hideIfDisabled).toBe('false');
     });
 
-    it('renders available remaining budget before unrelated usage errors', () => {
-        const widget = new ExtraUsageRemainingWidget();
+    it('renders available used budget before unrelated usage errors', () => {
+        const widget = new ExtraUsageUsedWidget();
 
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, {
             usageData: {
                 error: 'timeout',
                 extraUsageEnabled: true,
-                extraUsageLimit: 400000,
                 extraUsageUsed: 10600
             }
-        })).toBe('Overage Left: $3,894.00');
+        })).toBe('Overage Used: $106.00');
     });
 
     it('shows usage errors only when required extra usage data is missing', () => {
-        const widget = new ExtraUsageRemainingWidget();
+        const widget = new ExtraUsageUsedWidget();
 
         mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
 
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
-            usageData: {
-                extraUsageEnabled: true,
-                extraUsageLimit: 400000
-            }
-        })).toBeNull();
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, { usageData: { extraUsageEnabled: true } })).toBeNull();
     });
 
     it('renders n/a when extra usage is disabled', () => {
-        const widget = new ExtraUsageRemainingWidget();
+        const widget = new ExtraUsageUsedWidget();
 
-        expect(render(widget, { id: 'extra', type: 'extra-usage-remaining' }, {
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, {
             usageData: {
                 error: 'timeout',
                 extraUsageEnabled: false,
-                extraUsageLimit: 400000,
                 extraUsageUsed: 10600
             }
-        })).toBe('Overage Left: n/a');
-        expect(render(widget, { id: 'extra', rawValue: true, type: 'extra-usage-remaining' }, { usageData: { extraUsageEnabled: false } })).toBe('n/a');
+        })).toBe('Overage Used: n/a');
+        expect(render(widget, { id: 'extra', rawValue: true, type: 'extra-usage-used' }, { usageData: { extraUsageEnabled: false } })).toBe('n/a');
     });
 
     it('hides when extra usage is disabled and hide-if-disabled is enabled', () => {
-        const widget = new ExtraUsageRemainingWidget();
+        const widget = new ExtraUsageUsedWidget();
 
         const hiddenItem: WidgetItem = {
             id: 'extra',
             metadata: { hideIfDisabled: 'true' },
-            type: 'extra-usage-remaining'
+            type: 'extra-usage-used'
         };
 
         expect(render(widget, hiddenItem, { usageData: { extraUsageEnabled: false } })).toBeNull();
