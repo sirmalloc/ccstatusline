@@ -12,9 +12,10 @@ import {
     getCacheTokens
 } from './shared/cache-metrics';
 import {
-    getCacheScopeKeybind,
-    getCacheScopeModifierText,
-    handleCacheScopeAction,
+    getCacheKeybinds,
+    getCacheModifierText,
+    handleCacheOptionsAction,
+    isCacheHideWhenEmptyEnabled,
     isCacheSessionScope
 } from './shared/cache-scope';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -25,11 +26,11 @@ export class CacheHitRateWidget implements Widget {
     getDisplayName(): string { return 'Cache Hit Rate'; }
     getCategory(): string { return 'Cache'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName(), modifierText: getCacheScopeModifierText(item) };
+        return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleCacheScopeAction(action, item);
+        return handleCacheOptionsAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -37,13 +38,18 @@ export class CacheHitRateWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Cache Hit: ', '87.0%');
         }
 
+        const hideWhenEmpty = isCacheHideWhenEmptyEnabled(item);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
-            return null;
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', 'n/a');
         }
 
         const hitRate = getCacheHitRate(tokens);
         if (hitRate === null) {
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', '0.0%');
+        }
+
+        if (hitRate === 0 && hideWhenEmpty) {
             return null;
         }
 
@@ -51,7 +57,7 @@ export class CacheHitRateWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return [getCacheScopeKeybind()];
+        return getCacheKeybinds();
     }
 
     supportsRawValue(): boolean { return true; }

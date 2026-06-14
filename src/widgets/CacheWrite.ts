@@ -13,9 +13,10 @@ import {
     getCacheWritePercentage
 } from './shared/cache-metrics';
 import {
-    getCacheScopeKeybind,
-    getCacheScopeModifierText,
-    handleCacheScopeAction,
+    getCacheKeybinds,
+    getCacheModifierText,
+    handleCacheOptionsAction,
+    isCacheHideWhenEmptyEnabled,
     isCacheSessionScope
 } from './shared/cache-scope';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -26,11 +27,11 @@ export class CacheWriteWidget implements Widget {
     getDisplayName(): string { return 'Cache Write'; }
     getCategory(): string { return 'Cache'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName(), modifierText: getCacheScopeModifierText(item) };
+        return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleCacheScopeAction(action, item);
+        return handleCacheOptionsAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -38,8 +39,13 @@ export class CacheWriteWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Cache Write: ', '3k (16.0%)');
         }
 
+        const hideWhenEmpty = isCacheHideWhenEmptyEnabled(item);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Write: ', 'n/a');
+        }
+
+        if (tokens.creation === 0 && hideWhenEmpty) {
             return null;
         }
 
@@ -48,7 +54,7 @@ export class CacheWriteWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return [getCacheScopeKeybind()];
+        return getCacheKeybinds();
     }
 
     supportsRawValue(): boolean { return true; }
