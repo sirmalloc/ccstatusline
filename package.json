@@ -1,6 +1,9 @@
 {
   "name": "ccstatusline",
   "version": "2.2.20",
+  "bugs": {
+    "url": "https://github.com/sirmalloc/ccstatusline/issues"
+  },
   "description": "A customizable status line formatter for Claude Code CLI",
   "main": "./dist/ccstatusline.js",
   "module": "./dist/ccstatusline.js",
@@ -23,9 +26,9 @@
     "build": "rm -rf dist/* ; bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
     "postbuild": "bun run scripts/replace-version.ts",
     "example": "cat scripts/payload.example.json | bun start",
-		"video:studio": "remotion studio remotion/index.ts",
-		"video:still": "remotion still remotion/index.ts ccstatusline-tui-demo out/ccstatusline-tui-demo.png --frame=700 --scale=0.5",
-		"video:render": "remotion render remotion/index.ts ccstatusline-tui-demo out/ccstatusline-tui-demo.mp4",
+    "video:studio": "remotion studio remotion/index.ts",
+    "video:still": "remotion still remotion/index.ts ccstatusline-tui-demo out/ccstatusline-tui-demo.png --frame=700 --scale=0.5",
+    "video:render": "remotion render remotion/index.ts ccstatusline-tui-demo out/ccstatusline-tui-demo.mp4",
     "video:gif": "bun run video:render && ffmpeg -y -i out/ccstatusline-tui-demo.mp4 -filter_complex \"fps=12,scale=1322:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=none:diff_mode=rectangle\" out/ccstatusline-tui-demo-unoptimized.gif && gifsicle -O3 --lossy=30 out/ccstatusline-tui-demo-unoptimized.gif -o out/ccstatusline-tui-demo.gif",
     "prepublishOnly": "bun run build",
     "lint": "bun tsc --noEmit && eslint . --config eslint.config.js --max-warnings=0",
