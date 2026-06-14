@@ -17,10 +17,10 @@ import {
 } from './shared/extra-usage-disabled';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
-export class ExtraUsageRemainingWidget implements Widget {
+export class ExtraUsageUsedWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows remaining USD of your monthly extra usage limit'; }
-    getDisplayName(): string { return 'Extra Usage Remaining'; }
+    getDescription(): string { return 'Shows USD spent on extra usage (pay-as-you-go overage)'; }
+    getDisplayName(): string { return 'Extra Usage Used'; }
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -36,28 +36,26 @@ export class ExtraUsageRemainingWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Overage Left: ', '$3,894.00');
+            return formatRawOrLabeledValue(item, 'Overage Used: ', '$106.00');
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
             return isHideExtraUsageDisabledEnabled(item)
                 ? null
-                : formatRawOrLabeledValue(item, 'Overage Left: ', 'n/a');
+                : formatRawOrLabeledValue(item, 'Overage Used: ', 'n/a');
         }
-        if (data.extraUsageEnabled !== true || data.extraUsageLimit === undefined || data.extraUsageUsed === undefined) {
+        if (data.extraUsageEnabled !== true || data.extraUsageUsed === undefined) {
             if (data.error)
                 return getUsageErrorMessage(data.error);
             return null;
         }
 
-        // Both extraUsageLimit and extraUsageUsed are in cents
-        const limitDollars = data.extraUsageLimit / 100;
+        // extraUsageUsed is in cents
         const usedDollars = data.extraUsageUsed / 100;
-        const remaining = Math.max(0, limitDollars - usedDollars);
-        const formatted = formatUsageCurrency(remaining, data.extraUsageCurrency);
+        const formatted = formatUsageCurrency(usedDollars, data.extraUsageCurrency);
 
-        return formatRawOrLabeledValue(item, 'Overage Left: ', formatted);
+        return formatRawOrLabeledValue(item, 'Overage Used: ', formatted);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

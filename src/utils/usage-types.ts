@@ -19,6 +19,7 @@ export interface UsageData {
     extraUsageLimit?: number;      // in cents (divide by 100 for dollars)
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
     extraUsageUtilization?: number; // percentage 0-100
+    extraUsageCurrency?: string;   // ISO 4217 currency code (e.g. 'USD', 'EUR')
     error?: UsageError;
 }
 
