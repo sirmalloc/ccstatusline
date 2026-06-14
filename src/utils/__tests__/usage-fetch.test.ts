@@ -187,29 +187,41 @@ process.stdout.write(JSON.stringify({
     }
 
     function runProbe(options: ProbeOptions): UsageProbeResult {
+        const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => {
+            const normalizedKey = key.toUpperCase();
+            return normalizedKey !== 'CLAUDE_CONFIG_DIR' && normalizedKey !== 'HTTPS_PROXY';
+        }));
+
+        Object.assign(env, {
+            HOME: options.home,
+            // os.homedir() prefers USERPROFILE on Windows; inheriting the
+            // real one lets the probe escape into the user's actual home
+            // and read/write the live ~/.cache/ccstatusline
+            USERPROFILE: options.home,
+            PATH: options.pathDir ?? '/nonexistent',
+            TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
+            TEST_NOW_MS: String(options.nowMs),
+            TEST_REQUEST_MODE: options.mode ?? 'success',
+            TEST_RESPONSE_BODY: options.responseBody ?? '',
+            TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
+            TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500))
+        });
+
+        if (options.claudeConfigDir !== undefined) {
+            env.CLAUDE_CONFIG_DIR = options.claudeConfigDir;
+        }
+
+        if (options.httpsProxy !== undefined) {
+            env.HTTPS_PROXY = options.httpsProxy;
+        }
+
+        if (options.lowercaseHttpsProxy !== undefined) {
+            env.https_proxy = options.lowercaseHttpsProxy;
+        }
+
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
             encoding: 'utf8',
-            env: {
-                ...process.env,
-                HOME: options.home,
-                // os.homedir() prefers USERPROFILE on Windows; inheriting the
-                // real one lets the probe escape into the user's actual home
-                // and read/write the live ~/.cache/ccstatusline
-                USERPROFILE: options.home,
-                PATH: options.pathDir ?? '/nonexistent',
-                TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
-                TEST_NOW_MS: String(options.nowMs),
-                TEST_REQUEST_MODE: options.mode ?? 'success',
-                TEST_RESPONSE_BODY: options.responseBody ?? '',
-                TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
-                TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500)),
-                // Pinned (undefined removes an inherited value) so the
-                // developer's real CLAUDE_CONFIG_DIR and proxy settings never
-                // reach the probes
-                CLAUDE_CONFIG_DIR: options.claudeConfigDir,
-                HTTPS_PROXY: options.httpsProxy,
-                https_proxy: options.lowercaseHttpsProxy
-            }
+            env
         });
 
         const result = JSON.parse(output) as UsageProbeResult;
