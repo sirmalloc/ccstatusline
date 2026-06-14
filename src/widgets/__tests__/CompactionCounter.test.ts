@@ -166,7 +166,14 @@ describe('CompactionCounterWidget', () => {
             })).toBe('↻ 3 (2 auto, 1 unknown)');
         });
 
-        it('omits the trigger split when count is 0', () => {
+        it('renders a manual-only trigger split', () => {
+            expect(render({
+                compactionData: { count: 2, byTrigger: { auto: 0, manual: 2, unknown: 0 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 2 (2 manual)');
+        });
+
+        it('shows no suffix when all trigger buckets are zero', () => {
             expect(render({
                 compactionData: { count: 0, byTrigger: { auto: 0, manual: 0, unknown: 0 } },
                 item: { ...ITEM, metadata: { showTriggers: 'true' } }
