@@ -8,11 +8,11 @@ import {
 } from './jsonl-lines';
 
 /** Shared zeroed stats for missing/unreadable transcripts and as a render fallback. Treat as read-only. */
-export const ZERO_COMPACTION_STATS: CompactionData = {
+export const ZERO_COMPACTION_STATS: CompactionData = Object.freeze({
     count: 0,
-    byTrigger: { auto: 0, manual: 0, unknown: 0 },
+    byTrigger: Object.freeze({ auto: 0, manual: 0, unknown: 0 }),
     tokensReclaimed: 0
-};
+});
 
 function isCompactBoundary(record: unknown): boolean {
     if (typeof record !== 'object' || record === null) {
@@ -46,9 +46,9 @@ export function computeCompactionStats(lines: string[]): CompactionData {
         stats.count += 1;
 
         const meta = (record as { compactMetadata?: unknown }).compactMetadata;
-        const metaObj = (typeof meta === 'object' && meta !== null) ? meta as Record<string, unknown> : null;
+        const metaRecord = (typeof meta === 'object' && meta !== null) ? meta as Record<string, unknown> : null;
 
-        const trigger = metaObj?.trigger;
+        const trigger = metaRecord?.trigger;
         if (trigger === 'auto') {
             stats.byTrigger.auto += 1;
         } else if (trigger === 'manual') {
@@ -57,10 +57,10 @@ export function computeCompactionStats(lines: string[]): CompactionData {
             stats.byTrigger.unknown += 1;
         }
 
-        const pre = metaObj?.preTokens;
-        const post = metaObj?.postTokens;
+        const pre = metaRecord?.preTokens;
+        const post = metaRecord?.postTokens;
         if (typeof pre === 'number' && Number.isFinite(pre) && typeof post === 'number' && Number.isFinite(post)) {
-            stats.tokensReclaimed += pre - post;
+            stats.tokensReclaimed += Math.max(0, pre - post);
         }
     }
     return stats;

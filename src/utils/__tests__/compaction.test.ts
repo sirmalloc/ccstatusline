@@ -54,10 +54,11 @@ describe('computeCompactionStats', () => {
             JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'manual', preTokens: 1 } }),
             JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'manual', preTokens: 1 } }),
             JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { preTokens: 1 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'future-mode', preTokens: 1 } }),
             JSON.stringify({ type: 'system', subtype: 'compact_boundary' })
         ];
         const stats = computeCompactionStats(lines);
-        expect(stats.byTrigger).toEqual({ auto: 1, manual: 2, unknown: 2 });
+        expect(stats.byTrigger).toEqual({ auto: 1, manual: 2, unknown: 3 });
         expect(stats.count).toBe(stats.byTrigger.auto + stats.byTrigger.manual + stats.byTrigger.unknown);
     });
 
@@ -74,6 +75,13 @@ describe('computeCompactionStats', () => {
     it('reports tokensReclaimed 0 when no marker has both pre and post tokens', () => {
         const lines = [
             JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 50000 } })
+        ];
+        expect(computeCompactionStats(lines).tokensReclaimed).toBe(0);
+    });
+
+    it('floors per-marker tokensReclaimed at 0 when postTokens exceeds preTokens', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 10000, postTokens: 50000 } })
         ];
         expect(computeCompactionStats(lines).tokensReclaimed).toBe(0);
     });
