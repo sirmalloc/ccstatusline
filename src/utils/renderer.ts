@@ -29,14 +29,7 @@ import {
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
-// Helper function to format token counts
-export function formatTokens(count: number): string {
-    if (count >= 1000000)
-        return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000)
-        return `${(count / 1000).toFixed(1)}k`;
-    return count.toString();
-}
+export { formatTokens } from './format-tokens';
 
 // Paint a foreground gradient across a finished line when overrideForegroundColor
 // is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.

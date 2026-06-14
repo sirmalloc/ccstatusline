@@ -10,7 +10,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
-import { formatTokens } from '../utils/renderer';
+import { formatTokens } from '../utils/format-tokens';
 
 const COMPACTION_ICON = '↻';
 const COMPACTION_NERD_FONT_ICON = '\uF021';
