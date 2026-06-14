@@ -151,6 +151,41 @@ describe('CompactionCounterWidget', () => {
             // Verify preview short-circuits before reading compactionData
             expect(render({ isPreview: true, compactionData: { count: 99 } })).toBe('↻ 2');
         });
+
+        it('appends the trigger split when showTriggers is enabled', () => {
+            expect(render({
+                compactionData: { count: 3, byTrigger: { auto: 2, manual: 1, unknown: 0 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 3 (2 auto, 1 manual)');
+        });
+
+        it('shows the unknown bucket in the trigger split only when > 0', () => {
+            expect(render({
+                compactionData: { count: 3, byTrigger: { auto: 2, manual: 0, unknown: 1 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 3 (2 auto, 1 unknown)');
+        });
+
+        it('omits the trigger split when count is 0', () => {
+            expect(render({
+                compactionData: { count: 0, byTrigger: { auto: 0, manual: 0, unknown: 0 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 0');
+        });
+
+        it('appends the trigger split to non-default formats too', () => {
+            expect(render({
+                compactionData: { count: 2, byTrigger: { auto: 1, manual: 1, unknown: 0 } },
+                item: { ...ITEM, metadata: { format: 'number', showTriggers: 'true' } }
+            })).toBe('2 (1 auto, 1 manual)');
+        });
+
+        it('shows the trigger split sample in preview mode', () => {
+            expect(render({
+                isPreview: true,
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 2 (1 auto, 1 manual)');
+        });
     });
 
     describe('editor', () => {
@@ -158,6 +193,7 @@ describe('CompactionCounterWidget', () => {
             expect(new CompactionCounterWidget().getCustomKeybinds(ITEM)).toEqual([
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
+                { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
             ]);
         });
@@ -168,6 +204,7 @@ describe('CompactionCounterWidget', () => {
                 metadata: { format: 'text-and-number' }
             })).toEqual([
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
+                { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
             ]);
         });
@@ -266,6 +303,25 @@ describe('CompactionCounterWidget', () => {
 
             expect(enabled?.metadata?.format).toBe('text-and-number');
             expect(enabled?.metadata?.nerdFont).toBeUndefined();
+        });
+
+        it('toggles showTriggers metadata on and off', () => {
+            const widget = new CompactionCounterWidget();
+            const enabled = widget.handleEditorAction('toggle-triggers', ITEM);
+            const disabled = widget.handleEditorAction('toggle-triggers', enabled ?? ITEM);
+
+            expect(enabled?.metadata?.showTriggers).toBe('true');
+            expect(disabled?.metadata?.showTriggers).toBe('false');
+        });
+
+        it('shows trigger split in the editor display when enabled', () => {
+            expect(new CompactionCounterWidget().getEditorDisplay({
+                ...ITEM,
+                metadata: { showTriggers: 'true' }
+            })).toEqual({
+                displayText: 'Compaction Counter',
+                modifierText: '(icon-space-number, trigger split)'
+            });
         });
     });
 });

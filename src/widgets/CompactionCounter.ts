@@ -1,4 +1,7 @@
-import type { RenderContext } from '../types/RenderContext';
+import type {
+    CompactionData,
+    RenderContext
+} from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
@@ -6,6 +9,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { ZERO_COMPACTION_STATS } from '../utils/compaction';
 
 const COMPACTION_ICON = '↻';
 const COMPACTION_NERD_FONT_ICON = '\uF021';
@@ -18,6 +22,13 @@ const TOGGLE_HIDE_ZERO_ACTION = 'toggle-hide-zero';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
 const HIDE_ZERO_METADATA_KEY = 'hideZero';
 const NERD_FONT_METADATA_KEY = 'nerdFont';
+const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
+const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
+const SAMPLE_STATS: CompactionData = {
+    count: 2,
+    byTrigger: { auto: 1, manual: 1, unknown: 0 },
+    tokensReclaimed: 120000
+};
 
 function getFormat(item: WidgetItem): CompactionCounterFormat {
     const format = item.metadata?.format;
@@ -75,6 +86,42 @@ function toggleHideZero(item: WidgetItem): WidgetItem {
     };
 }
 
+function isShowTriggersEnabled(item: WidgetItem): boolean {
+    return item.metadata?.[SHOW_TRIGGERS_METADATA_KEY] === 'true';
+}
+
+function toggleShowTriggers(item: WidgetItem): WidgetItem {
+    return {
+        ...item,
+        metadata: {
+            ...(item.metadata ?? {}),
+            [SHOW_TRIGGERS_METADATA_KEY]: (!isShowTriggersEnabled(item)).toString()
+        }
+    };
+}
+
+function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
+    const parts: string[] = [];
+    if (byTrigger.auto > 0) {
+        parts.push(`${byTrigger.auto} auto`);
+    }
+    if (byTrigger.manual > 0) {
+        parts.push(`${byTrigger.manual} manual`);
+    }
+    if (byTrigger.unknown > 0) {
+        parts.push(`${byTrigger.unknown} unknown`);
+    }
+    return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+}
+
+function formatStats(data: CompactionData, item: WidgetItem, icon: string): string {
+    let out = formatCount(data.count, getFormat(item), icon);
+    if (isShowTriggersEnabled(item)) {
+        out += formatTriggerSuffix(data.byTrigger);
+    }
+    return out;
+}
+
 function toggleNerdFont(item: WidgetItem): WidgetItem {
     if (getFormat(item) !== DEFAULT_FORMAT) {
         return removeNerdFont(item);
@@ -121,6 +168,9 @@ export class CompactionCounterWidget implements Widget {
         if (isNerdFontEnabled(item)) {
             modifiers.push('nerd font');
         }
+        if (isShowTriggersEnabled(item)) {
+            modifiers.push('trigger split');
+        }
         if (isHideZeroEnabled(item)) {
             modifiers.push('hide zero');
         }
@@ -147,22 +197,26 @@ export class CompactionCounterWidget implements Widget {
             return toggleNerdFont(item);
         }
 
+        if (action === TOGGLE_TRIGGERS_ACTION) {
+            return toggleShowTriggers(item);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const format = getFormat(item);
+        void settings;
         const icon = isNerdFontEnabled(item) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
 
         if (context.isPreview) {
-            return formatCount(2, format, icon);
+            return formatStats(SAMPLE_STATS, item, icon);
         }
 
-        const count = context.compactionData?.count ?? 0;
-        if (count === 0 && isHideZeroEnabled(item))
+        const data = context.compactionData ?? ZERO_COMPACTION_STATS;
+        if (data.count === 0 && isHideZeroEnabled(item))
             return null;
 
-        return formatCount(count, format, icon);
+        return formatStats(data, item, icon);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -174,6 +228,7 @@ export class CompactionCounterWidget implements Widget {
             keybinds.push({ key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION });
         }
 
+        keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
         keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
 
         return keybinds;
