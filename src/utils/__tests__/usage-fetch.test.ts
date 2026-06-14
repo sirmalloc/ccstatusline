@@ -339,6 +339,23 @@ describe('fetchUsageData error handling', () => {
             utilization: 2.6
         }
     });
+    const noLimitExtraUsageResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        extra_usage: {
+            is_enabled: true,
+            monthly_limit: null,
+            used_credits: 542,
+            utilization: null,
+            disabled_reason: null
+        }
+    });
     const rateLimitedResponseBody = JSON.stringify({
         error: {
             message: 'Rate limited. Please try again later.',
@@ -633,6 +650,50 @@ describe('fetchUsageData error handling', () => {
                 weeklySonnetUsage: 0,
                 weeklyOpusUsage: 0,
                 extraUsageEnabled: false
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats enabled extra usage without a monthly limit as complete for extra usage widget fields', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('no-limit-extra-usage');
+            const requiredFields = ['extraUsageEnabled', 'extraUsageLimit', 'extraUsageUsed', 'extraUsageUtilization'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: noLimitExtraUsageResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                extraUsageEnabled: true,
+                extraUsageUsed: 542
             });
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
