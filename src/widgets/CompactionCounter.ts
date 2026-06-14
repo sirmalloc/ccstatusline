@@ -12,6 +12,11 @@ import type {
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
 import { formatTokens } from '../utils/format-tokens';
 
+import {
+    isMetadataFlagEnabled,
+    toggleMetadataFlag
+} from './shared/metadata';
+
 const COMPACTION_ICON = '↻';
 const COMPACTION_NERD_FONT_ICON = '\uF021';
 const FORMATS = ['icon-space-number', 'text-and-number', 'number'] as const;
@@ -27,11 +32,11 @@ const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
 const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
 const SHOW_RECLAIMED_METADATA_KEY = 'showReclaimed';
-const SAMPLE_STATS: CompactionData = {
+const SAMPLE_STATS: CompactionData = Object.freeze({
     count: 2,
-    byTrigger: { auto: 1, manual: 1, unknown: 0 },
+    byTrigger: Object.freeze({ auto: 1, manual: 1, unknown: 0 }),
     tokensReclaimed: 120000
-};
+});
 
 function getFormat(item: WidgetItem): CompactionCounterFormat {
     const format = item.metadata?.format;
@@ -89,34 +94,6 @@ function toggleHideZero(item: WidgetItem): WidgetItem {
     };
 }
 
-function isShowTriggersEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[SHOW_TRIGGERS_METADATA_KEY] === 'true';
-}
-
-function toggleShowTriggers(item: WidgetItem): WidgetItem {
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            [SHOW_TRIGGERS_METADATA_KEY]: (!isShowTriggersEnabled(item)).toString()
-        }
-    };
-}
-
-function isShowReclaimedEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[SHOW_RECLAIMED_METADATA_KEY] === 'true';
-}
-
-function toggleShowReclaimed(item: WidgetItem): WidgetItem {
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            [SHOW_RECLAIMED_METADATA_KEY]: (!isShowReclaimedEnabled(item)).toString()
-        }
-    };
-}
-
 function formatReclaimedSuffix(tokensReclaimed: number): string {
     return tokensReclaimed > 0 ? ` ↓${formatTokens(tokensReclaimed)}` : '';
 }
@@ -137,10 +114,10 @@ function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
 
 function formatStats(data: CompactionData, item: WidgetItem, icon: string): string {
     let out = formatCount(data.count, getFormat(item), icon);
-    if (isShowTriggersEnabled(item)) {
+    if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
         out += formatTriggerSuffix(data.byTrigger);
     }
-    if (isShowReclaimedEnabled(item)) {
+    if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
         out += formatReclaimedSuffix(data.tokensReclaimed);
     }
     return out;
@@ -192,10 +169,10 @@ export class CompactionCounterWidget implements Widget {
         if (isNerdFontEnabled(item)) {
             modifiers.push('nerd font');
         }
-        if (isShowTriggersEnabled(item)) {
+        if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
             modifiers.push('trigger split');
         }
-        if (isShowReclaimedEnabled(item)) {
+        if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
             modifiers.push('reclaimed');
         }
         if (isHideZeroEnabled(item)) {
@@ -225,11 +202,11 @@ export class CompactionCounterWidget implements Widget {
         }
 
         if (action === TOGGLE_TRIGGERS_ACTION) {
-            return toggleShowTriggers(item);
+            return toggleMetadataFlag(item, SHOW_TRIGGERS_METADATA_KEY);
         }
 
         if (action === TOGGLE_RECLAIMED_ACTION) {
-            return toggleShowReclaimed(item);
+            return toggleMetadataFlag(item, SHOW_RECLAIMED_METADATA_KEY);
         }
 
         return null;

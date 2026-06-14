@@ -59,8 +59,11 @@ export function computeCompactionStats(lines: string[]): CompactionData {
 
         const pre = metaRecord?.preTokens;
         const post = metaRecord?.postTokens;
-        if (typeof pre === 'number' && Number.isFinite(pre) && typeof post === 'number' && Number.isFinite(post)) {
-            stats.tokensReclaimed += Math.max(0, pre - post);
+        if (typeof pre === 'number' && typeof post === 'number') {
+            const reclaimed = pre - post;
+            if (Number.isFinite(reclaimed)) {
+                stats.tokensReclaimed += Math.max(0, reclaimed);
+            }
         }
     }
     return stats;
