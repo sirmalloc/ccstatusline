@@ -11,6 +11,7 @@ import type {
 } from '../../types';
 import type { CompactionData } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import { ZERO_COMPACTION_STATS } from '../../utils/compaction';
 import { CompactionCounterWidget } from '../CompactionCounter';
 
 vi.mock('child_process', () => ({
@@ -23,13 +24,16 @@ const ITEM: WidgetItem = { id: 'compaction-counter', type: 'compaction-counter' 
 
 function render(options: {
     isPreview?: boolean;
-    compactionData?: CompactionData | null;
+    compactionData?: Partial<CompactionData> | null;
     item?: WidgetItem;
 } = {}) {
     const widget = new CompactionCounterWidget();
+    const compactionData = (options.compactionData === null || options.compactionData === undefined)
+        ? options.compactionData
+        : { ...ZERO_COMPACTION_STATS, ...options.compactionData };
     const context: RenderContext = {
         isPreview: options.isPreview,
-        compactionData: options.compactionData
+        compactionData
     };
     return widget.render(options.item ?? ITEM, context, DEFAULT_SETTINGS);
 }

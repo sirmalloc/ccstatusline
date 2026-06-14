@@ -12,7 +12,10 @@ import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
-import { getCompactionCount } from './utils/compaction';
+import {
+    ZERO_COMPACTION_STATS,
+    getCompactionStats
+} from './utils/compaction';
 import {
     initConfigPath,
     loadSettings,
@@ -141,12 +144,11 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
-    // Compaction count — count compact_boundary markers in this session's transcript
-    let compactionCount = 0;
+    // Compaction stats — parse compact_boundary markers in this session's transcript
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
-    if (hasCompactionWidget && data.transcript_path) {
-        compactionCount = await getCompactionCount(data.transcript_path);
-    }
+    const compactionData = hasCompactionWidget
+        ? (data.transcript_path ? await getCompactionStats(data.transcript_path) : ZERO_COMPACTION_STATS)
+        : null;
 
     // Create render context
     const context: RenderContext = {
@@ -157,7 +159,7 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
-        compactionData: hasCompactionWidget ? { count: compactionCount } : null,
+        compactionData,
         terminalWidth: getTerminalWidth(),
         isPreview: false,
         minimalist: settings.minimalistMode,
