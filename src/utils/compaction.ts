@@ -63,9 +63,8 @@ function normalizeOptions(options: number | DetectCompactionOptions): Required<P
  * momentary flash to 0%) and ignored entirely.
  *
  * Returns state unchanged when currentCtxPct is non-finite, negative, or
- * below MIN_CTX_PCT, preventing NaN from poisoning persistent state. The
- * fresh-state sentinel for prevCtxPct is -1, so a session that legitimately
- * starts at 0% is still detected correctly.
+ * below MIN_CTX_PCT, preventing NaN from poisoning persistent state and
+ * preserving the last valid baseline until another valid reading arrives.
  */
 export function detectCompaction(
     currentCtxPct: number,

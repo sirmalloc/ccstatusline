@@ -141,6 +141,15 @@ describe('detectCompaction', () => {
         expect(detectCompaction(0.5, prev)).toEqual(prev);
     });
 
+    it('ignores transient zero readings between valid readings', () => {
+        let state: CompactionState = { count: 2, prevCtxPct: 40, prevWindowSize: 200000 };
+        state = detectCompaction(0, state, { windowSize: 200000 });
+        expect(state).toEqual({ count: 2, prevCtxPct: 40, prevWindowSize: 200000 });
+
+        state = detectCompaction(41, state, { windowSize: 200000 });
+        expect(state).toEqual({ count: 2, prevCtxPct: 41, prevWindowSize: 200000 });
+    });
+
     it('detects drops using non-integer percentages', () => {
         const prev: CompactionState = { count: 0, prevCtxPct: 40.4 };
         // 2.8-point drop, exceeds default threshold of 2
