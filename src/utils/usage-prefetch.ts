@@ -30,7 +30,8 @@ const USAGE_DATA_FIELDS: UsageDataField[] = [
     'extraUsageEnabled',
     'extraUsageLimit',
     'extraUsageUsed',
-    'extraUsageUtilization'
+    'extraUsageUtilization',
+    'extraUsageCurrency'
 ];
 
 interface UsageFieldRequirement {
@@ -132,7 +133,8 @@ function pickDefinedUsageFields(data: UsageData | null | undefined): Partial<Usa
         ...(data?.extraUsageEnabled !== undefined ? { extraUsageEnabled: data.extraUsageEnabled } : {}),
         ...(data?.extraUsageLimit !== undefined ? { extraUsageLimit: data.extraUsageLimit } : {}),
         ...(data?.extraUsageUsed !== undefined ? { extraUsageUsed: data.extraUsageUsed } : {}),
-        ...(data?.extraUsageUtilization !== undefined ? { extraUsageUtilization: data.extraUsageUtilization } : {})
+        ...(data?.extraUsageUtilization !== undefined ? { extraUsageUtilization: data.extraUsageUtilization } : {}),
+        ...(data?.extraUsageCurrency !== undefined ? { extraUsageCurrency: data.extraUsageCurrency } : {})
     };
 }
 
