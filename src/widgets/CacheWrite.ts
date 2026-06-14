@@ -8,8 +8,9 @@ import type {
 } from '../types/Widget';
 
 import {
-    getCacheHitRate,
-    getCacheTokens
+    formatTokensWithPercentage,
+    getCacheTokens,
+    getCacheWritePercentage
 } from './shared/cache-metrics';
 import {
     getCacheKeybinds,
@@ -20,10 +21,10 @@ import {
 } from './shared/cache-scope';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
-export class CacheHitRateWidget implements Widget {
-    getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows prompt cache hit rate (cache reads vs cache writes)'; }
-    getDisplayName(): string { return 'Cache Hit Rate'; }
+export class CacheWriteWidget implements Widget {
+    getDefaultColor(): string { return 'yellow'; }
+    getDescription(): string { return 'Shows cache write tokens written to cache, with context share'; }
+    getDisplayName(): string { return 'Cache Write'; }
     getCategory(): string { return 'Cache'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
@@ -35,25 +36,21 @@ export class CacheHitRateWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Hit: ', '87.0%');
+            return formatRawOrLabeledValue(item, 'Cache Write: ', '3k (16.0%)');
         }
 
         const hideWhenEmpty = isCacheHideWhenEmptyEnabled(item);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Write: ', 'n/a');
         }
 
-        const hitRate = getCacheHitRate(tokens);
-        if (hitRate === null) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', '0.0%');
-        }
-
-        if (hitRate === 0 && hideWhenEmpty) {
+        if (tokens.creation === 0 && hideWhenEmpty) {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, 'Cache Hit: ', `${hitRate.toFixed(1)}%`);
+        const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens));
+        return formatRawOrLabeledValue(item, 'Cache Write: ', value);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

@@ -20,6 +20,29 @@ function toFiniteNonNegativeNumber(value: unknown): number | null {
     return Math.max(0, value);
 }
 
+interface CurrentUsageObject {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+}
+
+interface CurrentUsageTokens {
+    input: number;
+    output: number;
+    creation: number;
+    read: number;
+}
+
+function parseCurrentUsageTokens(usage: CurrentUsageObject): CurrentUsageTokens {
+    return {
+        input: toFiniteNonNegativeNumber(usage.input_tokens) ?? 0,
+        output: toFiniteNonNegativeNumber(usage.output_tokens) ?? 0,
+        creation: toFiniteNonNegativeNumber(usage.cache_creation_input_tokens) ?? 0,
+        read: toFiniteNonNegativeNumber(usage.cache_read_input_tokens) ?? 0
+    };
+}
+
 function clampPercentage(value: number): number {
     return Math.max(0, Math.min(100, value));
 }
@@ -54,15 +77,11 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
         currentUsageTotalTokens = toFiniteNonNegativeNumber(contextWindow.current_usage);
         contextLengthTokens = currentUsageTotalTokens;
     } else if (contextWindow.current_usage && typeof contextWindow.current_usage === 'object') {
-        const usage = contextWindow.current_usage;
-        const inputTokens = toFiniteNonNegativeNumber(usage.input_tokens) ?? 0;
-        const outputTokens = toFiniteNonNegativeNumber(usage.output_tokens) ?? 0;
-        const cacheCreationTokens = toFiniteNonNegativeNumber(usage.cache_creation_input_tokens) ?? 0;
-        const cacheReadTokens = toFiniteNonNegativeNumber(usage.cache_read_input_tokens) ?? 0;
+        const { input, output, creation, read } = parseCurrentUsageTokens(contextWindow.current_usage);
 
-        currentUsageTotalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
-        contextLengthTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
-        cachedTokens = cacheCreationTokens + cacheReadTokens;
+        currentUsageTotalTokens = input + output + creation + read;
+        contextLengthTokens = input + creation + read;
+        cachedTokens = creation + read;
     }
 
     const rawUsedPercentage = toFiniteNonNegativeNumber(contextWindow.used_percentage);
@@ -133,4 +152,23 @@ export function getContextWindowUsedPercentage(data?: StatusJSON): number | null
 
 export function getContextWindowSize(data?: StatusJSON): number | null {
     return getContextWindowMetrics(data).windowSize;
+}
+
+export interface TurnCacheTokens {
+    read: number;
+    creation: number;
+    input: number;
+}
+
+// Cache read/creation/input tokens for the most recent turn ("last action"),
+// taken directly from Claude Code's live status JSON (context_window.current_usage).
+// Returns null when the object form of current_usage is unavailable.
+export function getContextWindowTurnCacheTokens(data?: StatusJSON): TurnCacheTokens | null {
+    const usage = data?.context_window?.current_usage;
+    if (!usage || typeof usage !== 'object') {
+        return null;
+    }
+
+    const { input, creation, read } = parseCurrentUsageTokens(usage);
+    return { read, creation, input };
 }

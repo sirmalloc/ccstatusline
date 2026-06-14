@@ -159,7 +159,6 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
 
         let inputTokens = 0;
         let outputTokens = 0;
-        let cachedTokens = 0;
         let cacheReadTokens = 0;
         let cacheCreationTokens = 0;
         let contextLength = 0;
@@ -204,8 +203,6 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
             outputTokens += usage.output_tokens || 0;
             cacheReadTokens += usage.cache_read_input_tokens ?? 0;
             cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
-            cachedTokens += usage.cache_read_input_tokens ?? 0;
-            cachedTokens += usage.cache_creation_input_tokens ?? 0;
 
             // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
             // Also skip API error messages (synthetic messages with 0 tokens)
@@ -226,6 +223,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                 + (usage.cache_creation_input_tokens ?? 0);
         }
 
+        const cachedTokens = cacheReadTokens + cacheCreationTokens;
         const totalTokens = inputTokens + outputTokens + cachedTokens;
 
         return { inputTokens, outputTokens, cachedTokens, cacheReadTokens, cacheCreationTokens, totalTokens, contextLength };
