@@ -21,6 +21,7 @@ interface UsageProbeResult {
     requestCount: number;
     proxyAgentConfigured: boolean;
     requestHost: string | null;
+    homedir: string;
     lockContents: string | null;
 }
 
@@ -150,6 +151,7 @@ process.stdout.write(JSON.stringify({
     requestCount,
     proxyAgentConfigured,
     requestHost,
+    homedir: os.homedir(),
     lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null
 }));
 `;
@@ -185,25 +187,50 @@ process.stdout.write(JSON.stringify({
     }
 
     function runProbe(options: ProbeOptions): UsageProbeResult {
-        const output = realExecFileSync(process.execPath, [probeScriptPath], {
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                HOME: options.home,
-                PATH: options.pathDir ?? '/nonexistent',
-                TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
-                TEST_NOW_MS: String(options.nowMs),
-                TEST_REQUEST_MODE: options.mode ?? 'success',
-                TEST_RESPONSE_BODY: options.responseBody ?? '',
-                TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
-                TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500)),
-                ...(options.claudeConfigDir ? { CLAUDE_CONFIG_DIR: options.claudeConfigDir } : {}),
-                ...(options.httpsProxy !== undefined ? { HTTPS_PROXY: options.httpsProxy } : {}),
-                ...(options.lowercaseHttpsProxy !== undefined ? { https_proxy: options.lowercaseHttpsProxy } : {})
-            }
+        const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => {
+            const normalizedKey = key.toUpperCase();
+            return normalizedKey !== 'CLAUDE_CONFIG_DIR' && normalizedKey !== 'HTTPS_PROXY';
+        }));
+
+        Object.assign(env, {
+            HOME: options.home,
+            // os.homedir() prefers USERPROFILE on Windows; inheriting the
+            // real one lets the probe escape into the user's actual home
+            // and read/write the live ~/.cache/ccstatusline
+            USERPROFILE: options.home,
+            PATH: options.pathDir ?? '/nonexistent',
+            TEST_REQUIRED_FIELDS_JSON: JSON.stringify(options.requiredFields ?? []),
+            TEST_NOW_MS: String(options.nowMs),
+            TEST_REQUEST_MODE: options.mode ?? 'success',
+            TEST_RESPONSE_BODY: options.responseBody ?? '',
+            TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
+            TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500))
         });
 
-        return JSON.parse(output) as UsageProbeResult;
+        if (options.claudeConfigDir !== undefined) {
+            env.CLAUDE_CONFIG_DIR = options.claudeConfigDir;
+        }
+
+        if (options.httpsProxy !== undefined) {
+            env.HTTPS_PROXY = options.httpsProxy;
+        }
+
+        if (options.lowercaseHttpsProxy !== undefined) {
+            env.https_proxy = options.lowercaseHttpsProxy;
+        }
+
+        const output = realExecFileSync(process.execPath, [probeScriptPath], {
+            encoding: 'utf8',
+            env
+        });
+
+        const result = JSON.parse(output) as UsageProbeResult;
+
+        // A probe resolving a different home has escaped its sandbox and would
+        // read or write the real user's ~/.cache/ccstatusline
+        expect(result.homedir).toBe(options.home);
+
+        return result;
     }
 
     function cleanup(): void {
@@ -442,7 +469,9 @@ describe('fetchUsageData error handling', () => {
             expect(lowercaseProxyResult.first).toEqual(successResult.first);
             expect(lowercaseProxyResult.second).toEqual(successResult.first);
             expect(lowercaseProxyResult.requestCount).toBe(1);
-            expect(lowercaseProxyResult.proxyAgentConfigured).toBe(false);
+            // Windows environment variables are case-insensitive, so a
+            // lowercase https_proxy is indistinguishable from HTTPS_PROXY there
+            expect(lowercaseProxyResult.proxyAgentConfigured).toBe(process.platform === 'win32');
 
             const blankProxyResult = harness.runProbe({
                 claudeConfigDir: blankProxyHome.claudeConfig,
