@@ -4,6 +4,7 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -18,6 +19,15 @@ import {
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
+
+const AHEAD_SLOT: SymbolSlot = { id: 'symbolAhead', label: 'Ahead', defaultSymbol: '↑' };
+const BEHIND_SLOT: SymbolSlot = { id: 'symbolBehind', label: 'Behind', defaultSymbol: '↓' };
 
 export class GitAheadBehindWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -43,11 +53,13 @@ export class GitAheadBehindWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
+        const aheadSymbol = getSlotSymbol(item, AHEAD_SLOT);
+        const behindSymbol = getSlotSymbol(item, BEHIND_SLOT);
 
         if (context.isPreview) {
             if (item.rawValue)
                 return '2,3';
-            return '↑2↓3';
+            return `${aheadSymbol}2${behindSymbol}3`;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -70,15 +82,22 @@ export class GitAheadBehindWidget implements Widget {
 
         const parts: string[] = [];
         if (result.ahead > 0)
-            parts.push(`↑${result.ahead}`);
+            parts.push(`${aheadSymbol}${result.ahead}`);
         if (result.behind > 0)
-            parts.push(`↓${result.behind}`);
+            parts.push(`${behindSymbol}${result.behind}`);
 
         return parts.join('');
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
+        return [
+            ...getHideNoGitKeybinds(),
+            getSymbolKeybind()
+        ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, [AHEAD_SLOT, BEHIND_SLOT]);
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
