@@ -31,7 +31,7 @@ bun run example
 
 ### Git
 
-- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Works with GitHub (`gh`) and GitLab (`glab`); for self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
+- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Works with GitHub (`gh`) and GitLab (`glab`); SSH remote aliases are resolved with `ssh -G` before provider detection, while canonical GitHub/GitLab remotes keep their original forge hosts. For self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
 - **Git Changes** / **Git Insertions** / **Git Deletions** - Show aggregate file-change counts and dedicated insertion/deletion counts.
 - **Git Status** / **Git Staged** / **Git Unstaged** / **Git Untracked** / **Git Ahead/Behind** / **Git Conflicts** / **Git SHA** - Show compact repo-state indicators, upstream divergence, merge-conflict count, and the current short commit SHA.
 - **Git Staged Files** / **Git Unstaged Files** / **Git Untracked Files** / **Git Clean Status** - Show file-level status counts and clean/dirty state.
@@ -41,11 +41,11 @@ bun run example
 
 ### Tokens, Usage & Context
 
-- **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts.
+- **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts. Input/output prefer cumulative transcript metrics and fall back to `context_window.total_input_tokens` / `context_window.total_output_tokens` when transcript metrics are unavailable; cached/total use transcript metrics.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar.
-- **Compaction Counter** - Show how many context compactions have been detected in the current session. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
-- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Extra Usage Used** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
+- **Compaction Counter** - Show how many context compactions have been detected in the current session by scanning transcript compaction markers. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero.
+- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Extra Usage Used** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Extra usage widgets accept known extra-usage state as complete when an account has no monthly limit configured, avoiding repeated refetches and stale `[Timeout]` output. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
 
 ### Environment, Layout & Custom
 
@@ -91,9 +91,10 @@ Configure global formatting preferences that apply to all widgets:
   - Press **(o)** to toggle
 - **Minimalist Mode** - Force widgets into raw-value rendering globally for a cleaner, label-free status line
   - Press **(m)** to toggle
-- **Override Foreground Color** - Force all widgets to use the same text color
+- **Override Foreground Color** - Force all widgets to use the same text color, or a whole-line **gradient** (see below)
   - Press **(f)** to cycle through colors
-  - Press **(g)** to clear override
+  - Press **(g)** to choose a gradient
+  - Press **(x)** to clear override
 - **Override Background Color** - Force all widgets to use the same background color
   - Press **(b)** to cycle through colors
   - Press **(c)** to clear override
@@ -103,6 +104,21 @@ Configure global formatting preferences that apply to all widgets:
 > 💡 **Note:** These settings are applied during rendering and don't add widgets to your widget list. They provide a consistent look across your entire status line without modifying individual widget configurations.
 
 > ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
+
+## Gradient Colors
+
+A foreground color can be a multi-stop **gradient** instead of a solid. Colors interpolate in OKLab for perceptually even blends. A gradient value takes one of three forms, all prefixed `gradient:`:
+
+- **Named preset** — `gradient:atlas` (case-insensitive). Built-in presets: `atlas`, `cristal`, `teen`, `mind`, `morning`, `vice`, `passion`, `fruit`, `instagram`, `retro`, `summer`, `rainbow`, `pastel`.
+- **Dash stops** — `gradient:RRGGBB-RRGGBB[-RRGGBB...]` (two or more bare or `#`-prefixed hex stops).
+- **Comma stops** — `gradient:hex:RRGGBB,#RRGGBB,RRGGBB` (two or more `hex:`/`#`/bare stops).
+
+Gradients apply at **two scopes**:
+
+- **Per-widget** — set a widget's color to a gradient so its text carries its own self-contained sweep. In the color menu (foreground, 256-color or truecolor mode), press **(g)** to open the gradient picker, then choose a preset or enter custom start/end hex stops.
+- **Whole line** — set `overrideForegroundColor` to a gradient spec to paint the entire status line with one continuous sweep, each character colored by its column position. In the Global Overrides menu, press **(g)** on Override FG Color to open the same gradient picker, or author the value directly in `settings.json`.
+
+Gradients self-degrade where they can't render: at Basic or No Color levels, gradient settings are preserved but render as plain text. In Powerline mode, global foreground gradients color widget text while separators and caps keep Powerline's normal foreground/background contrast rules; per-widget gradients collapse to their first stop when using 256-color or truecolor output.
 
 ## Claude Code Status Line Settings
 
@@ -160,6 +176,7 @@ The keybind footer in the TUI only shows shortcuts that apply to the currently s
 
 Widget-specific shortcuts:
 - **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
+- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, JJ Bookmarks, JJ Workspace): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`)
 - **Git PR**: `h` hide empty/no-PR/MR output, `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
