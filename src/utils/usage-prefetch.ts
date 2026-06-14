@@ -15,7 +15,8 @@ const USAGE_WIDGET_TYPES = new Set<string>([
     'reset-timer',
     'weekly-reset-timer',
     'extra-usage-utilization',
-    'extra-usage-remaining'
+    'extra-usage-remaining',
+    'extra-usage-used'
 ]);
 
 const USAGE_DATA_FIELDS: UsageDataField[] = [
@@ -56,6 +57,10 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'extra-usage-remaining': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageLimit' },
+        { field: 'extraUsageUsed' }
+    ],
+    'extra-usage-used': [
+        { field: 'extraUsageEnabled' },
         { field: 'extraUsageUsed' }
     ]
 };
