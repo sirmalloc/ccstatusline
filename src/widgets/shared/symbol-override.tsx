@@ -10,6 +10,7 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../../types/Widget';
+import { getVisibleWidth } from '../../utils/ansi';
 import { shouldInsertInput } from '../../utils/input-guards';
 
 import { removeMetadataKeys } from './metadata';
@@ -107,6 +108,7 @@ function getFirstGrapheme(str: string): string {
 const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> = ({ widget, slots, onComplete, onCancel }) => {
     const [values, setValues] = useState<string[]>(() => slots.map(slot => getSlotSymbol(widget, slot)));
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const labelWidth = Math.max(...slots.map(slot => getVisibleWidth(slot.label)), 0);
 
     useInput((input, key) => {
         if (key.return) {
@@ -117,6 +119,10 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             setSelectedIndex(selectedIndex - 1 < 0 ? slots.length - 1 : selectedIndex - 1);
         } else if (key.downArrow && slots.length > 1) {
             setSelectedIndex(selectedIndex + 1 > slots.length - 1 ? 0 : selectedIndex + 1);
+        } else if (key.tab) {
+            setValues(values.map((value, index) => (
+                index === selectedIndex ? slots[selectedIndex]?.defaultSymbol ?? '' : value
+            )));
         } else if (key.backspace || key.delete) {
             setValues(values.map((value, index) => (index === selectedIndex ? '' : value)));
         } else if (shouldInsertInput(input, key)) {
@@ -131,22 +137,23 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             <Text bold>Glyphs</Text>
             <Text dimColor>
                 {slots.length > 1
-                    ? '↑↓ select, type to set, Backspace none, Enter save, ESC cancel'
-                    : 'Type any character or emoji, Backspace for none, Enter save, ESC cancel'}
+                    ? '↑↓ row, type to set, Tab default, Backspace none, Enter save, ESC cancel'
+                    : 'Type any character or emoji, Tab default, Backspace none, Enter save, ESC cancel'}
             </Text>
             <Box marginTop={1} flexDirection='column'>
                 {slots.map((slot, index) => {
                     const isSelected = index === selectedIndex;
                     const value = values[index] ?? '';
+                    const labelPadding = ' '.repeat(Math.max(labelWidth - getVisibleWidth(slot.label), 0));
                     return (
                         <Box key={slot.id} flexDirection='row' flexWrap='nowrap'>
-                            <Box width={3}>
+                            <Box width={4}>
                                 <Text color={isSelected ? 'green' : undefined}>
                                     {isSelected ? '▶ ' : '  '}
                                 </Text>
                             </Box>
                             <Text color={isSelected ? 'green' : undefined}>
-                                {`${slot.label}: `}
+                                {`${labelPadding}${slot.label}: `}
                             </Text>
                             {value ? (
                                 <Text inverse>{value}</Text>
