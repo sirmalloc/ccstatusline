@@ -10,6 +10,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
+import { formatTokens } from '../utils/renderer';
 
 const COMPACTION_ICON = '↻';
 const COMPACTION_NERD_FONT_ICON = '\uF021';
@@ -24,6 +25,8 @@ const HIDE_ZERO_METADATA_KEY = 'hideZero';
 const NERD_FONT_METADATA_KEY = 'nerdFont';
 const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
+const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
+const SHOW_RECLAIMED_METADATA_KEY = 'showReclaimed';
 const SAMPLE_STATS: CompactionData = {
     count: 2,
     byTrigger: { auto: 1, manual: 1, unknown: 0 },
@@ -100,6 +103,24 @@ function toggleShowTriggers(item: WidgetItem): WidgetItem {
     };
 }
 
+function isShowReclaimedEnabled(item: WidgetItem): boolean {
+    return item.metadata?.[SHOW_RECLAIMED_METADATA_KEY] === 'true';
+}
+
+function toggleShowReclaimed(item: WidgetItem): WidgetItem {
+    return {
+        ...item,
+        metadata: {
+            ...(item.metadata ?? {}),
+            [SHOW_RECLAIMED_METADATA_KEY]: (!isShowReclaimedEnabled(item)).toString()
+        }
+    };
+}
+
+function formatReclaimedSuffix(tokensReclaimed: number): string {
+    return tokensReclaimed > 0 ? ` ↓${formatTokens(tokensReclaimed)}` : '';
+}
+
 function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
     const parts: string[] = [];
     if (byTrigger.auto > 0) {
@@ -118,6 +139,9 @@ function formatStats(data: CompactionData, item: WidgetItem, icon: string): stri
     let out = formatCount(data.count, getFormat(item), icon);
     if (isShowTriggersEnabled(item)) {
         out += formatTriggerSuffix(data.byTrigger);
+    }
+    if (isShowReclaimedEnabled(item)) {
+        out += formatReclaimedSuffix(data.tokensReclaimed);
     }
     return out;
 }
@@ -171,6 +195,9 @@ export class CompactionCounterWidget implements Widget {
         if (isShowTriggersEnabled(item)) {
             modifiers.push('trigger split');
         }
+        if (isShowReclaimedEnabled(item)) {
+            modifiers.push('reclaimed');
+        }
         if (isHideZeroEnabled(item)) {
             modifiers.push('hide zero');
         }
@@ -201,6 +228,10 @@ export class CompactionCounterWidget implements Widget {
             return toggleShowTriggers(item);
         }
 
+        if (action === TOGGLE_RECLAIMED_ACTION) {
+            return toggleShowReclaimed(item);
+        }
+
         return null;
     }
 
@@ -229,6 +260,7 @@ export class CompactionCounterWidget implements Widget {
         }
 
         keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
+        keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
         keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
 
         return keybinds;
