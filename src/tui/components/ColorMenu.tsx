@@ -15,6 +15,7 @@ import {
     getAvailableBackgroundColorsForUI,
     getAvailableColorsForUI
 } from '../../utils/colors';
+import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
 
@@ -42,6 +43,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
     const [ansi256Input, setAnsi256Input] = useState('');
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [gradientMode, setGradientMode] = useState(false);
+    const [gradientIndex, setGradientIndex] = useState(0);
+    const [gradientCustomStep, setGradientCustomStep] = useState<'start' | 'end' | null>(null);
+    const [gradientStartHex, setGradientStartHex] = useState('');
+    const [gradientHexInput, setGradientHexInput] = useState('');
 
     const powerlineEnabled = settings.powerline.enabled;
 
@@ -146,6 +152,69 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return;
         }
 
+        // Handle gradient selection mode
+        if (gradientMode) {
+            const exitGradient = () => {
+                setGradientMode(false);
+                setGradientCustomStep(null);
+                setGradientStartHex('');
+                setGradientHexInput('');
+            };
+
+            const applyGradientValue = (value: string) => {
+                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                if (selectedWidget) {
+                    onUpdate(setWidgetColor(widgets, selectedWidget.id, value, false));
+                }
+                exitGradient();
+            };
+
+            // Custom start/end hex entry
+            if (gradientCustomStep) {
+                if (key.escape) {
+                    setGradientCustomStep(null);
+                    setGradientHexInput('');
+                } else if (key.return) {
+                    if (gradientHexInput.length === 6) {
+                        if (gradientCustomStep === 'start') {
+                            setGradientStartHex(gradientHexInput);
+                            setGradientHexInput('');
+                            setGradientCustomStep('end');
+                        } else {
+                            applyGradientValue(`gradient:${gradientStartHex}-${gradientHexInput}`);
+                        }
+                    }
+                } else if (key.backspace || key.delete) {
+                    setGradientHexInput(gradientHexInput.slice(0, -1));
+                } else if (shouldInsertInput(input, key) && gradientHexInput.length < 6) {
+                    const upperInput = input.toUpperCase();
+                    if (/^[0-9A-F]$/.test(upperInput)) {
+                        setGradientHexInput(gradientHexInput + upperInput);
+                    }
+                }
+                return;
+            }
+
+            // Preset list navigation (last item is the "Custom" entry)
+            const total = GRADIENT_PRESET_NAMES.length + 1;
+            if (key.escape) {
+                exitGradient();
+            } else if (key.upArrow) {
+                setGradientIndex((gradientIndex - 1 + total) % total);
+            } else if (key.downArrow) {
+                setGradientIndex((gradientIndex + 1) % total);
+            } else if (key.return) {
+                if (gradientIndex < GRADIENT_PRESET_NAMES.length) {
+                    applyGradientValue(`gradient:${GRADIENT_PRESET_NAMES[gradientIndex]}`);
+                } else {
+                    setGradientStartHex('');
+                    setGradientHexInput('');
+                    setGradientCustomStep('start');
+                }
+            }
+            return;
+        }
+
         // Ignore number keys to prevent SelectInput numerical navigation
         if (input && /^[0-9]$/.test(input)) {
             return;
@@ -169,6 +238,15 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 2) {
                 setAnsi256InputMode(true);
                 setAnsi256Input('');
+            }
+        } else if (input === 'g' || input === 'G') {
+            // Enter gradient selection mode (foreground only, needs a real color palette)
+            if (highlightedItemId && highlightedItemId !== 'back' && !editingBackground && settings.colorLevel >= 2) {
+                setGradientMode(true);
+                setGradientIndex(0);
+                setGradientCustomStep(null);
+                setGradientStartHex('');
+                setGradientHexInput('');
             }
         } else if ((input === 's' || input === 'S') && !key.ctrl) {
             // Toggle show separators (only if not in powerline mode and no default separator)
@@ -336,6 +414,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 displayName = `ANSI ${currentColor.substring(8)}`;
             } else if (currentColor.startsWith('hex:')) {
                 displayName = `#${currentColor.substring(4)}`;
+            } else if (currentColor.startsWith('gradient:')) {
+                const body = currentColor.substring(9);
+                if (GRADIENT_PRESET_NAMES.includes(body.toLowerCase())) {
+                    displayName = `Gradient: ${body.toLowerCase()}`;
+                } else {
+                    displayName = `Gradient: ${body}`;
+                }
             } else {
                 const colorOption = colorOptions.find(c => c.value === currentColor);
                 displayName = colorOption ? colorOption.name : currentColor;
@@ -345,6 +430,63 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             const level = getColorLevelString(settings.colorLevel);
             colorDisplay = applyColors(displayName, currentColor, undefined, false, level);
         }
+    }
+
+    // Gradient selection mode takes over the whole view
+    if (gradientMode) {
+        const level = getColorLevelString(settings.colorLevel);
+        const widgetName = selectedWidget ? getItemLabel(selectedWidget) : '';
+
+        if (gradientCustomStep) {
+            return (
+                <Box flexDirection='column'>
+                    <Text bold>
+                        Custom Gradient
+                        {widgetName ? ` - ${widgetName}` : ''}
+                    </Text>
+                    <Box marginTop={1} flexDirection='column'>
+                        <Text>{gradientCustomStep === 'start' ? 'Enter START hex color (without #):' : 'Enter END hex color (without #):'}</Text>
+                        {gradientCustomStep === 'end' && (
+                            <Text dimColor>
+                                Start: #
+                                {gradientStartHex}
+                            </Text>
+                        )}
+                        <Text>
+                            #
+                            {gradientHexInput}
+                            <Text dimColor>{gradientHexInput.length < 6 ? '_'.repeat(6 - gradientHexInput.length) : ''}</Text>
+                        </Text>
+                        <Text> </Text>
+                        <Text dimColor>Press Enter when done, ESC to go back</Text>
+                    </Box>
+                </Box>
+            );
+        }
+
+        return (
+            <Box flexDirection='column'>
+                <Text bold>
+                    Select Gradient
+                    {widgetName ? ` - ${widgetName}` : ''}
+                </Text>
+                <Box marginTop={1}>
+                    <Text dimColor>↑↓ to select, Enter to apply, ESC to cancel</Text>
+                </Box>
+                <Box marginTop={1} flexDirection='column'>
+                    {GRADIENT_PRESET_NAMES.map((name, idx) => (
+                        <Text key={name}>
+                            {idx === gradientIndex ? '▶ ' : '  '}
+                            {applyColors(name, `gradient:${name}`, undefined, idx === gradientIndex, level)}
+                        </Text>
+                    ))}
+                    <Text key='custom'>
+                        {gradientIndex === GRADIENT_PRESET_NAMES.length ? '▶ ' : '  '}
+                        Custom (enter two hex stops)
+                    </Text>
+                </Box>
+            </Box>
+        );
     }
 
     // Show confirmation dialog if clearing all colors
@@ -433,6 +575,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {editingBackground ? 'background' : 'foreground'}
                         , (f) to toggle bg/fg, (b)old,
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
+                        {!editingBackground && settings.colorLevel >= 2 ? ' (g)radient,' : ''}
                         {' '}
                         (r)eset, (c)lear all, ESC to go back
                     </Text>

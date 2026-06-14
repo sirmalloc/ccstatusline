@@ -17,7 +17,7 @@ function isCompactBoundary(record: unknown): boolean {
  * Count context-compaction events by scanning the transcript for the
  * `{type:'system', subtype:'compact_boundary'}` markers Claude Code writes on
  * every compaction. Exact and immune to transient context-percentage noise.
- * Sidechain (subagent) records are excluded — only main-chain compactions count.
+ * Sidechain (subagent) records are excluded; only main-chain compactions count.
  */
 export function countCompactionsInLines(lines: string[]): number {
     let count = 0;

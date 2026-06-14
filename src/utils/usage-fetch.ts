@@ -181,7 +181,10 @@ function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean 
         return true;
     }
 
-    return data.extraUsageEnabled === false && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+    // Once the API has reported the extra usage state, missing detail fields are
+    // conclusive: accounts without a configured monthly limit never report
+    // monthly_limit/utilization, so refetching cannot produce them (#413).
+    return data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field);
 }
 
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {

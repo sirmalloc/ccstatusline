@@ -51,13 +51,19 @@ bun run docs
 - `~/.config/ccstatusline/settings.json` - ccstatusline UI/render settings
 - `~/.claude/settings.json` - Claude Code settings (`statusLine` command object)
 - `~/.cache/ccstatusline/block-cache-*.json` - block timer cache (keyed by Claude config directory hash)
+- `~/.cache/ccstatusline/git-cache/git-*.json` - persistent git widget command cache
+- `~/.cache/ccstatusline/git-review/git-review-*.json` - cached Git PR/MR lookup results
+- `~/.cache/ccstatusline/usage.json` and `~/.cache/ccstatusline/usage.lock` - usage API data cache and fetch backoff lock
 
 If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
+
+Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
 ## Build Notes
 
 - Build target is Node.js 14+ (`dist/ccstatusline.js`)
 - During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
+- React and React DOM are exact-version pins; dependency refreshes should update `package.json` and `bun.lock` together
 
 ## API Documentation
 
