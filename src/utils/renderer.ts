@@ -8,6 +8,9 @@ import { getColorLevelString } from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
 import {
+    applyLineGradient,
+    applyLineGradientSegment,
+    getVisibleText,
     getVisibleWidth,
     stripSgrCodes,
     truncateStyledText
@@ -19,6 +22,10 @@ import {
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import {
+    isGradientSpec,
+    parseGradientSpec
+} from './gradient';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -29,6 +36,19 @@ export function formatTokens(count: number): string {
     if (count >= 1000)
         return `${(count / 1000).toFixed(1)}k`;
     return count.toString();
+}
+
+// Paint a foreground gradient across a finished line when overrideForegroundColor
+// is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.
+// Applied as the final step, after truncation, so the trailing reset is not sliced
+// off (see the call site for why ordering matters).
+function maybeApplyForegroundGradient(
+    line: string,
+    settings: Settings,
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor'
+): string {
+    const stops = parseGradientSpec(settings.overrideForegroundColor);
+    return stops ? applyLineGradient(line, stops, colorLevel) : line;
 }
 
 function resolveEffectiveTerminalWidth(
@@ -114,6 +134,7 @@ function renderPowerlineStatusLine(
 
     // Get color level from settings
     const colorLevel = getColorLevelString(settings.colorLevel);
+    const overrideForegroundGradientStops = parseGradientSpec(settings.overrideForegroundColor);
 
     // Filter out separator and flex-separator widgets in powerline mode
     const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
@@ -209,8 +230,11 @@ function renderPowerlineStatusLine(
                 }
             }
 
-            // Apply override FG color if set (overrides theme)
-            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+            // Apply solid override FG color if set (overrides theme). Gradient
+            // overrides are applied to widget text during rendering below so
+            // powerline separators keep their foreground/background contrast.
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                && !isGradientSpec(settings.overrideForegroundColor)) {
                 fgColor = settings.overrideForegroundColor;
             }
 
@@ -272,6 +296,14 @@ function renderPowerlineStatusLine(
         }
     }
 
+    const powerlineGradientWidth = overrideForegroundGradientStops && colorLevel !== 'ansi16'
+        ? widgetElements.reduce((sum, element) => {
+            const isPreserveColors = element.widget.type === 'custom-command' && element.widget.preserveColors;
+            return isPreserveColors ? sum : sum + getVisibleWidth(element.content);
+        }, 0)
+        : 0;
+    let powerlineGradientColumn = 0;
+
     // Build the final powerline string
     let result = '';
 
@@ -311,14 +343,30 @@ function renderPowerlineStatusLine(
         if (shouldBold && !isPreserveColors) {
             widgetContent += '\x1b[1m';
         }
-        if (widget.fgColor && !isPreserveColors) {
+        const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
+            ? overrideForegroundGradientStops
+            : null;
+
+        if (widget.fgColor && !isPreserveColors && !textGradientStops) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
         }
         // Always apply background for consistency in powerline mode
         if (widget.bgColor) {
             widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
         }
-        widgetContent += widget.content;
+        if (textGradientStops) {
+            const gradientResult = applyLineGradientSegment(
+                widget.content,
+                textGradientStops,
+                colorLevel,
+                powerlineGradientColumn,
+                powerlineGradientWidth
+            );
+            widgetContent += gradientResult.text;
+            powerlineGradientColumn = gradientResult.nextColumn;
+        } else {
+            widgetContent += widget.content;
+        }
         // Reset colors after content
         // For custom commands with preserveColors, also reset text attributes like dim
         if (isPreserveColors) {
@@ -599,7 +647,7 @@ export function renderStatusLineWithInfo(
 ): RenderResult {
     const line = renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
     // Check if line contains the truncation ellipsis
-    const wasTruncated = line.includes('...');
+    const wasTruncated = getVisibleText(line).includes('...');
     return { line, wasTruncated };
 }
 
@@ -636,10 +684,19 @@ export function renderStatusLine(
 
     // Helper to apply colors with optional background and bold override
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
-        // Override foreground color takes precedence over EVERYTHING, including passed foreground color
+        // Override foreground color takes precedence over EVERYTHING, including passed foreground
+        // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
+        // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
+        // no per-widget foreground and let the gradient own it; at ansi16 the gradient is a no-op, so
+        // the widget's own foreground is kept.
         let fgColor = foregroundColor;
-        if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
-            fgColor = settings.overrideForegroundColor;
+        const fgOverride = settings.overrideForegroundColor;
+        if (fgOverride && fgOverride !== 'none') {
+            if (!isGradientSpec(fgOverride)) {
+                fgColor = fgOverride;
+            } else if (colorLevel !== 'ansi16') {
+                fgColor = undefined;
+            }
         }
 
         // Override background color takes precedence over EVERYTHING, including passed background color
@@ -911,6 +968,16 @@ export function renderStatusLine(
             statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
         }
     }
+
+    // Apply a foreground gradient across the whole line if configured. This runs
+    // AFTER truncation, not before: truncateStyledText cuts from the right and
+    // appends a raw "..." with no trailing reset, so a gradient applied earlier
+    // would have its closing \x1b[39m sliced off — leaking the last color past the
+    // line. Gradient codes are zero-width (getVisibleWidth strips them), so the
+    // truncation measurement above is unaffected by deferring the gradient, and
+    // coloring the already-truncated line sweeps the ellipsis too and keeps the
+    // reset at the true end.
+    statusLine = maybeApplyForegroundGradient(statusLine, settings, colorLevel);
 
     return statusLine;
 }

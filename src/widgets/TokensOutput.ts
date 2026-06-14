@@ -24,13 +24,13 @@ export class TokensOutputWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Out: ', '3.4k');
         }
 
+        if (context.tokenMetrics) {
+            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
+        }
+
         const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
         if (outputTotalTokens !== null) {
             return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens));
-        }
-
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
         }
         return null;
     }
