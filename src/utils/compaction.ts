@@ -5,6 +5,7 @@ import * as path from 'path';
 import { z } from 'zod';
 
 const DEFAULT_DROP_THRESHOLD = 2;
+const MIN_CTX_PCT = 1;
 const FRESH_PREV_CTX_PCT = -1;
 const MAX_CACHE_FILE_BYTES = 4096;
 const SESSION_ID_HASH_HEX_LEN = 32;
@@ -58,17 +59,19 @@ function normalizeOptions(options: number | DetectCompactionOptions): Required<P
  * count. When a known context window size changes, the previous percentage
  * baseline is reset instead of counted as a compaction.
  *
- * Returns state unchanged when currentCtxPct is non-finite or negative,
- * preventing NaN from poisoning persistent state. The fresh-state sentinel
- * for prevCtxPct is -1, so a session that legitimately starts at 0% is
- * still detected correctly.
+ * Values below MIN_CTX_PCT (1%) are treated as transient glitches (e.g. a
+ * momentary flash to 0%) and ignored entirely.
+ *
+ * Returns state unchanged when currentCtxPct is non-finite, negative, or
+ * below MIN_CTX_PCT, preventing NaN from poisoning persistent state and
+ * preserving the last valid baseline until another valid reading arrives.
  */
 export function detectCompaction(
     currentCtxPct: number,
     state: CompactionState,
     options: number | DetectCompactionOptions = DEFAULT_DROP_THRESHOLD
 ): CompactionState {
-    if (!Number.isFinite(currentCtxPct) || currentCtxPct < 0) {
+    if (!Number.isFinite(currentCtxPct) || currentCtxPct < MIN_CTX_PCT) {
         return state;
     }
 
