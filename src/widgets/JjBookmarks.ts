@@ -4,12 +4,21 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
     isInsideJjRepo,
     runJjArgs
 } from '../utils/jj';
+
+import {
+    formatSymbolPrefix,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
+
+const DEFAULT_SYMBOL = '🔖';
 
 export class JjBookmarksWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
@@ -46,21 +55,22 @@ export class JjBookmarksWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideNoJj = item.metadata?.hideNoJj === 'true';
+        const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            return item.rawValue ? 'main' : '🔖 main';
+            return item.rawValue ? 'main' : `${prefix}main`;
         }
 
         if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : '🔖 no jj';
+            return hideNoJj ? null : `${prefix}no jj`;
         }
 
         const bookmarks = this.getJjBookmarks(context);
         if (bookmarks) {
-            return item.rawValue ? bookmarks : `🔖 ${bookmarks}`;
+            return item.rawValue ? bookmarks : `${prefix}${bookmarks}`;
         }
 
-        return hideNoJj ? null : '🔖 (none)';
+        return hideNoJj ? null : `${prefix}(none)`;
     }
 
     private getJjBookmarks(context: RenderContext): string | null {
@@ -86,8 +96,13 @@ export class JjBookmarksWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
+            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' },
+            getSymbolKeybind()
         ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     supportsRawValue(): boolean { return true; }
