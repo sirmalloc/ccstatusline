@@ -271,6 +271,37 @@ describe('config utilities', () => {
         expect(leftovers).toEqual([]);
     });
 
+    it('saves through a symlinked settings file without replacing the link', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const targetDir = path.join(MOCK_HOME_DIR, 'dotfiles', 'ccstatusline');
+        const targetPath = path.join(targetDir, 'settings.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.mkdirSync(targetDir, { recursive: true });
+        fs.writeFileSync(
+            targetPath,
+            JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []], flexMode: 'full' }),
+            'utf-8'
+        );
+        fs.symlinkSync(targetPath, settingsPath);
+
+        await saveSettings({
+            ...DEFAULT_SETTINGS,
+            flexMode: 'full-minus-40'
+        });
+
+        expect(fs.lstatSync(settingsPath).isSymbolicLink()).toBe(true);
+        expect(fs.realpathSync(settingsPath)).toBe(fs.realpathSync(targetPath));
+
+        const saved = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as {
+            flexMode?: string;
+            version?: number;
+        };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.flexMode).toBe('full-minus-40');
+        expect(fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
+        expect(fs.readdirSync(targetDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
+    });
+
     it('migration write-back leaves no temp file behind', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });

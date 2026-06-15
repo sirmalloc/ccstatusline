@@ -22,6 +22,9 @@ const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
 const rename = fs.promises.rename;
 const unlink = fs.promises.unlink;
+const lstat = fs.promises.lstat;
+const readlink = fs.promises.readlink;
+const realpath = fs.promises.realpath;
 
 const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
 
@@ -49,11 +52,62 @@ interface SettingsPaths {
     settingsPath: string;
 }
 
+interface AtomicWriteTarget {
+    targetPath: string;
+    tempDir: string;
+}
+
 function getSettingsPaths(): SettingsPaths {
     return {
         configDir: path.dirname(settingsPath),
         settingsPath
     };
+}
+
+function getErrorCode(error: unknown): string | undefined {
+    return typeof error === 'object' && error !== null && 'code' in error
+        ? String(error.code)
+        : undefined;
+}
+
+async function resolveSymlinkTarget(linkPath: string): Promise<string> {
+    try {
+        return await realpath(linkPath);
+    } catch (error) {
+        if (getErrorCode(error) !== 'ENOENT') {
+            throw error;
+        }
+
+        const linkTarget = await readlink(linkPath);
+        return path.resolve(path.dirname(linkPath), linkTarget);
+    }
+}
+
+async function resolveAtomicWriteTarget(paths: SettingsPaths): Promise<AtomicWriteTarget> {
+    try {
+        const stats = await lstat(paths.settingsPath);
+        if (!stats.isSymbolicLink()) {
+            return {
+                targetPath: paths.settingsPath,
+                tempDir: paths.configDir
+            };
+        }
+
+        const targetPath = await resolveSymlinkTarget(paths.settingsPath);
+        return {
+            targetPath,
+            tempDir: path.dirname(targetPath)
+        };
+    } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') {
+            return {
+                targetPath: paths.settingsPath,
+                tempDir: paths.configDir
+            };
+        }
+
+        throw error;
+    }
 }
 
 async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
@@ -63,10 +117,14 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
     // over the target. A concurrent reader (e.g. the statusline render path firing
     // mid-save) sees either the complete old file or the complete new file, never a
     // torn write. Same idiom as git.ts:writePersistentCache.
-    const tempPath = `${paths.settingsPath}.${process.pid}.${Date.now()}.tmp`;
+    const writeTarget = await resolveAtomicWriteTarget(paths);
+    const tempPath = path.join(
+        writeTarget.tempDir,
+        `${path.basename(writeTarget.targetPath)}.${process.pid}.${Date.now()}.tmp`
+    );
     try {
         await writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf-8');
-        await rename(tempPath, paths.settingsPath);
+        await rename(tempPath, writeTarget.targetPath);
     } catch (error) {
         try {
             await unlink(tempPath);
