@@ -4,7 +4,10 @@ import type {
     RenderContext,
     WidgetItem
 } from '../types';
-import { getColorLevelString } from '../types/ColorLevel';
+import {
+    getColorLevelString,
+    type ColorLevel
+} from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
 import {
@@ -31,6 +34,12 @@ import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
 export { formatTokens } from './format-tokens';
+
+// Build a red warning badge indicating that settings.json could not be loaded.
+// Passes colorLevel through so color is suppressed when the terminal has no color support.
+export function buildConfigWarningBadge(colorLevel: ColorLevel): string {
+    return applyColors('⚠ invalid config', 'red', undefined, false, getColorLevelString(colorLevel));
+}
 
 // Paint a foreground gradient across a finished line when overrideForegroundColor
 // is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.
