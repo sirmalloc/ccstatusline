@@ -235,6 +235,20 @@ describe('CompactionCounterWidget', () => {
                 item: { ...ITEM, metadata: { showReclaimed: 'true' } }
             })).toBe('↻ 2 ↓120.0k');
         });
+
+        it('renders a custom reclaimed glyph from the symbolReclaimed override', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true', symbolReclaimed: 'X' } }
+            })).toBe('↻ 2 X887.0k');
+        });
+
+        it('drops the reclaimed glyph but keeps the space when the override is empty', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true', symbolReclaimed: '' } }
+            })).toBe('↻ 2 887.0k');
+        });
     });
 
     describe('editor', () => {
@@ -244,7 +258,8 @@ describe('CompactionCounterWidget', () => {
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
+                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
+                { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
 
@@ -256,7 +271,8 @@ describe('CompactionCounterWidget', () => {
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
+                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
+                { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
 

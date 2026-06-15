@@ -7,6 +7,7 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
@@ -16,6 +17,12 @@ import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
 } from './shared/metadata';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
 
 const COMPACTION_ICON = '↻';
 const COMPACTION_NERD_FONT_ICON = '\uF021';
@@ -32,6 +39,7 @@ const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
 const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
 const SHOW_RECLAIMED_METADATA_KEY = 'showReclaimed';
+const RECLAIMED_SLOT: SymbolSlot = { id: 'symbolReclaimed', label: 'Reclaimed', defaultSymbol: '↓' };
 const SAMPLE_STATS: CompactionData = Object.freeze({
     count: 2,
     byTrigger: Object.freeze({ auto: 1, manual: 1, unknown: 0 }),
@@ -94,8 +102,12 @@ function toggleHideZero(item: WidgetItem): WidgetItem {
     };
 }
 
-function formatReclaimedSuffix(tokensReclaimed: number): string {
-    return tokensReclaimed > 0 ? ` ↓${formatTokens(tokensReclaimed)}` : '';
+function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
+    if (tokensReclaimed <= 0) {
+        return '';
+    }
+    const symbol = getSlotSymbol(item, RECLAIMED_SLOT);
+    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed)}` : ` ${formatTokens(tokensReclaimed)}`;
 }
 
 function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
@@ -118,7 +130,7 @@ function formatStats(data: CompactionData, item: WidgetItem, icon: string): stri
         out += formatTriggerSuffix(data.byTrigger);
     }
     if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
-        out += formatReclaimedSuffix(data.tokensReclaimed);
+        out += formatReclaimedSuffix(data.tokensReclaimed, item);
     }
     return out;
 }
@@ -239,8 +251,13 @@ export class CompactionCounterWidget implements Widget {
         keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
         keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
         keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
+        keybinds.push(getSymbolKeybind());
 
         return keybinds;
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, [RECLAIMED_SLOT]);
     }
 
     supportsRawValue(): boolean { return false; }
