@@ -6,289 +6,154 @@ import {
     beforeEach,
     describe,
     expect,
-    it,
-    vi
+    it
 } from 'vitest';
 
 import {
-    detectCompaction,
-    loadCompactionState,
-    saveCompactionState,
-    type CompactionState
+    ZERO_COMPACTION_STATS,
+    computeCompactionStats,
+    getCompactionStats
 } from '../compaction';
 
-const fresh: CompactionState = { count: 0, prevCtxPct: -1 };
-
-describe('detectCompaction', () => {
-    it('does not detect on first render (sentinel prevCtxPct)', () => {
-        const result = detectCompaction(40, fresh);
-        expect(result.count).toBe(0);
-        expect(result.prevCtxPct).toBe(40);
+describe('computeCompactionStats', () => {
+    it('returns zeroed stats for no compaction markers', () => {
+        const lines = [
+            JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } }),
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 100 } } })
+        ];
+        expect(computeCompactionStats(lines)).toEqual({
+            count: 0,
+            byTrigger: { auto: 0, manual: 0, unknown: 0 },
+            tokensReclaimed: 0
+        });
     });
 
-    it('detects compaction when ctx drops by more than 2 points', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        const result = detectCompaction(30, prev);
-        expect(result.count).toBe(1);
+    it('counts each compact_boundary system record', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 179004 } }),
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 20000 } } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'manual', preTokens: 837327, postTokens: 25443 } })
+        ];
+        expect(computeCompactionStats(lines).count).toBe(2);
     });
 
-    it('does not detect when ctx drops by exactly 2 points', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        const result = detectCompaction(38, prev);
-        expect(result.count).toBe(0);
+    it('counts exactly one compaction despite transient 0% context frames (supersedes #370)', () => {
+        const lines = [
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 150000 } } }),
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 0 } } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 150000, postTokens: 20000 } }),
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 0 } } }),
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 20000 } } })
+        ];
+        expect(computeCompactionStats(lines).count).toBe(1);
     });
 
-    it('does not detect when ctx drops by 1 point (rounding noise)', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 8 };
-        const result = detectCompaction(7, prev);
-        expect(result.count).toBe(0);
+    it('splits counts by trigger and buckets missing/unknown trigger as unknown', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 1 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'manual', preTokens: 1 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'manual', preTokens: 1 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { preTokens: 1 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'future-mode', preTokens: 1 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary' })
+        ];
+        const stats = computeCompactionStats(lines);
+        expect(stats.byTrigger).toEqual({ auto: 1, manual: 2, unknown: 3 });
+        expect(stats.count).toBe(stats.byTrigger.auto + stats.byTrigger.manual + stats.byTrigger.unknown);
     });
 
-    it('does not detect when ctx increases', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        const result = detectCompaction(45, prev);
-        expect(result.count).toBe(0);
+    it('sums tokensReclaimed only for markers with both pre and post tokens', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'manual', preTokens: 900000, postTokens: 20000 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 100000, postTokens: 30000 } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 50000 } })
+        ];
+        // (900000-20000) + (100000-30000) = 880000 + 70000 = 950000; third marker lacks postTokens -> contributes 0
+        expect(computeCompactionStats(lines).tokensReclaimed).toBe(950000);
     });
 
-    it('does not detect when ctx stays the same', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        const result = detectCompaction(40, prev);
-        expect(result.count).toBe(0);
+    it('reports tokensReclaimed 0 when no marker has both pre and post tokens', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 50000 } })
+        ];
+        expect(computeCompactionStats(lines).tokensReclaimed).toBe(0);
     });
 
-    it('detects 3-point drop on 1M window', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 8 };
-        const result = detectCompaction(5, prev);
-        expect(result.count).toBe(1);
+    it('floors per-marker tokensReclaimed at 0 when postTokens exceeds preTokens', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 10000, postTokens: 50000 } })
+        ];
+        expect(computeCompactionStats(lines).tokensReclaimed).toBe(0);
     });
 
-    it('detects large compaction on 200K window', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 85 };
-        const result = detectCompaction(30, prev);
-        expect(result.count).toBe(1);
+    it('ignores other system records and malformed lines', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'something_else' }),
+            '{ this is not valid json',
+            '',
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto' } })
+        ];
+        expect(computeCompactionStats(lines).count).toBe(1);
     });
 
-    it('increments existing count', () => {
-        const prev: CompactionState = { count: 3, prevCtxPct: 70 };
-        const result = detectCompaction(40, prev);
-        expect(result.count).toBe(4);
+    it('does not count a non-system record that merely has the subtype string', () => {
+        const lines = [
+            JSON.stringify({ type: 'user', subtype: 'compact_boundary' })
+        ];
+        expect(computeCompactionStats(lines).count).toBe(0);
     });
 
-    it('updates prevCtxPct regardless of detection', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        const result = detectCompaction(45, prev);
-        expect(result.prevCtxPct).toBe(45);
+    it('excludes sidechain (subagent) records from every stat', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', isSidechain: true, compactMetadata: { trigger: 'auto', preTokens: 50000, postTokens: 10000 } })
+        ];
+        expect(computeCompactionStats(lines)).toEqual({
+            count: 0,
+            byTrigger: { auto: 0, manual: 0, unknown: 0 },
+            tokensReclaimed: 0
+        });
     });
 
-    it('accepts custom threshold', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 10 };
-        const result = detectCompaction(8, prev, 1);
-        expect(result.count).toBe(1);
-    });
-
-    it('stores the current context window size when provided', () => {
-        const result = detectCompaction(40, fresh, { windowSize: 200000 });
-        expect(result).toEqual({ count: 0, prevCtxPct: 40, prevWindowSize: 200000 });
-    });
-
-    it('detects compaction when the context window size is unchanged', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40, prevWindowSize: 200000 };
-        const result = detectCompaction(30, prev, { windowSize: 200000 });
-        expect(result.count).toBe(1);
-        expect(result.prevWindowSize).toBe(200000);
-    });
-
-    it('resets the baseline without incrementing when the context window size changes', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40, prevWindowSize: 200000 };
-        const result = detectCompaction(8, prev, { windowSize: 1000000 });
-        expect(result).toEqual({ count: 0, prevCtxPct: 8, prevWindowSize: 1000000 });
-    });
-
-    it('learns the context window size for legacy state without incrementing', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        const result = detectCompaction(8, prev, { windowSize: 1000000 });
-        expect(result).toEqual({ count: 0, prevCtxPct: 8, prevWindowSize: 1000000 });
-    });
-
-    it('accepts custom threshold in options', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 10, prevWindowSize: 200000 };
-        const result = detectCompaction(8, prev, { dropThreshold: 1, windowSize: 200000 });
-        expect(result.count).toBe(1);
-    });
-
-    it('returns state unchanged for NaN input (no poison)', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        expect(detectCompaction(NaN, prev)).toEqual(prev);
-    });
-
-    it('returns state unchanged for Infinity input', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        expect(detectCompaction(Infinity, prev)).toEqual(prev);
-    });
-
-    it('returns state unchanged for negative input', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40 };
-        expect(detectCompaction(-1, prev)).toEqual(prev);
-    });
-
-    it('detects drops using non-integer percentages', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 40.4 };
-        // 2.8-point drop, exceeds default threshold of 2
-        const result = detectCompaction(37.6, prev);
-        expect(result.count).toBe(1);
-    });
-
-    it('handles a session that starts at 0% (sentinel guards first render)', () => {
-        // sequence: -1 (fresh) -> 0 -> 5 -> 30 -> 10
-        // First three transitions: no detection. Fourth (30 -> 10) is a real drop.
-        let state = fresh;
-        state = detectCompaction(0, state);
-        expect(state).toEqual({ count: 0, prevCtxPct: 0 });
-        state = detectCompaction(5, state);
-        expect(state.count).toBe(0);
-        state = detectCompaction(30, state);
-        expect(state.count).toBe(0);
-        state = detectCompaction(10, state);
-        expect(state.count).toBe(1);
-    });
-
-    it('detects multiple sequential compactions', () => {
-        // sequence: -1 (fresh) -> 40 -> 10 -> 50 -> 20
-        let state = fresh;
-        state = detectCompaction(40, state);
-        state = detectCompaction(10, state);
-        expect(state.count).toBe(1);
-        state = detectCompaction(50, state);
-        state = detectCompaction(20, state);
-        expect(state.count).toBe(2);
-    });
-
-    it('with threshold 0, every strict drop counts', () => {
-        const prev: CompactionState = { count: 0, prevCtxPct: 10 };
-        expect(detectCompaction(9.5, prev, 0).count).toBe(1);
+    it('counts a compact_boundary record with explicit isSidechain false', () => {
+        const lines = [
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', isSidechain: false, compactMetadata: { trigger: 'manual', preTokens: 100000 } })
+        ];
+        expect(computeCompactionStats(lines).count).toBe(1);
     });
 });
 
-describe('persistence', () => {
-    let testHome: string;
+describe('getCompactionStats', () => {
+    let dir: string;
 
     beforeEach(() => {
-        testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'compaction-test-'));
-        vi.spyOn(os, 'homedir').mockReturnValue(testHome);
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'compaction-stats-'));
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
-        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    it('round-trips state through save and load', () => {
-        const state: CompactionState = { count: 5, prevCtxPct: 42, prevWindowSize: 200000 };
-        saveCompactionState('test-session', state);
-        const loaded = loadCompactionState('test-session');
-        expect(loaded).toEqual(state);
+    it('returns zeroed stats when the transcript file does not exist', async () => {
+        await expect(getCompactionStats(path.join(dir, 'missing.jsonl'))).resolves.toEqual(ZERO_COMPACTION_STATS);
     });
 
-    it('returns fresh state for unknown session', () => {
-        const loaded = loadCompactionState('nonexistent');
-        expect(loaded).toEqual({ count: 0, prevCtxPct: -1 });
+    it('computes stats from a real-shaped transcript', async () => {
+        const file = path.join(dir, 'session.jsonl');
+        const content = [
+            JSON.stringify({ type: 'user', message: { role: 'user', content: 'start' } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'manual', preTokens: 837327, postTokens: 25443 }, version: '2.1.161' }),
+            JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 25443 } } }),
+            JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 912661, postTokens: 30026 }, version: '2.1.161' })
+        ].join('\n') + '\n';
+        fs.writeFileSync(file, content);
+        await expect(getCompactionStats(file)).resolves.toEqual({
+            count: 2,
+            byTrigger: { auto: 1, manual: 1, unknown: 0 },
+            tokensReclaimed: (837327 - 25443) + (912661 - 30026)
+        });
     });
 
-    it('sanitizes path traversal in session ID', () => {
-        const malicious = '../../../../../../tmp/pwn';
-        saveCompactionState(malicious, { count: 1, prevCtxPct: 50 });
-
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        const files = fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : [];
-        expect(files.length).toBe(1);
-        expect(files[0]).toMatch(/^compaction-[a-zA-Z0-9_-]+\.json$/);
-
-        expect(fs.existsSync('/tmp/pwn.json')).toBe(false);
-    });
-
-    it('hashes session IDs that contain only illegal characters to avoid collision', () => {
-        // Without hashing, both '....' and '!!!!' would sanitize to '____' and collide.
-        saveCompactionState('....', { count: 1, prevCtxPct: 10 });
-        saveCompactionState('!!!!', { count: 2, prevCtxPct: 20 });
-        expect(loadCompactionState('....').count).toBe(1);
-        expect(loadCompactionState('!!!!').count).toBe(2);
-    });
-
-    it('hashes empty session ID to avoid blank filename leaf', () => {
-        saveCompactionState('', { count: 1, prevCtxPct: 10 });
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        const files = fs.readdirSync(cacheDir);
-        expect(files.length).toBe(1);
-        expect(files[0]).not.toBe('compaction-.json');
-        expect(files[0]).toMatch(/^compaction-[a-f0-9]{32}\.json$/);
-    });
-
-    it('does not throw on write failure', () => {
-        vi.spyOn(os, 'homedir').mockReturnValue('/nonexistent/readonly/path');
-        expect(() => {
-            saveCompactionState('test', { count: 1, prevCtxPct: 50 });
-        }).not.toThrow();
-    });
-
-    it('returns fresh state when cache file has corrupted JSON', () => {
-        saveCompactionState('corrupt-test', { count: 5, prevCtxPct: 50 });
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        const cacheFile = path.join(cacheDir, fs.readdirSync(cacheDir)[0] ?? '');
-        fs.writeFileSync(cacheFile, '{ this is not valid json');
-
-        const loaded = loadCompactionState('corrupt-test');
-        expect(loaded).toEqual({ count: 0, prevCtxPct: -1 });
-    });
-
-    it('returns fresh state when cache file exceeds size cap', () => {
-        saveCompactionState('big-test', { count: 5, prevCtxPct: 50 });
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        const cacheFile = path.join(cacheDir, fs.readdirSync(cacheDir)[0] ?? '');
-        fs.writeFileSync(cacheFile, 'a'.repeat(8192));
-
-        const loaded = loadCompactionState('big-test');
-        expect(loaded).toEqual({ count: 0, prevCtxPct: -1 });
-    });
-
-    it.skipIf(process.platform === 'win32')('returns fresh state when cache path is a symlink', () => {
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        fs.mkdirSync(cacheDir, { recursive: true });
-        const realPath = path.join(testHome, 'real.json');
-        fs.writeFileSync(realPath, JSON.stringify({ count: 99, prevCtxPct: 50 }));
-
-        // sessionId 'symlink-test' has only legal chars, so the cache filename
-        // is deterministically compaction-symlink-test.json
-        const sessionId = 'symlink-test';
-        const symlinkPath = path.join(cacheDir, `compaction-${sessionId}.json`);
-        fs.symlinkSync(realPath, symlinkPath);
-
-        const loaded = loadCompactionState(sessionId);
-        expect(loaded).toEqual({ count: 0, prevCtxPct: -1 });
-    });
-
-    it('uses zod defaults for missing fields in cache file', () => {
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        fs.mkdirSync(cacheDir, { recursive: true });
-        const cacheFile = path.join(cacheDir, 'compaction-partial.json');
-        fs.writeFileSync(cacheFile, JSON.stringify({}));
-
-        const loaded = loadCompactionState('partial');
-        expect(loaded).toEqual({ count: 0, prevCtxPct: -1 });
-    });
-
-    it.skipIf(process.platform === 'win32')('atomic save replaces a planted symlink rather than writing through it', () => {
-        const cacheDir = path.join(testHome, '.cache', 'ccstatusline', 'compaction');
-        fs.mkdirSync(cacheDir, { recursive: true });
-        const sessionId = 'rename-test';
-        const targetPath = path.join(cacheDir, `compaction-${sessionId}.json`);
-        const decoyTarget = path.join(testHome, 'decoy.txt');
-        fs.writeFileSync(decoyTarget, 'do not overwrite me');
-        fs.symlinkSync(decoyTarget, targetPath);
-
-        saveCompactionState(sessionId, { count: 1, prevCtxPct: 30 });
-
-        // The decoy must be untouched; the cache path is now a regular file.
-        expect(fs.readFileSync(decoyTarget, 'utf-8')).toBe('do not overwrite me');
-        expect(fs.lstatSync(targetPath).isFile()).toBe(true);
+    it('returns zeroed stats when the transcript path is not a readable file', async () => {
+        await expect(getCompactionStats(dir)).resolves.toEqual(ZERO_COMPACTION_STATS);
     });
 });

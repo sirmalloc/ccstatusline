@@ -169,6 +169,8 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     const hasManualSeparatorItems = settings.lines.some(line => line.some(
         item => item.type === 'separator'
     ));
+    const hasGlobalFgOverride = Boolean(settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
+    const globalOverrideMessage = hasGlobalFgOverride ? '⚠ Global override for FG active' : null;
 
     useInput((input, key) => {
         if (fontInstallMessage || installingFonts) {
@@ -269,7 +271,15 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     return (
         <Box flexDirection='column'>
             {!confirmingFontInstall && !installingFonts && !fontInstallMessage && (
-                <Text bold>Powerline Setup</Text>
+                <Box>
+                    <Text bold>Powerline Setup</Text>
+                    {globalOverrideMessage && (
+                        <Text color='yellow' dimColor>
+                            {'.  '}
+                            {globalOverrideMessage}
+                        </Text>
+                    )}
+                </Box>
             )}
 
             {confirmingFontInstall ? (
@@ -423,7 +433,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
 
                             <Box flexDirection='column' marginTop={1}>
                                 <Text dimColor>
-                                    When enabled, global overrides are disabled and powerline separators are used
+                                    Powerline mode uses its own separator system
                                 </Text>
                                 <Text dimColor>
                                     Continue Theme keeps the Powerline color sequence running across lines

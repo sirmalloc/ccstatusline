@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { Mock } from 'vitest';
 import {
     afterEach,
@@ -22,7 +23,7 @@ vi.mock('child_process', () => ({
     spawnSync: vi.fn()
 }));
 
-const CREDENTIALS_FILE = '/fake/claude/.credentials.json';
+const CREDENTIALS_FILE = path.join('/fake/claude', '.credentials.json');
 const mockedExecFileSync = execFileSync as unknown as Mock;
 
 function makeTokenPayload(token: string): string {

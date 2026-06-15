@@ -11,6 +11,7 @@ import type {
 } from '../../types';
 import type { CompactionData } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import { ZERO_COMPACTION_STATS } from '../../utils/compaction';
 import { CompactionCounterWidget } from '../CompactionCounter';
 
 vi.mock('child_process', () => ({
@@ -23,13 +24,16 @@ const ITEM: WidgetItem = { id: 'compaction-counter', type: 'compaction-counter' 
 
 function render(options: {
     isPreview?: boolean;
-    compactionData?: CompactionData | null;
+    compactionData?: Partial<CompactionData> | null;
     item?: WidgetItem;
 } = {}) {
     const widget = new CompactionCounterWidget();
+    const compactionData = (options.compactionData === null || options.compactionData === undefined)
+        ? options.compactionData
+        : { ...ZERO_COMPACTION_STATS, ...options.compactionData };
     const context: RenderContext = {
         isPreview: options.isPreview,
-        compactionData: options.compactionData
+        compactionData
     };
     return widget.render(options.item ?? ITEM, context, DEFAULT_SETTINGS);
 }
@@ -147,6 +151,104 @@ describe('CompactionCounterWidget', () => {
             // Verify preview short-circuits before reading compactionData
             expect(render({ isPreview: true, compactionData: { count: 99 } })).toBe('↻ 2');
         });
+
+        it('appends the trigger split when showTriggers is enabled', () => {
+            expect(render({
+                compactionData: { count: 3, byTrigger: { auto: 2, manual: 1, unknown: 0 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 3 (2 auto, 1 manual)');
+        });
+
+        it('shows the unknown bucket in the trigger split only when > 0', () => {
+            expect(render({
+                compactionData: { count: 3, byTrigger: { auto: 2, manual: 0, unknown: 1 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 3 (2 auto, 1 unknown)');
+        });
+
+        it('renders a manual-only trigger split', () => {
+            expect(render({
+                compactionData: { count: 2, byTrigger: { auto: 0, manual: 2, unknown: 0 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 2 (2 manual)');
+        });
+
+        it('shows no suffix when all trigger buckets are zero', () => {
+            expect(render({
+                compactionData: { count: 0, byTrigger: { auto: 0, manual: 0, unknown: 0 } },
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 0');
+        });
+
+        it('appends the trigger split to non-default formats too', () => {
+            expect(render({
+                compactionData: { count: 2, byTrigger: { auto: 1, manual: 1, unknown: 0 } },
+                item: { ...ITEM, metadata: { format: 'number', showTriggers: 'true' } }
+            })).toBe('2 (1 auto, 1 manual)');
+        });
+
+        it('shows the trigger split sample in preview mode', () => {
+            expect(render({
+                isPreview: true,
+                item: { ...ITEM, metadata: { showTriggers: 'true' } }
+            })).toBe('↻ 2 (1 auto, 1 manual)');
+        });
+
+        it('appends tokens reclaimed when showReclaimed is enabled', () => {
+            expect(render({
+                compactionData: { count: 3, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true' } }
+            })).toBe('↻ 3 ↓887.0k');
+        });
+
+        it('renders tokens reclaimed near 1M as 1.0M (respects the formatTokens rounding fix)', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 999950 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true' } }
+            })).toBe('↻ 2 ↓1.0M');
+        });
+
+        it('omits tokens reclaimed when the amount is 0', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 0 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true' } }
+            })).toBe('↻ 2');
+        });
+
+        it('appends tokens reclaimed to non-default formats too', () => {
+            expect(render({
+                compactionData: { count: 3, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { format: 'number', showReclaimed: 'true' } }
+            })).toBe('3 ↓887.0k');
+        });
+
+        it('stacks trigger split and tokens reclaimed', () => {
+            expect(render({
+                compactionData: { count: 3, byTrigger: { auto: 2, manual: 1, unknown: 0 }, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { showTriggers: 'true', showReclaimed: 'true' } }
+            })).toBe('↻ 3 (2 auto, 1 manual) ↓887.0k');
+        });
+
+        it('shows the tokens-reclaimed sample in preview mode', () => {
+            expect(render({
+                isPreview: true,
+                item: { ...ITEM, metadata: { showReclaimed: 'true' } }
+            })).toBe('↻ 2 ↓120.0k');
+        });
+
+        it('renders a custom reclaimed glyph from the symbolReclaimed override', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true', symbolReclaimed: 'X' } }
+            })).toBe('↻ 2 X887.0k');
+        });
+
+        it('drops the reclaimed glyph but keeps the space when the override is empty', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true', symbolReclaimed: '' } }
+            })).toBe('↻ 2 887.0k');
+        });
     });
 
     describe('editor', () => {
@@ -154,7 +256,10 @@ describe('CompactionCounterWidget', () => {
             expect(new CompactionCounterWidget().getCustomKeybinds(ITEM)).toEqual([
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
+                { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
+                { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
+                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
+                { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
 
@@ -164,7 +269,10 @@ describe('CompactionCounterWidget', () => {
                 metadata: { format: 'text-and-number' }
             })).toEqual([
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
+                { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
+                { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
+                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
+                { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
 
@@ -262,6 +370,44 @@ describe('CompactionCounterWidget', () => {
 
             expect(enabled?.metadata?.format).toBe('text-and-number');
             expect(enabled?.metadata?.nerdFont).toBeUndefined();
+        });
+
+        it('toggles showTriggers metadata on and off', () => {
+            const widget = new CompactionCounterWidget();
+            const enabled = widget.handleEditorAction('toggle-triggers', ITEM);
+            const disabled = widget.handleEditorAction('toggle-triggers', enabled ?? ITEM);
+
+            expect(enabled?.metadata?.showTriggers).toBe('true');
+            expect(disabled?.metadata?.showTriggers).toBe('false');
+        });
+
+        it('shows trigger split in the editor display when enabled', () => {
+            expect(new CompactionCounterWidget().getEditorDisplay({
+                ...ITEM,
+                metadata: { showTriggers: 'true' }
+            })).toEqual({
+                displayText: 'Compaction Counter',
+                modifierText: '(icon-space-number, trigger split)'
+            });
+        });
+
+        it('toggles showReclaimed metadata on and off', () => {
+            const widget = new CompactionCounterWidget();
+            const enabled = widget.handleEditorAction('toggle-reclaimed', ITEM);
+            const disabled = widget.handleEditorAction('toggle-reclaimed', enabled ?? ITEM);
+
+            expect(enabled?.metadata?.showReclaimed).toBe('true');
+            expect(disabled?.metadata?.showReclaimed).toBe('false');
+        });
+
+        it('shows reclaimed in the editor display when enabled', () => {
+            expect(new CompactionCounterWidget().getEditorDisplay({
+                ...ITEM,
+                metadata: { showReclaimed: 'true' }
+            })).toEqual({
+                displayText: 'Compaction Counter',
+                modifierText: '(icon-space-number, reclaimed)'
+            });
         });
     });
 });

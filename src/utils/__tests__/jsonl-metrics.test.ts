@@ -156,6 +156,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 1799,
             outputTokens: 141,
             cachedTokens: 92,
+            cacheReadTokens: 56,
+            cacheCreationTokens: 36,
             totalTokens: 2032,
             contextLength: 250
         });
@@ -222,6 +224,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 2,           // 1 + 1
             outputTokens: 550,        // 150 + 400
             cachedTokens: 46500,      // (12000 + 11000) + (23000 + 500)
+            cacheReadTokens: 35000,   // 12000 + 23000
+            cacheCreationTokens: 11500, // 11000 + 500
             totalTokens: 47052,       // 2 + 550 + 46500
             contextLength: 23501      // last main-chain final entry: 1 + 23000 + 500
         });
@@ -267,6 +271,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 4,
             outputTokens: 140,
             cachedTokens: 1200,
+            cacheReadTokens: 1000,
+            cacheCreationTokens: 200,
             totalTokens: 1344,
             contextLength: 1204
         });
@@ -320,6 +326,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 5,
             outputTokens: 200,
             cachedTokens: 375,
+            cacheReadTokens: 300,
+            cacheCreationTokens: 75,
             totalTokens: 580,
             contextLength: 228
         });
@@ -357,6 +365,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 300,
             outputTokens: 130,
             cachedTokens: 80,
+            cacheReadTokens: 50,
+            cacheCreationTokens: 30,
             totalTokens: 510,
             contextLength: 250
         });
@@ -368,6 +378,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 0,
             outputTokens: 0,
             cachedTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
             totalTokens: 0,
             contextLength: 0
         });

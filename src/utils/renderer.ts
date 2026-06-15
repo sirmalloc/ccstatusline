@@ -4,31 +4,54 @@ import type {
     RenderContext,
     WidgetItem
 } from '../types';
-import { getColorLevelString } from '../types/ColorLevel';
+import {
+    getColorLevelString,
+    type ColorLevel
+} from '../types/ColorLevel';
 import type { Settings } from '../types/Settings';
 
 import {
+    applyLineGradient,
+    applyLineGradientSegment,
+    getVisibleText,
     getVisibleWidth,
     stripSgrCodes,
     truncateStyledText
 } from './ansi';
 import {
     applyColors,
+    applyParensDim,
     bgToFg,
     getColorAnsiCode,
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import {
+    isGradientSpec,
+    parseGradientSpec
+} from './gradient';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
-// Helper function to format token counts
-export function formatTokens(count: number): string {
-    if (count >= 1000000)
-        return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000)
-        return `${(count / 1000).toFixed(1)}k`;
-    return count.toString();
+export { formatTokens } from './format-tokens';
+
+// Build a red warning badge indicating that settings.json could not be loaded.
+// Passes colorLevel through so color is suppressed when the terminal has no color support.
+export function buildConfigWarningBadge(colorLevel: ColorLevel): string {
+    return applyColors('⚠ invalid config', 'red', undefined, false, getColorLevelString(colorLevel));
+}
+
+// Paint a foreground gradient across a finished line when overrideForegroundColor
+// is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.
+// Applied as the final step, after truncation, so the trailing reset is not sliced
+// off (see the call site for why ordering matters).
+function maybeApplyForegroundGradient(
+    line: string,
+    settings: Settings,
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor'
+): string {
+    const stops = parseGradientSpec(settings.overrideForegroundColor);
+    return stops ? applyLineGradient(line, stops, colorLevel) : line;
 }
 
 function resolveEffectiveTerminalWidth(
@@ -117,6 +140,7 @@ function renderPowerlineStatusLine(
 
     // Get color level from settings
     const colorLevel = getColorLevelString(settings.colorLevel);
+    const overrideForegroundGradientStops = parseGradientSpec(settings.overrideForegroundColor);
 
     // Filter out separator and flex-separator widgets in powerline mode
     const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
@@ -223,8 +247,11 @@ function renderPowerlineStatusLine(
                 }
             }
 
-            // Apply override FG color if set (overrides theme)
-            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+            // Apply solid override FG color if set (overrides theme). Gradient
+            // overrides are applied to widget text during rendering below so
+            // powerline separators keep their foreground/background contrast.
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                && !isGradientSpec(settings.overrideForegroundColor)) {
                 fgColor = settings.overrideForegroundColor;
             }
 
@@ -335,6 +362,14 @@ function renderPowerlineStatusLine(
         }
     }
 
+    const powerlineGradientWidth = overrideForegroundGradientStops && colorLevel !== 'ansi16'
+        ? widgetElements.reduce((sum, element) => {
+            const isPreserveColors = element.widget.type === 'custom-command' && element.widget.preserveColors;
+            return isPreserveColors ? sum : sum + getVisibleWidth(element.content);
+        }, 0)
+        : 0;
+    let powerlineGradientColumn = 0;
+
     // Build the final powerline string
     let result = '';
 
@@ -353,9 +388,10 @@ function renderPowerlineStatusLine(
         // Apply colors to widget content using raw ANSI codes for powerline mode
         // This avoids reset codes that interfere with separator rendering
         const shouldBold = (settings.globalBold) || widget.widget.bold;
+        const shouldDim = widget.widget.dim === true;
 
         // Check if we need a separator after this widget
-        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget !== undefined && !widget.widget.merge;
 
         const startCapSegmentOffset = startCapBeforeIndex.get(i);
         if (startCapSegmentOffset !== undefined) {
@@ -380,14 +416,36 @@ function renderPowerlineStatusLine(
         if (shouldBold && !isPreserveColors) {
             widgetContent += '\x1b[1m';
         }
-        if (widget.fgColor && !isPreserveColors) {
+        if (shouldDim && !isPreserveColors) {
+            widgetContent += '\x1b[2m';
+        }
+        const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
+            ? overrideForegroundGradientStops
+            : null;
+        const styledContent = widget.widget.dim === 'parens' && !isPreserveColors
+            ? applyParensDim(widget.content, shouldBold)
+            : widget.content;
+
+        if (widget.fgColor && !isPreserveColors && !textGradientStops) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
         }
         // Always apply background for consistency in powerline mode
         if (widget.bgColor) {
             widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
         }
-        widgetContent += widget.content;
+        if (textGradientStops) {
+            const gradientResult = applyLineGradientSegment(
+                styledContent,
+                textGradientStops,
+                colorLevel,
+                powerlineGradientColumn,
+                powerlineGradientWidth
+            );
+            widgetContent += gradientResult.text;
+            powerlineGradientColumn = gradientResult.nextColumn;
+        } else {
+            widgetContent += styledContent;
+        }
         // Reset colors after content
         // For custom commands with preserveColors, also reset text attributes like dim
         if (isPreserveColors) {
@@ -395,10 +453,14 @@ function renderPowerlineStatusLine(
             widgetContent += '\x1b[0m';
         } else {
             widgetContent += '\x1b[49m\x1b[39m';
-            // Only reset bold if there's no separator following AND no end cap
+            // Dim should be scoped to the widget text only. Reset before
+            // separators/end caps so faint intensity cannot leak forward.
             const isLastWidget = i === widgetElements.length - 1;
             const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-            if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+            const shouldRestoreBoldForBoundary = shouldDim && shouldBold && (needsSeparator ? true : isLastWidget && hasEndCap);
+            if (shouldRestoreBoldForBoundary) {
+                widgetContent += '\x1b[22;1m';
+            } else if (shouldDim || (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap))) {
                 widgetContent += '\x1b[22m';
             }
         }
@@ -512,8 +574,8 @@ function renderPowerlineStatusLine(
 
             result += separatorOutput;
 
-            // Reset bold after separator if it was set
-            if (shouldBold) {
+            // Reset bold/dim after separator if either was set
+            if (shouldBold || shouldDim) {
                 result += '\x1b[22m';
             }
         }
@@ -522,6 +584,8 @@ function renderPowerlineStatusLine(
     // Add end cap if specified
     if (endCap && widgetElements.length > 0) {
         const lastWidget = widgetElements[widgetElements.length - 1];
+        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
+        const lastWidgetDim = lastWidget?.widget.dim === true;
 
         if (lastWidget?.bgColor) {
             // End cap uses last widget's background as foreground (converted)
@@ -532,9 +596,8 @@ function renderPowerlineStatusLine(
             result += endCap;
         }
 
-        // Reset bold after end cap if needed
-        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
-        if (lastWidgetBold) {
+        // Reset bold/dim after end cap if needed
+        if (lastWidgetBold || lastWidgetDim) {
             result += '\x1b[22m';
         }
     }
@@ -752,7 +815,7 @@ export function renderStatusLineWithInfo(
 ): RenderResult {
     const line = renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
     // Check if line contains the truncation ellipsis
-    const wasTruncated = line.includes('...');
+    const wasTruncated = getVisibleText(line).includes('...');
     return { line, wasTruncated };
 }
 
@@ -787,12 +850,21 @@ export function renderStatusLine(
             preCalculatedMaxWidths
         );
 
-    // Helper to apply colors with optional background and bold override
-    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
-        // Override foreground color takes precedence over EVERYTHING, including passed foreground color
+    // Helper to apply colors with optional background, bold, and dim
+    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
+        // Override foreground color takes precedence over EVERYTHING, including passed foreground
+        // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
+        // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
+        // no per-widget foreground and let the gradient own it; at ansi16 the gradient is a no-op, so
+        // the widget's own foreground is kept.
         let fgColor = foregroundColor;
-        if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
-            fgColor = settings.overrideForegroundColor;
+        const fgOverride = settings.overrideForegroundColor;
+        if (fgOverride && fgOverride !== 'none') {
+            if (!isGradientSpec(fgOverride)) {
+                fgColor = fgOverride;
+            } else if (colorLevel !== 'ansi16') {
+                fgColor = undefined;
+            }
         }
 
         // Override background color takes precedence over EVERYTHING, including passed background color
@@ -802,7 +874,7 @@ export function renderStatusLine(
         }
 
         const shouldBold = (settings.globalBold) || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel);
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
     };
 
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
@@ -847,6 +919,7 @@ export function renderStatusLine(
             let separatorColor = widget.color ?? 'gray';
             let separatorBg = widget.backgroundColor;
             let separatorBold = widget.bold;
+            let separatorDim = widget.dim;
 
             if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
@@ -861,10 +934,11 @@ export function renderStatusLine(
                     separatorColor = widgetColor;
                     separatorBg = prevWidget.backgroundColor;
                     separatorBold = prevWidget.bold;
+                    separatorDim = prevWidget.dim;
                 }
             }
 
-            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold), type: 'separator', widget });
+            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold, separatorDim), type: 'separator', widget });
             continue;
         }
 
@@ -906,7 +980,7 @@ export function renderStatusLine(
                 } else {
                     // Normal widget rendering with colors
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
                         type: widget.type,
                         widget
                     });
@@ -951,7 +1025,7 @@ export function renderStatusLine(
                         const widgetImpl = getWidget(prevElem.widget.type);
                         widgetColor = widgetImpl ? widgetImpl.getDefaultColor() : 'white';
                     }
-                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
+                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold, prevElem.widget.dim);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);
@@ -1064,6 +1138,16 @@ export function renderStatusLine(
             statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
         }
     }
+
+    // Apply a foreground gradient across the whole line if configured. This runs
+    // AFTER truncation, not before: truncateStyledText cuts from the right and
+    // appends a raw "..." with no trailing reset, so a gradient applied earlier
+    // would have its closing \x1b[39m sliced off — leaking the last color past the
+    // line. Gradient codes are zero-width (getVisibleWidth strips them), so the
+    // truncation measurement above is unaffected by deferring the gradient, and
+    // coloring the already-truncated line sweeps the ellipsis too and keeps the
+    // reset at the true end.
+    statusLine = maybeApplyForegroundGradient(statusLine, settings, colorLevel);
 
     return statusLine;
 }

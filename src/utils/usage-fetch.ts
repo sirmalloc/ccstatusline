@@ -53,6 +53,7 @@ const CachedUsageDataSchema = z.object({
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
     extraUsageUtilization: z.number().nullable().optional(),
+    extraUsageCurrency: z.string().nullable().optional(),
     error: z.string().nullable().optional()
 });
 
@@ -72,7 +73,8 @@ const UsageApiResponseSchema = z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
         used_credits: z.number().nullable().optional(),
-        utilization: z.number().nullable().optional()
+        utilization: z.number().nullable().optional(),
+        currency: z.string().nullable().optional()
     }).nullable().optional()
 });
 
@@ -115,6 +117,7 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
         extraUsageUtilization: parsed.extraUsageUtilization ?? undefined,
+        extraUsageCurrency: parsed.extraUsageCurrency ?? undefined,
         error: parsedError.success ? parsedError.data : undefined
     };
 }
@@ -137,7 +140,8 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
-        extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined
+        extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined,
+        extraUsageCurrency: parsed.extra_usage?.currency ?? undefined
     };
 }
 
@@ -181,7 +185,10 @@ function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean 
         return true;
     }
 
-    return data.extraUsageEnabled === false && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+    // Once the API has reported the extra usage state, missing detail fields are
+    // conclusive: accounts without a configured monthly limit never report
+    // monthly_limit/utilization, so refetching cannot produce them (#413).
+    return data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field);
 }
 
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
