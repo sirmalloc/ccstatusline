@@ -201,6 +201,13 @@ describe('CompactionCounterWidget', () => {
             })).toBe('↻ 3 ↓887.0k');
         });
 
+        it('renders tokens reclaimed near 1M as 1.0M (respects the formatTokens rounding fix)', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 999950 },
+                item: { ...ITEM, metadata: { showReclaimed: 'true' } }
+            })).toBe('↻ 2 ↓1.0M');
+        });
+
         it('omits tokens reclaimed when the amount is 0', () => {
             expect(render({
                 compactionData: { count: 2, tokensReclaimed: 0 },
