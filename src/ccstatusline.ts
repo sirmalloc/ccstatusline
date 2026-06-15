@@ -13,16 +13,14 @@ import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { updateColorMap } from './utils/colors';
 import {
-    detectCompaction,
-    loadCompactionState,
-    saveCompactionState
+    ZERO_COMPACTION_STATS,
+    getCompactionStats
 } from './utils/compaction';
 import {
     initConfigPath,
     loadSettings,
     saveSettings
 } from './utils/config';
-import { calculateContextPercentageMetrics } from './utils/context-percentage';
 import { handleHookInput } from './utils/hook-handler';
 import {
     getSessionDuration,
@@ -42,6 +40,7 @@ import {
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
 import { isWidgetSubagentsEnabled } from './utils/token-subagents';
+import { getTerminalWidth } from './utils/terminal';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -154,25 +153,11 @@ async function renderMultipleLines(data: StatusJSON) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
-    // Compaction detection — track context percentage drops between renders
-    let compactionCount = 0;
+    // Compaction stats — parse compact_boundary markers in this session's transcript
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
-    if (hasCompactionWidget && data.session_id) {
-        const prevState = loadCompactionState(data.session_id);
-        compactionCount = prevState.count;
-        const contextPercentageMetrics = calculateContextPercentageMetrics({ data, tokenMetrics });
-        if (contextPercentageMetrics !== null) {
-            const newState = detectCompaction(contextPercentageMetrics.usedPercentage, prevState, { windowSize: contextPercentageMetrics.windowSize });
-            if (
-                newState.count !== prevState.count
-                || newState.prevCtxPct !== prevState.prevCtxPct
-                || newState.prevWindowSize !== prevState.prevWindowSize
-            ) {
-                saveCompactionState(data.session_id, newState);
-            }
-            compactionCount = newState.count;
-        }
-    }
+    const compactionData = hasCompactionWidget
+        ? (data.transcript_path ? await getCompactionStats(data.transcript_path) : ZERO_COMPACTION_STATS)
+        : null;
 
     // Create render context
     const context: RenderContext = {
@@ -184,7 +169,8 @@ async function renderMultipleLines(data: StatusJSON) {
         usageData,
         sessionDuration,
         skillsMetrics,
-        compactionData: hasCompactionWidget ? { count: compactionCount } : null,
+        compactionData,
+        terminalWidth: getTerminalWidth(),
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds

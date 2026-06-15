@@ -48,6 +48,14 @@ export class TokensInputWidget implements Widget {
         if (metrics) {
             return formatRawOrLabeledValue(item, label, formatTokens(metrics.inputTokens));
         }
+        if (context.tokenMetrics) {
+            return formatRawOrLabeledValue(item, 'In: ', formatTokens(context.tokenMetrics.inputTokens));
+        }
+
+        const inputTotalTokens = getContextWindowInputTotalTokens(context.data);
+        if (inputTotalTokens !== null) {
+            return formatRawOrLabeledValue(item, 'In: ', formatTokens(inputTotalTokens));
+        }
         return null;
     }
 

@@ -37,7 +37,7 @@ describe('Token widgets', () => {
         vi.restoreAllMocks();
     });
 
-    it('use context_window values for input/output and tokenMetrics totals for cached/total', async () => {
+    it('prefers cumulative tokenMetrics for all token widgets when both sources are present', async () => {
         const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
         const context: RenderContext = {
             data: {
@@ -61,13 +61,36 @@ describe('Token widgets', () => {
             }
         };
 
-        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:1111');
-        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBe('Out: fmt:2222');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:9999');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBe('Out: fmt:9999');
         expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached' }, context, DEFAULT_SETTINGS)).toBe('Cached: fmt:9999');
         expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total' }, context, DEFAULT_SETTINGS)).toBe('Total: fmt:9999');
     });
 
-    it('fall back to token metrics when context_window data is missing', async () => {
+    it('falls back to context_window totals for input/output when tokenMetrics is missing', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const context: RenderContext = {
+            data: {
+                context_window: {
+                    total_input_tokens: 1111,
+                    total_output_tokens: 2222,
+                    current_usage: {
+                        input_tokens: 300,
+                        output_tokens: 400,
+                        cache_creation_input_tokens: 50,
+                        cache_read_input_tokens: 25
+                    }
+                }
+            }
+        };
+
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:1111');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBe('Out: fmt:2222');
+        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached' }, context, DEFAULT_SETTINGS)).toBeNull();
+        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total' }, context, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('renders token metrics when context_window data is missing', async () => {
         const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
         const context: RenderContext = {
             tokenMetrics: {
@@ -109,8 +132,8 @@ describe('Token widgets', () => {
             }
         };
 
-        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:1111');
-        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:2222');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:1200');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:3400');
         expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:560');
         expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:5160');
     });

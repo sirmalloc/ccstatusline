@@ -238,7 +238,7 @@ export async function getTokenMetrics(
     try {
         // Use Node.js-compatible file reading
         if (!fs.existsSync(transcriptPath)) {
-            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
         }
 
         const lines = await readJsonlLines(transcriptPath);
@@ -248,6 +248,11 @@ export async function getTokenMetrics(
         const subagentPaths = options.includeSubagents === true
             ? getSubagentTranscriptPaths(transcriptPath, getReferencedSubagentIds(lines))
             : [];
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let cacheReadTokens = 0;
+        let cacheCreationTokens = 0;
+        let contextLength = 0;
 
         // When separate subagent files exist, inline sidechain rows are represented
         // there — drop them from the main pass to avoid double counting. When no
@@ -272,6 +277,18 @@ export async function getTokenMetrics(
             for (const sum of subagentSums) {
                 if (!sum) {
                     continue;
+            inputTokens += usage.input_tokens || 0;
+            outputTokens += usage.output_tokens || 0;
+            cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+            cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+
+            // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
+            // Also skip API error messages (synthetic messages with 0 tokens)
+            if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
+                const entryTime = new Date(data.timestamp);
+                if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
+                    mostRecentTimestamp = entryTime;
+                    mostRecentMainChainEntry = data;
                 }
                 inputTokens += sum.inputTokens;
                 outputTokens += sum.outputTokens;
@@ -279,11 +296,20 @@ export async function getTokenMetrics(
             }
         }
 
+        // Calculate context length from the most recent main chain message
+        if (mostRecentMainChainEntry?.message?.usage) {
+            const usage = mostRecentMainChainEntry.message.usage;
+            contextLength = (usage.input_tokens || 0)
+                + (usage.cache_read_input_tokens ?? 0)
+                + (usage.cache_creation_input_tokens ?? 0);
+        }
+
+        const cachedTokens = cacheReadTokens + cacheCreationTokens;
         const totalTokens = inputTokens + outputTokens + cachedTokens;
 
-        return { inputTokens, outputTokens, cachedTokens, totalTokens, contextLength };
+        return { inputTokens, outputTokens, cachedTokens, cacheReadTokens, cacheCreationTokens, totalTokens, contextLength };
     } catch {
-        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, totalTokens: 0, contextLength: 0 };
+        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
     }
 }
 

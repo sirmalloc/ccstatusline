@@ -48,6 +48,14 @@ export class TokensOutputWidget implements Widget {
         if (metrics) {
             return formatRawOrLabeledValue(item, label, formatTokens(metrics.outputTokens));
         }
+        if (context.tokenMetrics) {
+            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
+        }
+
+        const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
+        if (outputTotalTokens !== null) {
+            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens));
+        }
         return null;
     }
 

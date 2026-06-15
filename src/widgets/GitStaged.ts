@@ -4,6 +4,7 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -18,6 +19,11 @@ import {
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    getSymbol,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
 
 const DEFAULT_SYMBOL = '+';
 
@@ -47,7 +53,7 @@ export class GitStagedWidget implements Widget {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
-            return item.rawValue ? 'true' : (item.character ?? DEFAULT_SYMBOL);
+            return item.rawValue ? 'true' : getSymbol(item, DEFAULT_SYMBOL);
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -60,11 +66,18 @@ export class GitStagedWidget implements Widget {
             return null;
         }
 
-        return item.rawValue ? 'true' : (item.character ?? DEFAULT_SYMBOL);
+        return item.rawValue ? 'true' : getSymbol(item, DEFAULT_SYMBOL);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
+        return [
+            ...getHideNoGitKeybinds(),
+            getSymbolKeybind()
+        ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {

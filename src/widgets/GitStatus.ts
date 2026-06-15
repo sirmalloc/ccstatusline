@@ -4,6 +4,7 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -18,6 +19,17 @@ import {
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
+
+const CONFLICTS_SLOT: SymbolSlot = { id: 'symbolConflicts', label: 'Conflicts', defaultSymbol: '!' };
+const STAGED_SLOT: SymbolSlot = { id: 'symbolStaged', label: 'Staged', defaultSymbol: '+' };
+const UNSTAGED_SLOT: SymbolSlot = { id: 'symbolUnstaged', label: 'Unstaged', defaultSymbol: '*' };
+const UNTRACKED_SLOT: SymbolSlot = { id: 'symbolUntracked', label: 'Untracked', defaultSymbol: '?' };
 
 export class GitStatusWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -62,22 +74,29 @@ export class GitStatusWidget implements Widget {
         return this.formatStatus(item, status);
     }
 
-    private formatStatus(_item: WidgetItem, status: { staged: boolean; unstaged: boolean; untracked: boolean; conflicts: boolean }): string {
+    private formatStatus(item: WidgetItem, status: { staged: boolean; unstaged: boolean; untracked: boolean; conflicts: boolean }): string {
         const parts: string[] = [];
         if (status.conflicts)
-            parts.push('!');
+            parts.push(getSlotSymbol(item, CONFLICTS_SLOT));
         if (status.staged)
-            parts.push('+');
+            parts.push(getSlotSymbol(item, STAGED_SLOT));
         if (status.unstaged)
-            parts.push('*');
+            parts.push(getSlotSymbol(item, UNSTAGED_SLOT));
         if (status.untracked)
-            parts.push('?');
+            parts.push(getSlotSymbol(item, UNTRACKED_SLOT));
 
         return parts.join('');
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
+        return [
+            ...getHideNoGitKeybinds(),
+            getSymbolKeybind()
+        ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, [CONFLICTS_SLOT, STAGED_SLOT, UNSTAGED_SLOT, UNTRACKED_SLOT]);
     }
 
     supportsRawValue(): boolean { return false; }
