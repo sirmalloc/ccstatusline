@@ -441,6 +441,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             colorDisplay = applyColors(displayName, currentColor, undefined, false, level);
         }
     }
+    const styleIndicators = [
+        selectedWidget?.bold ? '[BOLD]' : null,
+        selectedWidget?.dim === true ? '[DIM]' : null,
+        selectedWidget?.dim === 'parens' ? '[DIM ()]' : null
+    ].filter(indicator => indicator !== null).join(' ');
 
     // Gradient selection mode takes over the whole view
     if (gradientMode) {
@@ -607,9 +612,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 ):
                                 {' '}
                                 {colorDisplay}
-                                {selectedWidget.bold && chalk.bold(' [BOLD]')}
-                                {selectedWidget.dim === true && chalk.dim(' [DIM]')}
-                                {selectedWidget.dim === 'parens' && chalk.dim(' [DIM ()]')}
+                                {styleIndicators && ` ${styleIndicators}`}
                             </Text>
                         </Box>
                     ) : (

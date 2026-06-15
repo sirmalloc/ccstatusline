@@ -131,8 +131,8 @@ export function getChalkColor(colorName: string | undefined, colorLevel: 'ansi16
 // Dim each (...) span within the text. \x1b[22m clears bold along with dim,
 // so bold is re-asserted after each span when the surrounding text is bold.
 export function applyParensDim(text: string, bold?: boolean): string {
-    const restoreBold = bold ? '\x1b[1m' : '';
-    return text.replace(/\([^()]*\)/g, span => `\x1b[2m${span}\x1b[22m${restoreBold}`);
+    const intensityReset = bold ? '\x1b[22;1m' : '\x1b[22m';
+    return text.replace(/\([^()]*\)/g, span => `\x1b[2m${span}${intensityReset}`);
 }
 
 export function applyColors(
@@ -184,7 +184,7 @@ export function applyColors(
         // as the prefix guard.
         const gradientStops = parseGradientSpec(foregroundColor);
         if (gradientStops && colorLevel !== 'ansi16') {
-            return prefix + applyGradientToText(text, gradientStops, colorLevel) + '\x1b[39m' + suffix;
+            return prefix + applyGradientToText(styledText, gradientStops, colorLevel) + '\x1b[39m' + suffix;
         }
 
         const fgCode = getColorAnsiCode(foregroundColor, colorLevel, false);

@@ -328,7 +328,7 @@ function renderPowerlineStatusLine(
         const shouldDim = widget.widget.dim === true;
 
         // Check if we need a separator after this widget
-        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget !== undefined && !widget.widget.merge;
 
         let widgetContent = '';
 
@@ -344,6 +344,9 @@ function renderPowerlineStatusLine(
         const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
             ? overrideForegroundGradientStops
             : null;
+        const styledContent = widget.widget.dim === 'parens' && !isPreserveColors
+            ? applyParensDim(widget.content, shouldBold)
+            : widget.content;
 
         if (widget.fgColor && !isPreserveColors && !textGradientStops) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
@@ -354,7 +357,7 @@ function renderPowerlineStatusLine(
         }
         if (textGradientStops) {
             const gradientResult = applyLineGradientSegment(
-                widget.content,
+                styledContent,
                 textGradientStops,
                 colorLevel,
                 powerlineGradientColumn,
@@ -362,10 +365,8 @@ function renderPowerlineStatusLine(
             );
             widgetContent += gradientResult.text;
             powerlineGradientColumn = gradientResult.nextColumn;
-        } else if (widget.widget.dim === 'parens' && !isPreserveColors) {
-            widgetContent += applyParensDim(widget.content, shouldBold);
         } else {
-            widgetContent += widget.content;
+            widgetContent += styledContent;
         }
         // Reset colors after content
         // For custom commands with preserveColors, also reset text attributes like dim
@@ -374,10 +375,14 @@ function renderPowerlineStatusLine(
             widgetContent += '\x1b[0m';
         } else {
             widgetContent += '\x1b[49m\x1b[39m';
-            // Only reset bold/dim if there's no separator following AND no end cap
+            // Dim should be scoped to the widget text only. Reset before
+            // separators/end caps so faint intensity cannot leak forward.
             const isLastWidget = i === widgetElements.length - 1;
             const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-            if ((shouldBold || shouldDim) && !needsSeparator && !(isLastWidget && hasEndCap)) {
+            const shouldRestoreBoldForBoundary = shouldDim && shouldBold && (needsSeparator ? true : isLastWidget && hasEndCap);
+            if (shouldRestoreBoldForBoundary) {
+                widgetContent += '\x1b[22;1m';
+            } else if (shouldDim || (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap))) {
                 widgetContent += '\x1b[22m';
             }
         }
@@ -478,6 +483,8 @@ function renderPowerlineStatusLine(
     // Add end cap if specified
     if (endCap && widgetElements.length > 0) {
         const lastWidget = widgetElements[widgetElements.length - 1];
+        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
+        const lastWidgetDim = lastWidget?.widget.dim === true;
 
         if (lastWidget?.bgColor) {
             // End cap uses last widget's background as foreground (converted)
@@ -489,8 +496,6 @@ function renderPowerlineStatusLine(
         }
 
         // Reset bold/dim after end cap if needed
-        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
-        const lastWidgetDim = lastWidget?.widget.dim === true;
         if (lastWidgetBold || lastWidgetDim) {
             result += '\x1b[22m';
         }
