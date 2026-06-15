@@ -203,6 +203,55 @@ describe('config utilities', () => {
         expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 
+    it('saves settings without leaving a temp file behind', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+
+        await saveSettings({ ...DEFAULT_SETTINGS });
+
+        // Final file is complete and valid.
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(saved.version).toBe(CURRENT_VERSION);
+
+        // No temporary write-file is left in the config directory.
+        const leftovers = fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'));
+        expect(leftovers).toEqual([]);
+    });
+
+    it('migration write-back leaves no temp file behind', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({
+                version: 2,
+                lines: [[{ id: 'widget-1', type: 'model' }]]
+            }),
+            'utf-8'
+        );
+
+        await loadSettings();
+
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        const leftovers = fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'));
+        expect(leftovers).toEqual([]);
+    });
+
+    it('cleans up the temp file and rethrows when the write cannot be renamed into place', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // Make the target a directory so the final rename always fails, exercising
+        // the cleanup-on-error path in writeSettingsJson.
+        fs.mkdirSync(settingsPath, { recursive: true });
+
+        await expect(saveSettings({ ...DEFAULT_SETTINGS })).rejects.toThrow();
+
+        // The target is untouched and no temp file is left behind.
+        expect(fs.statSync(settingsPath).isDirectory()).toBe(true);
+        const leftovers = fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'));
+        expect(leftovers).toEqual([]);
+    });
+
     it('silently rewrites legacy git-pr widget type to git-review on load', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });

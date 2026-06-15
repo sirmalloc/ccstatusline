@@ -20,6 +20,8 @@ import { upgradeLegacyWidgetTypes } from './widgets';
 const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
+const rename = fs.promises.rename;
+const unlink = fs.promises.unlink;
 
 const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
 
@@ -51,7 +53,21 @@ function getSettingsPaths(): SettingsPaths {
 
 async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
     await mkdir(paths.configDir, { recursive: true });
-    await writeFile(paths.settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+    // Write to a unique temp file in the same directory, then atomically rename
+    // over the target. A concurrent reader (e.g. the statusline render path firing
+    // mid-save) sees either the complete old file or the complete new file, never a
+    // torn write. Same idiom as git.ts:writePersistentCache.
+    const tempPath = `${paths.settingsPath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        await writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf-8');
+        await rename(tempPath, paths.settingsPath);
+    } catch (error) {
+        try {
+            await unlink(tempPath);
+        } catch { /* best-effort cleanup; ignore */ }
+        throw error;
+    }
 }
 
 function inMemoryDefaults(): Settings {
@@ -113,7 +129,7 @@ export async function loadSettings(): Promise<Settings> {
         // Parse with main schema which will apply all defaults
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
-            console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
+            console.error('Failed to parse settings, using defaults:', result.error);
             return inMemoryDefaults();
         }
 
