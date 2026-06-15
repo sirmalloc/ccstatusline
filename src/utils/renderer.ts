@@ -17,6 +17,7 @@ import {
 } from './ansi';
 import {
     applyColors,
+    applyParensDim,
     bgToFg,
     getColorAnsiCode,
     getPowerlineTheme
@@ -324,9 +325,10 @@ function renderPowerlineStatusLine(
         // Apply colors to widget content using raw ANSI codes for powerline mode
         // This avoids reset codes that interfere with separator rendering
         const shouldBold = (settings.globalBold) || widget.widget.bold;
+        const shouldDim = widget.widget.dim === true;
 
         // Check if we need a separator after this widget
-        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget !== undefined && !widget.widget.merge;
 
         let widgetContent = '';
 
@@ -336,9 +338,15 @@ function renderPowerlineStatusLine(
         if (shouldBold && !isPreserveColors) {
             widgetContent += '\x1b[1m';
         }
+        if (shouldDim && !isPreserveColors) {
+            widgetContent += '\x1b[2m';
+        }
         const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
             ? overrideForegroundGradientStops
             : null;
+        const styledContent = widget.widget.dim === 'parens' && !isPreserveColors
+            ? applyParensDim(widget.content, shouldBold)
+            : widget.content;
 
         if (widget.fgColor && !isPreserveColors && !textGradientStops) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
@@ -349,7 +357,7 @@ function renderPowerlineStatusLine(
         }
         if (textGradientStops) {
             const gradientResult = applyLineGradientSegment(
-                widget.content,
+                styledContent,
                 textGradientStops,
                 colorLevel,
                 powerlineGradientColumn,
@@ -358,7 +366,7 @@ function renderPowerlineStatusLine(
             widgetContent += gradientResult.text;
             powerlineGradientColumn = gradientResult.nextColumn;
         } else {
-            widgetContent += widget.content;
+            widgetContent += styledContent;
         }
         // Reset colors after content
         // For custom commands with preserveColors, also reset text attributes like dim
@@ -367,10 +375,14 @@ function renderPowerlineStatusLine(
             widgetContent += '\x1b[0m';
         } else {
             widgetContent += '\x1b[49m\x1b[39m';
-            // Only reset bold if there's no separator following AND no end cap
+            // Dim should be scoped to the widget text only. Reset before
+            // separators/end caps so faint intensity cannot leak forward.
             const isLastWidget = i === widgetElements.length - 1;
             const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-            if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+            const shouldRestoreBoldForBoundary = shouldDim && shouldBold && (needsSeparator ? true : isLastWidget && hasEndCap);
+            if (shouldRestoreBoldForBoundary) {
+                widgetContent += '\x1b[22;1m';
+            } else if (shouldDim || (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap))) {
                 widgetContent += '\x1b[22m';
             }
         }
@@ -461,8 +473,8 @@ function renderPowerlineStatusLine(
 
             result += separatorOutput;
 
-            // Reset bold after separator if it was set
-            if (shouldBold) {
+            // Reset bold/dim after separator if either was set
+            if (shouldBold || shouldDim) {
                 result += '\x1b[22m';
             }
         }
@@ -471,6 +483,8 @@ function renderPowerlineStatusLine(
     // Add end cap if specified
     if (endCap && widgetElements.length > 0) {
         const lastWidget = widgetElements[widgetElements.length - 1];
+        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
+        const lastWidgetDim = lastWidget?.widget.dim === true;
 
         if (lastWidget?.bgColor) {
             // End cap uses last widget's background as foreground (converted)
@@ -481,9 +495,8 @@ function renderPowerlineStatusLine(
             result += endCap;
         }
 
-        // Reset bold after end cap if needed
-        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
-        if (lastWidgetBold) {
+        // Reset bold/dim after end cap if needed
+        if (lastWidgetBold || lastWidgetDim) {
             result += '\x1b[22m';
         }
     }
@@ -675,8 +688,8 @@ export function renderStatusLine(
             preCalculatedMaxWidths
         );
 
-    // Helper to apply colors with optional background and bold override
-    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
+    // Helper to apply colors with optional background, bold, and dim
+    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground
         // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
         // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
@@ -699,7 +712,7 @@ export function renderStatusLine(
         }
 
         const shouldBold = (settings.globalBold) || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel);
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
     };
 
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
@@ -744,6 +757,7 @@ export function renderStatusLine(
             let separatorColor = widget.color ?? 'gray';
             let separatorBg = widget.backgroundColor;
             let separatorBold = widget.bold;
+            let separatorDim = widget.dim;
 
             if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
@@ -758,10 +772,11 @@ export function renderStatusLine(
                     separatorColor = widgetColor;
                     separatorBg = prevWidget.backgroundColor;
                     separatorBold = prevWidget.bold;
+                    separatorDim = prevWidget.dim;
                 }
             }
 
-            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold), type: 'separator', widget });
+            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold, separatorDim), type: 'separator', widget });
             continue;
         }
 
@@ -803,7 +818,7 @@ export function renderStatusLine(
                 } else {
                     // Normal widget rendering with colors
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
                         type: widget.type,
                         widget
                     });
@@ -848,7 +863,7 @@ export function renderStatusLine(
                         const widgetImpl = getWidget(prevElem.widget.type);
                         widgetColor = widgetImpl ? widgetImpl.getDefaultColor() : 'white';
                     }
-                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
+                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold, prevElem.widget.dim);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);

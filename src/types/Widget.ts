@@ -10,6 +10,7 @@ export const WidgetItemSchema = z.object({
     color: z.string().optional(),
     backgroundColor: z.string().optional(),
     bold: z.boolean().optional(),
+    dim: z.union([z.boolean(), z.literal('parens')]).optional(),
     character: z.string().optional(),
     rawValue: z.boolean().optional(),
     customText: z.string().optional(),
