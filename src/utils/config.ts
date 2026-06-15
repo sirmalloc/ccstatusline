@@ -40,20 +40,12 @@ export function isCustomConfigPath(): boolean {
 interface SettingsPaths {
     configDir: string;
     settingsPath: string;
-    settingsBackupPath: string;
 }
 
 function getSettingsPaths(): SettingsPaths {
-    const configDir = path.dirname(settingsPath);
-    const parsedPath = path.parse(settingsPath);
-    const backupBaseName = parsedPath.ext
-        ? `${parsedPath.name}.bak`
-        : `${parsedPath.base}.bak`;
-
     return {
-        configDir,
-        settingsPath,
-        settingsBackupPath: path.join(configDir, backupBaseName)
+        configDir: path.dirname(settingsPath),
+        settingsPath
     };
 }
 
@@ -62,38 +54,22 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
     await writeFile(paths.settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
-async function backupBadSettings(paths: SettingsPaths): Promise<void> {
-    try {
-        if (fs.existsSync(paths.settingsPath)) {
-            const content = await readFile(paths.settingsPath, 'utf-8');
-            await writeFile(paths.settingsBackupPath, content, 'utf-8');
-            console.error(`Bad settings backed up to ${paths.settingsBackupPath}`);
-        }
-    } catch (error) {
-        console.error('Failed to backup bad settings:', error);
-    }
+function inMemoryDefaults(): Settings {
+    // Defaults held in memory only (version included via the schema default).
+    // Returned on recovery without writing, so a malformed file is preserved.
+    return SettingsSchema.parse({});
 }
 
 async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
-    const defaults = SettingsSchema.parse({});
-    const settingsWithVersion = {
-        ...defaults,
-        version: CURRENT_VERSION
-    };
-
+    const defaults = inMemoryDefaults();
     try {
-        await writeSettingsJson(settingsWithVersion, paths);
+        await writeSettingsJson(defaults, paths);
         console.error(`Default settings written to ${paths.settingsPath}`);
     } catch (error) {
         console.error('Failed to write default settings:', error);
     }
 
     return defaults;
-}
-
-async function recoverWithDefaults(paths: SettingsPaths): Promise<Settings> {
-    await backupBadSettings(paths);
-    return await writeDefaultSettings(paths);
 }
 
 export async function loadSettings(): Promise<Settings> {
@@ -110,9 +86,8 @@ export async function loadSettings(): Promise<Settings> {
         try {
             rawData = JSON.parse(content);
         } catch {
-            // If we can't parse the JSON, backup and write defaults
-            console.error('Failed to parse settings.json, backing up and using defaults');
-            return await recoverWithDefaults(paths);
+            console.error('Failed to parse settings.json, using defaults (file left unchanged)');
+            return inMemoryDefaults();
         }
 
         // Check if this is a v1 config (no version field)
@@ -121,8 +96,8 @@ export async function loadSettings(): Promise<Settings> {
             // Parse as v1 to validate before migration
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
-                console.error('Invalid v1 settings format:', v1Result.error);
-                return await recoverWithDefaults(paths);
+                console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
+                return inMemoryDefaults();
             }
 
             // Migrate v1 to current version and save the migrated settings back to disk
@@ -138,8 +113,8 @@ export async function loadSettings(): Promise<Settings> {
         // Parse with main schema which will apply all defaults
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
-            console.error('Failed to parse settings:', result.error);
-            return await recoverWithDefaults(paths);
+            console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
+            return inMemoryDefaults();
         }
 
         return {
@@ -147,9 +122,8 @@ export async function loadSettings(): Promise<Settings> {
             lines: upgradeLegacyWidgetTypes(result.data.lines)
         };
     } catch (error) {
-        // Any other error, backup and write defaults
-        console.error('Error loading settings:', error);
-        return await recoverWithDefaults(paths);
+        console.error('Error loading settings, using defaults:', error);
+        return inMemoryDefaults();
     }
 }
 

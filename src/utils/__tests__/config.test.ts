@@ -90,50 +90,79 @@ describe('config utilities', () => {
         );
     });
 
-    it('backs up invalid JSON and recovers with defaults', async () => {
+    it('uses defaults in memory and preserves invalid JSON without overwriting', async () => {
         const { settingsPath, backupPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });
         fs.writeFileSync(settingsPath, '{ invalid json', 'utf-8');
 
         const settings = await loadSettings();
 
+        // Defaults are returned in memory.
         expect(settings.version).toBe(CURRENT_VERSION);
-        expect(fs.existsSync(backupPath)).toBe(true);
-        expect(fs.readFileSync(backupPath, 'utf-8')).toBe('{ invalid json');
 
-        const recovered = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
-        expect(recovered.version).toBe(CURRENT_VERSION);
+        // The invalid file is left exactly as the user wrote it (not overwritten).
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe('{ invalid json');
+
+        // No backup is created: recovery is non-destructive, so the original is the backup.
+        expect(fs.existsSync(backupPath)).toBe(false);
+
+        // A diagnostic is still emitted.
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-            'Failed to parse settings.json, backing up and using defaults'
-        );
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Bad settings backed up to')
-        );
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Default settings written to')
+            expect.stringContaining('Failed to parse settings.json')
         );
     });
 
-    it('backs up invalid v1 payloads and recovers with defaults', async () => {
+    it('uses defaults in memory and preserves an invalid v1 payload', async () => {
         const { settingsPath, backupPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });
-        fs.writeFileSync(settingsPath, JSON.stringify({ flexMode: 123 }), 'utf-8');
+        const original = JSON.stringify({ flexMode: 123 });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
 
         const settings = await loadSettings();
 
         expect(settings.version).toBe(CURRENT_VERSION);
-        expect(fs.existsSync(backupPath)).toBe(true);
-        const recovered = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
-        expect(recovered.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.existsSync(backupPath)).toBe(false);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-            'Invalid v1 settings format:',
+            expect.stringContaining('Invalid v1 settings format'),
             expect.anything()
         );
+    });
+
+    it('uses defaults in memory when schema validation fails', async () => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // Has a version (skips v1 branch), version === CURRENT_VERSION (no migration),
+        // but `lines: 42` is not an array, so SettingsSchema validation fails.
+        const original = JSON.stringify({ version: CURRENT_VERSION, lines: 42 });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.existsSync(backupPath)).toBe(false);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Bad settings backed up to')
+            expect.stringContaining('Failed to parse settings, using defaults'),
+            expect.anything()
         );
+    });
+
+    it('uses defaults in memory when the settings file cannot be read', async () => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // Make settings.json a directory so readFile throws (EISDIR) -> outer catch path.
+        fs.mkdirSync(settingsPath, { recursive: true });
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        // The path is left as-is (still a directory) — nothing was written over it.
+        expect(fs.statSync(settingsPath).isDirectory()).toBe(true);
+        expect(fs.existsSync(backupPath)).toBe(false);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Default settings written to')
+            expect.stringContaining('Error loading settings'),
+            expect.anything()
         );
     });
 
