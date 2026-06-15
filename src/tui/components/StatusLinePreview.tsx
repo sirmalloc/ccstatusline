@@ -16,6 +16,7 @@ import {
 import { advanceGlobalPowerlineThemeIndex } from '../../utils/powerline-theme-index';
 import {
     calculateMaxWidthsFromPreRendered,
+    countPowerlineStartCapSlots,
     preRenderAllWidgets,
     renderStatusLineWithInfo,
     type PreRenderedWidget,
@@ -37,6 +38,7 @@ const renderSingleLine = (
     lineIndex: number,
     globalSeparatorIndex: number,
     globalPowerlineThemeIndex: number,
+    globalPowerlineStartCapIndex: number,
     preRenderedWidgets: PreRenderedWidget[],
     preCalculatedMaxWidths: number[]
 ): RenderResult => {
@@ -48,7 +50,8 @@ const renderSingleLine = (
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
         lineIndex,
         globalSeparatorIndex,
-        globalPowerlineThemeIndex
+        globalPowerlineThemeIndex,
+        globalPowerlineStartCapIndex
     };
 
     return renderStatusLineWithInfo(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
@@ -80,6 +83,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
 
         let globalSeparatorIndex = 0;
         let globalPowerlineThemeIndex = 0;
+        let globalPowerlineStartCapIndex = 0;
         const result: string[] = [];
         let truncated = false;
 
@@ -94,6 +98,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
                     i,
                     globalSeparatorIndex,
                     globalPowerlineThemeIndex,
+                    globalPowerlineStartCapIndex,
                     preRenderedWidgets,
                     preCalculatedMaxWidths
                 );
@@ -103,6 +108,9 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
                 }
 
                 globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
+                if (settings.powerline.enabled) {
+                    globalPowerlineStartCapIndex += countPowerlineStartCapSlots(lineItems, preRenderedWidgets);
+                }
                 if (settings.powerline.enabled && settings.powerline.continueThemeAcrossLines) {
                     globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
                 }

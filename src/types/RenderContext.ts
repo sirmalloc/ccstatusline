@@ -49,4 +49,5 @@ export interface RenderContext {
         deletions?: number;
     };
     globalPowerlineThemeIndex?: number;  // Global powerline theme index that continues across lines
+    globalPowerlineStartCapIndex?: number;  // Global start cap index across powerline flex segments and lines
 }

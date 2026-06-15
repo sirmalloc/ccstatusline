@@ -96,7 +96,10 @@ function renderPowerlineStatusLine(
 
     // Get the cap for this line (cycle through if more lines than caps)
     const capLineIndex = context.lineIndex ?? lineIndex;
-    const startCap = startCaps.length > 0 ? startCaps[capLineIndex % startCaps.length] : '';
+    const startCapIndex = context.globalPowerlineStartCapIndex ?? capLineIndex;
+    const getStartCap = (segmentOffset: number): string => (
+        startCaps.length > 0 ? (startCaps[(startCapIndex + segmentOffset) % startCaps.length] ?? '') : ''
+    );
     const endCap = endCaps.length > 0 ? endCaps[capLineIndex % endCaps.length] : '';
 
     // Get theme colors if a theme is set and not 'custom'
@@ -119,27 +122,10 @@ function renderPowerlineStatusLine(
     const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
     );
 
-    // Track which indices in filteredWidgets are immediately followed by a
-    // flex-separator in the original widgets array. The flex-separator widget
-    // itself is filtered out (powerline cannot render it as a triangle), but
-    // we still need to know its position so the post-render pass can
-    // distribute the remaining terminal width across these positions.
-    const flexAfterIndex = new Set<number>();
-    {
-        let filteredIdx = -1;
-        for (const w of widgets) {
-            if (w.type === 'flex-separator') {
-                if (filteredIdx >= 0)
-                    flexAfterIndex.add(filteredIdx);
-            } else if (w.type !== 'separator') {
-                filteredIdx++;
-            }
-        }
-    }
     // Sentinel inserted into the rendered string at each flex position. The
-    // SOH control char () is essentially never present in real widget
+    // SOH control char is essentially never present in real widget
     // content, so a plain split works for the post-render pass.
-    const FLEX_SENTINEL = 'FLEX_SEP';
+    const FLEX_SENTINEL = '\x01FLEX_SEP\x01';
 
     if (filteredWidgets.length === 0)
         return '';
@@ -150,7 +136,13 @@ function renderPowerlineStatusLine(
     const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
     // Build widget elements (similar to regular mode but without separators)
-    const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
+    const widgetElements: {
+        content: string;
+        bgColor?: string;
+        fgColor?: string;
+        originalIndex: number;
+        widget: WidgetItem;
+    }[] = [];
     let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
 
     // Create a mapping from filteredWidgets to preRenderedWidgets indices
@@ -240,6 +232,7 @@ function renderPowerlineStatusLine(
                 content: paddedText,
                 bgColor: bgColor ?? undefined,  // Make sure undefined, not empty string
                 fgColor: fgColor,
+                originalIndex: actualPreRenderedIndex ?? -1,
                 widget: widget
             });
         }
@@ -247,6 +240,54 @@ function renderPowerlineStatusLine(
 
     if (widgetElements.length === 0)
         return '';
+
+    const renderedElementIndexByOriginalIndex = new Map<number, number>();
+    widgetElements.forEach((element, index) => {
+        renderedElementIndexByOriginalIndex.set(element.originalIndex, index);
+    });
+
+    // Track flex-separators against rendered widget positions. Some widgets
+    // intentionally render empty and are omitted from widgetElements, so using
+    // filtered config indices would move flex slots to the wrong visible side.
+    const flexAfterIndex = new Map<number, number>();
+    const startCapBeforeIndex = new Map<number, number>();
+    let leadingFlexCount = 0;
+    let totalFlexCount = 0;
+    let lastRenderedIndex: number | null = null;
+    let pendingFlexCount = 0;
+    let segmentOffset = 0;
+    let hasRenderedSegment = false;
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget || widget.type === 'separator')
+            continue;
+
+        if (widget.type === 'flex-separator') {
+            totalFlexCount++;
+            pendingFlexCount++;
+            if (lastRenderedIndex === null) {
+                leadingFlexCount++;
+            } else {
+                flexAfterIndex.set(lastRenderedIndex, (flexAfterIndex.get(lastRenderedIndex) ?? 0) + 1);
+            }
+            continue;
+        }
+
+        const renderedIndex = renderedElementIndexByOriginalIndex.get(i);
+        if (renderedIndex !== undefined) {
+            if (!hasRenderedSegment) {
+                segmentOffset = pendingFlexCount;
+                startCapBeforeIndex.set(renderedIndex, segmentOffset);
+                pendingFlexCount = 0;
+                hasRenderedSegment = true;
+            } else if (pendingFlexCount > 0) {
+                segmentOffset += pendingFlexCount;
+                startCapBeforeIndex.set(renderedIndex, segmentOffset);
+                pendingFlexCount = 0;
+            }
+            lastRenderedIndex = renderedIndex;
+        }
+    }
 
     // Apply auto-alignment if enabled
     const autoAlign = config.autoAlign as boolean | undefined;
@@ -297,17 +338,8 @@ function renderPowerlineStatusLine(
     // Build the final powerline string
     let result = '';
 
-    // Add start cap if specified
-    if (startCap && widgetElements.length > 0) {
-        const firstWidget = widgetElements[0];
-        if (firstWidget?.bgColor) {
-            // Start cap uses first widget's background as foreground (converted)
-            const capFg = bgToFg(firstWidget.bgColor);
-            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-            result += fgCode + startCap + '\x1b[39m';
-        } else {
-            result += startCap;
-        }
+    if (leadingFlexCount > 0) {
+        result += FLEX_SENTINEL.repeat(leadingFlexCount);
     }
 
     // Render widgets with powerline separators
@@ -324,6 +356,21 @@ function renderPowerlineStatusLine(
 
         // Check if we need a separator after this widget
         const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+
+        const startCapSegmentOffset = startCapBeforeIndex.get(i);
+        if (startCapSegmentOffset !== undefined) {
+            const segmentStartCap = getStartCap(startCapSegmentOffset);
+            if (segmentStartCap) {
+                if (widget.bgColor) {
+                    // Start cap uses this segment's first widget background as foreground.
+                    const capFg = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+                    result += fgCode + segmentStartCap + '\x1b[39m';
+                } else {
+                    result += segmentStartCap;
+                }
+            }
+        }
 
         let widgetContent = '';
 
@@ -364,8 +411,8 @@ function renderPowerlineStatusLine(
         // by a FLEX_SENTINEL. The post-render pass replaces the sentinel with
         // the correct number of spaces. The regular between-widgets separator
         // is suppressed since the flex space takes its place.
-        const hasFlexAfter = flexAfterIndex.has(i);
-        if (hasFlexAfter) {
+        const flexCountAfter = flexAfterIndex.get(i) ?? 0;
+        if (flexCountAfter > 0) {
             if (separators.length > 0 && widget.bgColor) {
                 const globalIndex = globalSeparatorOffset + i;
                 const separatorIndex = Math.min(globalIndex, separators.length - 1);
@@ -377,7 +424,7 @@ function renderPowerlineStatusLine(
             if (shouldBold) {
                 result += '\x1b[22m';
             }
-            result += FLEX_SENTINEL;
+            result += FLEX_SENTINEL.repeat(flexCountAfter);
             continue;
         }
 
@@ -472,30 +519,6 @@ function renderPowerlineStatusLine(
         }
     }
 
-    // If any flex-separators were configured, replace each FLEX_SENTINEL with
-    // the appropriate number of spaces so the rendered line expands to fill
-    // the terminal width. Mirrors the behavior of the non-powerline render
-    // path in renderStatusLine().
-    if (flexAfterIndex.size > 0) {
-        if (terminalWidth && terminalWidth > 0) {
-            const parts = result.split(FLEX_SENTINEL);
-            const totalContentWidth = parts.reduce((sum, p) => sum + getVisibleWidth(p), 0);
-            const flexCount = parts.length - 1;
-            const totalSpace = Math.max(0, terminalWidth - totalContentWidth);
-            const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
-            const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
-            let newResult = parts[0] ?? '';
-            for (let i = 1; i < parts.length; i++) {
-                const flexSize = spacePerFlex + (i - 1 < extraSpace ? 1 : 0);
-                newResult += ' '.repeat(flexSize) + (parts[i] ?? '');
-            }
-            result = newResult;
-        } else {
-            // No terminal width detected — strip sentinels so they don't leak
-            result = result.split(FLEX_SENTINEL).join('');
-        }
-    }
-
     // Add end cap if specified
     if (endCap && widgetElements.length > 0) {
         const lastWidget = widgetElements[widgetElements.length - 1];
@@ -513,6 +536,30 @@ function renderPowerlineStatusLine(
         const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
         if (lastWidgetBold) {
             result += '\x1b[22m';
+        }
+    }
+
+    // If any flex-separators were configured, replace each FLEX_SENTINEL with
+    // the appropriate number of spaces so the rendered line expands to fill
+    // the terminal width. End caps are already present here so their width is
+    // reserved before flex space is distributed.
+    if (totalFlexCount > 0) {
+        if (terminalWidth && terminalWidth > 0) {
+            const parts = result.split(FLEX_SENTINEL);
+            const totalContentWidth = parts.reduce((sum, p) => sum + getVisibleWidth(p), 0);
+            const flexCount = parts.length - 1;
+            const totalSpace = Math.max(0, terminalWidth - totalContentWidth);
+            const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
+            const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
+            let newResult = parts[0] ?? '';
+            for (let i = 1; i < parts.length; i++) {
+                const flexSize = spacePerFlex + (i - 1 < extraSpace ? 1 : 0);
+                newResult += ' '.repeat(flexSize) + (parts[i] ?? '');
+            }
+            result = newResult;
+        } else {
+            // No terminal width detected - strip sentinels so they don't leak.
+            result = result.split(FLEX_SENTINEL).join('');
         }
     }
 
@@ -553,6 +600,43 @@ export interface PreRenderedWidget {
     content: string;      // The rendered widget text (without padding)
     plainLength: number;  // Length without ANSI codes
     widget: WidgetItem;   // Original widget config
+}
+
+export function countPowerlineStartCapSlots(
+    widgets: WidgetItem[],
+    preRenderedWidgets: PreRenderedWidget[]
+): number {
+    let pendingFlexCount = 0;
+    let segmentOffset = 0;
+    let hasRenderedSegment = false;
+    let highestSegmentOffset = -1;
+
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget || widget.type === 'separator')
+            continue;
+
+        if (widget.type === 'flex-separator') {
+            pendingFlexCount++;
+            continue;
+        }
+
+        if (!preRenderedWidgets[i]?.content)
+            continue;
+
+        if (!hasRenderedSegment) {
+            segmentOffset = pendingFlexCount;
+            pendingFlexCount = 0;
+            hasRenderedSegment = true;
+        } else if (pendingFlexCount > 0) {
+            segmentOffset += pendingFlexCount;
+            pendingFlexCount = 0;
+        }
+
+        highestSegmentOffset = Math.max(highestSegmentOffset, segmentOffset);
+    }
+
+    return highestSegmentOffset + 1;
 }
 
 // Pre-render all widgets once and cache the results
