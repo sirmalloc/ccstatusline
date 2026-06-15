@@ -122,7 +122,7 @@ type AppScreen = 'main'
 
 type PinnedVersionMismatchAction = 'update' | 'exit';
 
-interface ConfirmDialogState {
+export interface ConfirmDialogState {
     message: string;
     action: () => Promise<void>;
     cancelScreen?: Exclude<AppScreen, 'confirm'>;
@@ -411,6 +411,32 @@ export function clearInstallMenuSelection(menuSelections: Record<string, number>
     delete next.install;
     delete next.installPackage;
     return next;
+}
+
+export function buildConfigLoadWarning(configLoadError: string | null): string | null {
+    if (!configLoadError) {
+        return null;
+    }
+
+    return `⚠ ${configLoadError} — showing defaults; saving here overwrites the file.`;
+}
+
+export function buildInvalidConfigSaveConfirm(
+    configLoadError: string | null,
+    onConfirm: () => void
+): ConfirmDialogState | null {
+    if (!configLoadError) {
+        return null;
+    }
+
+    return {
+        message: 'settings.json couldn\'t be read and is preserved on disk. Saving replaces it with the current configuration. Continue?',
+        action: () => {
+            onConfirm();
+            return Promise.resolve();
+        },
+        cancelScreen: 'main'
+    };
 }
 
 export const App: React.FC = () => {
