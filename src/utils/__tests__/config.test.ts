@@ -192,6 +192,27 @@ describe('config utilities', () => {
         expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 
+    it('does not overwrite the file when a migration produces an invalid result', async () => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // A v2 config whose migrated v3 form fails schema validation: the v2->v3 migration
+        // copies fields through, so `lines: 42` survives into the v3 result and fails the schema.
+        const original = JSON.stringify({ version: 2, lines: 42 });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        // Falls back to defaults in memory.
+        expect(settings.version).toBe(CURRENT_VERSION);
+        // The original file is preserved — the invalid migration was NOT written over it.
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        // No backup, and no temp residue from an aborted write.
+        expect(fs.existsSync(backupPath)).toBe(false);
+        expect(fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
+        // The failure is recorded so the statusline can warn.
+        expect(getConfigLoadError()).not.toBeNull();
+    });
+
     it('always saves current version in saveSettings', async () => {
         const { settingsPath } = getSettingsPaths();
 

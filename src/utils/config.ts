@@ -93,6 +93,16 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
     return defaults;
 }
 
+/**
+ * Load ccstatusline settings from disk.
+ *
+ * Recovery contract: if the file cannot be read or fails validation, loadSettings
+ * NEVER overwrites it — it returns built-in defaults in memory, records the reason
+ * (see getConfigLoadError), and leaves the file untouched for the user to fix. The
+ * file is written only when it is missing (first run), or when a readable config is
+ * migrated to the current version AND the migrated result validates first. All writes
+ * go through writeSettingsJson, which is atomic (temp file + rename).
+ */
 export async function loadSettings(): Promise<Settings> {
     lastLoadError = null;
     const paths = getSettingsPaths();
@@ -115,6 +125,7 @@ export async function loadSettings(): Promise<Settings> {
 
         // Check if this is a v1 config (no version field)
         const hasVersion = typeof rawData === 'object' && rawData !== null && 'version' in rawData;
+        let migrated = false;
         if (!hasVersion) {
             // Parse as v1 to validate before migration
             const v1Result = SettingsSchema_v1.safeParse(rawData);
@@ -124,22 +135,28 @@ export async function loadSettings(): Promise<Settings> {
                 return inMemoryDefaults();
             }
 
-            // Migrate v1 to current version and save the migrated settings back to disk
+            // Migrate v1 to the current version (persisted below, only once it validates)
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            await writeSettingsJson(rawData, paths);
+            migrated = true;
         } else if (needsMigration(rawData, CURRENT_VERSION)) {
-            // Handle migrations for versioned configs (v2+) and save the migrated settings back to disk
+            // Migrate versioned configs (v2+) to current (persisted below, only once it validates)
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            await writeSettingsJson(rawData, paths);
+            migrated = true;
         }
 
         // At this point, data should be in current format with version field
         // Parse with main schema which will apply all defaults
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
-            console.error('Failed to parse settings, using defaults:', result.error);
+            console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
             lastLoadError = 'settings.json is not in a valid format';
             return inMemoryDefaults();
+        }
+
+        // Persist a migration only after the migrated result validates, so a faulty
+        // migration can never overwrite the user's original file.
+        if (migrated) {
+            await writeSettingsJson(rawData, paths);
         }
 
         return {
