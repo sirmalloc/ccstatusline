@@ -32,7 +32,7 @@ import {
     setRefreshInterval,
     uninstallStatusLine
 } from '../claude-settings';
-import { initConfigPath } from '../config';
+import * as config from '../config';
 
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let testClaudeConfigDir = '';
@@ -60,11 +60,12 @@ function writeRawClaudeSettings(content: string): void {
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
-    initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
+    config.initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
 
 afterEach(() => {
-    initConfigPath();
+    vi.restoreAllMocks();
+    config.initConfigPath();
     if (testClaudeConfigDir) {
         fs.rmSync(testClaudeConfigDir, { recursive: true, force: true });
     }
@@ -198,49 +199,55 @@ describe('Claude config paths', () => {
 
 describe('buildCommand via installStatusLine', () => {
     it('should use base command when no custom config path', async () => {
-        initConfigPath();
+        config.initConfigPath();
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
     });
 
     it('should append --config with simple path (no quoting needed)', async () => {
-        initConfigPath('/tmp/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/tmp/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config /tmp/settings.json`);
     });
 
     it('should quote path with spaces', async () => {
-        initConfigPath('/my path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my path/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my path/settings.json'`);
     });
 
     it('should quote path with parentheses', async () => {
-        initConfigPath('/my(path)/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my(path)/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my(path)/settings.json'`);
     });
 
     it('should escape embedded single quotes in path', async () => {
-        initConfigPath('/my\'path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my\'path/settings.json');
         await installStatusLine({ commandMode: 'auto-npx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.NPM} --config '/my'\\''path/settings.json'`);
     });
 
     it('should use bunx command when commandMode is auto-bunx', async () => {
-        initConfigPath('/my path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my path/settings.json');
         await installStatusLine({ commandMode: 'auto-bunx' });
         expect(readInstalledCommand()).toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --config '/my path/settings.json'`);
     });
 
     it('should generate global command with custom config path', () => {
-        initConfigPath('/my path/settings.json');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(config, 'getConfigPath').mockReturnValue('/my path/settings.json');
         expect(buildStatusLineCommand('global')).toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config '/my path/settings.json'`);
     });
 
     it('should install global command for pinned installs and save metadata', async () => {
         const configPath = path.join(testClaudeConfigDir, 'pinned-settings.json');
-        initConfigPath(configPath);
+        config.initConfigPath(configPath);
 
         await installStatusLine({
             commandMode: 'global',
@@ -260,7 +267,7 @@ describe('buildCommand via installStatusLine', () => {
 
     it('should sync hooks on install when settings include hook-enabled widgets', async () => {
         const configPath = path.join(testClaudeConfigDir, 'ccstatusline-settings.json');
-        initConfigPath(configPath);
+        config.initConfigPath(configPath);
         const settingsWithSkills = {
             ...DEFAULT_SETTINGS,
             lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
@@ -290,7 +297,7 @@ describe('buildCommand via installStatusLine', () => {
 
     it('should sync hooks from the final global statusline command', async () => {
         const configPath = path.join(testClaudeConfigDir, 'global-settings.json');
-        initConfigPath(configPath);
+        config.initConfigPath(configPath);
         fs.writeFileSync(configPath, JSON.stringify({
             ...DEFAULT_SETTINGS,
             lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
@@ -320,13 +327,13 @@ describe('buildCommand via installStatusLine', () => {
 
 describe('installStatusLine refreshInterval', () => {
     it('should set refreshInterval to 10 when version is supported', async () => {
-        initConfigPath();
+        config.initConfigPath();
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(10);
     });
 
     it('should not set refreshInterval when version is unsupported', async () => {
-        initConfigPath();
+        config.initConfigPath();
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
         expect(readInstalledRefreshInterval()).toBeUndefined();
     });
