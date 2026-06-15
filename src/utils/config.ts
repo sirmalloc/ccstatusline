@@ -26,6 +26,11 @@ const unlink = fs.promises.unlink;
 const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
 
 let settingsPath = DEFAULT_SETTINGS_PATH;
+let lastLoadError: string | null = null;
+
+export function getConfigLoadError(): string | null {
+    return lastLoadError;
+}
 
 export function initConfigPath(filePath?: string): void {
     settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
@@ -89,6 +94,7 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
 }
 
 export async function loadSettings(): Promise<Settings> {
+    lastLoadError = null;
     const paths = getSettingsPaths();
 
     try {
@@ -103,6 +109,7 @@ export async function loadSettings(): Promise<Settings> {
             rawData = JSON.parse(content);
         } catch {
             console.error('Failed to parse settings.json, using defaults (file left unchanged)');
+            lastLoadError = 'settings.json is not valid JSON';
             return inMemoryDefaults();
         }
 
@@ -113,6 +120,7 @@ export async function loadSettings(): Promise<Settings> {
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
                 console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
+                lastLoadError = 'settings.json is not in a valid format';
                 return inMemoryDefaults();
             }
 
@@ -130,6 +138,7 @@ export async function loadSettings(): Promise<Settings> {
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
             console.error('Failed to parse settings, using defaults:', result.error);
+            lastLoadError = 'settings.json is not in a valid format';
             return inMemoryDefaults();
         }
 
@@ -139,6 +148,7 @@ export async function loadSettings(): Promise<Settings> {
         };
     } catch (error) {
         console.error('Error loading settings, using defaults:', error);
+        lastLoadError = 'settings.json could not be read';
         return inMemoryDefaults();
     }
 }

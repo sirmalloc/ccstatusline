@@ -24,6 +24,7 @@ const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
 let initConfigPath: (filePath?: string) => void;
+let getConfigLoadError: () => string | null;
 let consoleErrorSpy: MockInstance<typeof console.error>;
 
 function getSettingsPaths(): { configDir: string; settingsPath: string; backupPath: string } {
@@ -45,6 +46,7 @@ describe('config utilities', () => {
         loadSettings = configModule.loadSettings;
         saveSettings = configModule.saveSettings;
         initConfigPath = configModule.initConfigPath;
+        getConfigLoadError = configModule.getConfigLoadError;
     });
 
     beforeEach(() => {
@@ -250,6 +252,46 @@ describe('config utilities', () => {
         expect(fs.statSync(settingsPath).isDirectory()).toBe(true);
         const leftovers = fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'));
         expect(leftovers).toEqual([]);
+    });
+
+    it('sets getConfigLoadError when settings.json contains invalid JSON', async () => {
+        const { configDir, settingsPath } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(settingsPath, '{ bad json', 'utf-8');
+
+        await loadSettings();
+
+        const err = getConfigLoadError();
+        expect(err).not.toBeNull();
+        expect(err).toContain('settings.json');
+    });
+
+    it('sets getConfigLoadError when settings.json has invalid schema', async () => {
+        const { configDir, settingsPath } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ version: CURRENT_VERSION, lines: 42 }), 'utf-8');
+
+        await loadSettings();
+
+        expect(getConfigLoadError()).not.toBeNull();
+    });
+
+    it('clears getConfigLoadError after loading a valid current-version config', async () => {
+        const { configDir, settingsPath } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // Write a valid config so we don't go through first-run path
+        fs.writeFileSync(settingsPath, JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []] }), 'utf-8');
+
+        await loadSettings();
+
+        expect(getConfigLoadError()).toBeNull();
+    });
+
+    it('leaves getConfigLoadError null on first-run (no file)', async () => {
+        // No file written — loadSettings triggers writeDefaultSettings
+        await loadSettings();
+
+        expect(getConfigLoadError()).toBeNull();
     });
 
     it('silently rewrites legacy git-pr widget type to git-review on load', async () => {
