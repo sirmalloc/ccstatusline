@@ -195,6 +195,15 @@ export async function saveInstallationMetadata(metadata: InstallationMetadata | 
     }
 
     const settings = await loadSettings();
+
+    // If the existing settings.json couldn't be read, don't overwrite it just to
+    // record installation metadata — that would discard the user's (recoverable)
+    // file. Metadata is non-critical and is persisted on the next clean save.
+    if (getConfigLoadError() !== null) {
+        console.error('Skipping installation-metadata write: settings.json is unreadable (left unchanged).');
+        return;
+    }
+
     const settingsWithVersion: Settings & { version: number } = {
         ...settings,
         version: CURRENT_VERSION

@@ -15,6 +15,7 @@ import {
 import {
     CURRENT_VERSION,
     DEFAULT_SETTINGS,
+    type InstallationMetadata,
     type Settings
 } from '../../types/Settings';
 
@@ -25,6 +26,7 @@ let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
+let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
 let consoleErrorSpy: MockInstance<typeof console.error>;
 
 function getSettingsPaths(): { configDir: string; settingsPath: string; backupPath: string } {
@@ -47,6 +49,7 @@ describe('config utilities', () => {
         saveSettings = configModule.saveSettings;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
+        saveInstallationMetadata = configModule.saveInstallationMetadata;
     });
 
     beforeEach(() => {
@@ -211,6 +214,34 @@ describe('config utilities', () => {
         expect(fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
         // The failure is recorded so the statusline can warn.
         expect(getConfigLoadError()).not.toBeNull();
+    });
+
+    it('does not overwrite an unreadable settings.json when recording installation metadata', async () => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = '{ invalid json';
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        await saveInstallationMetadata({ method: 'pinned' });
+
+        // The unreadable file is preserved, not overwritten with defaults+metadata.
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.existsSync(backupPath)).toBe(false);
+    });
+
+    it('records installation metadata when settings.json is valid', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []] }),
+            'utf-8'
+        );
+
+        await saveInstallationMetadata({ method: 'pinned' });
+
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { installation?: { method?: string } };
+        expect(saved.installation?.method).toBe('pinned');
     });
 
     it('always saves current version in saveSettings', async () => {
