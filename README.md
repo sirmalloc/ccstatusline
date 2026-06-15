@@ -47,6 +47,15 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.21 - Cache widgets, compaction details, extra usage currency, and package fixes
+
+- **🔣 Custom widget glyphs** - Git and JJ symbol widgets can override or suppress their built-in glyphs from the TUI.
+- **🔁 Compaction counter details** - `Compaction Counter` now counts explicit `compact_boundary` markers and can optionally show trigger splits plus tokens reclaimed.
+- **💸 Extra usage improvements** - Added `Extra Usage Used` and formats extra usage amounts with the billing currency reported by the usage API.
+- **📏 Custom command width context** - `Custom Command` widgets receive `terminal_width` in stdin JSON when ccstatusline can detect the terminal width.
+- **🧠 Prompt cache widgets** - Added `Cache Hit Rate`, `Cache Read`, and `Cache Write` widgets with turn/session scopes and hide-when-empty behavior.
+- **🔢 Token rounding fix** - Token counts from `999950` through `999999` now render as `1.0M` instead of `1000.0k`.
+
 ### v2.2.20 - Gradients, token accuracy, usage reliability, and Git PR/MR fixes
 
 - **🌈 Gradient colors** - Added per-widget and whole-line foreground gradients with named presets, custom hex stops, TUI picker support, and Powerline-aware rendering. Press `g` on the Edit Colors screen for widget gradients, or press `g` for Override FG Color in Global Overrides for a line-wide gradient.
