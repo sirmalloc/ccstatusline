@@ -32,6 +32,7 @@ import { advanceGlobalPowerlineThemeIndex } from './utils/powerline-theme-index'
 import {
     buildConfigWarningBadge,
     calculateMaxWidthsFromPreRendered,
+    countPowerlineStartCapSlots,
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
@@ -176,6 +177,7 @@ async function renderMultipleLines(data: StatusJSON) {
     // Render each line using pre-rendered content
     let globalSeparatorIndex = 0;
     let globalPowerlineThemeIndex = 0;
+    let globalPowerlineStartCapIndex = 0;
     let configBadgePrepended = false;
     for (let i = 0; i < lines.length; i++) {
         const lineItems = lines[i];
@@ -185,7 +187,8 @@ async function renderMultipleLines(data: StatusJSON) {
                 ...context,
                 lineIndex: i,
                 globalSeparatorIndex,
-                globalPowerlineThemeIndex
+                globalPowerlineThemeIndex,
+                globalPowerlineStartCapIndex
             };
             let line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
 
@@ -206,7 +209,10 @@ async function renderMultipleLines(data: StatusJSON) {
                 outputLine = '\x1b[0m' + outputLine;
                 console.log(outputLine);
 
-                globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems);
+                globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems, preRenderedWidgets);
+                if (settings.powerline.enabled) {
+                    globalPowerlineStartCapIndex += countPowerlineStartCapSlots(lineItems, preRenderedWidgets);
+                }
                 if (settings.powerline.enabled && settings.powerline.continueThemeAcrossLines) {
                     globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
                 }

@@ -1,10 +1,62 @@
 import type { WidgetItem } from '../types/Widget';
 
-export function countSeparatorSlots(widgets: WidgetItem[]): number {
-    const nonMergedWidgets = widgets.filter((_, idx) => idx === widgets.length - 1 || !widgets[idx]?.merge);
-    return Math.max(0, nonMergedWidgets.length - 1);
+export interface SeparatorSlotEntry {
+    content: string;
+    widget: WidgetItem;
 }
 
-export function advanceGlobalSeparatorIndex(currentIndex: number, widgets: WidgetItem[]): number {
-    return currentIndex + countSeparatorSlots(widgets);
+function hasRenderedContent(
+    widgetIndex: number,
+    preRenderedWidgets?: SeparatorSlotEntry[]
+): boolean {
+    return preRenderedWidgets ? Boolean(preRenderedWidgets[widgetIndex]?.content) : true;
+}
+
+export function countSeparatorSlots(
+    widgets: WidgetItem[],
+    preRenderedWidgets?: SeparatorSlotEntry[]
+): number {
+    let count = 0;
+    let hasPreviousRenderableWidget = false;
+    let previousRenderableWidgetMergesWithNext = false;
+
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget) {
+            continue;
+        }
+
+        if (widget.type === 'separator') {
+            if (hasPreviousRenderableWidget) {
+                previousRenderableWidgetMergesWithNext = false;
+            }
+            continue;
+        }
+
+        if (widget.type === 'flex-separator') {
+            hasPreviousRenderableWidget = false;
+            previousRenderableWidgetMergesWithNext = false;
+            continue;
+        }
+
+        if (!hasRenderedContent(i, preRenderedWidgets)) {
+            continue;
+        }
+
+        if (hasPreviousRenderableWidget && !previousRenderableWidgetMergesWithNext) {
+            count++;
+        }
+        hasPreviousRenderableWidget = true;
+        previousRenderableWidgetMergesWithNext = Boolean(widget.merge);
+    }
+
+    return count;
+}
+
+export function advanceGlobalSeparatorIndex(
+    currentIndex: number,
+    widgets: WidgetItem[],
+    preRenderedWidgets?: SeparatorSlotEntry[]
+): number {
+    return currentIndex + countSeparatorSlots(widgets, preRenderedWidgets);
 }

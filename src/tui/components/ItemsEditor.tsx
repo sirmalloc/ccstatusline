@@ -359,7 +359,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                             ⚠
                             {' '}
                             {settings.powerline.enabled
-                                ? 'Powerline mode active: separators controlled by powerline settings'
+                                ? 'Powerline mode active: manual separators disabled'
                                 : 'Default separator active: manual separators disabled'}
                         </Text>
                     </Box>
