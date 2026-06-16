@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { NumberFormatSchema } from './NumberFormat';
 import type { RenderContext } from './RenderContext';
 import type { Settings } from './Settings';
 
@@ -11,6 +12,7 @@ export const WidgetItemSchema = z.object({
     backgroundColor: z.string().optional(),
     bold: z.boolean().optional(),
     dim: z.union([z.boolean(), z.literal('parens')]).optional(),
+    numberFormat: NumberFormatSchema.optional(),
     character: z.string().optional(),
     rawValue: z.boolean().optional(),
     customText: z.string().optional(),

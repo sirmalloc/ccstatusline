@@ -11,6 +11,10 @@ import {
     getContextConfig,
     getModelContextIdentifier
 } from '../utils/model-context';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 import { makeUsageProgressBar } from '../utils/usage';
 
@@ -79,6 +83,8 @@ export class ContextBarWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getDisplayMode(item);
+        const tokenFormat = resolveNumberFormat('token', item, settings);
+        const percentFormat = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             if (isBarSliderMode(displayMode)) {
@@ -111,17 +117,18 @@ export class ContextBarWidget implements Widget {
 
         const percent = (used / total) * 100;
         const clampedPercent = Math.max(0, Math.min(100, percent));
-        const usedDisplay = formatTokens(used, 0);
-        const totalDisplay = formatTokens(total, 0);
+        const usedDisplay = formatTokens(used, tokenFormat, 0);
+        const totalDisplay = formatTokens(total, tokenFormat, 0);
+        const percentDisplay = formatPercent(clampedPercent, percentFormat, 0);
 
         if (isBarSliderMode(displayMode)) {
             const slider = makeSliderBar(clampedPercent);
-            const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${Math.round(clampedPercent)}%)` : slider;
+            const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${percentDisplay})` : slider;
             return item.rawValue ? sliderDisplay : `Context: ${sliderDisplay}`;
         }
 
         const barWidth = displayMode === 'progress' ? 32 : 16;
-        const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedDisplay}/${totalDisplay} (${Math.round(clampedPercent)}%)`;
+        const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
 
         return item.rawValue ? display : `Context: ${display}`;
     }

@@ -6,6 +6,13 @@ import {
 import React, { useState } from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
+import {
+    NUMBER_KINDS,
+    type GlobalNumberFormat,
+    type NumberFormat,
+    type NumberKind,
+    type NumberStyle
+} from '../../types/NumberFormat';
 import type { Settings } from '../../types/Settings';
 import {
     COLOR_MAP,
@@ -17,6 +24,34 @@ import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
 
 import { ConfirmDialog } from './ConfirmDialog';
+
+const NUMBER_FORMAT_STYLES: (NumberStyle | undefined)[] = [undefined, 'compact', 'whole'];
+
+// Cycle a number kind's global style: default (precise) -> compact -> whole -> default.
+// A global style forces that kind across all widgets (see resolveNumberFormat).
+function cycleGlobalNumberStyle(settings: Settings, kind: NumberKind): Settings {
+    const current = settings.numberFormat?.[kind]?.style;
+    const currentIndex = NUMBER_FORMAT_STYLES.indexOf(current);
+    const nextStyle = NUMBER_FORMAT_STYLES[(currentIndex + 1) % NUMBER_FORMAT_STYLES.length];
+
+    const kindFormat: NumberFormat = { ...settings.numberFormat?.[kind] };
+    if (nextStyle === undefined) {
+        delete kindFormat.style;
+    } else {
+        kindFormat.style = nextStyle;
+    }
+
+    const { [kind]: removedKind, ...restGlobal } = settings.numberFormat ?? {};
+    void removedKind; // Intentionally unused
+    const nextGlobal: GlobalNumberFormat = Object.keys(kindFormat).length > 0
+        ? { ...restGlobal, [kind]: kindFormat }
+        : restGlobal;
+
+    return {
+        ...settings,
+        numberFormat: Object.keys(nextGlobal).length > 0 ? nextGlobal : undefined
+    };
+}
 
 export interface GlobalOverridesMenuProps {
     settings: Settings;
@@ -33,6 +68,8 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
     const [globalBold, setGlobalBold] = useState(settings.globalBold);
     const [minimalistMode, setMinimalistMode] = useState(settings.minimalistMode);
+    const [numberFormatMode, setNumberFormatMode] = useState(false);
+    const [numberFormatKindIndex, setNumberFormatKindIndex] = useState(0);
     const [gradientMode, setGradientMode] = useState(false);
     const [gradientIndex, setGradientIndex] = useState(0);
     const [gradientCustomStep, setGradientCustomStep] = useState<'start' | 'end' | null>(null);
@@ -159,6 +196,19 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     setGradientCustomStep('start');
                 }
             }
+        } else if (numberFormatMode) {
+            if (key.escape) {
+                setNumberFormatMode(false);
+            } else if (key.upArrow) {
+                setNumberFormatKindIndex((numberFormatKindIndex - 1 + NUMBER_KINDS.length) % NUMBER_KINDS.length);
+            } else if (key.downArrow) {
+                setNumberFormatKindIndex((numberFormatKindIndex + 1) % NUMBER_KINDS.length);
+            } else if (key.leftArrow || key.rightArrow) {
+                const kind = NUMBER_KINDS[numberFormatKindIndex];
+                if (kind) {
+                    onUpdate(cycleGlobalNumberStyle(settings, kind));
+                }
+            }
         } else {
             if (key.escape) {
                 onBack();
@@ -208,6 +258,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     minimalistMode: newMinimalistMode
                 };
                 onUpdate(updatedSettings);
+            } else if (input === 'n' || input === 'N') {
+                setNumberFormatMode(true);
+                setNumberFormatKindIndex(0);
             } else if (input === 'f' || input === 'F') {
                 // Cycle through foreground colors
                 const nextIndex = (currentFgIndex + 1) % fgColors.length;
@@ -234,6 +287,34 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             }
         }
     });
+
+    if (numberFormatMode) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold>Global Number Formatting</Text>
+                <Box marginTop={1}>
+                    <Text dimColor>↑↓ to select a number type, ←→ to cycle its style, ESC to go back</Text>
+                </Box>
+                <Box marginTop={1} flexDirection='column'>
+                    {NUMBER_KINDS.map((kind, idx) => {
+                        const style = settings.numberFormat?.[kind]?.style ?? 'precise (default)';
+                        return (
+                            <Text key={kind} color={idx === numberFormatKindIndex ? 'cyan' : undefined}>
+                                {idx === numberFormatKindIndex ? '▶ ' : '  '}
+                                {kind}
+                                {': '}
+                                {style}
+                            </Text>
+                        );
+                    })}
+                </Box>
+                <Box marginTop={1} flexDirection='column'>
+                    <Text dimColor>precise = keep trailing zeros (1.0M), compact = trim them (1M / 1.1M), whole = no decimals (1M).</Text>
+                    <Text dimColor>A global style forces that type across every widget. Decimal places are set per-widget or in settings.json.</Text>
+                </Box>
+            </Box>
+        );
+    }
 
     if (gradientMode) {
         const level = getColorLevelString(settings.colorLevel);
@@ -357,6 +438,12 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         <Text>  Minimalist Mode: </Text>
                         <Text color={minimalistMode ? 'green' : 'red'}>{minimalistMode ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (m) to toggle</Text>
+                    </Box>
+
+                    <Box>
+                        <Text>Number Formatting: </Text>
+                        <Text color='cyan'>{settings.numberFormat ? 'customized' : '(defaults)'}</Text>
+                        <Text dimColor> - Press (n) to configure per-type</Text>
                     </Box>
 
                     <Box>

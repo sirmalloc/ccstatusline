@@ -7,6 +7,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { calculateContextPercentageMetrics } from '../utils/context-percentage';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import {
     getContextInverseModifierText,
@@ -50,10 +54,11 @@ export class ContextPercentageWidget implements Widget {
         const label = isInverse ? 'Ctx Left: ' : 'Ctx Used: ';
         const sliderMode = getContextSliderMode(item);
         const contextPercentageMetrics = calculateContextPercentageMetrics(context);
+        const format = resolveNumberFormat('percent', item, settings);
 
         const formatContextPercentage = (displayPercentage: number): string => {
-            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
-            return formatRawOrLabeledValue(item, label, sliderResult ?? `${displayPercentage.toFixed(1)}%`);
+            const sliderResult = renderContextSlider(sliderMode, displayPercentage, format);
+            return formatRawOrLabeledValue(item, label, sliderResult ?? formatPercent(displayPercentage, format));
         };
 
         if (context.isPreview) {
