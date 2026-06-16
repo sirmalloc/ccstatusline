@@ -14,6 +14,7 @@ import {
     getVisibleWidth,
     stripSgrCodes
 } from '../ansi';
+import { getColorAnsiCode } from '../colors';
 import {
     calculateMaxWidthsFromPreRendered,
     countPowerlineStartCapSlots,
@@ -534,18 +535,90 @@ describe('flex-separator widget', () => {
         expect(line).not.toContain('...');
     });
 
-    it('strips flex-separator markers when terminal width is unknown', () => {
+    it('uses a single visible space for a powerline flex separator when terminal width is unknown', () => {
         const line = renderLine([leftWidget, flexWidget, rightWidget], {
             flexMode: 'full',
             powerline: {
                 ...DEFAULT_SETTINGS.powerline,
                 enabled: true
             }
-        }, { terminalWidth: undefined });
+        }, { terminalWidth: 0 });
+        const plainLine = stripSgrCodes(line);
 
         // No marker characters should leak into the output.
         expect(line).not.toContain('FLEX');
         expect(line).not.toContain('\x01');
+        expect(plainLine).toBe('LEFT RIGHT');
+    });
+
+    it('does not merge padding across a powerline flex separator', () => {
+        const line = renderLine([{ ...leftWidget, merge: 'no-padding' }, flexWidget, rightWidget], {
+            defaultPadding: ' ',
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                startCaps: ['[', '['],
+                endCaps: [']', ']']
+            }
+        }, { terminalWidth: 0 });
+        const plainLine = stripSgrCodes(line);
+
+        expect(plainLine).toBe('[ LEFT ] [ RIGHT ]');
+    });
+
+    it('does not merge padding across an explicit separator in powerline mode', () => {
+        const line = renderLine([
+            { ...leftWidget, merge: 'no-padding' },
+            { id: 'separator', type: 'separator' },
+            rightWidget
+        ], {
+            defaultPadding: ' ',
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                separators: ['|']
+            }
+        }, { terminalWidth: 0 });
+        const plainLine = stripSgrCodes(line);
+
+        expect(plainLine).toBe(' LEFT | RIGHT ');
+    });
+
+    it('does not reuse theme colors across a powerline flex separator', () => {
+        const line = renderLine([{ ...leftWidget, merge: true }, flexWidget, rightWidget], {
+            colorLevel: 3,
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                theme: 'nord-aurora'
+            }
+        }, { terminalWidth: 0 });
+
+        expect(line).toContain(getColorAnsiCode('hex:BF616A', 'truecolor', true));
+        expect(line).toContain(getColorAnsiCode('hex:EBCB8B', 'truecolor', true));
+    });
+
+    it('does not group auto-align widths across a powerline flex separator', () => {
+        const widgets = [{ ...leftWidget, merge: true }, flexWidget, rightWidget];
+        const settings = createSettings({
+            defaultPadding: ' ',
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                autoAlign: true
+            }
+        });
+        const context: RenderContext = {
+            isPreview: false,
+            terminalWidth: 50
+        };
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+
+        expect(calculateMaxWidthsFromPreRendered(preRenderedLines, settings)).toEqual([6, 7]);
     });
 
     it('still works in non-powerline mode (no regression)', () => {

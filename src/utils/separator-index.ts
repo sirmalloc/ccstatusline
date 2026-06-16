@@ -17,7 +17,8 @@ export function countSeparatorSlots(
     preRenderedWidgets?: SeparatorSlotEntry[]
 ): number {
     let count = 0;
-    let previousRenderableWidget: WidgetItem | null = null;
+    let hasPreviousRenderableWidget = false;
+    let previousRenderableWidgetMergesWithNext = false;
 
     for (let i = 0; i < widgets.length; i++) {
         const widget = widgets[i];
@@ -26,11 +27,15 @@ export function countSeparatorSlots(
         }
 
         if (widget.type === 'separator') {
+            if (hasPreviousRenderableWidget) {
+                previousRenderableWidgetMergesWithNext = false;
+            }
             continue;
         }
 
         if (widget.type === 'flex-separator') {
-            previousRenderableWidget = null;
+            hasPreviousRenderableWidget = false;
+            previousRenderableWidgetMergesWithNext = false;
             continue;
         }
 
@@ -38,10 +43,11 @@ export function countSeparatorSlots(
             continue;
         }
 
-        if (previousRenderableWidget && !previousRenderableWidget.merge) {
+        if (hasPreviousRenderableWidget && !previousRenderableWidgetMergesWithNext) {
             count++;
         }
-        previousRenderableWidget = widget;
+        hasPreviousRenderableWidget = true;
+        previousRenderableWidgetMergesWithNext = Boolean(widget.merge);
     }
 
     return count;

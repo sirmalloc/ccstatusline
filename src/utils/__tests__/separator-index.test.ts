@@ -89,6 +89,16 @@ describe('separator index utils', () => {
         expect(countSeparatorSlots(widgets)).toBe(1);
     });
 
+    it('treats explicit separators as merge boundaries for powerline separator indexing', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model', merge: true },
+            { id: 'separator', type: 'separator' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(1);
+    });
+
     it('counts only widgets that rendered content when pre-render data is available', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'model' },
