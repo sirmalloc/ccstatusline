@@ -431,7 +431,7 @@ export function buildInvalidConfigSaveConfirm(
     }
 
     return {
-        message: 'settings.json couldn\'t be read and is preserved on disk. Saving replaces it with the current configuration. Continue?',
+        message: `${configLoadError} and is preserved on disk. Saving replaces it with the current configuration. Continue?`,
         action: () => {
             onConfirm();
             return Promise.resolve();
@@ -540,7 +540,7 @@ export const App: React.FC = () => {
             exit();
         }
         // Global save shortcut
-        if (key.ctrl && input === 's' && settings) {
+        if (key.ctrl && input === 's' && settings && screen !== 'confirm') {
             const installation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings);
             const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
                 ? inspectActiveGlobalCommand({ commandAvailability })
@@ -553,15 +553,22 @@ export const App: React.FC = () => {
 
             const performSave = () => {
                 void (async () => {
-                    await saveSettings(settings);
-                    setOriginalSettings(cloneSettings(settings));
-                    setHasChanges(false);
-                    // File is valid again after an explicit save → clear the banner + guard.
-                    setConfigLoadError(null);
-                    setFlashMessage({
-                        text: '✓ Configuration saved',
-                        color: 'green'
-                    });
+                    try {
+                        await saveSettings(settings);
+                        setOriginalSettings(cloneSettings(settings));
+                        setHasChanges(false);
+                        // File is valid again after an explicit save → clear the banner + guard.
+                        setConfigLoadError(null);
+                        setFlashMessage({
+                            text: '✓ Configuration saved',
+                            color: 'green'
+                        });
+                    } catch {
+                        setFlashMessage({
+                            text: '✗ Could not save configuration',
+                            color: 'red'
+                        });
+                    }
                 })();
             };
 
@@ -623,6 +630,10 @@ export const App: React.FC = () => {
                             supportsRefreshInterval,
                             installationMetadata: selection.metadata
                         });
+
+                        // Install re-ran loadSettings internally — re-sync the captured
+                        // config-load error so the banner/guard reflect the file's current state.
+                        setConfigLoadError(getConfigLoadError());
 
                         const installedStatusLineState = await loadClaudeStatusLineState();
                         setIsClaudeInstalled(true);
@@ -711,6 +722,7 @@ export const App: React.FC = () => {
                     };
 
                     await saveInstallationMetadata(installation);
+                    setConfigLoadError(getConfigLoadError());
                     setSettings(prev => prev
                         ? { ...prev, installation }
                         : prev);
@@ -777,6 +789,7 @@ export const App: React.FC = () => {
             };
 
             await saveInstallationMetadata(installation);
+            setConfigLoadError(getConfigLoadError());
             setSettings(prev => prev
                 ? { ...prev, installation }
                 : prev);
@@ -818,6 +831,7 @@ export const App: React.FC = () => {
 
                 try {
                     await uninstallStatusLine();
+                    setConfigLoadError(getConfigLoadError());
                     removedClaudeSettings = true;
 
                     for (const packageManager of selection.packageManagers) {
@@ -947,16 +961,24 @@ export const App: React.FC = () => {
                 break;
             case 'save': {
                 const saveAndExit = async () => {
-                    await saveSettings(settings);
-                    setOriginalSettings(cloneSettings(settings));
-                    setHasChanges(false);
-                    exit();
+                    try {
+                        await saveSettings(settings);
+                        setOriginalSettings(cloneSettings(settings));
+                        setHasChanges(false);
+                        exit();
+                    } catch {
+                        setFlashMessage({
+                            text: '✗ Could not save configuration',
+                            color: 'red'
+                        });
+                    }
                 };
 
                 // Save & Exit is the second explicit-save route (besides Ctrl+S); guard it
                 // the same way so an invalid settings.json isn't overwritten without consent.
                 const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
                     setConfirmDialog(null);
+                    setScreen('main');
                     void saveAndExit();
                 });
                 if (saveGuard) {

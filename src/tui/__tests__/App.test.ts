@@ -271,6 +271,7 @@ describe('Invalid-config TUI guards', () => {
         expect(guard).not.toBeNull();
         expect(guard?.cancelScreen).toBe('main');
         expect(guard?.message).toContain('preserved');
+        expect(guard?.message).toContain('could not be read');
     });
 
     it('invokes the provided onConfirm when the guard action runs', async () => {
@@ -278,5 +279,12 @@ describe('Invalid-config TUI guards', () => {
         const guard = buildInvalidConfigSaveConfirm('settings.json is not valid JSON', onConfirm);
         await guard?.action();
         expect(onConfirm).toHaveBeenCalledOnce();
+    });
+
+    it('reflects the specific load-error reason in the save-guard message', () => {
+        expect(buildInvalidConfigSaveConfirm('settings.json is not valid JSON', vi.fn())?.message)
+            .toContain('settings.json is not valid JSON');
+        expect(buildInvalidConfigSaveConfirm('settings.json is not in a valid format', vi.fn())?.message)
+            .toContain('not in a valid format');
     });
 });
