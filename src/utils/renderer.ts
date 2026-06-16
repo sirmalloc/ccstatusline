@@ -123,7 +123,9 @@ function renderPowerlineStatusLine(
     const getStartCap = (segmentOffset: number): string => (
         startCaps.length > 0 ? (startCaps[(startCapIndex + segmentOffset) % startCaps.length] ?? '') : ''
     );
-    const endCap = endCaps.length > 0 ? endCaps[capLineIndex % endCaps.length] : '';
+    const getEndCap = (segmentOffset: number): string => (
+        endCaps.length > 0 ? (endCaps[(startCapIndex + segmentOffset) % endCaps.length] ?? '') : ''
+    );
 
     // Get theme colors if a theme is set and not 'custom'
     const themeName = config.theme as string | undefined;
@@ -278,6 +280,7 @@ function renderPowerlineStatusLine(
     // filtered config indices would move flex slots to the wrong visible side.
     const flexAfterIndex = new Map<number, number>();
     const startCapBeforeIndex = new Map<number, number>();
+    const segmentOffsetByRenderedIndex = new Map<number, number>();
     let leadingFlexCount = 0;
     let totalFlexCount = 0;
     let lastRenderedIndex: number | null = null;
@@ -312,6 +315,7 @@ function renderPowerlineStatusLine(
                 startCapBeforeIndex.set(renderedIndex, segmentOffset);
                 pendingFlexCount = 0;
             }
+            segmentOffsetByRenderedIndex.set(renderedIndex, segmentOffset);
             lastRenderedIndex = renderedIndex;
         }
     }
@@ -378,6 +382,7 @@ function renderPowerlineStatusLine(
     }
 
     // Render widgets with powerline separators
+    let localSeparatorIndex = 0;
     for (let i = 0; i < widgetElements.length; i++) {
         const widget = widgetElements[i];
         const nextWidget = widgetElements[i + 1];
@@ -392,6 +397,10 @@ function renderPowerlineStatusLine(
 
         // Check if we need a separator after this widget
         const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget !== undefined && !widget.widget.merge;
+        const flexCountAfter = flexAfterIndex.get(i) ?? 0;
+        const currentSegmentOffset = segmentOffsetByRenderedIndex.get(i) ?? 0;
+        const isLastWidget = i === widgetElements.length - 1;
+        const hasEndCapAfterWidget = Boolean(getEndCap(currentSegmentOffset)) && (flexCountAfter > 0 || isLastWidget);
 
         const startCapSegmentOffset = startCapBeforeIndex.get(i);
         if (startCapSegmentOffset !== undefined) {
@@ -455,12 +464,10 @@ function renderPowerlineStatusLine(
             widgetContent += '\x1b[49m\x1b[39m';
             // Dim should be scoped to the widget text only. Reset before
             // separators/end caps so faint intensity cannot leak forward.
-            const isLastWidget = i === widgetElements.length - 1;
-            const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-            const shouldRestoreBoldForBoundary = shouldDim && shouldBold && (needsSeparator ? true : isLastWidget && hasEndCap);
+            const shouldRestoreBoldForBoundary = shouldDim && shouldBold && (needsSeparator || hasEndCapAfterWidget);
             if (shouldRestoreBoldForBoundary) {
                 widgetContent += '\x1b[22;1m';
-            } else if (shouldDim || (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap))) {
+            } else if (shouldDim || (shouldBold && !needsSeparator && !hasEndCapAfterWidget)) {
                 widgetContent += '\x1b[22m';
             }
         }
@@ -468,20 +475,21 @@ function renderPowerlineStatusLine(
         result += widgetContent;
 
         // If a flex-separator originally sat between widget i and i+1, emit
-        // a closing powerline cap for the left section (a triangle in the
-        // previous widget's bg color, with no background of its own) followed
-        // by a FLEX_SENTINEL. The post-render pass replaces the sentinel with
-        // the correct number of spaces. The regular between-widgets separator
-        // is suppressed since the flex space takes its place.
-        const flexCountAfter = flexAfterIndex.get(i) ?? 0;
+        // the current segment's end cap followed by a FLEX_SENTINEL. The
+        // post-render pass replaces the sentinel with the correct number of
+        // spaces. The regular between-widgets separator is suppressed since
+        // the flex space separates powerline segments rather than adjacent
+        // widgets inside a segment.
         if (flexCountAfter > 0) {
-            if (separators.length > 0 && widget.bgColor) {
-                const globalIndex = globalSeparatorOffset + i;
-                const separatorIndex = Math.min(globalIndex, separators.length - 1);
-                const separator = separators[separatorIndex] ?? '';
-                const capFg = bgToFg(widget.bgColor);
-                const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-                result += fgCode + separator + '\x1b[39m';
+            const segmentEndCap = getEndCap(currentSegmentOffset);
+            if (segmentEndCap) {
+                if (widget.bgColor) {
+                    const capFg = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+                    result += fgCode + segmentEndCap + '\x1b[39m';
+                } else {
+                    result += segmentEndCap;
+                }
             }
             if (shouldBold) {
                 result += '\x1b[22m';
@@ -493,9 +501,9 @@ function renderPowerlineStatusLine(
         // Add separator between widgets (not after last one, and not if current widget is merged with next)
         if (needsSeparator) {
             // Determine which separator to use based on global position
-            // Use separators in order, using the last one for all remaining positions
-            const globalIndex = globalSeparatorOffset + i;
-            const separatorIndex = Math.min(globalIndex, separators.length - 1);
+            // Use separators in order, cycling across rendered separator slots.
+            const globalIndex = globalSeparatorOffset + localSeparatorIndex;
+            const separatorIndex = globalIndex % separators.length;
             const separator = separators[separatorIndex] ?? '\uE0B0';
             const shouldInvert = invertBgs[separatorIndex] ?? false;
 
@@ -578,27 +586,34 @@ function renderPowerlineStatusLine(
             if (shouldBold || shouldDim) {
                 result += '\x1b[22m';
             }
+            localSeparatorIndex++;
         }
     }
 
     // Add end cap if specified
-    if (endCap && widgetElements.length > 0) {
-        const lastWidget = widgetElements[widgetElements.length - 1];
+    if (widgetElements.length > 0) {
+        const lastWidgetIndex = widgetElements.length - 1;
+        const lastWidget = widgetElements[lastWidgetIndex];
         const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
         const lastWidgetDim = lastWidget?.widget.dim === true;
+        const lastSegmentOffset = segmentOffsetByRenderedIndex.get(lastWidgetIndex) ?? 0;
+        const lastWidgetHasFlexAfter = (flexAfterIndex.get(lastWidgetIndex) ?? 0) > 0;
+        const segmentEndCap = getEndCap(lastSegmentOffset);
 
-        if (lastWidget?.bgColor) {
-            // End cap uses last widget's background as foreground (converted)
-            const capFg = bgToFg(lastWidget.bgColor);
-            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-            result += fgCode + endCap + '\x1b[39m';
-        } else {
-            result += endCap;
-        }
+        if (segmentEndCap && !lastWidgetHasFlexAfter) {
+            if (lastWidget?.bgColor) {
+                // End cap uses last widget's background as foreground (converted)
+                const capFg = bgToFg(lastWidget.bgColor);
+                const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+                result += fgCode + segmentEndCap + '\x1b[39m';
+            } else {
+                result += segmentEndCap;
+            }
 
-        // Reset bold/dim after end cap if needed
-        if (lastWidgetBold || lastWidgetDim) {
-            result += '\x1b[22m';
+            // Reset bold/dim after end cap if needed
+            if (lastWidgetBold || lastWidgetDim) {
+                result += '\x1b[22m';
+            }
         }
     }
 

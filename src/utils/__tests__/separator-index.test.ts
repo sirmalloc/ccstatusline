@@ -47,6 +47,38 @@ describe('separator index utils', () => {
         expect(countSeparatorSlots(widgets)).toBe(1);
     });
 
+    it('does not count flex separators as separator slots', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'flex', type: 'flex-separator' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(0);
+    });
+
+    it('counts separator slots independently within flex-delimited segments', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: '2', type: 'context-length' },
+            { id: 'flex', type: 'flex-separator' },
+            { id: '3', type: 'version' },
+            { id: '4', type: 'session-cost' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(2);
+    });
+
+    it('ignores explicit separator widgets for powerline separator indexing', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'separator', type: 'separator' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(1);
+    });
+
     it('advances a running global separator index', () => {
         const firstLine: WidgetItem[] = [
             { id: '1', type: 'model' },

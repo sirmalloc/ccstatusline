@@ -20,6 +20,7 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from '../renderer';
+import { advanceGlobalSeparatorIndex } from '../separator-index';
 
 function createSettings(overrides: Partial<Settings> = {}): Settings {
     return {
@@ -220,6 +221,139 @@ describe('flex-separator widget', () => {
         expect(secondCapIndex).toBeLessThan(middleIndex);
         expect(thirdCapIndex).toBeGreaterThan(middleIndex);
         expect(thirdCapIndex).toBeLessThan(rightIndex);
+    });
+
+    it('uses matching end caps for each flex-delimited powerline segment', () => {
+        const middleWidget: WidgetItem = {
+            id: 'middle',
+            type: 'custom-text',
+            customText: 'MID',
+            backgroundColor: 'bgYellow',
+            color: 'black'
+        };
+        const line = renderLine([leftWidget, flexWidget, middleWidget, flexWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                startCaps: ['<', '[', '{'],
+                endCaps: ['>', ']', '}']
+            }
+        }, { terminalWidth: 60 });
+        const plainLine = stripSgrCodes(line);
+
+        const firstStartIndex = plainLine.indexOf('<');
+        const leftIndex = plainLine.indexOf('LEFT');
+        const firstEndIndex = plainLine.indexOf('>');
+        const secondStartIndex = plainLine.indexOf('[');
+        const middleIndex = plainLine.indexOf('MID');
+        const secondEndIndex = plainLine.indexOf(']');
+        const thirdStartIndex = plainLine.indexOf('{');
+        const rightIndex = plainLine.indexOf('RIGHT');
+        const thirdEndIndex = plainLine.indexOf('}');
+
+        expect(getVisibleWidth(line)).toBe(60 - 6);
+        expect(firstStartIndex).toBeGreaterThanOrEqual(0);
+        expect(firstEndIndex).toBeGreaterThanOrEqual(0);
+        expect(secondStartIndex).toBeGreaterThanOrEqual(0);
+        expect(secondEndIndex).toBeGreaterThanOrEqual(0);
+        expect(thirdStartIndex).toBeGreaterThanOrEqual(0);
+        expect(thirdEndIndex).toBeGreaterThanOrEqual(0);
+        expect(firstStartIndex).toBeLessThan(leftIndex);
+        expect(leftIndex).toBeLessThan(firstEndIndex);
+        expect(firstEndIndex).toBeLessThan(secondStartIndex);
+        expect(secondStartIndex).toBeLessThan(middleIndex);
+        expect(middleIndex).toBeLessThan(secondEndIndex);
+        expect(secondEndIndex).toBeLessThan(thirdStartIndex);
+        expect(thirdStartIndex).toBeLessThan(rightIndex);
+        expect(rightIndex).toBeLessThan(thirdEndIndex);
+        expect(plainLine.endsWith('}')).toBe(true);
+    });
+
+    it('does not consume configured separator glyphs as flex segment caps', () => {
+        const line = renderLine([leftWidget, flexWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                separators: ['1', '2', '3'],
+                startCaps: ['<', '['],
+                endCaps: ['>', ']']
+            }
+        }, { terminalWidth: 50 });
+        const plainLine = stripSgrCodes(line);
+
+        expect(plainLine).toContain('<LEFT>');
+        expect(plainLine).toContain('[RIGHT]');
+        expect(plainLine).not.toContain('1');
+        expect(plainLine).not.toContain('2');
+        expect(plainLine).not.toContain('3');
+    });
+
+    it('uses the next separator glyph only for separators rendered inside flex-delimited segments', () => {
+        const middleWidget: WidgetItem = {
+            id: 'middle',
+            type: 'custom-text',
+            customText: 'MID',
+            backgroundColor: 'bgYellow',
+            color: 'black'
+        };
+        const line = renderLine([leftWidget, flexWidget, middleWidget, rightWidget], {
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                separators: ['1', '2'],
+                startCaps: ['<', '['],
+                endCaps: ['>', ']']
+            }
+        }, { terminalWidth: 50 });
+        const plainLine = stripSgrCodes(line);
+
+        const middleIndex = plainLine.indexOf('MID');
+        const separatorIndex = plainLine.indexOf('1');
+        const rightIndex = plainLine.indexOf('RIGHT');
+
+        expect(separatorIndex).toBeGreaterThan(middleIndex);
+        expect(separatorIndex).toBeLessThan(rightIndex);
+        expect(plainLine).not.toContain('2');
+    });
+
+    it('cycles separator glyphs across lines after flex-delimited segments', () => {
+        const firstLineWidgets = [leftWidget, rightWidget, flexWidget, leftWidget, rightWidget];
+        const secondLineWidgets = [leftWidget, rightWidget];
+        const settings = createSettings({
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                separators: ['1', '2'],
+                startCaps: ['<'],
+                endCaps: ['>']
+            }
+        });
+        const context: RenderContext = {
+            isPreview: false,
+            terminalWidth: 70
+        };
+        const preRenderedLines = preRenderAllWidgets([firstLineWidgets, secondLineWidgets], settings, context);
+        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        const secondLine = renderStatusLine(
+            secondLineWidgets,
+            settings,
+            {
+                ...context,
+                lineIndex: 1,
+                globalSeparatorIndex: advanceGlobalSeparatorIndex(0, firstLineWidgets)
+            },
+            preRenderedLines[1] ?? [],
+            preCalculatedMaxWidths
+        );
+        const plainSecondLine = stripSgrCodes(secondLine);
+
+        expect(advanceGlobalSeparatorIndex(0, firstLineWidgets)).toBe(2);
+        expect(plainSecondLine).toContain('LEFT1RIGHT');
+        expect(plainSecondLine).not.toContain('LEFT2RIGHT');
     });
 
     it('continues start cap selection across lines after flex-created segments', () => {

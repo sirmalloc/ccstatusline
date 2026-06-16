@@ -1,8 +1,26 @@
 import type { WidgetItem } from '../types/Widget';
 
 export function countSeparatorSlots(widgets: WidgetItem[]): number {
-    const nonMergedWidgets = widgets.filter((_, idx) => idx === widgets.length - 1 || !widgets[idx]?.merge);
-    return Math.max(0, nonMergedWidgets.length - 1);
+    let count = 0;
+    let previousRenderableWidget: WidgetItem | null = null;
+
+    for (const widget of widgets) {
+        if (widget.type === 'separator') {
+            continue;
+        }
+
+        if (widget.type === 'flex-separator') {
+            previousRenderableWidget = null;
+            continue;
+        }
+
+        if (previousRenderableWidget && !previousRenderableWidget.merge) {
+            count++;
+        }
+        previousRenderableWidget = widget;
+    }
+
+    return count;
 }
 
 export function advanceGlobalSeparatorIndex(currentIndex: number, widgets: WidgetItem[]): number {
