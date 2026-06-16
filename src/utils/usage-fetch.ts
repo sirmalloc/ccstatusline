@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -56,6 +57,8 @@ const CachedUsageDataSchema = z.object({
     extraUsageCurrency: z.string().nullable().optional(),
     error: z.string().nullable().optional()
 });
+
+const CachedTokenHashSchema = z.object({ tokenHash: z.string().optional() });
 
 const UsageApiBucketSchema = z.looseObject({
     utilization: z.number().nullable().optional(),
@@ -120,6 +123,27 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         extraUsageCurrency: parsed.extraUsageCurrency ?? undefined,
         error: parsedError.success ? parsedError.data : undefined
     };
+}
+
+// One-way fingerprint of the usage token, persisted alongside the cache so a
+// login switch (e.g. enterprise<->personal, a different token) invalidates the
+// cache immediately instead of waiting out the TTL. A truncated SHA-256 is a
+// stable identifier, not the token itself, so it is safe to write to disk.
+function fingerprintUsageToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+function readCachedTokenHash(rawJson: string): string | undefined {
+    return parseJsonWithSchema(rawJson, CachedTokenHashSchema)?.tokenHash;
+}
+
+function tokenHashMatches(cachedHash: string | undefined, currentHash: string | null): boolean {
+    // With no current token we cannot fingerprint-gate, so fall through to the
+    // existing no-token handling rather than discarding an otherwise usable cache.
+    if (currentHash === null) {
+        return true;
+    }
+    return cachedHash === currentHash;
 }
 
 function parseUsageApiResponse(rawJson: string): UsageData | null {
@@ -545,13 +569,23 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
     }
 
+    // Resolve the token up front (before lock/rate-limit checks so auth
+    // failures are not masked as timeout) and fingerprint it so the file cache
+    // can be invalidated on an account switch: a different token, written by a
+    // logout/login, no longer matches the cached fingerprint.
+    const token = getUsageToken();
+    const currentTokenHash = token ? fingerprintUsageToken(token) : null;
+
     // Check file cache
     try {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         if (fileAge < CACHE_MAX_AGE) {
-            const fileData = parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
-            if (fileData && !fileData.error && hasRequiredUsageFields(fileData, requiredFields)) {
+            const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+            const fileData = parseCachedUsageData(rawCache);
+            if (fileData && !fileData.error
+                && tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)
+                && hasRequiredUsageFields(fileData, requiredFields)) {
                 return cacheUsageData(fileData, now);
             }
         }
@@ -559,8 +593,6 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // File doesn't exist or read error - continue to API call
     }
 
-    // Get token before lock/rate-limit checks so auth failures are not masked as timeout.
-    const token = getUsageToken();
     if (!token) {
         return getStaleUsageOrError('no-credentials', now, LOCK_MAX_AGE, requiredFields);
     }
@@ -605,7 +637,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify(usageData));
+            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: currentTokenHash ?? undefined }));
         } catch {
             // Ignore cache write errors
         }

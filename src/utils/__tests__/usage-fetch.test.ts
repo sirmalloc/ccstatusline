@@ -1,4 +1,5 @@
 import type * as childProcess from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import { createRequire } from 'module';
 import * as os from 'os';
@@ -668,6 +669,66 @@ describe('fetchUsageData error handling', () => {
             expect(cachedResult.first).toEqual(result.first);
             expect(cachedResult.second).toEqual(result.first);
             expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('refetches a fresh cache when the token fingerprint changes (account switch)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-switch');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            // A complete cache written under a different account's token.
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: seededMtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            // The cached fingerprint mismatches the live token, so the still-fresh
+            // cache is rejected and the API is hit once for the new account.
+            expect(result.requestCount).toBe(1);
+            expect(result.first.sessionUsage).toBe(42);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves a fresh cache whose token fingerprint matches (same account)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-same');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: matchingHash }));
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: seededMtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            // Fingerprint matches and the cache is fresh, so it is served with no API call.
+            expect(result.requestCount).toBe(0);
+            expect(result.first.sessionUsage).toBe(5);
         } finally {
             harness.cleanup();
         }
