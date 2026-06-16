@@ -166,8 +166,8 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     const [confirmingEnable, setConfirmingEnable] = useState(false);
     const [confirmingFontInstall, setConfirmingFontInstall] = useState(false);
 
-    const hasSeparatorItems = settings.lines.some(line => line.some(
-        item => item.type === 'separator' || item.type === 'flex-separator'
+    const hasManualSeparatorItems = settings.lines.some(line => line.some(
+        item => item.type === 'separator'
     ));
     const hasGlobalFgOverride = Boolean(settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
     const globalOverrideMessage = hasGlobalFgOverride ? '⚠ Global override for FG active' : null;
@@ -189,7 +189,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                 onBack();
             } else if (input === 't' || input === 'T') {
                 if (!powerlineConfig.enabled) {
-                    if (hasSeparatorItems) {
+                    if (hasManualSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
                         onUpdate(buildEnabledPowerlineSettings(settings, false));
@@ -347,17 +347,17 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                 </Box>
             ) : confirmingEnable ? (
                 <Box flexDirection='column' marginTop={1}>
-                    {hasSeparatorItems && (
+                    {hasManualSeparatorItems && (
                         <>
                             <Box>
-                                <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
+                                <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing manual separators from your status lines.</Text>
                             </Box>
                             <Box marginBottom={1}>
                                 <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
                             </Box>
                         </>
                     )}
-                    <Box marginTop={hasSeparatorItems ? 1 : 0}>
+                    <Box marginTop={hasManualSeparatorItems ? 1 : 0}>
                         <Text>Do you want to continue? </Text>
                     </Box>
                     <Box marginTop={1}>
