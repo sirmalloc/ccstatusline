@@ -294,10 +294,10 @@ function renderPowerlineStatusLine(
 
         if (widget.type === 'flex-separator') {
             totalFlexCount++;
-            pendingFlexCount++;
             if (lastRenderedIndex === null) {
                 leadingFlexCount++;
             } else {
+                pendingFlexCount++;
                 flexAfterIndex.set(lastRenderedIndex, (flexAfterIndex.get(lastRenderedIndex) ?? 0) + 1);
             }
             continue;
@@ -306,12 +306,11 @@ function renderPowerlineStatusLine(
         const renderedIndex = renderedElementIndexByOriginalIndex.get(i);
         if (renderedIndex !== undefined) {
             if (!hasRenderedSegment) {
-                segmentOffset = pendingFlexCount;
                 startCapBeforeIndex.set(renderedIndex, segmentOffset);
                 pendingFlexCount = 0;
                 hasRenderedSegment = true;
             } else if (pendingFlexCount > 0) {
-                segmentOffset += pendingFlexCount;
+                segmentOffset++;
                 startCapBeforeIndex.set(renderedIndex, segmentOffset);
                 pendingFlexCount = 0;
             }
@@ -684,10 +683,9 @@ export function countPowerlineStartCapSlots(
     widgets: WidgetItem[],
     preRenderedWidgets: PreRenderedWidget[]
 ): number {
-    let pendingFlexCount = 0;
-    let segmentOffset = 0;
+    let pendingFlexAfterRenderedSegment = false;
     let hasRenderedSegment = false;
-    let highestSegmentOffset = -1;
+    let renderedSegmentCount = 0;
 
     for (let i = 0; i < widgets.length; i++) {
         const widget = widgets[i];
@@ -695,7 +693,9 @@ export function countPowerlineStartCapSlots(
             continue;
 
         if (widget.type === 'flex-separator') {
-            pendingFlexCount++;
+            if (hasRenderedSegment) {
+                pendingFlexAfterRenderedSegment = true;
+            }
             continue;
         }
 
@@ -703,18 +703,15 @@ export function countPowerlineStartCapSlots(
             continue;
 
         if (!hasRenderedSegment) {
-            segmentOffset = pendingFlexCount;
-            pendingFlexCount = 0;
             hasRenderedSegment = true;
-        } else if (pendingFlexCount > 0) {
-            segmentOffset += pendingFlexCount;
-            pendingFlexCount = 0;
+            renderedSegmentCount = 1;
+        } else if (pendingFlexAfterRenderedSegment) {
+            renderedSegmentCount++;
+            pendingFlexAfterRenderedSegment = false;
         }
-
-        highestSegmentOffset = Math.max(highestSegmentOffset, segmentOffset);
     }
 
-    return highestSegmentOffset + 1;
+    return renderedSegmentCount;
 }
 
 // Pre-render all widgets once and cache the results
@@ -742,7 +739,12 @@ export function preRenderAllWidgets(
 
             const widgetImpl = getWidget(widget.type);
             if (!widgetImpl) {
-                // Unknown widget type - skip it entirely
+                // Preserve index alignment with the configured widgets while skipping unknown output.
+                preRenderedLine.push({
+                    content: '',
+                    plainLength: 0,
+                    widget
+                });
                 continue;
             }
 

@@ -270,6 +270,69 @@ describe('flex-separator widget', () => {
         expect(plainLine.endsWith('}')).toBe(true);
     });
 
+    it('does not consume start or end cap slots for leading flex separators', () => {
+        const widgets = [flexWidget, rightWidget];
+        const settings = createSettings({
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                startCaps: ['<', '['],
+                endCaps: ['>', ']']
+            }
+        });
+        const context: RenderContext = {
+            isPreview: false,
+            terminalWidth: 50
+        };
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const preRenderedWidgets = preRenderedLines[0] ?? [];
+        const line = renderStatusLine(
+            widgets,
+            settings,
+            context,
+            preRenderedWidgets,
+            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
+        );
+        const plainLine = stripSgrCodes(line);
+
+        expect(plainLine).toContain('<RIGHT>');
+        expect(plainLine).not.toContain('[RIGHT]');
+        expect(countPowerlineStartCapSlots(widgets, preRenderedWidgets)).toBe(1);
+    });
+
+    it('coalesces consecutive flex separators for cap sequencing', () => {
+        const widgets = [leftWidget, flexWidget, flexWidget, rightWidget];
+        const settings = createSettings({
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                startCaps: ['<', '[', '{'],
+                endCaps: ['>', ']', '}']
+            }
+        });
+        const context: RenderContext = {
+            isPreview: false,
+            terminalWidth: 50
+        };
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const preRenderedWidgets = preRenderedLines[0] ?? [];
+        const line = renderStatusLine(
+            widgets,
+            settings,
+            context,
+            preRenderedWidgets,
+            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
+        );
+        const plainLine = stripSgrCodes(line);
+
+        expect(plainLine).toContain('<LEFT>');
+        expect(plainLine).toContain('[RIGHT]');
+        expect(plainLine).not.toContain('{RIGHT');
+        expect(countPowerlineStartCapSlots(widgets, preRenderedWidgets)).toBe(2);
+    });
+
     it('does not consume configured separator glyphs as flex segment caps', () => {
         const line = renderLine([leftWidget, flexWidget, rightWidget], {
             flexMode: 'full',
@@ -319,6 +382,49 @@ describe('flex-separator widget', () => {
         expect(plainLine).not.toContain('2');
     });
 
+    it('cycles separator glyphs across lines after widgets that render empty', () => {
+        const hiddenWidget: WidgetItem = {
+            id: 'hidden',
+            type: 'custom-text',
+            customText: '',
+            backgroundColor: 'bgRed',
+            color: 'white'
+        };
+        const firstLineWidgets = [leftWidget, hiddenWidget, rightWidget];
+        const secondLineWidgets = [leftWidget, rightWidget];
+        const settings = createSettings({
+            flexMode: 'full',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                separators: ['1', '2']
+            }
+        });
+        const context: RenderContext = {
+            isPreview: false,
+            terminalWidth: 70
+        };
+        const preRenderedLines = preRenderAllWidgets([firstLineWidgets, secondLineWidgets], settings, context);
+        const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        const firstPreRenderedWidgets = preRenderedLines[0] ?? [];
+        const secondLine = renderStatusLine(
+            secondLineWidgets,
+            settings,
+            {
+                ...context,
+                lineIndex: 1,
+                globalSeparatorIndex: advanceGlobalSeparatorIndex(0, firstLineWidgets, firstPreRenderedWidgets)
+            },
+            preRenderedLines[1] ?? [],
+            preCalculatedMaxWidths
+        );
+        const plainSecondLine = stripSgrCodes(secondLine);
+
+        expect(advanceGlobalSeparatorIndex(0, firstLineWidgets, firstPreRenderedWidgets)).toBe(1);
+        expect(plainSecondLine).toContain('LEFT2RIGHT');
+        expect(plainSecondLine).not.toContain('LEFT1RIGHT');
+    });
+
     it('cycles separator glyphs across lines after flex-delimited segments', () => {
         const firstLineWidgets = [leftWidget, rightWidget, flexWidget, leftWidget, rightWidget];
         const secondLineWidgets = [leftWidget, rightWidget];
@@ -338,20 +444,21 @@ describe('flex-separator widget', () => {
         };
         const preRenderedLines = preRenderAllWidgets([firstLineWidgets, secondLineWidgets], settings, context);
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        const firstPreRenderedWidgets = preRenderedLines[0] ?? [];
         const secondLine = renderStatusLine(
             secondLineWidgets,
             settings,
             {
                 ...context,
                 lineIndex: 1,
-                globalSeparatorIndex: advanceGlobalSeparatorIndex(0, firstLineWidgets)
+                globalSeparatorIndex: advanceGlobalSeparatorIndex(0, firstLineWidgets, firstPreRenderedWidgets)
             },
             preRenderedLines[1] ?? [],
             preCalculatedMaxWidths
         );
         const plainSecondLine = stripSgrCodes(secondLine);
 
-        expect(advanceGlobalSeparatorIndex(0, firstLineWidgets)).toBe(2);
+        expect(advanceGlobalSeparatorIndex(0, firstLineWidgets, firstPreRenderedWidgets)).toBe(2);
         expect(plainSecondLine).toContain('LEFT1RIGHT');
         expect(plainSecondLine).not.toContain('LEFT2RIGHT');
     });

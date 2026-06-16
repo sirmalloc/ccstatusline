@@ -10,6 +10,16 @@ import {
     countSeparatorSlots
 } from '../separator-index';
 
+function preRendered(
+    widgets: WidgetItem[],
+    contentByIndex: Record<number, string>
+) {
+    return widgets.map((widget, index) => ({
+        content: contentByIndex[index] ?? 'x',
+        widget
+    }));
+}
+
 describe('separator index utils', () => {
     it('returns zero for empty and single-item lines', () => {
         expect(countSeparatorSlots([])).toBe(0);
@@ -79,6 +89,34 @@ describe('separator index utils', () => {
         expect(countSeparatorSlots(widgets)).toBe(1);
     });
 
+    it('counts only widgets that rendered content when pre-render data is available', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'hidden', type: 'custom-text' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets, preRendered(widgets, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(1);
+    });
+
+    it('honors merge state on the previous rendered widget across hidden widgets', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model', merge: true },
+            { id: 'hidden', type: 'custom-text' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets, preRendered(widgets, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(0);
+    });
+
     it('advances a running global separator index', () => {
         const firstLine: WidgetItem[] = [
             { id: '1', type: 'model' },
@@ -96,5 +134,19 @@ describe('separator index utils', () => {
 
         expect(afterFirst).toBe(2);
         expect(afterSecond).toBe(3);
+    });
+
+    it('advances a running global separator index from rendered separator slots', () => {
+        const line: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'hidden', type: 'custom-text' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(advanceGlobalSeparatorIndex(3, line, preRendered(line, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(4);
     });
 });

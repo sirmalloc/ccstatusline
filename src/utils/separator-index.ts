@@ -1,16 +1,40 @@
 import type { WidgetItem } from '../types/Widget';
 
-export function countSeparatorSlots(widgets: WidgetItem[]): number {
+export interface SeparatorSlotEntry {
+    content: string;
+    widget: WidgetItem;
+}
+
+function hasRenderedContent(
+    widgetIndex: number,
+    preRenderedWidgets?: SeparatorSlotEntry[]
+): boolean {
+    return preRenderedWidgets ? Boolean(preRenderedWidgets[widgetIndex]?.content) : true;
+}
+
+export function countSeparatorSlots(
+    widgets: WidgetItem[],
+    preRenderedWidgets?: SeparatorSlotEntry[]
+): number {
     let count = 0;
     let previousRenderableWidget: WidgetItem | null = null;
 
-    for (const widget of widgets) {
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget) {
+            continue;
+        }
+
         if (widget.type === 'separator') {
             continue;
         }
 
         if (widget.type === 'flex-separator') {
             previousRenderableWidget = null;
+            continue;
+        }
+
+        if (!hasRenderedContent(i, preRenderedWidgets)) {
             continue;
         }
 
@@ -23,6 +47,10 @@ export function countSeparatorSlots(widgets: WidgetItem[]): number {
     return count;
 }
 
-export function advanceGlobalSeparatorIndex(currentIndex: number, widgets: WidgetItem[]): number {
-    return currentIndex + countSeparatorSlots(widgets);
+export function advanceGlobalSeparatorIndex(
+    currentIndex: number,
+    widgets: WidgetItem[],
+    preRenderedWidgets?: SeparatorSlotEntry[]
+): number {
+    return currentIndex + countSeparatorSlots(widgets, preRenderedWidgets);
 }
