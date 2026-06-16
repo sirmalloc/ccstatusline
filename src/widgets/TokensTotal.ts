@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -19,12 +20,13 @@ export class TokensTotalWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             return formatRawOrLabeledValue(item, 'Total: ', '30.6k');
         }
 
         if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens));
+            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens, format));
         }
         return null;
     }

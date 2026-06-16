@@ -10,6 +10,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
+import {
     formatUsageDuration,
     formatUsageResetAt,
     getUsageErrorMessage,
@@ -98,6 +102,7 @@ export class BlockResetTimerWidget implements Widget {
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
         const dateMode = isUsageDateMode(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -105,13 +110,13 @@ export class BlockResetTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(previewPercent);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    ? `${slider} ${formatPercent(previewPercent, format)}`
                     : slider;
                 return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
             }
@@ -145,15 +150,14 @@ export class BlockResetTimerWidget implements Widget {
             const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
-            const percentage = percent.toFixed(1);
-            return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${percentage}%`);
+            return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const slider = makeSliderBar(percent);
             const sliderDisplay = displayMode === 'slider'
-                ? `${slider} ${percent.toFixed(1)}%`
+                ? `${slider} ${formatPercent(percent, format)}`
                 : slider;
             return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
         }

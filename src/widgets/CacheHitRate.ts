@@ -6,6 +6,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import {
     getCacheHitRate,
@@ -53,7 +57,8 @@ export class CacheHitRateWidget implements Widget {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, 'Cache Hit: ', `${hitRate.toFixed(1)}%`);
+        const format = resolveNumberFormat('percent', item, settings);
+        return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(hitRate, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import os from 'os';
 
+import type { NumberFormat } from '../types/NumberFormat';
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
@@ -8,18 +9,22 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    renderMagnitude,
+    resolveNumberFormat
+} from '../utils/number-format';
 
-function formatBytes(bytes: number): string {
+function formatBytes(bytes: number, format: NumberFormat): string {
     const GB = 1024 ** 3;
     const MB = 1024 ** 2;
     const KB = 1024;
 
     if (bytes >= GB)
-        return `${(bytes / GB).toFixed(1)}G`;
+        return `${renderMagnitude(bytes / GB, format, 1)}G`;
     if (bytes >= MB)
-        return `${(bytes / MB).toFixed(0)}M`;
+        return `${renderMagnitude(bytes / MB, format, 0)}M`;
     if (bytes >= KB)
-        return `${(bytes / KB).toFixed(0)}K`;
+        return `${renderMagnitude(bytes / KB, format, 0)}K`;
     return `${bytes}B`;
 }
 
@@ -71,6 +76,7 @@ export class FreeMemoryWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('memory', item, settings);
         if (context.isPreview) {
             return item.rawValue ? '12.4G/16.0G' : 'Mem: 12.4G/16.0G';
         }
@@ -86,7 +92,7 @@ export class FreeMemoryWidget implements Widget {
             used = total - os.freemem();
         }
 
-        const value = `${formatBytes(used)}/${formatBytes(total)}`;
+        const value = `${formatBytes(used, format)}/${formatBytes(total, format)}`;
 
         return item.rawValue ? value : `Mem: ${value}`;
     }

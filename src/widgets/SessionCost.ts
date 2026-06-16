@@ -5,6 +5,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatCost,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 export class SessionCostWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -16,6 +20,7 @@ export class SessionCostWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
             return item.rawValue ? '$2.45' : 'Cost: $2.45';
         }
@@ -25,8 +30,7 @@ export class SessionCostWidget implements Widget {
             return null;
         }
 
-        // Format the cost to 2 decimal places
-        const formattedCost = `$${totalCost.toFixed(2)}`;
+        const formattedCost = formatCost(totalCost, format);
 
         return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
     }

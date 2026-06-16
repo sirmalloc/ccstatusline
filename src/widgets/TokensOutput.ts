@@ -6,6 +6,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getContextWindowOutputTotalTokens } from '../utils/context-window';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -20,17 +21,18 @@ export class TokensOutputWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             return formatRawOrLabeledValue(item, 'Out: ', '3.4k');
         }
 
         if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
+            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens, format));
         }
 
         const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
         if (outputTotalTokens !== null) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens));
+            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens, format));
         }
         return null;
     }
