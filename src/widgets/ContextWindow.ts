@@ -10,6 +10,7 @@ import {
     getContextConfig,
     getModelContextIdentifier
 } from '../utils/model-context';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
 export class ContextWindowWidget implements Widget {
@@ -22,6 +23,7 @@ export class ContextWindowWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             return item.rawValue ? '200k' : 'Win: 200k';
         }
@@ -37,7 +39,7 @@ export class ContextWindowWidget implements Widget {
             return null;
         }
 
-        return item.rawValue ? formatTokens(total) : `Win: ${formatTokens(total)}`;
+        return item.rawValue ? formatTokens(total, format) : `Win: ${formatTokens(total, format)}`;
     }
 
     supportsRawValue(): boolean { return true; }

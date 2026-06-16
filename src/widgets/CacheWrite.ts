@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 
 import {
     formatTokensWithPercentage,
@@ -49,7 +50,9 @@ export class CacheWriteWidget implements Widget {
             return null;
         }
 
-        const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens));
+        const tokenFormat = resolveNumberFormat('token', item, settings);
+        const percentFormat = resolveNumberFormat('percent', item, settings);
+        const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens), tokenFormat, percentFormat);
         return formatRawOrLabeledValue(item, 'Cache Write: ', value);
     }
 
