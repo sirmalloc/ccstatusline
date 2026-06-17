@@ -222,10 +222,11 @@ function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageD
 function getStaleUsageOrError(
     error: UsageError,
     now: number,
+    currentTokenHash: string | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache();
+    const stale = readStaleUsageCache(currentTokenHash);
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
@@ -390,9 +391,13 @@ export function getUsageToken(): string | null {
         ?? readUsageTokenFromCredentialsFile();
 }
 
-function readStaleUsageCache(): UsageData | null {
+function readStaleUsageCache(currentTokenHash: string | null): UsageData | null {
     try {
-        return parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
+        const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+        if (!tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)) {
+            return null;
+        }
+        return parseCachedUsageData(rawCache);
     } catch {
         return null;
     }
@@ -594,7 +599,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     }
 
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('no-credentials', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -602,6 +607,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return getStaleUsageOrError(
             activeLock.error,
             now,
+            currentTokenHash,
             Math.max(1, activeLock.blockedUntil - now),
             requiredFields
         );
@@ -615,23 +621,23 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError('rate-limited', now, currentTokenHash, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('api-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
@@ -645,6 +651,6 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return cacheUsageData(usageData, now);
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
     }
 }

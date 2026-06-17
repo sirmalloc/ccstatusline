@@ -705,6 +705,77 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('does not serve a mismatched account cache during an active lock', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-switch-active-lock');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            const lockFile = path.join(cacheDir, 'usage.lock');
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
+
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+            const lockedNowMs = seededMtimeMs + 5000;
+            fs.writeFileSync(lockFile, JSON.stringify({
+                blockedUntil: Math.floor(lockedNowMs / 1000) + 30,
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: lockedNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ error: 'timeout' });
+            expect(result.second).toEqual({ error: 'timeout' });
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('does not serve a mismatched account cache during a rate-limit backoff', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-switch-rate-limit');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
+
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+            const rateLimitedNowMs = seededMtimeMs + 5000;
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs: rateLimitedNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: rateLimitedResponseBody,
+                responseHeaders: { 'retry-after': '3600' },
+                statusCode: 429
+            });
+
+            expect(result.first).toEqual({ error: 'rate-limited' });
+            expect(result.second).toEqual({ error: 'rate-limited' });
+            expect(result.requestCount).toBe(1);
+            expect(parseLockContents(result.lockContents)).toEqual({
+                blockedUntil: Math.floor(rateLimitedNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('serves a fresh cache whose token fingerprint matches (same account)', () => {
         const harness = createProbeHarness();
 
