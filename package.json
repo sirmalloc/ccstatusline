@@ -90,5 +90,6 @@
   ],
   "patchedDependencies": {
     "ink@6.2.0": "patches/ink@6.2.0.patch"
-  }
+  },
+  "homepage": "https://github.com/sirmalloc/ccstatusline"
 }
