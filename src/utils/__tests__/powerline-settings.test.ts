@@ -40,7 +40,7 @@ describe('powerline settings helpers', () => {
         expect(updated.powerline.theme).toBe('catppuccin');
     });
 
-    it('removes manual separators when requested', () => {
+    it('removes manual separators while preserving flex separators when requested', () => {
         const line: WidgetItem[] = [
             { id: '1', type: 'model' },
             { id: '2', type: 'separator' },
@@ -53,7 +53,7 @@ describe('powerline settings helpers', () => {
         };
 
         const updated = buildEnabledPowerlineSettings(settings, true);
-        expect(updated.lines[0]?.map(item => item.type)).toEqual(['model', 'context-length']);
+        expect(updated.lines[0]?.map(item => item.type)).toEqual(['model', 'context-length', 'flex-separator']);
     });
 
     it('keeps manual separators when removal is not requested', () => {

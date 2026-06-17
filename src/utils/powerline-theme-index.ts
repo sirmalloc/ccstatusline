@@ -10,7 +10,12 @@ export function countPowerlineThemeSlots(entries: PowerlineThemeSlotEntry[]): nu
     let slotCount = 0;
 
     for (const entry of entries) {
-        if (!entry.content || entry.widget.type === 'separator' || entry.widget.type === 'flex-separator') {
+        if (entry.widget.type === 'separator' || entry.widget.type === 'flex-separator') {
+            previousVisibleWidget = null;
+            continue;
+        }
+
+        if (!entry.content) {
             continue;
         }
 

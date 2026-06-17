@@ -47,6 +47,14 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.22 - Powerline flex mode, dim styling, safer config, and polish
+
+![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
+
+- **⚡ Powerline flex mode** - Flex separators now work in Powerline mode, letting Powerline status lines right-align content or absorb available width.
+- **🌗 Per-widget dim styling** - The color editor can dim an entire widget or only parenthesized text, with reset and clear-all actions covering dim state.
+- **🧯 Safer settings recovery** - Invalid `settings.json` files are left untouched, defaults render in memory, and the status line shows an invalid-config warning.
+
 ### v2.2.21 - Cache widgets, compaction details, extra usage currency, and package fixes
 
 - **🔣 Custom widget glyphs** - Git and JJ symbol widgets can override or suppress their built-in glyphs from the TUI.

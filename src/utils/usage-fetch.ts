@@ -34,6 +34,17 @@ const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageUtilization'
 ]);
 
+// Maps each window reset field to the utilization field parsed from the same
+// API bucket. A null bucket (Enterprise accounts have no rate-limit windows,
+// #343) parses to utilization 0 with no resets_at, so once the utilization is
+// cached the missing timestamp is conclusive and refetching cannot produce it.
+const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataField>> = {
+    sessionResetAt: 'sessionUsage',
+    weeklyResetAt: 'weeklyUsage',
+    weeklySonnetResetAt: 'weeklySonnetUsage',
+    weeklyOpusResetAt: 'weeklyOpusUsage'
+};
+
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
@@ -206,6 +217,11 @@ function cacheUsageData(data: UsageData, now: number): UsageData {
 
 function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean {
     if (data[field] !== undefined) {
+        return true;
+    }
+
+    const windowSentinel = WINDOW_RESET_FIELD_SENTINELS[field];
+    if (windowSentinel !== undefined && data[windowSentinel] !== undefined) {
         return true;
     }
 
