@@ -357,6 +357,23 @@ describe('fetchUsageData error handling', () => {
             disabled_reason: null
         }
     });
+    // Mirrors a real Enterprise-account response: every rate-limit window is
+    // null because Enterprise plans have no 5-hour/7-day windows (#343).
+    const enterpriseNullWindowsResponseBody = JSON.stringify({
+        five_hour: null,
+        seven_day: null,
+        seven_day_oauth_apps: null,
+        seven_day_sonnet: null,
+        seven_day_opus: null,
+        extra_usage: {
+            is_enabled: true,
+            monthly_limit: 50000,
+            used_credits: 0,
+            utilization: null,
+            currency: 'USD',
+            disabled_reason: null
+        }
+    });
     const rateLimitedResponseBody = JSON.stringify({
         error: {
             message: 'Rate limited. Please try again later.',
@@ -696,6 +713,52 @@ describe('fetchUsageData error handling', () => {
                 weeklyResetAt: '2030-01-07T00:00:00.000Z',
                 extraUsageEnabled: true,
                 extraUsageUsed: 542
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats null rate-limit windows as complete for window reset fields', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('enterprise-null-windows');
+            const requiredFields = ['sessionUsage', 'sessionResetAt', 'weeklyUsage', 'weeklyResetAt', 'weeklySonnetResetAt', 'weeklyOpusResetAt'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: enterpriseNullWindowsResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 0,
+                weeklyUsage: 0,
+                weeklySonnetUsage: 0,
+                weeklyOpusUsage: 0,
+                extraUsageEnabled: true,
+                extraUsageLimit: 50000,
+                extraUsageCurrency: 'USD',
+                extraUsageUsed: 0
             });
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
