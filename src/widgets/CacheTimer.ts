@@ -6,21 +6,47 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 
 import { makeModifierText } from './shared/editor-display';
 import {
     isMetadataFlagEnabled,
+    removeMetadataKeys,
     toggleMetadataFlag
 } from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
 
 const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
 const TOGGLE_HIDE_ACTION = 'toggle-hide';
 
-const TTL_SECONDS = 300;
+// Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
+// also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
+// The expiry itself is never exposed (the transcript only records token counts),
+// so this is a best-effort countdown from the last turn; the TTL is configurable
+// to match whichever tier the user cares about.
+const TTL_METADATA_KEY = 'ttlSeconds';
+const DEFAULT_TTL_SECONDS = 300;
+const TTL_OPTIONS = [300, 3600] as const; // 5 minutes, 1 hour
+const TOGGLE_TTL_ACTION = 'toggle-ttl';
+
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
+
+// One editable glyph per display state, so nerd-font / ASCII users can replace
+// the emoji (which ignore the widget's color) with symbols that respect it.
+const HOT_SLOT: SymbolSlot = { id: 'symbolHot', label: 'Working', defaultSymbol: '🔥' };
+const FRESH_SLOT: SymbolSlot = { id: 'symbolFresh', label: 'Fresh', defaultSymbol: '🟢' };
+const DRAINING_SLOT: SymbolSlot = { id: 'symbolDraining', label: 'Draining', defaultSymbol: '🟡' };
+const URGENT_SLOT: SymbolSlot = { id: 'symbolUrgent', label: 'Urgent', defaultSymbol: '🔴' };
+const COLD_SLOT: SymbolSlot = { id: 'symbolCold', label: 'Cold', defaultSymbol: '❄️' };
+const SYMBOL_SLOTS: SymbolSlot[] = [HOT_SLOT, FRESH_SLOT, DRAINING_SLOT, URGENT_SLOT, COLD_SLOT];
 
 interface TranscriptEntry {
     type?: string;
@@ -87,9 +113,40 @@ function getTranscriptState(transcriptPath: string): { isWorking: true } | { isW
     return { isWorking: false, lastAssistant: null };
 }
 
-function getRemainingSeconds(lastAssistant: Date): number {
+// The configured TTL in seconds. Defaults to 5 minutes; the (t)tl keybind cycles
+// 5m/1h, and any other positive value can be set directly in settings.json.
+function getTtlSeconds(item: WidgetItem): number {
+    const raw = item.metadata?.[TTL_METADATA_KEY];
+    if (raw === undefined) {
+        return DEFAULT_TTL_SECONDS;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > SAFETY_MARGIN ? parsed : DEFAULT_TTL_SECONDS;
+}
+
+function cycleTtl(item: WidgetItem): WidgetItem {
+    const current = getTtlSeconds(item);
+    const index = (TTL_OPTIONS as readonly number[]).indexOf(current);
+    const next = TTL_OPTIONS[(index + 1) % TTL_OPTIONS.length] ?? DEFAULT_TTL_SECONDS;
+    if (next === DEFAULT_TTL_SECONDS) {
+        return removeMetadataKeys(item, [TTL_METADATA_KEY]);
+    }
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            [TTL_METADATA_KEY]: String(next)
+        }
+    };
+}
+
+function formatTtlLabel(ttlSeconds: number): string {
+    return ttlSeconds % 3600 === 0 ? `${ttlSeconds / 3600}h` : `${Math.round(ttlSeconds / 60)}m`;
+}
+
+function getRemainingSeconds(lastAssistant: Date, ttlSeconds: number): number {
     const elapsedSeconds = (Date.now() - lastAssistant.getTime()) / 1000;
-    return TTL_SECONDS - SAFETY_MARGIN - elapsedSeconds;
+    return ttlSeconds - SAFETY_MARGIN - elapsedSeconds;
 }
 
 function formatCountdown(remaining: number): string {
@@ -101,29 +158,39 @@ function formatCountdown(remaining: number): string {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function getIcon(remaining: number): string {
+// The glyph for the current drain state (excluding HOT, handled in render).
+function getStateSymbol(item: WidgetItem, remaining: number, ttlSeconds: number): string {
     if (remaining <= 0) {
-        return '❄️';
+        return getSlotSymbol(item, COLD_SLOT);
     }
-    const pct = remaining / (TTL_SECONDS - SAFETY_MARGIN);
+    const pct = remaining / (ttlSeconds - SAFETY_MARGIN);
     if (pct > 0.5) {
-        return '🟢';
+        return getSlotSymbol(item, FRESH_SLOT);
     }
     if (pct > 0.2) {
-        return '🟡';
+        return getSlotSymbol(item, DRAINING_SLOT);
     }
-    return '🔴';
+    return getSlotSymbol(item, URGENT_SLOT);
+}
+
+// Joins a glyph to its countdown; a blanked glyph collapses the leading space.
+function withGlyph(symbol: string, text: string): string {
+    return symbol.length > 0 ? `${symbol} ${text}` : text;
 }
 
 export class CacheTimerWidget implements Widget {
     getDefaultColor(): string { return 'brightCyan'; }
-    getDescription(): string { return 'Shows time remaining on the 5-minute prompt cache TTL'; }
+    getDescription(): string { return 'Shows time remaining on the prompt cache TTL (5m by default, 1h configurable)'; }
     getDisplayName(): string { return 'Cache Timer'; }
     getCategory(): string { return 'Session'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
 
+        const ttlSeconds = getTtlSeconds(item);
+        if (ttlSeconds !== DEFAULT_TTL_SECONDS) {
+            modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
+        }
         if (isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY)) {
             modifiers.push('hide when empty');
         }
@@ -139,6 +206,10 @@ export class CacheTimerWidget implements Widget {
             return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);
         }
 
+        if (action === TOGGLE_TTL_ACTION) {
+            return cycleTtl(item);
+        }
+
         return null;
     }
 
@@ -146,7 +217,7 @@ export class CacheTimerWidget implements Widget {
         const hideWhenEmpty = isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY);
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache: ', '🟢 4:52');
+            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
         }
 
         const transcriptPath = context.data?.transcript_path;
@@ -157,7 +228,7 @@ export class CacheTimerWidget implements Widget {
         const state = getTranscriptState(transcriptPath);
 
         if (state.isWorking) {
-            return formatRawOrLabeledValue(item, 'Cache: ', '🔥 HOT');
+            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
         }
 
         const { lastAssistant } = state;
@@ -165,17 +236,23 @@ export class CacheTimerWidget implements Widget {
             return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
         }
 
-        const remaining = getRemainingSeconds(lastAssistant);
-        const icon = getIcon(remaining);
-        const countdown = formatCountdown(remaining);
+        const ttlSeconds = getTtlSeconds(item);
+        const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
+        const glyph = getStateSymbol(item, remaining, ttlSeconds);
 
-        return formatRawOrLabeledValue(item, 'Cache: ', `${icon} ${countdown}`);
+        return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(glyph, formatCountdown(remaining)));
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_ACTION }
+            { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
+            { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_ACTION },
+            getSymbolKeybind()
         ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, SYMBOL_SLOTS);
     }
 
     supportsRawValue(): boolean { return true; }
