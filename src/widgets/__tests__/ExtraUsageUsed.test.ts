@@ -93,6 +93,10 @@ describe('ExtraUsageUsedWidget', () => {
             type: 'extra-usage-used'
         }, { isPreview: true }, settings)).toBe('Overage Used: $106');
         expect(widget.supportsNumberFormat()).toBe(true);
+        expect(widget.getCustomKeybinds()).toEqual([
+            { key: 'b', label: '(b)udget colors', action: 'toggle-budget-colors' }
+        ]);
+        expect(widget.getEditorDisplay({ id: 'extra', type: 'extra-usage-used' }).modifierText).toBeUndefined();
     });
 
     it('declares the disabled and no-data hideable states', () => {
