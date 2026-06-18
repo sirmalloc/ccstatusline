@@ -3,12 +3,21 @@ import * as fs from 'fs';
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 
+import { makeModifierText } from './shared/editor-display';
+import {
+    isMetadataFlagEnabled,
+    toggleMetadataFlag
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
+const TOGGLE_HIDE_ACTION = 'toggle-hide';
 
 const TTL_SECONDS = 300;
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
@@ -39,9 +48,11 @@ function readFileTail(filePath: string, bytes = 32768): string {
 }
 
 /**
- * Find the last user/assistant entry in the transcript.
- * Returns { isWorking: true } when the last entry is a user message (Claude is processing).
- * Returns { isWorking: false, lastAssistant: Date } when the last entry is an assistant message.
+ * Find the most recent user/assistant entry in the transcript tail.
+ * A trailing user-role entry (a prompt or a tool result, both recorded as
+ * role 'user' by Claude Code) means a turn is in flight and the cache is being
+ * refreshed, so report { isWorking: true }. A trailing assistant entry means
+ * the turn finished, so return its timestamp to drive the countdown.
  */
 function getTranscriptState(transcriptPath: string): { isWorking: true } | { isWorking: false; lastAssistant: Date | null } {
     const tail = readFileTail(transcriptPath);
@@ -61,7 +72,13 @@ function getTranscriptState(transcriptPath: string): { isWorking: true } | { isW
                 return { isWorking: true };
             }
             if (entry.type === 'assistant' && entry.timestamp) {
-                return { isWorking: false, lastAssistant: new Date(entry.timestamp) };
+                const parsed = new Date(entry.timestamp);
+                // A malformed timestamp must not flow through to a NaN countdown;
+                // treat it as no data so the empty-state path renders instead.
+                return {
+                    isWorking: false,
+                    lastAssistant: Number.isNaN(parsed.getTime()) ? null : parsed
+                };
             }
         } catch {
             continue;
@@ -104,18 +121,37 @@ export class CacheTimerWidget implements Widget {
     getDisplayName(): string { return 'Cache Timer'; }
     getCategory(): string { return 'Session'; }
 
-    getEditorDisplay(_item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const modifiers: string[] = [];
+
+        if (isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY)) {
+            modifiers.push('hide when empty');
+        }
+
+        return {
+            displayText: this.getDisplayName(),
+            modifierText: makeModifierText(modifiers)
+        };
+    }
+
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === TOGGLE_HIDE_ACTION) {
+            return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);
+        }
+
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
+        const hideWhenEmpty = isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY);
+
         if (context.isPreview) {
             return formatRawOrLabeledValue(item, 'Cache: ', '🟢 4:52');
         }
 
         const transcriptPath = context.data?.transcript_path;
         if (!transcriptPath) {
-            return null;
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
         }
 
         const state = getTranscriptState(transcriptPath);
@@ -126,7 +162,7 @@ export class CacheTimerWidget implements Widget {
 
         const { lastAssistant } = state;
         if (!lastAssistant) {
-            return null;
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
         }
 
         const remaining = getRemainingSeconds(lastAssistant);
@@ -134,6 +170,12 @@ export class CacheTimerWidget implements Widget {
         const countdown = formatCountdown(remaining);
 
         return formatRawOrLabeledValue(item, 'Cache: ', `${icon} ${countdown}`);
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [
+            { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_ACTION }
+        ];
     }
 
     supportsRawValue(): boolean { return true; }
