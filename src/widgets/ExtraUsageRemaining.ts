@@ -1,6 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     HideableState,
     Widget,
     WidgetEditorDisplay,
@@ -9,6 +10,12 @@ import type {
 import { resolveNumberFormat } from '../utils/number-format';
 import { getUsageErrorMessage } from '../utils/usage';
 
+import {
+    appendBudgetColorsModifier,
+    getBudgetColorsKeybind,
+    handleToggleBudgetColorsAction,
+    resolveBudgetColor
+} from './shared/budget-color';
 import { formatUsageCurrency } from './shared/currency';
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
 import { isHidden } from './shared/hideable';
@@ -22,11 +29,18 @@ export class ExtraUsageRemainingWidget implements Widget {
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+        return {
+            displayText: this.getDisplayName(),
+            modifierText: appendBudgetColorsModifier(undefined, item)
+        };
     }
 
     getHideableStates(): HideableState[] {
         return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
+    }
+
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        return handleToggleBudgetColorsAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -57,6 +71,14 @@ export class ExtraUsageRemainingWidget implements Widget {
         const formatted = formatUsageCurrency(remaining, data.extraUsageCurrency, format);
 
         return formatRawOrLabeledValue(item, 'Overage Left: ', formatted);
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [getBudgetColorsKeybind()];
+    }
+
+    getDynamicColor(item: WidgetItem, context: RenderContext): string | undefined {
+        return resolveBudgetColor(item, context.usageData?.extraUsageUtilization);
     }
 
     supportsRawValue(): boolean { return true; }
