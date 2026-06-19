@@ -25,6 +25,7 @@ import {
     renderContextSlider
 } from './shared/context-slider';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import { getSliderBarChars } from './shared/usage-display';
 
 export class ContextPercentageUsableWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -57,8 +58,9 @@ export class ContextPercentageUsableWidget implements Widget {
         const contextWindowMetrics = getContextWindowMetrics(context.data);
         const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
 
+        const chars = getSliderBarChars(item);
         const formatContextPercentage = (displayPercentage: number): string => {
-            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
+            const sliderResult = renderContextSlider(sliderMode, displayPercentage, chars);
             return formatRawOrLabeledValue(item, label, sliderResult ?? `${displayPercentage.toFixed(1)}%`);
         };
 
