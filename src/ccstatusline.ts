@@ -42,7 +42,10 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
-import { getTerminalWidth } from './utils/terminal';
+import {
+    getPackageVersion,
+    getTerminalWidth
+} from './utils/terminal';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -274,6 +277,12 @@ async function handleHook(): Promise<void> {
 }
 
 async function main() {
+    // Print version and exit (#461). Standard CLI behavior, runs before any other mode.
+    if (process.argv.includes('--version')) {
+        console.log(getPackageVersion());
+        process.exit(0);
+    }
+
     // Parse --config before anything else
     initConfigPath(parseConfigArg());
 
