@@ -30,6 +30,7 @@ const widget = new GitUntrackedFilesWidget();
 
 function render(options: {
     cwd?: string;
+    hide?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
     rawValue?: boolean;
@@ -42,7 +43,7 @@ function render(options: {
         id: 'git-untracked-files',
         type: 'git-untracked-files',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hide ? { hide: options.hide } : (options.hideNoGit ? { hide: 'no-git' } : undefined)
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
@@ -83,6 +84,20 @@ describe('GitUntrackedFilesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('?:0');
+    });
+
+    it('hides zero count when the zero state is enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBeNull();
+    });
+
+    it('keeps non-zero counts visible with the zero state enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('?? a.ts\0?? b.ts\0');
+
+        expect(render({ hide: 'zero' })).toBe('?:2');
     });
 
     it('renders no git when probe returns false', () => {

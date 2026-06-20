@@ -69,21 +69,11 @@ describe('ExtraUsageUsedWidget', () => {
         })).toBe('Overage Used: €5.42');
     });
 
-    it('exposes and toggles hide-if-disabled configuration', () => {
+    it('declares the disabled and no-data hideable states', () => {
         const widget = new ExtraUsageUsedWidget();
-        const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-used' };
 
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
-        ]);
-        expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
-
-        const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
-        expect(hidden?.metadata?.hideIfDisabled).toBe('true');
-        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(hide if disabled)');
-
-        const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
-        expect(shown?.metadata?.hideIfDisabled).toBe('false');
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
+        expect(widget.getEditorDisplay({ id: 'extra', type: 'extra-usage-used' }).modifierText).toBeUndefined();
     });
 
     it('renders available used budget before unrelated usage errors', () => {
@@ -125,7 +115,7 @@ describe('ExtraUsageUsedWidget', () => {
 
         const hiddenItem: WidgetItem = {
             id: 'extra',
-            metadata: { hideIfDisabled: 'true' },
+            metadata: { hide: 'disabled' },
             type: 'extra-usage-used'
         };
 

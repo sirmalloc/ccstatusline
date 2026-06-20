@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -13,12 +14,13 @@ import {
     getCacheWritePercentage
 } from './shared/cache-metrics';
 import {
+    CACHE_EMPTY_HIDEABLE_STATE,
     getCacheKeybinds,
     getCacheModifierText,
     handleCacheOptionsAction,
-    isCacheHideWhenEmptyEnabled,
     isCacheSessionScope
 } from './shared/cache-scope';
+import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class CacheWriteWidget implements Widget {
@@ -30,6 +32,10 @@ export class CacheWriteWidget implements Widget {
         return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
 
+    getHideableStates(): HideableState[] {
+        return [CACHE_EMPTY_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         return handleCacheOptionsAction(action, item);
     }
@@ -39,7 +45,7 @@ export class CacheWriteWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Cache Write: ', '3k (16.0%)');
         }
 
-        const hideWhenEmpty = isCacheHideWhenEmptyEnabled(item);
+        const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
             return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Write: ', 'n/a');

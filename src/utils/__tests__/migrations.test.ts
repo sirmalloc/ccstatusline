@@ -77,11 +77,86 @@ describe('migrations', () => {
             lines: [[
                 { type: 'model' }
             ]]
-        }, 3) as Record<string, unknown>;
+        }, 4) as Record<string, unknown>;
 
-        expect(migrated.version).toBe(3);
+        expect(migrated.version).toBe(4);
         const updateMessage = migrated.updatemessage as { message?: string; remaining?: number };
         expect(updateMessage.message).toContain('v2.0.2');
         expect(updateMessage.remaining).toBe(12);
+    });
+});
+
+describe('v3 to v4 hide flag migration', () => {
+    function migrateItem(item: Record<string, unknown>): Record<string, unknown> | undefined {
+        const migrated = migrateConfig({
+            version: 3,
+            lines: [[item]]
+        }, 4) as { lines?: Record<string, unknown>[][] };
+
+        return migrated.lines?.[0]?.[0];
+    }
+
+    it('bumps the version without touching unrelated data', () => {
+        const migrated = migrateConfig({ version: 3, flexMode: 'full' }, 4) as Record<string, unknown>;
+
+        expect(migrated.version).toBe(4);
+        expect(migrated.flexMode).toBe('full');
+        expect(migrated.updatemessage).toBeUndefined();
+    });
+
+    it.each([
+        ['git-branch', { hideNoGit: 'true' }, 'no-git'],
+        ['jj-changes', { hideNoJj: 'true' }, 'no-jj'],
+        ['git-origin-owner', { hideNoRemote: 'true' }, 'no-remote'],
+        ['git-upstream-owner', { hideNoRemote: 'true' }, 'no-upstream'],
+        ['compaction-counter', { hideZero: 'true' }, 'zero'],
+        ['skills', { hideWhenEmpty: 'true' }, 'empty'],
+        ['extra-usage-remaining', { hideIfDisabled: 'true' }, 'disabled'],
+        ['extra-usage-utilization', { hideIfDisabled: 'true' }, 'disabled'],
+        ['git-is-fork', { hideWhenNotFork: 'true' }, 'not-fork']
+    ])('converts %s legacy flags to the unified hide list', (type, metadata, expected) => {
+        const item = migrateItem({ id: '1', type, metadata });
+
+        expect(item?.metadata).toEqual({ hide: expected });
+    });
+
+    it('expands hideNoGit to every state it covered on git-ahead-behind', () => {
+        const item = migrateItem({ id: '1', type: 'git-ahead-behind', metadata: { hideNoGit: 'true' } });
+
+        expect(item?.metadata).toEqual({ hide: 'no-git,no-upstream,zero' });
+    });
+
+    it('expands hideNoGit to the no-data state on git-review and its legacy git-pr alias', () => {
+        for (const type of ['git-review', 'git-pr']) {
+            const item = migrateItem({ id: '1', type, metadata: { hideNoGit: 'true', hideStatus: 'true' } });
+
+            expect(item?.metadata).toEqual({ hide: 'no-git,no-data,status' });
+        }
+    });
+
+    it('drops disabled legacy flags without writing a hide list', () => {
+        const item = migrateItem({ id: '1', type: 'git-branch', metadata: { hideNoGit: 'false' } });
+
+        expect(item?.metadata).toBeUndefined();
+    });
+
+    it('keeps default-enabled states implicit when dropping disabled flags', () => {
+        const item = migrateItem({ id: '1', type: 'git-ahead-behind', metadata: { hideNoGit: 'false' } });
+
+        expect(item?.metadata).toBeUndefined();
+    });
+
+    it('preserves unrelated metadata', () => {
+        const item = migrateItem({ id: '1', type: 'skills', metadata: { hideWhenEmpty: 'true', mode: 'list' } });
+
+        expect(item?.metadata).toEqual({ hide: 'empty', mode: 'list' });
+    });
+
+    it('leaves unknown widget types and flag-free items untouched', () => {
+        const unknown = migrateItem({ id: '1', type: 'model', metadata: { hideNoGit: 'true' } });
+        expect(unknown?.metadata).toEqual({ hideNoGit: 'true' });
+
+        const untouched = migrateItem({ id: '1', type: 'git-branch', metadata: { hide: 'no-git' } });
+        expect(untouched?.metadata).toEqual({ hide: 'no-git' });
     });
 });

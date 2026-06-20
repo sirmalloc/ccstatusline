@@ -85,6 +85,24 @@ describe('BlockTimerWidget', () => {
         }, { usageData: { error: 'timeout' } })).toBe(`Block [${'░'.repeat(32)}] 0.0%`);
     });
 
+    it('hides empty values when the no-data hide state is enabled', () => {
+        const widget = new BlockTimerWidget();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['no-data']);
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { hide: 'no-data' }
+        }, { usageData: { error: 'timeout' } })).toBeNull();
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'progress', hide: 'no-data' }
+        }, { usageData: { error: 'timeout' } })).toBeNull();
+    });
+
     it('shows raw value without label in time mode', () => {
         const widget = new BlockTimerWidget();
 

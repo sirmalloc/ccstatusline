@@ -40,7 +40,7 @@ function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolea
     const item: WidgetItem = {
         id: 'git-root-dir',
         type: 'git-root-dir',
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hideNoGit ? { hide: 'no-git' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);

@@ -5,6 +5,7 @@ import type {
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -13,6 +14,7 @@ import type {
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
 import { formatTokens } from '../utils/format-tokens';
 
+import { isHidden } from './shared/hideable';
 import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
@@ -31,15 +33,14 @@ type CompactionCounterFormat = typeof FORMATS[number];
 
 const DEFAULT_FORMAT: CompactionCounterFormat = 'icon-space-number';
 const CYCLE_FORMAT_ACTION = 'cycle-format';
-const TOGGLE_HIDE_ZERO_ACTION = 'toggle-hide-zero';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
-const HIDE_ZERO_METADATA_KEY = 'hideZero';
 const NERD_FONT_METADATA_KEY = 'nerdFont';
 const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
 const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
 const SHOW_RECLAIMED_METADATA_KEY = 'showReclaimed';
 const RECLAIMED_SLOT: SymbolSlot = { id: 'symbolReclaimed', label: 'Reclaimed', defaultSymbol: '↓' };
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when count is zero' };
 const SAMPLE_STATS: CompactionData = Object.freeze({
     count: 2,
     byTrigger: Object.freeze({ auto: 1, manual: 1, unknown: 0 }),
@@ -86,20 +87,6 @@ function setFormat(item: WidgetItem, format: CompactionCounterFormat): WidgetIte
 
 function isNerdFontEnabled(item: WidgetItem): boolean {
     return item.metadata?.[NERD_FONT_METADATA_KEY] === 'true' && getFormat(item) === DEFAULT_FORMAT;
-}
-
-function isHideZeroEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[HIDE_ZERO_METADATA_KEY] === 'true';
-}
-
-function toggleHideZero(item: WidgetItem): WidgetItem {
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            [HIDE_ZERO_METADATA_KEY]: (!isHideZeroEnabled(item)).toString()
-        }
-    };
 }
 
 function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
@@ -187,14 +174,15 @@ export class CompactionCounterWidget implements Widget {
         if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
             modifiers.push('reclaimed');
         }
-        if (isHideZeroEnabled(item)) {
-            modifiers.push('hide zero');
-        }
 
         return {
             displayText: 'Compaction Counter',
             modifierText: `(${modifiers.join(', ')})`
         };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -203,10 +191,6 @@ export class CompactionCounterWidget implements Widget {
             const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
 
             return setFormat(item, nextFormat);
-        }
-
-        if (action === TOGGLE_HIDE_ZERO_ACTION) {
-            return toggleHideZero(item);
         }
 
         if (action === TOGGLE_NERD_FONT_ACTION) {
@@ -233,7 +217,7 @@ export class CompactionCounterWidget implements Widget {
         }
 
         const data = context.compactionData ?? ZERO_COMPACTION_STATS;
-        if (data.count === 0 && isHideZeroEnabled(item))
+        if (data.count === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key))
             return null;
 
         return formatStats(data, item, icon);
@@ -250,7 +234,6 @@ export class CompactionCounterWidget implements Widget {
 
         keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
         keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
-        keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
         keybinds.push(getSymbolKeybind());
 
         return keybinds;
