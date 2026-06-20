@@ -1,4 +1,6 @@
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
@@ -23,6 +25,84 @@ describe('getContextConfig', () => {
 
             expect(config.maxTokens).toBe(200000);
             expect(config.usableTokens).toBe(160000);
+        });
+    });
+
+    describe('CCSTATUSLINE_CONTEXT_WINDOW_SIZE env override', () => {
+        const originalEnv = process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE;
+
+        beforeEach(() => {
+            delete process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE;
+        });
+
+        afterEach(() => {
+            if (originalEnv === undefined) {
+                delete process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE;
+            } else {
+                process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = originalEnv;
+            }
+        });
+
+        it('overrides context_window_size from status JSON with a raw number', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '1000000';
+            const config = getContextConfig('mimo-v2.5-pro', 200000);
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('accepts a k/m suffix', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '1M';
+            const config = getContextConfig('mimo-v2.5-pro', 200000);
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('ignores invalid values and falls through to status JSON value', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = 'nope';
+            const config = getContextConfig('claude-3-5-sonnet-20241022', 200000);
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(160000);
+        });
+
+        it('ignores zero, negative, and empty values', () => {
+            for (const bad of ['0', '-1', '', '   ']) {
+                process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = bad;
+                const config = getContextConfig('claude-3-5-sonnet-20241022', 200000);
+                expect(config.maxTokens).toBe(200000);
+            }
+        });
+
+        it('rejects nonsensically small windows (< 1000)', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '1.5';
+            const config = getContextConfig('claude-3-5-sonnet-20241022', 200000);
+
+            expect(config.maxTokens).toBe(200000);
+        });
+
+        it('accepts underscore and comma separators', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '1_000_000';
+            expect(getContextConfig('m', 200000).maxTokens).toBe(1000000);
+
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '1,000,000';
+            expect(getContextConfig('m', 200000).maxTokens).toBe(1000000);
+        });
+
+        it('accepts decimals with a unit', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '1.5M';
+            expect(getContextConfig('m', 200000).maxTokens).toBe(1500000);
+        });
+
+        it('accepts whitespace-padded and lowercase unit', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '  200k  ';
+            expect(getContextConfig('m', 1000000).maxTokens).toBe(200000);
+        });
+
+        it('overrides model-suffix parsing when no status JSON value is provided', () => {
+            process.env.CCSTATUSLINE_CONTEXT_WINDOW_SIZE = '500k';
+            expect(getContextConfig('claude-sonnet-4-5[1m]').maxTokens).toBe(500000);
         });
     });
 
