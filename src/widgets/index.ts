@@ -29,6 +29,7 @@ export { TokensInputWidget } from './TokensInput';
 export { TokensOutputWidget } from './TokensOutput';
 export { TokensCachedWidget } from './TokensCached';
 export { TokensTotalWidget } from './TokensTotal';
+export { SessionTotalTokensWidget } from './SessionTotalTokens';
 export { CacheHitRateWidget } from './CacheHitRate';
 export { CacheReadWidget } from './CacheRead';
 export { CacheWriteWidget } from './CacheWrite';

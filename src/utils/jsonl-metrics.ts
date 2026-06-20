@@ -148,7 +148,93 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
     }
 }
 
-export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
+interface TokenUsageSum {
+    inputTokens: number;
+    outputTokens: number;
+    cachedTokens: number;
+}
+
+export interface TokenMetricsOptions { includeSubagents?: boolean }
+
+// Claude Code writes multiple JSONL entries per API call during streaming:
+// intermediate entries have stop_reason: null, and the final entry has a string
+// value like "end_turn" or "tool_use". Return finalized entries plus the latest
+// unfinished one so live updates do not overcount duplicate partial rows. If the
+// transcript format has no stop_reason field at all, count all entries.
+function getFinalizedUsageEntries(lines: string[]): TranscriptLine[] {
+    const parsedEntries: TranscriptLine[] = [];
+    let hasStopReasonField = false;
+
+    for (const line of lines) {
+        const data = parseJsonlLine(line) as TranscriptLine | null;
+        if (data?.message?.usage) {
+            parsedEntries.push(data);
+            if (Object.hasOwn(data.message, 'stop_reason')) {
+                hasStopReasonField = true;
+            }
+        }
+    }
+
+    return hasStopReasonField
+        ? parsedEntries.filter((data, index) => {
+            const stopReason = data.message?.stop_reason;
+            return Boolean(stopReason) || (stopReason === null && index === parsedEntries.length - 1);
+        })
+        : parsedEntries;
+}
+
+function sumUsage(entries: TranscriptLine[], skipSidechain: boolean): TokenUsageSum {
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cachedTokens = 0;
+
+    for (const data of entries) {
+        if (skipSidechain && data.isSidechain === true) {
+            continue;
+        }
+        const usage = data.message?.usage;
+        if (!usage) {
+            continue;
+        }
+        inputTokens += usage.input_tokens || 0;
+        outputTokens += usage.output_tokens || 0;
+        cachedTokens += usage.cache_read_input_tokens ?? 0;
+        cachedTokens += usage.cache_creation_input_tokens ?? 0;
+    }
+
+    return { inputTokens, outputTokens, cachedTokens };
+}
+
+// Context length is the most recent main-chain (non-sidechain, non-error)
+// finalized entry's context size. Sub-agents do not share the main context window.
+function computeContextLength(entries: TranscriptLine[]): number {
+    let mostRecentMainChainEntry: TranscriptLine | null = null;
+    let mostRecentTimestamp: Date | null = null;
+
+    for (const data of entries) {
+        if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
+            const entryTime = new Date(data.timestamp);
+            if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
+                mostRecentTimestamp = entryTime;
+                mostRecentMainChainEntry = data;
+            }
+        }
+    }
+
+    if (mostRecentMainChainEntry?.message?.usage) {
+        const usage = mostRecentMainChainEntry.message.usage;
+        return (usage.input_tokens || 0)
+            + (usage.cache_read_input_tokens ?? 0)
+            + (usage.cache_creation_input_tokens ?? 0);
+    }
+
+    return 0;
+}
+
+export async function getTokenMetrics(
+    transcriptPath: string,
+    options: TokenMetricsOptions = {}
+): Promise<TokenMetrics> {
     try {
         // Use Node.js-compatible file reading
         if (!fs.existsSync(transcriptPath)) {
@@ -156,49 +242,41 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         }
 
         const lines = await readJsonlLines(transcriptPath);
+        const mainEntries = getFinalizedUsageEntries(lines);
+        const contextLength = computeContextLength(mainEntries);
 
+        const subagentPaths = options.includeSubagents === true
+            ? getSubagentTranscriptPaths(transcriptPath, getReferencedSubagentIds(lines))
+            : [];
         let inputTokens = 0;
         let outputTokens = 0;
         let cacheReadTokens = 0;
         let cacheCreationTokens = 0;
         let contextLength = 0;
 
-        // Parse each line and sum up token usage for totals.
-        // Claude Code writes multiple JSONL entries per API call during streaming:
-        // intermediate entries have stop_reason: null, and the final entry has a
-        // string value like "end_turn" or "tool_use". For streaming-aware
-        // transcripts, count finalized entries plus the latest unfinished entry so
-        // live updates do not overcount duplicate partial rows. If the transcript
-        // format has no stop_reason field at all, fall back to counting all entries.
-        let mostRecentMainChainEntry: TranscriptLine | null = null;
-        let mostRecentTimestamp: Date | null = null;
+        // When separate subagent files exist, inline sidechain rows are represented
+        // there — drop them from the main pass to avoid double counting. When no
+        // separate files exist (older format), keep counting inline sidechain rows.
+        const skipMainSidechain = subagentPaths.length > 0;
+        const mainSum = sumUsage(mainEntries, skipMainSidechain);
 
-        const parsedEntries: TranscriptLine[] = [];
-        let hasStopReasonField = false;
+        let inputTokens = mainSum.inputTokens;
+        let outputTokens = mainSum.outputTokens;
+        let cachedTokens = mainSum.cachedTokens;
 
-        for (const line of lines) {
-            const data = parseJsonlLine(line) as TranscriptLine | null;
-            if (data?.message?.usage) {
-                parsedEntries.push(data);
-                if (Object.hasOwn(data.message, 'stop_reason')) {
-                    hasStopReasonField = true;
+        if (subagentPaths.length > 0) {
+            const subagentSums = await Promise.all(subagentPaths.map(async (subagentPath) => {
+                try {
+                    const subagentLines = await readJsonlLines(subagentPath);
+                    return sumUsage(getFinalizedUsageEntries(subagentLines), false);
+                } catch {
+                    return null;
                 }
-            }
-        }
+            }));
 
-        const entriesToCount = hasStopReasonField
-            ? parsedEntries.filter((data, index) => {
-                const stopReason = data.message?.stop_reason;
-                return Boolean(stopReason) || (stopReason === null && index === parsedEntries.length - 1);
-            })
-            : parsedEntries;
-
-        for (const data of entriesToCount) {
-            const usage = data.message?.usage;
-            if (!usage) {
-                continue;
-            }
-
+            for (const sum of subagentSums) {
+                if (!sum) {
+                    continue;
             inputTokens += usage.input_tokens || 0;
             outputTokens += usage.output_tokens || 0;
             cacheReadTokens += usage.cache_read_input_tokens ?? 0;
@@ -212,6 +290,9 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                     mostRecentTimestamp = entryTime;
                     mostRecentMainChainEntry = data;
                 }
+                inputTokens += sum.inputTokens;
+                outputTokens += sum.outputTokens;
+                cachedTokens += sum.cachedTokens;
             }
         }
 
