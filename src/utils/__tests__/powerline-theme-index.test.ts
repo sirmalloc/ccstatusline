@@ -41,6 +41,18 @@ describe('powerline theme index utils', () => {
         expect(countPowerlineThemeSlots(entries)).toBe(2);
     });
 
+    it('treats separators as powerline theme merge boundaries', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model', merge: true }),
+            entry({ id: '2', type: 'flex-separator' }),
+            entry({ id: '3', type: 'context-length', merge: true }),
+            entry({ id: '4', type: 'separator' }),
+            entry({ id: '5', type: 'git-branch' })
+        ];
+
+        expect(countPowerlineThemeSlots(entries)).toBe(3);
+    });
+
     it('advances a running global theme index', () => {
         const firstLine: PowerlineThemeSlotEntry[] = [
             entry({ id: '1', type: 'model' }),

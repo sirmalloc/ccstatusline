@@ -10,6 +10,16 @@ import {
     countSeparatorSlots
 } from '../separator-index';
 
+function preRendered(
+    widgets: WidgetItem[],
+    contentByIndex: Record<number, string>
+) {
+    return widgets.map((widget, index) => ({
+        content: contentByIndex[index] ?? 'x',
+        widget
+    }));
+}
+
 describe('separator index utils', () => {
     it('returns zero for empty and single-item lines', () => {
         expect(countSeparatorSlots([])).toBe(0);
@@ -47,6 +57,76 @@ describe('separator index utils', () => {
         expect(countSeparatorSlots(widgets)).toBe(1);
     });
 
+    it('does not count flex separators as separator slots', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'flex', type: 'flex-separator' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(0);
+    });
+
+    it('counts separator slots independently within flex-delimited segments', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: '2', type: 'context-length' },
+            { id: 'flex', type: 'flex-separator' },
+            { id: '3', type: 'version' },
+            { id: '4', type: 'session-cost' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(2);
+    });
+
+    it('ignores explicit separator widgets for powerline separator indexing', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'separator', type: 'separator' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(1);
+    });
+
+    it('treats explicit separators as merge boundaries for powerline separator indexing', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model', merge: true },
+            { id: 'separator', type: 'separator' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets)).toBe(1);
+    });
+
+    it('counts only widgets that rendered content when pre-render data is available', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'hidden', type: 'custom-text' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets, preRendered(widgets, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(1);
+    });
+
+    it('honors merge state on the previous rendered widget across hidden widgets', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model', merge: true },
+            { id: 'hidden', type: 'custom-text' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(countSeparatorSlots(widgets, preRendered(widgets, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(0);
+    });
+
     it('advances a running global separator index', () => {
         const firstLine: WidgetItem[] = [
             { id: '1', type: 'model' },
@@ -64,5 +144,19 @@ describe('separator index utils', () => {
 
         expect(afterFirst).toBe(2);
         expect(afterSecond).toBe(3);
+    });
+
+    it('advances a running global separator index from rendered separator slots', () => {
+        const line: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: 'hidden', type: 'custom-text' },
+            { id: '2', type: 'context-length' }
+        ];
+
+        expect(advanceGlobalSeparatorIndex(3, line, preRendered(line, {
+            0: 'model',
+            1: '',
+            2: 'context'
+        }))).toBe(4);
     });
 });

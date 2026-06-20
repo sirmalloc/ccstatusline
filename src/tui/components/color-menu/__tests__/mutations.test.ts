@@ -8,6 +8,7 @@ import type { WidgetItem } from '../../../../types/Widget';
 import {
     clearAllWidgetStyling,
     cycleWidgetColor,
+    cycleWidgetDim,
     resetWidgetStyling,
     toggleWidgetBold,
     updateWidgetById
@@ -41,14 +42,31 @@ describe('color-menu mutations', () => {
         expect(updated[1]?.bold).toBe(false);
     });
 
-    it('resetWidgetStyling removes color, backgroundColor, and bold from one widget', () => {
+    it('cycleWidgetDim cycles off, whole widget, parens, then off for the selected widget only', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' }
+        ];
+
+        const whole = cycleWidgetDim(widgets, '1');
+        const parens = cycleWidgetDim(whole, '1');
+        const off = cycleWidgetDim(parens, '1');
+
+        expect(whole[0]?.dim).toBe(true);
+        expect(parens[0]?.dim).toBe('parens');
+        expect(off[0]).toEqual({ id: '1', type: 'tokens-input' });
+        expect(whole[1]?.dim).toBeUndefined();
+    });
+
+    it('resetWidgetStyling removes color, backgroundColor, bold, and dim from one widget', () => {
         const widgets: WidgetItem[] = [
             {
                 id: '1',
                 type: 'tokens-input',
                 color: 'red',
                 backgroundColor: 'blue',
-                bold: true
+                bold: true,
+                dim: 'parens'
             },
             { id: '2', type: 'tokens-output', color: 'white', bold: true }
         ];
@@ -66,9 +84,10 @@ describe('color-menu mutations', () => {
                 type: 'tokens-input',
                 color: 'red',
                 backgroundColor: 'blue',
-                bold: true
+                bold: true,
+                dim: true
             },
-            { id: '2', type: 'tokens-output', color: 'white', bold: true }
+            { id: '2', type: 'tokens-output', color: 'white', bold: true, dim: 'parens' }
         ];
 
         const updated = clearAllWidgetStyling(widgets);
