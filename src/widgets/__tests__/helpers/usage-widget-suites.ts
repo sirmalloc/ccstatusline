@@ -24,9 +24,12 @@ interface UsagePercentWidgetSuiteConfig<TWidget extends UsageWidgetLike> {
     createWidget: () => TWidget;
     errorMessageMock: { mockReturnValue: (value: string) => void };
     expectedModifierText: string;
+    expectedPreviewInvertedTime: string;
     expectedProgress: string;
+    expectedRawInvertedTime: string;
     expectedRawProgress: string;
     expectedRawTime: string;
+    expectedInvertedTime: string;
     expectedTime: string;
     modifierItem: WidgetItem;
     progressItem: WidgetItem;
@@ -50,11 +53,14 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
 }
 
 const EXPECTED_USAGE_KEYBINDS: CustomKeybind[] = [
-    { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }
+    { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+    { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' },
+    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
 ];
 
 const EXPECTED_USAGE_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+    { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' },
     { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
     { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' }
 ];
@@ -141,7 +147,24 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, config.baseItem, context)).toBe(config.expectedTime);
     });
 
-    it('clears invert and cursor metadata when cycling back to time mode', () => {
+    it('renders inverted percentage in time mode', () => {
+        const widget = config.createWidget();
+        const context = getUsageContext(config.usageField, config.usageValue);
+        const invertedTimeItem: WidgetItem = {
+            ...config.baseItem,
+            metadata: { invert: 'true' }
+        };
+        const rawInvertedTimeItem: WidgetItem = {
+            ...config.rawTimeItem,
+            metadata: { invert: 'true' }
+        };
+
+        expect(config.render(widget, invertedTimeItem, context)).toBe(config.expectedInvertedTime);
+        expect(config.render(widget, rawInvertedTimeItem, context)).toBe(config.expectedRawInvertedTime);
+        expect(config.render(widget, invertedTimeItem, { isPreview: true })).toBe(config.expectedPreviewInvertedTime);
+    });
+
+    it('preserves invert and clears cursor metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
             ...config.baseItem,
@@ -153,7 +176,7 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         });
 
         expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
+        expect(updated?.metadata?.invert).toBe('true');
         expect(updated?.metadata?.cursor).toBeUndefined();
     });
 

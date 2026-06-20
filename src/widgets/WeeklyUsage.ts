@@ -43,7 +43,7 @@ export class WeeklyUsageWidget implements Widget {
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item, [], true);
+            return cycleUsageDisplayMode(item, [], true, true);
         }
 
         if (action === 'toggle-invert') {
@@ -79,7 +79,7 @@ export class WeeklyUsageWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Weekly: ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly: ', `${previewPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Weekly: ', `${renderedPercent.toFixed(1)}%`);
         }
 
         const data = context.usageData ?? {};
@@ -114,7 +114,7 @@ export class WeeklyUsageWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Weekly: ', sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, 'Weekly: ', `${percent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Weekly: ', `${renderedPercent.toFixed(1)}%`);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
