@@ -1,3 +1,4 @@
+import type { NumberFormat } from '../types/NumberFormat';
 import type {
     CompactionData,
     RenderContext
@@ -12,6 +13,7 @@ import type {
 } from '../types/Widget';
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
 import { formatTokens } from '../utils/format-tokens';
+import { resolveNumberFormat } from '../utils/number-format';
 
 import {
     isMetadataFlagEnabled,
@@ -102,12 +104,12 @@ function toggleHideZero(item: WidgetItem): WidgetItem {
     };
 }
 
-function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
+function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem, format: NumberFormat): string {
     if (tokensReclaimed <= 0) {
         return '';
     }
     const symbol = getSlotSymbol(item, RECLAIMED_SLOT);
-    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed)}` : ` ${formatTokens(tokensReclaimed)}`;
+    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed, format)}` : ` ${formatTokens(tokensReclaimed, format)}`;
 }
 
 function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
@@ -124,13 +126,13 @@ function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
     return parts.length > 0 ? ` (${parts.join(', ')})` : '';
 }
 
-function formatStats(data: CompactionData, item: WidgetItem, icon: string): string {
+function formatStats(data: CompactionData, item: WidgetItem, icon: string, format: NumberFormat): string {
     let out = formatCount(data.count, getFormat(item), icon);
     if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
         out += formatTriggerSuffix(data.byTrigger);
     }
     if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
-        out += formatReclaimedSuffix(data.tokensReclaimed, item);
+        out += formatReclaimedSuffix(data.tokensReclaimed, item, format);
     }
     return out;
 }
@@ -225,18 +227,18 @@ export class CompactionCounterWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
+        const format = resolveNumberFormat('token', item, settings);
         const icon = isNerdFontEnabled(item) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
 
         if (context.isPreview) {
-            return formatStats(SAMPLE_STATS, item, icon);
+            return formatStats(SAMPLE_STATS, item, icon, format);
         }
 
         const data = context.compactionData ?? ZERO_COMPACTION_STATS;
         if (data.count === 0 && isHideZeroEnabled(item))
             return null;
 
-        return formatStats(data, item, icon);
+        return formatStats(data, item, icon, format);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

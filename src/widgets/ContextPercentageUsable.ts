@@ -11,6 +11,10 @@ import {
     getContextConfig,
     getModelContextIdentifier
 } from '../utils/model-context';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import {
     getContextInverseModifierText,
@@ -56,10 +60,11 @@ export class ContextPercentageUsableWidget implements Widget {
         const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
         const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
+        const format = resolveNumberFormat('percent', item, settings);
 
         const formatContextPercentage = (displayPercentage: number): string => {
-            const sliderResult = renderContextSlider(sliderMode, displayPercentage);
-            return formatRawOrLabeledValue(item, label, sliderResult ?? `${displayPercentage.toFixed(1)}%`);
+            const sliderResult = renderContextSlider(sliderMode, displayPercentage, format);
+            return formatRawOrLabeledValue(item, label, sliderResult ?? formatPercent(displayPercentage, format));
         };
 
         if (context.isPreview) {

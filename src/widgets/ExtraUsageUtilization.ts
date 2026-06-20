@@ -6,6 +6,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 import { getUsageErrorMessage } from '../utils/usage';
 
 import {
@@ -62,6 +66,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = 2.6;
@@ -70,16 +75,16 @@ export class ExtraUsageUtilizationWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(renderedPercent, width);
-                return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${renderedPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(renderedPercent);
-                const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+                const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
                 return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Overage: ', `${previewPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Overage: ', formatPercent(previewPercent, format));
         }
 
         const data = context.usageData ?? {};
@@ -101,16 +106,16 @@ export class ExtraUsageUtilizationWidget implements Widget {
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
             const progressBar = makeTimerProgressBar(renderedPercent, width);
-            return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${renderedPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const slider = makeSliderBar(renderedPercent);
-            const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+            const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
             return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, 'Overage: ', `${percent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Overage: ', formatPercent(percent, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
