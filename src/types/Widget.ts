@@ -46,6 +46,11 @@ export interface Widget {
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
     getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
+    // Lets a widget override its foreground color from live data (e.g. budget
+    // severity). Returns a color to use instead of the configured one, or
+    // undefined to keep the static color. Resolved at the renderer's per-widget
+    // color sites; the global overrideForegroundColor still takes precedence.
+    getDynamicColor?(item: WidgetItem, context: RenderContext): string | undefined;
 }
 
 export interface WidgetEditorProps {
