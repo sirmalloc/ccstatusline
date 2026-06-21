@@ -231,9 +231,16 @@ export async function loadSettings(): Promise<Settings> {
 export async function saveSettings(settings: Settings): Promise<void> {
     const paths = getSettingsPaths();
 
+    // Validate settings before writing to prevent data loss
+    const parsed = SettingsSchema.safeParse(settings);
+    if (!parsed.success) {
+        console.error('Invalid settings format, not saving:', parsed.error);
+        return;
+    }
+
     // Always include version when saving
     const settingsWithVersion = {
-        ...settings,
+        ...parsed.data,
         version: CURRENT_VERSION
     };
 
