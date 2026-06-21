@@ -186,12 +186,30 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
             }
         }
 
-        const entriesToCount = hasStopReasonField
-            ? parsedEntries.filter((data, index) => {
+        // Two dedup layers in a single pass:
+        // 1. stop_reason: skip streaming intermediate rows (stop_reason: null),
+        //    except the latest unfinished entry for live updates.
+        // 2. message.id: Claude Code writes one JSONL entry per content block
+        //    (thinking / text / tool_use), each carrying the same message.id and
+        //    a full usage snapshot with a non-null stop_reason. Keep only the
+        //    first row per message.id. Rows without an id are counted as-is.
+        const seenMessageIds = new Set<string>();
+        const entriesToCount = parsedEntries.filter((data, index) => {
+            if (hasStopReasonField) {
                 const stopReason = data.message?.stop_reason;
-                return Boolean(stopReason) || (stopReason === null && index === parsedEntries.length - 1);
-            })
-            : parsedEntries;
+                if (!stopReason && !(stopReason === null && index === parsedEntries.length - 1)) {
+                    return false;
+                }
+            }
+            const messageId = data.message?.id;
+            if (messageId) {
+                if (seenMessageIds.has(messageId)) {
+                    return false;
+                }
+                seenMessageIds.add(messageId);
+            }
+            return true;
+        });
 
         for (const data of entriesToCount) {
             const usage = data.message?.usage;
@@ -301,6 +319,15 @@ function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean)
     let lastUserTimestamp: Date | null = null;
     let latestTimestampMs: number | null = null;
 
+    // Claude Code writes one JSONL entry per content block (thinking / text /
+    // tool_use), each carrying the same `message.id` and a copy of the whole
+    // `usage` snapshot from the finished API response. Summing every assistant
+    // row would double/triple-count a single turn's tokens. Dedupe by
+    // `message.id`: the first row seeds usage + interval start; later rows for
+    // the same id only extend the interval end to the turn's final timestamp.
+    // Rows without a message.id fall back to per-row counting.
+    const requestByMessageId = new Map<string, SpeedRequest>();
+
     for (const line of lines) {
         const data = parseJsonlLine(line) as TranscriptLine | null;
         if (!data || data.isApiErrorMessage) {
@@ -327,6 +354,25 @@ function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean)
         if (data.type === 'assistant' && data.message?.usage) {
             const inputTokens = data.message.usage.input_tokens || 0;
             const outputTokens = data.message.usage.output_tokens || 0;
+            const messageId = data.message.id;
+            const entryMs = entryTimestamp ? entryTimestamp.getTime() : null;
+
+            if (messageId) {
+                const existing = requestByMessageId.get(messageId);
+                if (existing) {
+                    // Same turn, later content-block row: extend the interval
+                    // end to the latest block timestamp. Usage is identical, so
+                    // no token update needed.
+                    if (entryMs !== null) {
+                        existing.assistantTimestampMs = entryMs;
+                        if (existing.interval && entryMs > existing.interval.endMs) {
+                            existing.interval.endMs = entryMs;
+                        }
+                    }
+                    continue;
+                }
+            }
+
             let interval: SpeedInterval | null = null;
             if (entryTimestamp && lastUserTimestamp) {
                 const startMs = lastUserTimestamp.getTime();
@@ -336,12 +382,16 @@ function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean)
                 }
             }
 
-            requests.push({
+            const request: SpeedRequest = {
                 inputTokens,
                 outputTokens,
-                assistantTimestampMs: entryTimestamp ? entryTimestamp.getTime() : null,
+                assistantTimestampMs: entryMs,
                 interval
-            });
+            };
+            requests.push(request);
+            if (messageId) {
+                requestByMessageId.set(messageId, request);
+            }
         }
     }
 
