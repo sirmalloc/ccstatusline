@@ -12,6 +12,7 @@ import {
     getSessionDuration,
     getSpeedMetrics,
     getSpeedMetricsCollection,
+    getSubagentCostUsd,
     getTokenMetrics
 } from '../jsonl';
 
@@ -1097,5 +1098,38 @@ describe('jsonl transcript metrics', () => {
             totalTokens: 0,
             requestCount: 0
         });
+    });
+
+    it('sums subagent cost from referenced subagent transcripts (priced by model)', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-cost-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'session.jsonl');
+        fs.writeFileSync(transcriptPath, JSON.stringify({ type: 'assistant', message: { content: [{ agentId: 'aaa' }] } }));
+
+        const subagentsDir = path.join(root, 'subagents');
+        fs.mkdirSync(subagentsDir);
+        // 1M input + 1M output on Opus = $5 + $25 = $30
+        fs.writeFileSync(path.join(subagentsDir, 'agent-aaa.jsonl'), JSON.stringify({
+            type: 'assistant',
+            message: {
+                model: 'claude-opus-4-8',
+                stop_reason: 'end_turn',
+                usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 }
+            }
+        }));
+
+        expect(await getSubagentCostUsd(transcriptPath)).toBeCloseTo(30, 6);
+    });
+
+    it('returns 0 subagent cost when none are referenced', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-cost-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'session.jsonl');
+        fs.writeFileSync(transcriptPath, JSON.stringify({ type: 'user' }));
+        expect(await getSubagentCostUsd(transcriptPath)).toBe(0);
+    });
+
+    it('returns 0 subagent cost when transcript is missing', async () => {
+        expect(await getSubagentCostUsd('/tmp/ccstatusline-jsonl-cost-missing.jsonl')).toBe(0);
     });
 });
