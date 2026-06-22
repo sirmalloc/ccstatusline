@@ -26,6 +26,7 @@ import { handleHookInput } from './utils/hook-handler';
 import {
     getSessionDuration,
     getSpeedMetricsCollection,
+    getSubagentCostUsd,
     getTokenMetrics
 } from './utils/jsonl';
 import { advanceGlobalPowerlineThemeIndex } from './utils/powerline-theme-index';
@@ -127,6 +128,12 @@ async function renderMultipleLines(data: StatusJSON) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
     }
 
+    const hasCostTotal = lines.some(line => line.some(item => item.type === 'session-cost-total'));
+    let subagentCostUsd: number | null = null;
+    if (hasCostTotal && data.transcript_path) {
+        subagentCostUsd = await getSubagentCostUsd(data.transcript_path);
+    }
+
     let sessionDuration: string | null = null;
     if (hasSessionClock && !hasSessionDurationInStatusJson(data) && data.transcript_path) {
         sessionDuration = await getSessionDuration(data.transcript_path);
@@ -161,6 +168,7 @@ async function renderMultipleLines(data: StatusJSON) {
     const context: RenderContext = {
         data,
         tokenMetrics,
+        subagentCostUsd,
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
