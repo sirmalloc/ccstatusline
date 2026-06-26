@@ -428,6 +428,14 @@ function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
     }
 }
 
+function clearUsageLock(): void {
+    try {
+        fs.rmSync(LOCK_FILE, { force: true });
+    } catch {
+        // Ignore lock file errors
+    }
+}
+
 function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageLockError } | null {
     let hasValidJsonLock = false;
 
@@ -663,6 +671,12 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         } catch {
             // Ignore cache write errors
         }
+
+        // Clear the in-flight lock written above: a successful fetch supersedes
+        // it. Leaving it behind keeps a 'timeout'-labelled lock active for up to
+        // LOCK_MAX_AGE, so a later cache miss (e.g. an account switch invalidating
+        // the fingerprint) surfaces a spurious [Timeout] while the API is healthy.
+        clearUsageLock();
 
         return cacheUsageData(usageData, now);
     } catch {
