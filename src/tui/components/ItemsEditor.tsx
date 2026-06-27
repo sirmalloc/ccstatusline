@@ -271,6 +271,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
 
     const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
+    const canExcludeAlign = Boolean(currentWidget) && !isSeparator && !isFlexSeparator
+        && settings.powerline.enabled && settings.powerline.autoAlign;
     const hasWidgets = widgets.length > 0;
 
     // Build main help text (without custom keybinds)
@@ -288,6 +290,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
     if (canMerge) {
         helpText += ', (m)erge';
+    }
+    if (canExcludeAlign) {
+        helpText += ', e(x)clude align';
     }
     helpText += ', ESC back';
 
@@ -547,6 +552,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                         {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
                                         {widget.merge === true && <Text dimColor> (merged→)</Text>}
                                         {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
+                                        {widget.excludeFromAutoAlign && settings.powerline.enabled && settings.powerline.autoAlign && <Text dimColor> (no-align)</Text>}
                                     </Box>
                                 );
                             })}

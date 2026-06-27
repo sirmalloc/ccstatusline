@@ -455,6 +455,19 @@ export function handleNormalInputMode({
             }
             onUpdate(newWidgets);
         }
+    } else if (input === 'x' && widgets.length > 0) {
+        const currentWidget = widgets[selectedIndex];
+        if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+            const newWidgets = [...widgets];
+            if (currentWidget.excludeFromAutoAlign) {
+                const { excludeFromAutoAlign, ...rest } = currentWidget;
+                void excludeFromAutoAlign; // Intentionally unused
+                newWidgets[selectedIndex] = rest;
+            } else {
+                newWidgets[selectedIndex] = { ...currentWidget, excludeFromAutoAlign: true };
+            }
+            onUpdate(newWidgets);
+        }
     } else if (key.escape) {
         onBack();
     } else if (widgets.length > 0) {
