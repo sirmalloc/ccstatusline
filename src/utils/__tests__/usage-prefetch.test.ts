@@ -277,6 +277,45 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
     });
 
+    it('suppresses API errors when reset timer widgets are only missing reset data', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
+            }
+        });
+
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            weeklyUsage: 15,
+            weeklyResetAt: epochToIso(1774540000)
+        });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['sessionResetAt'] }]
+        ]);
+    });
+
+    it('returns no usage data instead of a rate-limit error for reset-only startup fetches', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'weekly-reset-timer' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {});
+
+        expect(usageData).toBeNull();
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['weeklyResetAt'] }]
+        ]);
+    });
+
     it('keeps statusline usage when cursor metadata requires a missing reset and API has no credentials', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
 
