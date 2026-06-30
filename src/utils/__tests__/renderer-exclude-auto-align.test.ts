@@ -60,6 +60,29 @@ describe('calculateMaxWidthsFromPreRendered with excludeFromAutoAlign', () => {
 
         expect(calculateMaxWidthsFromPreRendered(lines, createSettings())).toEqual([5, 5, 5]);
     });
+
+    it('ignores exclusions on widgets merged into a previous widget', () => {
+        const linesWithoutExclude = [
+            [pre('a', { merge: true }), pre('VERYLONGWIDGET')],
+            [pre('x'), pre('y')]
+        ];
+        const linesWithMergedExclude = [
+            [pre('a', { merge: true }), pre('VERYLONGWIDGET', { excludeFromAutoAlign: true })],
+            [pre('x'), pre('y')]
+        ];
+
+        expect(calculateMaxWidthsFromPreRendered(linesWithMergedExclude, createSettings()))
+            .toEqual(calculateMaxWidthsFromPreRendered(linesWithoutExclude, createSettings()));
+    });
+
+    it('honors exclusions on the first widget in a merged chain', () => {
+        const lines = [
+            [pre('a', { merge: true, excludeFromAutoAlign: true }), pre('VERYLONGWIDGET')],
+            [pre('x'), pre('y')]
+        ];
+
+        expect(calculateMaxWidthsFromPreRendered(lines, createSettings())).toEqual([1, 1]);
+    });
 });
 
 describe('renderStatusLine auto-align exemption', () => {

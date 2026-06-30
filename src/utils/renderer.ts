@@ -860,7 +860,8 @@ export function calculateMaxWidthsFromPreRendered(
                 continue;
 
             // An excluded widget opts itself and the rest of the line out of the
-            // shared column widths, so a wide widget cannot stretch other lines.
+            // shared column widths. This only applies to merge-group heads;
+            // widgets merged into a previous widget keep the group's width.
             if (widget.widget.excludeFromAutoAlign)
                 break;
 
