@@ -724,6 +724,39 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('preserves the in-flight lock after a successful fetch missing required fields', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('success-missing-required-fields');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['weeklySonnetUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual({ error: 'timeout' });
+            expect(result.cacheExists).toBe(true);
+            expect(result.requestCount).toBe(1);
+            expect(parseLockContents(result.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'timeout'
+            });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('refetches a fresh cache when the token fingerprint changes (account switch)', () => {
         const harness = createProbeHarness();
 

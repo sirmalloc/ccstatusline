@@ -672,11 +672,12 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             // Ignore cache write errors
         }
 
-        // Clear the in-flight lock written above: a successful fetch supersedes
-        // it. Leaving it behind keeps a 'timeout'-labelled lock active for up to
-        // LOCK_MAX_AGE, so a later cache miss (e.g. an account switch invalidating
-        // the fingerprint) surfaces a spurious [Timeout] while the API is healthy.
-        clearUsageLock();
+        // Clear the in-flight lock written above only once this response satisfies
+        // the caller's requested fields. Incomplete 200 responses are cached but
+        // still need the short throttle so later renders do not refetch every time.
+        if (hasRequiredUsageFields(usageData, requiredFields)) {
+            clearUsageLock();
+        }
 
         return cacheUsageData(usageData, now);
     } catch {
