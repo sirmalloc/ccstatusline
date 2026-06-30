@@ -90,12 +90,13 @@ describe('BlockResetTimerWidget', () => {
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
-    it('returns null when neither timer data nor usage error exists', () => {
+    it('shows loading when neither timer data nor usage error exists', () => {
         const widget = new BlockResetTimerWidget();
 
         mockResolveUsageWindowWithFallback.mockReturnValue(null);
 
-        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBeNull();
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBe('Reset: [Loading]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
     });
 
     it('shows raw value without label in time mode', () => {
