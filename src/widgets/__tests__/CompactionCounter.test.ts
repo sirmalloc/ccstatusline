@@ -252,8 +252,9 @@ describe('CompactionCounterWidget', () => {
     });
 
     describe('editor', () => {
-        it('uses f and n as keybinds for the default format', () => {
+        it('uses metric, format, and toggle keybinds in count mode', () => {
             expect(new CompactionCounterWidget().getCustomKeybinds(ITEM)).toEqual([
+                { key: 'm', label: '(m)etric', action: 'cycle-metric' },
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
@@ -268,6 +269,7 @@ describe('CompactionCounterWidget', () => {
                 ...ITEM,
                 metadata: { format: 'text-and-number' }
             })).toEqual([
+                { key: 'm', label: '(m)etric', action: 'cycle-metric' },
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
@@ -408,6 +410,103 @@ describe('CompactionCounterWidget', () => {
                 displayText: 'Compaction Counter',
                 modifierText: '(icon-space-number, reclaimed)'
             });
+        });
+    });
+
+    describe('metric selector', () => {
+        it('renders only the auto-trigger count when metric is auto', () => {
+            expect(render({
+                compactionData: { count: 5, byTrigger: { auto: 3, manual: 2, unknown: 0 } },
+                item: { ...ITEM, metadata: { metric: 'auto' } }
+            })).toBe('3');
+        });
+
+        it('renders only the manual-trigger count when metric is manual', () => {
+            expect(render({
+                compactionData: { count: 5, byTrigger: { auto: 3, manual: 2, unknown: 0 } },
+                item: { ...ITEM, metadata: { metric: 'manual' } }
+            })).toBe('2');
+        });
+
+        it('renders only the unknown-trigger count when metric is unknown', () => {
+            expect(render({
+                compactionData: { count: 5, byTrigger: { auto: 3, manual: 1, unknown: 1 } },
+                item: { ...ITEM, metadata: { metric: 'unknown' } }
+            })).toBe('1');
+        });
+
+        it('renders the reclaimed tokens formatted when metric is reclaimed', () => {
+            expect(render({
+                compactionData: { count: 2, tokensReclaimed: 887000 },
+                item: { ...ITEM, metadata: { metric: 'reclaimed' } }
+            })).toBe('887.0k');
+        });
+
+        it('emits a raw value, ignoring format and icon settings', () => {
+            expect(render({
+                compactionData: { count: 5, byTrigger: { auto: 3, manual: 2, unknown: 0 } },
+                item: { ...ITEM, metadata: { metric: 'auto', format: 'icon-space-number', nerdFont: 'true' } }
+            })).toBe('3');
+        });
+
+        it('hides a zero metric value when hide zero is enabled', () => {
+            expect(render({
+                compactionData: { count: 4, byTrigger: { auto: 0, manual: 4, unknown: 0 } },
+                item: { ...ITEM, metadata: { metric: 'auto', hideZero: 'true' } }
+            })).toBeNull();
+        });
+
+        it('still shows a zero metric value when hide zero is off', () => {
+            expect(render({
+                compactionData: { count: 4, byTrigger: { auto: 0, manual: 4, unknown: 0 } },
+                item: { ...ITEM, metadata: { metric: 'auto' } }
+            })).toBe('0');
+        });
+
+        it('shows the sample metric value in preview mode, ignoring hide zero', () => {
+            expect(render({
+                isPreview: true,
+                item: { ...ITEM, metadata: { metric: 'unknown', hideZero: 'true' } }
+            })).toBe('0');
+            expect(render({
+                isPreview: true,
+                item: { ...ITEM, metadata: { metric: 'reclaimed' } }
+            })).toBe('120.0k');
+        });
+
+        it('shows the metric in the editor display', () => {
+            expect(new CompactionCounterWidget().getEditorDisplay({
+                ...ITEM,
+                metadata: { metric: 'reclaimed', hideZero: 'true' }
+            })).toEqual({
+                displayText: 'Compaction Counter',
+                modifierText: '(reclaimed value, hide zero)'
+            });
+        });
+
+        it('uses only metric and hide-zero keybinds in metric mode', () => {
+            expect(new CompactionCounterWidget().getCustomKeybinds({
+                ...ITEM,
+                metadata: { metric: 'auto' }
+            })).toEqual([
+                { key: 'm', label: '(m)etric', action: 'cycle-metric' },
+                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
+            ]);
+        });
+
+        it('cycles count -> auto -> manual -> unknown -> reclaimed -> count', () => {
+            const widget = new CompactionCounterWidget();
+            const auto = widget.handleEditorAction('cycle-metric', ITEM);
+            const manual = widget.handleEditorAction('cycle-metric', auto ?? ITEM);
+            const unknown = widget.handleEditorAction('cycle-metric', manual ?? ITEM);
+            const reclaimed = widget.handleEditorAction('cycle-metric', unknown ?? ITEM);
+            const count = widget.handleEditorAction('cycle-metric', reclaimed ?? ITEM);
+
+            expect(auto?.metadata?.metric).toBe('auto');
+            expect(manual?.metadata?.metric).toBe('manual');
+            expect(unknown?.metadata?.metric).toBe('unknown');
+            expect(reclaimed?.metadata?.metric).toBe('reclaimed');
+            expect(count?.metadata?.metric).toBeUndefined();
         });
     });
 });
