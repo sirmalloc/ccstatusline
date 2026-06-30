@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -17,9 +18,12 @@ import { makeModifierText } from './shared/editor-display';
 import {
     getRemoteWidgetKeybinds,
     handleRemoteWidgetAction,
-    isHideNoRemoteEnabled,
     isLinkToRepoEnabled
 } from './shared/git-remote';
+import {
+    NO_REMOTE_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
@@ -37,9 +41,6 @@ export class GitOriginOwnerRepoWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
 
-        if (isHideNoRemoteEnabled(item)) {
-            modifiers.push('hide when empty');
-        }
         if (isLinkToRepoEnabled(item)) {
             modifiers.push('link');
         }
@@ -53,6 +54,10 @@ export class GitOriginOwnerRepoWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [NO_REMOTE_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_OWNER_ONLY_ACTION) {
             return toggleMetadataFlag(item, OWNER_ONLY_WHEN_FORK_KEY);
@@ -62,7 +67,7 @@ export class GitOriginOwnerRepoWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideWhenEmpty = isHideNoRemoteEnabled(item);
+        const hideWhenEmpty = isHidden(item, NO_REMOTE_HIDEABLE_STATE.key);
         const linkEnabled = isLinkToRepoEnabled(item);
         const ownerOnlyWhenFork = isMetadataFlagEnabled(item, OWNER_ONLY_WHEN_FORK_KEY);
 

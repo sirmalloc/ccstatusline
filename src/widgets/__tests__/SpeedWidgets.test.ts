@@ -86,6 +86,22 @@ describe('OutputSpeedWidget', () => {
     });
 });
 
+describe('speed widget hideable states', () => {
+    it('should declare the no-data hideable state for all speed widgets', () => {
+        for (const widget of [new InputSpeedWidget(), new OutputSpeedWidget(), new TotalSpeedWidget()]) {
+            expect(widget.getHideableStates().map(state => state.key)).toEqual(['no-data']);
+        }
+    });
+
+    it('should render the em dash placeholder unless no-data hiding is enabled', () => {
+        const widget = new OutputSpeedWidget();
+        const context: RenderContext = { speedMetrics: createSpeedMetrics({ totalDurationMs: 0 }) };
+
+        expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: —');
+        expect(widget.render(createItem('output-speed', { metadata: { hide: 'no-data' } }), context, DEFAULT_SETTINGS)).toBeNull();
+    });
+});
+
 describe('InputSpeedWidget', () => {
     const widget = new InputSpeedWidget();
 

@@ -68,13 +68,12 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toBe('Overage: 2.6%');
     });
 
-    it('exposes and toggles hide-if-disabled configuration', () => {
+    it('declares the disabled and no-data hideable states alongside display keybinds', () => {
         const widget = new ExtraUsageUtilizationWidget();
         const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-utilization' };
 
         expect(widget.getCustomKeybinds(baseItem)).toEqual([
-            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }
         ]);
         expect(widget.getCustomKeybinds({
             ...baseItem,
@@ -82,21 +81,11 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' }
         ]);
         expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
 
-        const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
-        expect(hidden?.metadata?.hideIfDisabled).toBe('true');
-        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(hide if disabled)');
-        expect(widget.getEditorDisplay({
-            ...baseItem,
-            metadata: { display: 'progress', hideIfDisabled: 'true' }
-        }).modifierText).toBe('(long bar, hide if disabled)');
-
-        const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
-        expect(shown?.metadata?.hideIfDisabled).toBe('false');
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
     });
 
     it('shows usage errors only when required extra usage data is missing', () => {
@@ -106,6 +95,18 @@ describe('ExtraUsageUtilizationWidget', () => {
 
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData: { extraUsageEnabled: true } })).toBeNull();
+    });
+
+    it('hides usage errors when the no-data state is enabled', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, {
+            id: 'extra',
+            metadata: { hide: 'no-data' },
+            type: 'extra-usage-utilization'
+        }, { usageData: { error: 'timeout' } })).toBeNull();
     });
 
     it('renders n/a when extra usage is disabled', () => {
@@ -133,7 +134,7 @@ describe('ExtraUsageUtilizationWidget', () => {
 
         const hiddenItem: WidgetItem = {
             id: 'extra',
-            metadata: { hideIfDisabled: 'true' },
+            metadata: { hide: 'disabled' },
             type: 'extra-usage-utilization'
         };
 

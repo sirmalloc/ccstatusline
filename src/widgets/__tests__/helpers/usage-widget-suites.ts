@@ -129,6 +129,16 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, config.baseItem, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
+    it('hides usage error text when the no-data state is enabled', () => {
+        const widget = config.createWidget();
+
+        config.errorMessageMock.mockReturnValue('[Timeout]');
+        expect(config.render(widget, {
+            ...config.baseItem,
+            metadata: { hide: 'no-data' }
+        }, { usageData: { error: 'timeout' } })).toBeNull();
+    });
+
     it('renders available usage data before unrelated usage errors', () => {
         const widget = config.createWidget();
         const context: RenderContext = {

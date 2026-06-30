@@ -2,21 +2,19 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 import { getUsageErrorMessage } from '../utils/usage';
 
-import {
-    appendHideDisabledModifier,
-    getHideExtraUsageDisabledKeybind,
-    handleToggleExtraUsageDisabledAction,
-    isHideExtraUsageDisabledEnabled
-} from './shared/extra-usage-disabled';
+import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
+import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -38,16 +36,15 @@ export class ExtraUsageUtilizationWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: appendHideDisabledModifier(getUsageDisplayModifierText(item), item)
+            modifierText: getUsageDisplayModifierText(item)
         };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        const hideDisabledItem = handleToggleExtraUsageDisabledAction(action, item);
-        if (hideDisabledItem) {
-            return hideDisabledItem;
-        }
+    getHideableStates(): HideableState[] {
+        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
+    }
 
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, [], true);
         }
@@ -84,13 +81,16 @@ export class ExtraUsageUtilizationWidget implements Widget {
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
-            return isHideExtraUsageDisabledEnabled(item)
+            return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
                 : formatRawOrLabeledValue(item, 'Overage: ', 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
-            if (data.error)
-                return getUsageErrorMessage(data.error);
+            if (data.error) {
+                return isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)
+                    ? null
+                    : getUsageErrorMessage(data.error);
+            }
             return null;
         }
 
@@ -114,7 +114,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return [...getUsagePercentCustomKeybinds(item), getHideExtraUsageDisabledKeybind()];
+        return getUsagePercentCustomKeybinds(item);
     }
 
     supportsRawValue(): boolean { return true; }

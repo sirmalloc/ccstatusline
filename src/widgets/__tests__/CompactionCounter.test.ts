@@ -125,14 +125,14 @@ describe('CompactionCounterWidget', () => {
         it('returns null when count is 0 and hide zero is enabled', () => {
             expect(render({
                 compactionData: { count: 0 },
-                item: { ...ITEM, metadata: { hideZero: 'true' } }
+                item: { ...ITEM, metadata: { hide: 'zero' } }
             })).toBeNull();
         });
 
         it('renders positive counts when hide zero is enabled', () => {
             expect(render({
                 compactionData: { count: 3 },
-                item: { ...ITEM, metadata: { hideZero: 'true' } }
+                item: { ...ITEM, metadata: { hide: 'zero' } }
             })).toBe('↻ 3');
         });
 
@@ -258,7 +258,6 @@ describe('CompactionCounterWidget', () => {
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
                 { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
@@ -271,7 +270,6 @@ describe('CompactionCounterWidget', () => {
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
                 { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
@@ -303,14 +301,8 @@ describe('CompactionCounterWidget', () => {
             });
         });
 
-        it('shows hide zero in the editor display when enabled', () => {
-            expect(new CompactionCounterWidget().getEditorDisplay({
-                ...ITEM,
-                metadata: { hideZero: 'true' }
-            })).toEqual({
-                displayText: 'Compaction Counter',
-                modifierText: '(icon-space-number, hide zero)'
-            });
+        it('declares the zero hideable state', () => {
+            expect(new CompactionCounterWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
         });
 
         it('ignores stale icon-number format metadata in the editor display', () => {
@@ -350,15 +342,6 @@ describe('CompactionCounterWidget', () => {
 
             expect(enabled?.metadata?.nerdFont).toBe('true');
             expect(disabled?.metadata?.nerdFont).toBeUndefined();
-        });
-
-        it('toggles hide zero metadata on and off', () => {
-            const widget = new CompactionCounterWidget();
-            const enabled = widget.handleEditorAction('toggle-hide-zero', ITEM);
-            const disabled = widget.handleEditorAction('toggle-hide-zero', enabled ?? ITEM);
-
-            expect(enabled?.metadata?.hideZero).toBe('true');
-            expect(disabled?.metadata?.hideZero).toBe('false');
         });
 
         it('does not enable nerd font for non-default formats', () => {

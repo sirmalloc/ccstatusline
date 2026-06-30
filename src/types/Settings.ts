@@ -6,7 +6,7 @@ import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
 
 // Current version - bump this when making breaking changes to the schema
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 export const InstallationMetadataSchema = z.discriminatedUnion('method', [
     z.object({

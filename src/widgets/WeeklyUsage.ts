@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -11,9 +12,11 @@ import {
     resolveWeeklyUsageWindow
 } from '../utils/usage';
 
+import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -39,6 +42,10 @@ export class WeeklyUsageWidget implements Widget {
             displayText: this.getDisplayName(),
             modifierText: getUsageDisplayModifierText(item)
         };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [USAGE_NO_DATA_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -84,8 +91,11 @@ export class WeeklyUsageWidget implements Widget {
 
         const data = context.usageData ?? {};
         if (data.weeklyUsage === undefined) {
-            if (data.error)
-                return getUsageErrorMessage(data.error);
+            if (data.error) {
+                return isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)
+                    ? null
+                    : getUsageErrorMessage(data.error);
+            }
             return null;
         }
 

@@ -9,6 +9,7 @@ import type { RenderContext } from '../../types/RenderContext';
 import type { SpeedMetrics } from '../../types/SpeedMetrics';
 import type {
     CustomKeybind,
+    HideableState,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
@@ -30,11 +31,14 @@ import {
 } from '../../utils/speed-window';
 
 import { makeModifierText } from './editor-display';
+import { isHidden } from './hideable';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
 
 export type SpeedWidgetKind = 'input' | 'output' | 'total';
 
 const WINDOW_EDITOR_ACTION = 'edit-window';
+
+const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no speed data (—)' };
 
 interface SpeedWidgetKindConfig {
     label: string;
@@ -127,7 +131,15 @@ export function renderSpeedWidgetValue(
     }
 
     const speed = calculateSpeed(kind, metrics);
+    if (speed === null && isHidden(item, NO_DATA_HIDEABLE_STATE.key)) {
+        return null;
+    }
+
     return formatRawOrLabeledValue(item, config.label, formatSpeed(speed));
+}
+
+export function getSpeedWidgetHideableStates(): HideableState[] {
+    return [NO_DATA_HIDEABLE_STATE];
 }
 
 export function getSpeedWidgetCustomKeybinds(): CustomKeybind[] {

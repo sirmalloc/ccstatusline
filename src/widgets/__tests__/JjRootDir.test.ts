@@ -34,7 +34,7 @@ function render(options: {
     const item: WidgetItem = {
         id: 'jj-root-dir',
         type: 'jj-root-dir',
-        metadata: options.hideNoJj ? { hideNoJj: 'true' } : undefined
+        metadata: options.hideNoJj ? { hide: 'no-jj' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);

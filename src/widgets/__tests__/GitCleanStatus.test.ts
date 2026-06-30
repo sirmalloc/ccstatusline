@@ -42,7 +42,7 @@ function render(options: {
         id: 'git-clean-status',
         type: 'git-clean-status',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hideNoGit ? { hide: 'no-git' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);

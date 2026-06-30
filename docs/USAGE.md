@@ -192,30 +192,66 @@ Widget picker:
 The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget.
 
 Widget-specific shortcuts:
-- **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
 - **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, JJ Bookmarks, JJ Workspace): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`)
-- **Git PR**: `h` hide empty/no-PR/MR output, `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
-- **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `h` hide when no remote, `l` toggle clickable repo links
+- **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
-- **Git Is Fork**: `h` hide when the repo is not a fork
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
 - **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only progress bar
-- **Compaction Counter**: `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed, `h` hide when zero
-- **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope, `h` hide when empty
+- **Compaction Counter**: `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed
+- **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope
 - **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
-- **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode
+- **Skills**: `v` cycle view mode, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
 - **Custom Text / Custom Symbol**: `e` edit text or symbol
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
 - **Link**: `u` URL, `e` link text
 - **Vim Mode**: `f` cycle format, `n` toggle Nerd Font icons
+
+## Hiding Widgets Conditionally
+
+Widgets that can hide themselves share a single `h` (`(h)ide…`) keybind in the
+line editor. It opens a checklist of the hideable states the selected widget
+supports; toggle entries with `Space` and confirm with `Enter`. Enabled states
+appear in the editor as `(hide: no-git, zero)`.
+
+Supported states by widget family:
+- **Git widgets**: `no-git` hides the `(no git)` placeholder outside a repo
+- **Git count widgets** (`Git Changes`, `Git Insertions`, `Git Deletions`, `Git Staged/Unstaged/Untracked Files`, `Git Conflicts`): `zero` hides the widget while its count is zero
+- **JJ widgets**: `no-jj` hides the `(no jj)` placeholder outside a jj repo
+- **Git Origin widgets**: `no-remote` hides the `no remote` placeholder
+- **Git Upstream widgets / Git Ahead/Behind**: `no-upstream` hides the `no upstream` placeholder
+- **Git Ahead/Behind**: `zero` hides `↑0↓0` when the branch is not diverged (enabled by default; uncheck it to show zeros)
+- **Git PR** (rendered as "MR" for GitLab origins): `no-data` hides the `(no PR)` placeholder, `status` and `title` hide those segments of the PR display
+- **Git Is Fork**: `not-fork` hides the widget when the repo is not a fork
+- **Token widgets**: `zero` hides `0` token counts at session start
+- **Session Cost**: `zero` hides `$0.00`
+- **Session Clock**: `zero` hides durations under one minute
+- **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
+- **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
+- **Output Style**: `default-value` hides the widget when the style is `default`
+- **Compaction Counter**: `zero` hides the counter before any compaction occurs
+- **Skills**: `empty` hides the widget before any skill is used
+- **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable
+- **Session / Weekly / Weekly Sonnet / Weekly Opus Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable
+- **Custom Text / Custom Symbol**: `merge-target-hidden` hides the item when the widget it is merged with renders nothing, so icon prefixes/suffixes disappear together with their widget
+
+In `settings.json`, the enabled states are stored as a comma-separated list in
+the item's metadata, e.g. `"metadata": { "hide": "no-git,zero" }`. An empty
+list (`"hide": ""`) opts out of default-enabled states such as Git
+Ahead/Behind's `zero`. Configs from older versions that used per-widget
+boolean keys (`hideNoGit`, `hideNoJj`, `hideNoRemote`, `hideZero`,
+`hideWhenEmpty`, `hideIfDisabled`, `hideStatus`, `hideTitle`,
+`hideWhenNotFork`) are converted to the unified key automatically by the
+settings migration on first load. After that, downgrading to an older
+ccstatusline keeps the config readable, but older versions ignore the `hide`
+key, so previously hidden placeholders show again until you upgrade back.
 
 ## Custom Widgets
 

@@ -1,7 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
-    CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -12,11 +12,9 @@ import {
 } from '../utils/git';
 
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 
 export class GitCleanStatusWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -24,18 +22,15 @@ export class GitCleanStatusWidget implements Widget {
     getDisplayName(): string { return 'Git Clean Status'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
             return item.rawValue ? 'clean' : '✓';
@@ -56,10 +51,6 @@ export class GitCleanStatusWidget implements Widget {
     private isClean(context: RenderContext): boolean {
         const status = getGitStatus(context);
         return !status.staged && !status.unstaged && !status.untracked && !status.conflicts;
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
     }
 
     supportsRawValue(): boolean { return true; }
