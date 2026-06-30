@@ -376,6 +376,11 @@ function renderPowerlineStatusLine(
             if (!element)
                 continue;
 
+            // An excluded widget, and everything after it on this line, keeps its
+            // natural width (mirrors the skip in calculateMaxWidthsFromPreRendered).
+            if (element.widget.excludeFromAutoAlign)
+                break;
+
             // Check if previous widget was merged with this one
             const prevWidget = i > 0 ? widgetElements[i - 1] : null;
             const isPreviousMerged = prevWidget?.mergesWithNext;
@@ -853,6 +858,12 @@ export function calculateMaxWidthsFromPreRendered(
             const widget = renderedWidgets[i];
             if (!widget)
                 continue;
+
+            // An excluded widget opts itself and the rest of the line out of the
+            // shared column widths. This only applies to merge-group heads;
+            // widgets merged into a previous widget keep the group's width.
+            if (widget.widget.excludeFromAutoAlign)
+                break;
 
             // Calculate the total width for this alignment position
             // If this widget is merged with the next, accumulate their widths
