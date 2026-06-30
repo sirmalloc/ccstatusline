@@ -14,7 +14,10 @@ import {
     DEFAULT_SETTINGS,
     SettingsSchema
 } from '../../types/Settings';
-import { syncWidgetHooks } from '../hooks';
+import {
+    removeManagedHooks,
+    syncWidgetHooks
+} from '../hooks';
 
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let testClaudeConfigDir = '';
@@ -123,6 +126,88 @@ describe('syncWidgetHooks', () => {
                 {
                     _tag: 'ccstatusline-managed',
                     hooks: [{ type: 'command', command: `${command} --hook` }]
+                }
+            ]
+        });
+    });
+
+    it('preserves other commands in mixed legacy hook entries while syncing', async () => {
+        const settingsPath = getClaudeSettingsPath();
+        const command = '/Users/test/.bun/bin/ccstatusline';
+        fs.writeFileSync(settingsPath, JSON.stringify({
+            statusLine: { type: 'command', command },
+            hooks: {
+                PreToolUse: [
+                    {
+                        matcher: 'Skill',
+                        hooks: [
+                            { type: 'command', command: 'npx ccstatusline --hook' },
+                            { type: 'command', command: 'keep-command' }
+                        ]
+                    }
+                ]
+            }
+        }, null, 2), 'utf-8');
+
+        const settings = SettingsSchema.parse({ lines: [[{ id: 'skills-1', type: 'skills' }]] });
+
+        await syncWidgetHooks(settings);
+
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { hooks?: Record<string, unknown[]> };
+        expect(saved.hooks).toEqual({
+            PreToolUse: [
+                {
+                    matcher: 'Skill',
+                    hooks: [{ type: 'command', command: 'keep-command' }]
+                },
+                {
+                    _tag: 'ccstatusline-managed',
+                    matcher: 'Skill',
+                    hooks: [{ type: 'command', command: `${command} --hook` }]
+                }
+            ],
+            UserPromptSubmit: [
+                {
+                    _tag: 'ccstatusline-managed',
+                    hooks: [{ type: 'command', command: `${command} --hook` }]
+                }
+            ]
+        });
+    });
+
+    it('preserves other commands in mixed legacy hook entries while removing managed hooks', async () => {
+        const settingsPath = getClaudeSettingsPath();
+        fs.writeFileSync(settingsPath, JSON.stringify({
+            hooks: {
+                PreToolUse: [
+                    {
+                        matcher: 'Skill',
+                        hooks: [
+                            { type: 'command', command: 'bunx -y ccstatusline@latest --hook' },
+                            { type: 'command', command: 'keep-command' }
+                        ]
+                    },
+                    {
+                        matcher: 'LegacyOnly',
+                        hooks: [{ type: 'command', command: 'npx ccstatusline --hook' }]
+                    },
+                    {
+                        _tag: 'ccstatusline-managed',
+                        matcher: 'Managed',
+                        hooks: [{ type: 'command', command: '/Users/test/.bun/bin/ccstatusline --hook' }]
+                    }
+                ]
+            }
+        }, null, 2), 'utf-8');
+
+        await removeManagedHooks();
+
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { hooks?: Record<string, unknown[]> };
+        expect(saved.hooks).toEqual({
+            PreToolUse: [
+                {
+                    matcher: 'Skill',
+                    hooks: [{ type: 'command', command: 'keep-command' }]
                 }
             ]
         });
