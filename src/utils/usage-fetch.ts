@@ -428,6 +428,14 @@ function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
     }
 }
 
+function clearUsageLock(): void {
+    try {
+        fs.rmSync(LOCK_FILE, { force: true });
+    } catch {
+        // Ignore lock file errors
+    }
+}
+
 function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageLockError } | null {
     let hasValidJsonLock = false;
 
@@ -662,6 +670,13 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: currentTokenHash ?? undefined }));
         } catch {
             // Ignore cache write errors
+        }
+
+        // Clear the in-flight lock written above only once this response satisfies
+        // the caller's requested fields. Incomplete 200 responses are cached but
+        // still need the short throttle so later renders do not refetch every time.
+        if (hasRequiredUsageFields(usageData, requiredFields)) {
+            clearUsageLock();
         }
 
         return cacheUsageData(usageData, now);
