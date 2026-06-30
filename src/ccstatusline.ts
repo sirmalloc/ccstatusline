@@ -70,11 +70,21 @@ async function readStdin(): Promise<string | null> {
                 chunks.push(decoder.decode(chunk));
             }
         } else {
-            // Node.js environment
+            // Node.js environment.
+            // Use event-based reading instead of for-await so we can add a bail
+            // timeout: on Windows, stdin EOF never propagates through the Volta shim
+            // chain (cmd.exe -> bash -> volta -> node), causing for-await to hang
+            // indefinitely. The timeout destroys stdin after 3s of silence; data
+            // already in chunks[] is preserved and returned normally.
+            // See: nodejs/node#32291, volta-cli/volta#1199, ryoppippi/ccusage#459
             process.stdin.setEncoding('utf8');
-            for await (const chunk of process.stdin) {
-                chunks.push(chunk as string);
-            }
+            await new Promise<void>((resolve) => {
+                const bail = setTimeout(() => { process.stdin.destroy(); resolve(); }, 3000);
+                if (typeof (bail as NodeJS.Timeout).unref === 'function') (bail as NodeJS.Timeout).unref();
+                process.stdin.on('data', (chunk: string) => chunks.push(chunk));
+                process.stdin.on('end', () => { clearTimeout(bail); resolve(); });
+                process.stdin.on('error', () => { clearTimeout(bail); resolve(); });
+            });
         }
         return chunks.join('');
     } catch {
@@ -308,6 +318,10 @@ async function main() {
                 }
 
                 await renderMultipleLines(result.data);
+                // Explicitly exit so the event loop does not linger. Without this,
+                // any residual async handles from rendering keep the process alive,
+                // which accumulates under Claude Code's "abandon not kill" lifecycle.
+                process.exit(0);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);
