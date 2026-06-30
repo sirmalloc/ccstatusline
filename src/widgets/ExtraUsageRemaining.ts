@@ -8,6 +8,12 @@ import type {
 } from '../types/Widget';
 import { getUsageErrorMessage } from '../utils/usage';
 
+import {
+    appendBudgetColorsModifier,
+    getBudgetColorsKeybind,
+    handleToggleBudgetColorsAction,
+    resolveBudgetColor
+} from './shared/budget-color';
 import { formatUsageCurrency } from './shared/currency';
 import {
     appendHideDisabledModifier,
@@ -26,12 +32,13 @@ export class ExtraUsageRemainingWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: appendHideDisabledModifier(undefined, item)
+            modifierText: appendBudgetColorsModifier(appendHideDisabledModifier(undefined, item), item)
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleExtraUsageDisabledAction(action, item);
+        return handleToggleExtraUsageDisabledAction(action, item)
+            ?? handleToggleBudgetColorsAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -61,7 +68,11 @@ export class ExtraUsageRemainingWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [getHideExtraUsageDisabledKeybind()];
+        return [getHideExtraUsageDisabledKeybind(), getBudgetColorsKeybind()];
+    }
+
+    getDynamicColor(item: WidgetItem, context: RenderContext): string | undefined {
+        return resolveBudgetColor(item, context.usageData?.extraUsageUtilization);
     }
 
     supportsRawValue(): boolean { return true; }
