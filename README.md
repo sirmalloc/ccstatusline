@@ -370,6 +370,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
 - [codachi](https://github.com/vincent-k2026/codachi) - A tamagotchi-style statusline pet that grows with your context window.
 - [AIWatch](https://ai-watch.dev) - Live status monitor for 30+ AI APIs and apps; pairs with a Custom Command widget to surface provider outages in your status line.
+- [ccsessions](https://github.com/treebird7/ccsessions) - CLI session manager for Claude Code; includes `cc-session-num`, a Custom Command widget that shows the current session's rank (`#1`, `#2`, …).
 
 
 ## 🙏 Acknowledgments
