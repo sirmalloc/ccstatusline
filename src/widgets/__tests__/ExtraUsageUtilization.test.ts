@@ -74,6 +74,8 @@ describe('ExtraUsageUtilizationWidget', () => {
 
         expect(widget.getCustomKeybinds(baseItem)).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' },
+            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
             { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
         ]);
         expect(widget.getCustomKeybinds({
@@ -81,6 +83,7 @@ describe('ExtraUsageUtilizationWidget', () => {
             metadata: { display: 'progress' }
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' },
             { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
             { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' },
             { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
@@ -153,5 +156,28 @@ describe('ExtraUsageUtilizationWidget', () => {
                 extraUsageUtilization: 25
             }
         })).toBe('Overage: [████████████░░░░] 75.0%');
+    });
+
+    it('inverts plain text and preview rendering', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const item: WidgetItem = {
+            id: 'extra',
+            metadata: { invert: 'true' },
+            type: 'extra-usage-utilization'
+        };
+
+        expect(render(widget, item, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageUtilization: 25
+            }
+        })).toBe('Overage: 75.0%');
+        expect(render(widget, { ...item, rawValue: true }, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageUtilization: 25
+            }
+        })).toBe('75.0%');
+        expect(render(widget, item, { isPreview: true })).toBe('Overage: 97.4%');
     });
 });
