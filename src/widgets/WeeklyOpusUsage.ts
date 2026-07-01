@@ -7,6 +7,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
+import {
     getUsageErrorMessage,
     resolveWeeklyOpusUsageWindow
 } from '../utils/usage';
@@ -63,6 +67,7 @@ export class WeeklyOpusUsageWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const showCursor = isUsageCursorEnabled(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = 4;
@@ -71,17 +76,17 @@ export class WeeklyOpusUsageWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(renderedPercent, width, showCursor ? { cursorPercent: 50 } : undefined);
-                const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
+                const progressDisplay = `[${progressBar}] ${formatPercent(renderedPercent, format)}`;
                 return formatRawOrLabeledValue(item, LABEL, progressDisplay);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
-                const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+                const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
                 return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, LABEL, `${previewPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, LABEL, formatPercent(previewPercent, format));
         }
 
         const data = context.usageData ?? {};
@@ -106,17 +111,17 @@ export class WeeklyOpusUsageWidget implements Widget {
             const width = getUsageProgressBarWidth(displayMode);
 
             const progressBar = makeTimerProgressBar(renderedPercent, width, getCursorOptions());
-            const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
+            const progressDisplay = `[${progressBar}] ${formatPercent(renderedPercent, format)}`;
             return formatRawOrLabeledValue(item, LABEL, progressDisplay);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
-            const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+            const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
             return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, LABEL, `${percent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, LABEL, formatPercent(percent, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
