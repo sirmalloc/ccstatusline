@@ -505,7 +505,7 @@ export async function setRefreshInterval(interval: number | null): Promise<void>
 
 const VoiceConfigSchema = z.object({ enabled: z.boolean().optional() });
 
-function getVoiceConfigCandidatePathsByPriority(cwd: string): string[] {
+function getLayeredSettingsCandidatePathsByPriority(cwd: string): string[] {
     const userDir = getClaudeConfigDir();
     const projectDir = path.join(cwd, '.claude');
     // Highest priority first — `getVoiceConfig` returns on the first defined override.
@@ -571,8 +571,63 @@ function tryReadVoiceLayer(filePath: string): VoiceLayerResult {
  */
 export function getVoiceConfig(cwd: string = process.cwd()): { enabled: boolean } | null {
     let anyFileExisted = false;
-    for (const filePath of getVoiceConfigCandidatePathsByPriority(cwd)) {
+    for (const filePath of getLayeredSettingsCandidatePathsByPriority(cwd)) {
         const layer = tryReadVoiceLayer(filePath);
+        if (layer.fileExisted) {
+            anyFileExisted = true;
+        }
+        if (layer.enabled !== undefined) {
+            return { enabled: layer.enabled };
+        }
+    }
+    return anyFileExisted ? { enabled: false } : null;
+}
+
+const SandboxConfigSchema = z.object({ enabled: z.boolean().optional() });
+
+function tryReadSandboxLayer(filePath: string): { fileExisted: boolean; enabled: boolean | undefined } {
+    let content: string;
+    try {
+        content = fs.readFileSync(filePath, 'utf-8');
+    } catch (error) {
+        // ENOENT is the common case (file just doesn't exist on this layer);
+        // any other I/O error is treated the same — caller has no recovery path.
+        const isMissing = (error as NodeJS.ErrnoException).code === 'ENOENT';
+        return { fileExisted: !isMissing, enabled: undefined };
+    }
+
+    try {
+        const parsed = JSON.parse(content) as { sandbox?: unknown };
+        const sandbox = parsed.sandbox;
+        if (sandbox === undefined || sandbox === null) {
+            return { fileExisted: true, enabled: undefined };
+        }
+        const result = SandboxConfigSchema.safeParse(sandbox);
+        return { fileExisted: true, enabled: result.success ? result.data.enabled : undefined };
+    } catch {
+        // Malformed JSON — file exists but contributes no override.
+        return { fileExisted: true, enabled: undefined };
+    }
+}
+
+/**
+ * Reads the effective `sandbox.enabled` setting — Claude Code's bash sandbox mode —
+ * from the same layered configuration as `getVoiceConfig` (project-local → project →
+ * user-local → user, highest priority first; user dir respects `CLAUDE_CONFIG_DIR`).
+ *
+ * `/sandbox` persists its toggle to `<cwd>/.claude/settings.local.json` (the
+ * highest-priority layer), so re-reading on each status refresh reflects runtime
+ * toggles, not just the configured default.
+ *
+ * - Returns `null` if no candidate settings file exists (Claude Code never initialised).
+ * - Returns `{ enabled: false }` if files exist but none defines `sandbox.enabled`
+ *   (Claude Code's default — sandbox disabled).
+ * - Returns `{ enabled: <bool> }` reflecting the highest-priority override otherwise.
+ */
+export function getSandboxConfig(cwd: string = process.cwd()): { enabled: boolean } | null {
+    let anyFileExisted = false;
+    for (const filePath of getLayeredSettingsCandidatePathsByPriority(cwd)) {
+        const layer = tryReadSandboxLayer(filePath);
         if (layer.fileExisted) {
             anyFileExisted = true;
         }
