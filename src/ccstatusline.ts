@@ -42,6 +42,7 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import { isWidgetSubagentsEnabled } from './utils/token-subagents';
 import {
     getPackageVersion,
     getTerminalWidth
@@ -122,9 +123,17 @@ async function renderMultipleLines(data: StatusJSON) {
         }
     }
 
+    const subagentTokenWidgetTypes = new Set(['tokens-input', 'tokens-output', 'tokens-cached', 'tokens-total']);
+    const needsSessionTokens = lines.some(line => line.some(item => item.type === 'tokens-session-total'
+        || (subagentTokenWidgetTypes.has(item.type) && isWidgetSubagentsEnabled(item))));
+
     let tokenMetrics: TokenMetrics | null = null;
+    let sessionTokenMetrics: TokenMetrics | null = null;
     if (data.transcript_path) {
         tokenMetrics = await getTokenMetrics(data.transcript_path);
+        if (needsSessionTokens) {
+            sessionTokenMetrics = await getTokenMetrics(data.transcript_path, { includeSubagents: true });
+        }
     }
 
     let sessionDuration: string | null = null;
@@ -161,6 +170,7 @@ async function renderMultipleLines(data: StatusJSON) {
     const context: RenderContext = {
         data,
         tokenMetrics,
+        sessionTokenMetrics,
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
