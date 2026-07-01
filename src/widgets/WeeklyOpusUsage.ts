@@ -76,7 +76,7 @@ export class WeeklyOpusUsageWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
+                const slider = makeSliderBar(renderedPercent, showCursor ? { cursorPercent: 50 } : undefined);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
                 return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
             }
@@ -111,7 +111,7 @@ export class WeeklyOpusUsageWidget implements Widget {
         }
 
         if (isUsageSliderMode(displayMode)) {
-            const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
+            const slider = makeSliderBar(renderedPercent, getCursorOptions());
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
             return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
         }

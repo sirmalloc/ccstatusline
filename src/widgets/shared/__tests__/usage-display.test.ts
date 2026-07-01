@@ -7,6 +7,7 @@ import {
 import type { WidgetItem } from '../../../types/Widget';
 import {
     cycleUsageDisplayMode,
+    getSliderBarChars,
     makeSliderBar
 } from '../usage-display';
 
@@ -32,16 +33,45 @@ describe('makeSliderBar', () => {
     });
 
     it('accepts custom width', () => {
-        expect(makeSliderBar(50, 6)).toBe('▓▓▓░░░');
+        expect(makeSliderBar(50, { width: 6 })).toBe('▓▓▓░░░');
     });
 
     it('renders a time cursor when cursorPercent is provided', () => {
-        expect(makeSliderBar(50, 10, { cursorPercent: 50 })).toBe('▓▓▓▓▓│░░░░');
+        expect(makeSliderBar(50, { cursorPercent: 50 })).toBe('▓▓▓▓▓│░░░░');
     });
 
     it('clamps slider cursor percent', () => {
-        expect(makeSliderBar(50, 10, { cursorPercent: -10 })).toBe('│▓▓▓▓░░░░░');
-        expect(makeSliderBar(50, 10, { cursorPercent: 150 })).toBe('▓▓▓▓▓░░░░│');
+        expect(makeSliderBar(50, { cursorPercent: -10 })).toBe('│▓▓▓▓░░░░░');
+        expect(makeSliderBar(50, { cursorPercent: 150 })).toBe('▓▓▓▓▓░░░░│');
+    });
+
+    it('uses custom filledChar and emptyChar', () => {
+        expect(makeSliderBar(50, { filledChar: '▰', emptyChar: '▱' })).toBe('▰▰▰▰▰▱▱▱▱▱');
+    });
+
+    it('uses default chars when filledChar/emptyChar are not provided', () => {
+        expect(makeSliderBar(50, {})).toBe('▓▓▓▓▓░░░░░');
+    });
+
+    it('custom chars work with cursor', () => {
+        expect(makeSliderBar(50, { filledChar: '▰', emptyChar: '▱', cursorPercent: 50 })).toBe('▰▰▰▰▰│▱▱▱▱');
+    });
+});
+
+describe('getSliderBarChars', () => {
+    it('returns defaults when metadata is absent', () => {
+        const item: WidgetItem = { id: 'test', type: 'session-usage' };
+        expect(getSliderBarChars(item)).toEqual({ filledChar: '▓', emptyChar: '░' });
+    });
+
+    it('returns custom chars from metadata', () => {
+        const item: WidgetItem = { id: 'test', type: 'session-usage', metadata: { filledChar: '▰', emptyChar: '▱' } };
+        expect(getSliderBarChars(item)).toEqual({ filledChar: '▰', emptyChar: '▱' });
+    });
+
+    it('falls back to defaults for empty string metadata values', () => {
+        const item: WidgetItem = { id: 'test', type: 'session-usage', metadata: { filledChar: '', emptyChar: '' } };
+        expect(getSliderBarChars(item)).toEqual({ filledChar: '▓', emptyChar: '░' });
     });
 });
 

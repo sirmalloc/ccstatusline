@@ -32,6 +32,7 @@ import {
     getUsageLocale,
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
+    getSliderBarChars,
     getUsageTimezone,
     isUsage12HourClock,
     isUsageCompact,
@@ -109,7 +110,7 @@ export class BlockResetTimerWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(previewPercent);
+                const slider = makeSliderBar(previewPercent, getSliderBarChars(item));
                 const sliderDisplay = displayMode === 'slider'
                     ? `${slider} ${previewPercent.toFixed(1)}%`
                     : slider;
@@ -151,7 +152,7 @@ export class BlockResetTimerWidget implements Widget {
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
-            const slider = makeSliderBar(percent);
+            const slider = makeSliderBar(percent, getSliderBarChars(item));
             const sliderDisplay = displayMode === 'slider'
                 ? `${slider} ${percent.toFixed(1)}%`
                 : slider;

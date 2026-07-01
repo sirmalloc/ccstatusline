@@ -43,11 +43,15 @@ export function cycleContextSliderMode(item: WidgetItem): WidgetItem {
     };
 }
 
-export function renderContextSlider(mode: ContextSliderMode, percent: number): string | null {
+export function renderContextSlider(
+    mode: ContextSliderMode,
+    percent: number,
+    chars?: { filledChar: string; emptyChar: string }
+): string | null {
     if (mode === 'none') {
         return null;
     }
-    const slider = makeSliderBar(percent);
+    const slider = makeSliderBar(percent, chars);
     if (mode === 'slider') {
         return `${slider} ${percent.toFixed(1)}%`;
     }
