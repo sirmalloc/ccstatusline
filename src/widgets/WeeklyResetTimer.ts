@@ -67,6 +67,7 @@ function makeTimerProgressBar(percent: number, width: number): string {
 
 const WEEKLY_PREVIEW_DURATION_MS = 36.5 * 60 * 60 * 1000;
 const WEEKLY_RESET_PREVIEW_AT = '2026-03-15T08:30:00.000Z';
+const USAGE_TIMER_LOADING_MESSAGE = '[Loading]';
 
 function isWeeklyResetHoursOnly(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'hours');
@@ -226,7 +227,7 @@ export class WeeklyResetTimerWidget implements Widget {
                 return getUsageErrorMessage(usageData.error);
             }
 
-            return null;
+            return formatRawOrLabeledValue(item, 'Weekly Reset: ', USAGE_TIMER_LOADING_MESSAGE);
         }
 
         if (isUsageProgressMode(displayMode)) {
