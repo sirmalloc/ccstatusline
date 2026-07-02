@@ -14,6 +14,15 @@ import { parseRemoteUrl } from './git-remote';
 
 export type GitReviewProvider = 'gh' | 'glab';
 
+export type GitCiState = 'passing' | 'failing' | 'pending';
+
+export interface GitCiChecks {
+    state: GitCiState;
+    failing: number;
+    pending: number;
+    success: number;
+}
+
 export interface GitReviewData {
     number: number;
     url: string;
@@ -21,6 +30,65 @@ export interface GitReviewData {
     state: string;
     reviewDecision: string;
     provider?: GitReviewProvider;
+    checks?: GitCiChecks;
+}
+
+type CiCheckKind = 'success' | 'failed' | 'pending' | 'ignored';
+
+function readField(entry: Record<string, unknown>, key: string): string {
+    const value = entry[key];
+    return typeof value === 'string' ? value.toUpperCase() : '';
+}
+
+// Classify a single gh statusCheckRollup entry. CheckRun entries carry a
+// `status` (COMPLETED once done) plus a `conclusion`; older StatusContext
+// entries carry only a `state`. NEUTRAL/SKIPPED are non-blocking noise and
+// map to `ignored` so they drop out of the displayed counts.
+function classifyCheck(entry: Record<string, unknown>): CiCheckKind {
+    if (typeof entry.status === 'string') {
+        if (entry.status.toUpperCase() !== 'COMPLETED')
+            return 'pending';
+        const conclusion = readField(entry, 'conclusion');
+        if (conclusion === 'SUCCESS')
+            return 'success';
+        if (conclusion === 'NEUTRAL' || conclusion === 'SKIPPED')
+            return 'ignored';
+        return 'failed';
+    }
+    const state = readField(entry, 'state');
+    if (state === 'SUCCESS')
+        return 'success';
+    if (state === 'PENDING' || state === 'EXPECTED')
+        return 'pending';
+    return 'failed';
+}
+
+export function computeCiRollup(rollup: unknown): GitCiChecks | null {
+    if (!Array.isArray(rollup) || rollup.length === 0)
+        return null;
+
+    let failing = 0;
+    let pending = 0;
+    let success = 0;
+    let seen = 0;
+    for (const entry of rollup) {
+        if (typeof entry !== 'object' || entry === null)
+            continue;
+        seen++;
+        const kind = classifyCheck(entry as Record<string, unknown>);
+        if (kind === 'failed')
+            failing++;
+        else if (kind === 'pending')
+            pending++;
+        else if (kind === 'success')
+            success++;
+    }
+
+    if (seen === 0)
+        return null;
+
+    const state: GitCiState = failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing';
+    return { state, failing, pending, success };
 }
 
 const GIT_REVIEW_CACHE_TTL = 30_000;
@@ -278,7 +346,7 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
         }
         args.push(branch, '--repo', repoRef);
     }
-    args.push('--json', 'url,number,title,state,reviewDecision');
+    args.push('--json', 'url,number,title,state,reviewDecision,statusCheckRollup');
 
     const output = deps.execFileSync(
         'gh',
@@ -306,7 +374,8 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
         title: typeof parsed.title === 'string' ? parsed.title : '',
         state: typeof parsed.state === 'string' ? parsed.state : '',
         reviewDecision: typeof parsed.reviewDecision === 'string' ? parsed.reviewDecision : '',
-        provider: 'gh'
+        provider: 'gh',
+        checks: computeCiRollup(parsed.statusCheckRollup) ?? undefined
     };
 }
 
