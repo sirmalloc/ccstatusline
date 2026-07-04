@@ -42,11 +42,11 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
-import { isWidgetSubagentsEnabled } from './utils/token-subagents';
 import {
     getPackageVersion,
     getTerminalWidth
 } from './utils/terminal';
+import { isWidgetSubagentsEnabled } from './utils/token-subagents';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {

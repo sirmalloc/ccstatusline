@@ -36,7 +36,14 @@ export class TokensOutputWidget implements Widget {
             return formatRawOrLabeledValue(item, label, '3.4k');
         }
 
-        // The stdin context_window payload is main-only; skip it when subagents are on.
+        // Prefer the cumulative token metrics (subagent-inclusive when opted in).
+        const metrics = tokenMetricsForWidget(item, context);
+        if (metrics) {
+            return formatRawOrLabeledValue(item, label, formatTokens(metrics.outputTokens));
+        }
+
+        // Fall back to the stdin context_window payload, which is main-only —
+        // skip it when subagents are on.
         if (!subagents) {
             const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
             if (outputTotalTokens !== null) {
@@ -44,18 +51,6 @@ export class TokensOutputWidget implements Widget {
             }
         }
 
-        const metrics = tokenMetricsForWidget(item, context);
-        if (metrics) {
-            return formatRawOrLabeledValue(item, label, formatTokens(metrics.outputTokens));
-        }
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
-        }
-
-        const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
-        if (outputTotalTokens !== null) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens));
-        }
         return null;
     }
 

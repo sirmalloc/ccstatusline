@@ -420,6 +420,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 600,   // 100 + 500
             outputTokens: 110,  // 50 + 60
             cachedTokens: 40,   // (20+10) + (5+5)
+            cacheReadTokens: 25,   // 20 + 5
+            cacheCreationTokens: 15, // 10 + 5
             totalTokens: 750,
             contextLength: 130  // latest main-chain non-sidechain: 100 + 20 + 10
         });
@@ -430,6 +432,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 600,   // main 100 (sidechain dropped) + file 500
             outputTokens: 110,  // main 50 + file 60
             cachedTokens: 40,   // main 30 + file 10
+            cacheReadTokens: 25,   // main 20 + file 5
+            cacheCreationTokens: 15, // main 10 + file 5
             totalTokens: 750,
             contextLength: 130  // unchanged — main-chain concept
         });
@@ -458,6 +462,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 600,
             outputTokens: 110,
             cachedTokens: 40,
+            cacheReadTokens: 25,   // 20 + 5
+            cacheCreationTokens: 15, // 10 + 5
             totalTokens: 750,
             contextLength: 130
         });
@@ -491,6 +497,8 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 140,   // 10 + 100 + 30
             outputTokens: 245,  // 5 + 200 + 40
             cachedTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
             totalTokens: 385,
             contextLength: 10   // 10 + 0 + 0
         });

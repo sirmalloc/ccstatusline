@@ -151,7 +151,8 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
 interface TokenUsageSum {
     inputTokens: number;
     outputTokens: number;
-    cachedTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
 }
 
 export interface TokenMetricsOptions { includeSubagents?: boolean }
@@ -186,7 +187,8 @@ function getFinalizedUsageEntries(lines: string[]): TranscriptLine[] {
 function sumUsage(entries: TranscriptLine[], skipSidechain: boolean): TokenUsageSum {
     let inputTokens = 0;
     let outputTokens = 0;
-    let cachedTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
 
     for (const data of entries) {
         if (skipSidechain && data.isSidechain === true) {
@@ -198,11 +200,11 @@ function sumUsage(entries: TranscriptLine[], skipSidechain: boolean): TokenUsage
         }
         inputTokens += usage.input_tokens || 0;
         outputTokens += usage.output_tokens || 0;
-        cachedTokens += usage.cache_read_input_tokens ?? 0;
-        cachedTokens += usage.cache_creation_input_tokens ?? 0;
+        cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+        cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
     }
 
-    return { inputTokens, outputTokens, cachedTokens };
+    return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
 }
 
 // Context length is the most recent main-chain (non-sidechain, non-error)
@@ -248,11 +250,6 @@ export async function getTokenMetrics(
         const subagentPaths = options.includeSubagents === true
             ? getSubagentTranscriptPaths(transcriptPath, getReferencedSubagentIds(lines))
             : [];
-        let inputTokens = 0;
-        let outputTokens = 0;
-        let cacheReadTokens = 0;
-        let cacheCreationTokens = 0;
-        let contextLength = 0;
 
         // When separate subagent files exist, inline sidechain rows are represented
         // there — drop them from the main pass to avoid double counting. When no
@@ -262,7 +259,8 @@ export async function getTokenMetrics(
 
         let inputTokens = mainSum.inputTokens;
         let outputTokens = mainSum.outputTokens;
-        let cachedTokens = mainSum.cachedTokens;
+        let cacheReadTokens = mainSum.cacheReadTokens;
+        let cacheCreationTokens = mainSum.cacheCreationTokens;
 
         if (subagentPaths.length > 0) {
             const subagentSums = await Promise.all(subagentPaths.map(async (subagentPath) => {
@@ -277,31 +275,12 @@ export async function getTokenMetrics(
             for (const sum of subagentSums) {
                 if (!sum) {
                     continue;
-            inputTokens += usage.input_tokens || 0;
-            outputTokens += usage.output_tokens || 0;
-            cacheReadTokens += usage.cache_read_input_tokens ?? 0;
-            cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
-
-            // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
-            // Also skip API error messages (synthetic messages with 0 tokens)
-            if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
-                const entryTime = new Date(data.timestamp);
-                if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
-                    mostRecentTimestamp = entryTime;
-                    mostRecentMainChainEntry = data;
                 }
                 inputTokens += sum.inputTokens;
                 outputTokens += sum.outputTokens;
-                cachedTokens += sum.cachedTokens;
+                cacheReadTokens += sum.cacheReadTokens;
+                cacheCreationTokens += sum.cacheCreationTokens;
             }
-        }
-
-        // Calculate context length from the most recent main chain message
-        if (mostRecentMainChainEntry?.message?.usage) {
-            const usage = mostRecentMainChainEntry.message.usage;
-            contextLength = (usage.input_tokens || 0)
-                + (usage.cache_read_input_tokens ?? 0)
-                + (usage.cache_creation_input_tokens ?? 0);
         }
 
         const cachedTokens = cacheReadTokens + cacheCreationTokens;
