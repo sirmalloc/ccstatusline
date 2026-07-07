@@ -370,7 +370,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
 - [codachi](https://github.com/vincent-k2026/codachi) - A tamagotchi-style statusline pet that grows with your context window.
 - [AIWatch](https://ai-watch.dev) - Live status monitor for 30+ AI APIs and apps; pairs with a Custom Command widget to surface provider outages in your status line.
-
+- [crispy-recall](https://github.com/TheSylvester/crispy-recall) - Searchable memory for your Claude Code and Codex sessions. Local, fast, no daemon.
 
 ## 🙏 Acknowledgments
 
