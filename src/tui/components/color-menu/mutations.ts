@@ -1,3 +1,7 @@
+import type {
+    NumberFormat,
+    NumberStyle
+} from '../../../types/NumberFormat';
 import type { WidgetItem } from '../../../types/Widget';
 import { getWidget } from '../../../utils/widgets';
 
@@ -60,6 +64,38 @@ export function cycleWidgetDim(widgets: WidgetItem[], widgetId: string): WidgetI
     });
 }
 
+export function cycleWidgetNumberStyle(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        // Cycle the number style: default (precise) -> compact -> whole -> default.
+        // Any explicit `decimals` is preserved across the cycle.
+        const currentStyle = widget.numberFormat?.style;
+        const nextStyle: NumberStyle | undefined = currentStyle === undefined
+            ? 'compact'
+            : currentStyle === 'compact'
+                ? 'whole'
+                : undefined;
+        const decimals = widget.numberFormat?.decimals;
+
+        if (nextStyle === undefined && decimals === undefined) {
+            const { numberFormat, ...restWidget } = widget;
+            void numberFormat; // Intentionally unused
+            return restWidget;
+        }
+
+        const nextFormat: NumberFormat = {};
+        if (nextStyle !== undefined) {
+            nextFormat.style = nextStyle;
+        }
+        if (decimals !== undefined) {
+            nextFormat.decimals = decimals;
+        }
+        return {
+            ...widget,
+            numberFormat: nextFormat
+        };
+    });
+}
+
 export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
         const {
@@ -67,12 +103,14 @@ export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): Wid
             backgroundColor,
             bold,
             dim,
+            numberFormat,
             ...restWidget
         } = widget;
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
         void bold; // Intentionally unused
         void dim; // Intentionally unused
+        void numberFormat; // Intentionally unused
         return restWidget;
     });
 }
@@ -84,12 +122,14 @@ export function clearAllWidgetStyling(widgets: WidgetItem[]): WidgetItem[] {
             backgroundColor,
             bold,
             dim,
+            numberFormat,
             ...restWidget
         } = widget;
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
         void bold; // Intentionally unused
         void dim; // Intentionally unused
+        void numberFormat; // Intentionally unused
         return restWidget;
     });
 }
