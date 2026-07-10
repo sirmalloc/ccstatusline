@@ -47,13 +47,23 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.22 - Powerline flex mode, dim styling, safer config, and polish
+### v2.2.22 - v2.2.23 - Powerline flex mode, layout controls, composable metrics, and safer config
 
 ![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
 
 - **⚡ Powerline flex mode** - Flex separators now work in Powerline mode, letting Powerline status lines right-align content or absorb available width.
 - **🌗 Per-widget dim styling** - The color editor can dim an entire widget or only parenthesized text, with reset and clear-all actions covering dim state.
 - **🧯 Safer settings recovery** - Invalid `settings.json` files are left untouched, defaults render in memory, and the status line shows an invalid-config warning.
+- **🧭 Selective Powerline alignment** - Press `x` in the line editor to let a widget and the rest of its line keep their natural widths while earlier Powerline columns stay auto-aligned.
+- **📏 Git widget width limits** - `Git Branch` and `Git Root Dir` can cap their visible width with ellipsis-safe truncation while preserving hyperlink targets.
+- **🔣 Current directory glyphs** - `Current Working Dir` can prepend an optional custom glyph, including in raw-value mode.
+- **🧠 Configurable context fallback** - `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` overrides the default 200k last-resort context window when Claude Code and the model name do not report one.
+- **🧩 Composable compaction metrics** - `Compaction Counter` can render count, auto, manual, unknown, or reclaimed-token values independently for custom layouts.
+- **🏷️ CLI version flag** - `ccstatusline --version` now prints the installed package version and exits.
+- **🛡️ Guarded invalid-config saves** - The TUI warns when it loaded defaults for an invalid settings file and requires confirmation before replacing that file.
+- **🔄 Usage display and cache fixes** - Used/remaining direction now works in every percentage mode, account switches invalidate cached usage, and fetch locks no longer cause repeated requests or stale timeout output.
+- **⏱️ Calmer reset timer startup** - Reset timers show labeled loading placeholders instead of transient rate-limit errors while Claude Code's embedded usage-window data is still arriving.
+- **🔇 Quieter install detection** - Best-effort npm and Bun probes no longer leak expected package-manager errors into the TUI.
 
 ### v2.2.21 - Cache widgets, compaction details, extra usage currency, and package fixes
 
