@@ -254,7 +254,7 @@ describe('CompactionCounterWidget', () => {
     describe('editor', () => {
         it('uses metric, format, and toggle keybinds in count mode', () => {
             expect(new CompactionCounterWidget().getCustomKeybinds(ITEM)).toEqual([
-                { key: 'm', label: '(m)etric', action: 'cycle-metric' },
+                { key: 'v', label: '(v)alue', action: 'cycle-metric' },
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
@@ -269,7 +269,7 @@ describe('CompactionCounterWidget', () => {
                 ...ITEM,
                 metadata: { format: 'text-and-number' }
             })).toEqual([
-                { key: 'm', label: '(m)etric', action: 'cycle-metric' },
+                { key: 'v', label: '(v)alue', action: 'cycle-metric' },
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
@@ -489,7 +489,7 @@ describe('CompactionCounterWidget', () => {
                 ...ITEM,
                 metadata: { metric: 'auto' }
             })).toEqual([
-                { key: 'm', label: '(m)etric', action: 'cycle-metric' },
+                { key: 'v', label: '(v)alue', action: 'cycle-metric' },
                 { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
             ]);
         });

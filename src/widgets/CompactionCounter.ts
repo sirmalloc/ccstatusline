@@ -307,7 +307,7 @@ export class CompactionCounterWidget implements Widget {
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
-            { key: 'm', label: '(m)etric', action: CYCLE_METRIC_ACTION }
+            { key: 'v', label: '(v)alue', action: CYCLE_METRIC_ACTION }
         ];
 
         // The format / glyph / trigger toggles only shape the composite 'count'

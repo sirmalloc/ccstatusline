@@ -698,6 +698,32 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.metadata?.mode).toBe('count');
     });
 
+    it('uses v to cycle compaction counter metric', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'compaction-counter' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'v',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.metadata?.metric).toBe('auto');
+    });
+
     it('opens custom editor for skills list limit action', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'skills', metadata: { mode: 'list' } }
