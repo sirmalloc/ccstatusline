@@ -183,6 +183,7 @@ function getNpmGlobalPackageVersion(platform: NodeJS.Platform): string | null {
             encoding: 'utf-8',
             timeout: VERSION_LOOKUP_TIMEOUT_MS,
             windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore'],
             ...getPackageManagerShellOptions(executable, platform)
         }).trim();
 
