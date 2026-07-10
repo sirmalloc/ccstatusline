@@ -1,4 +1,5 @@
 import type * as childProcess from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import { createRequire } from 'module';
 import * as os from 'os';
@@ -357,6 +358,23 @@ describe('fetchUsageData error handling', () => {
             disabled_reason: null
         }
     });
+    // Mirrors a real Enterprise-account response: every rate-limit window is
+    // null because Enterprise plans have no 5-hour/7-day windows (#343).
+    const enterpriseNullWindowsResponseBody = JSON.stringify({
+        five_hour: null,
+        seven_day: null,
+        seven_day_oauth_apps: null,
+        seven_day_sonnet: null,
+        seven_day_opus: null,
+        extra_usage: {
+            is_enabled: true,
+            monthly_limit: 50000,
+            used_credits: 0,
+            utilization: null,
+            currency: 'USD',
+            disabled_reason: null
+        }
+    });
     const rateLimitedResponseBody = JSON.stringify({
         error: {
             message: 'Rate limited. Please try again later.',
@@ -656,11 +674,17 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
+            // The probe writes usage.json with a real-wall-clock mtime, so derive
+            // 'now' from it (not the mocked epoch) to keep the cache within
+            // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
+            // render takes, rather than depending on a lingering lock to suppress
+            // the refetch.
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
                 mode: 'unexpected',
-                nowMs: nowMs + 10000,
+                nowMs: cacheMtimeMs + 10000,
                 pathDir: home.bin,
                 requiredFields
             });
@@ -668,6 +692,197 @@ describe('fetchUsageData error handling', () => {
             expect(cachedResult.first).toEqual(result.first);
             expect(cachedResult.second).toEqual(result.first);
             expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('clears the in-flight lock after a successful fetch', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('success-clears-lock');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            // fetchUsageData writes a short 'timeout' lock before the request as an
+            // in-flight guard. A successful fetch must remove it; otherwise the lock
+            // lingers for LOCK_MAX_AGE and a later cache miss (e.g. an account switch
+            // invalidating the fingerprint) reports a spurious [Timeout] while the
+            // API is healthy.
+            expect(result.cacheExists).toBe(true);
+            expect(result.lockExists).toBe(false);
+            expect(result.lockContents).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('preserves the in-flight lock after a successful fetch missing required fields', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('success-missing-required-fields');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields: ['weeklySonnetUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual({ error: 'timeout' });
+            expect(result.cacheExists).toBe(true);
+            expect(result.requestCount).toBe(1);
+            expect(parseLockContents(result.lockContents)).toEqual({
+                blockedUntil: Math.floor(nowMs / 1000) + 30,
+                error: 'timeout'
+            });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('refetches a fresh cache when the token fingerprint changes (account switch)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-switch');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            // A complete cache written under a different account's token.
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: seededMtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            // The cached fingerprint mismatches the live token, so the still-fresh
+            // cache is rejected and the API is hit once for the new account.
+            expect(result.requestCount).toBe(1);
+            expect(result.first.sessionUsage).toBe(42);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('does not serve a mismatched account cache during an active lock', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-switch-active-lock');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            const lockFile = path.join(cacheDir, 'usage.lock');
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
+
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+            const lockedNowMs = seededMtimeMs + 5000;
+            fs.writeFileSync(lockFile, JSON.stringify({
+                blockedUntil: Math.floor(lockedNowMs / 1000) + 30,
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: lockedNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ error: 'timeout' });
+            expect(result.second).toEqual({ error: 'timeout' });
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('does not serve a mismatched account cache during a rate-limit backoff', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-switch-rate-limit');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
+
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+            const rateLimitedNowMs = seededMtimeMs + 5000;
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs: rateLimitedNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: rateLimitedResponseBody,
+                responseHeaders: { 'retry-after': '3600' },
+                statusCode: 429
+            });
+
+            expect(result.first).toEqual({ error: 'rate-limited' });
+            expect(result.second).toEqual({ error: 'rate-limited' });
+            expect(result.requestCount).toBe(1);
+            expect(parseLockContents(result.lockContents)).toEqual({
+                blockedUntil: Math.floor(rateLimitedNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves a fresh cache whose token fingerprint matches (same account)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-same');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const cacheFile = path.join(cacheDir, 'usage.json');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: matchingHash }));
+            const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: seededMtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            // Fingerprint matches and the cache is fresh, so it is served with no API call.
+            expect(result.requestCount).toBe(0);
+            expect(result.first.sessionUsage).toBe(5);
         } finally {
             harness.cleanup();
         }
@@ -700,11 +915,69 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
+            // The probe writes usage.json with a real-wall-clock mtime, so derive
+            // 'now' from it (not the mocked epoch) to keep the cache within
+            // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
+            // render takes, rather than depending on a lingering lock to suppress
+            // the refetch.
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
                 mode: 'unexpected',
-                nowMs: nowMs + 10000,
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats null rate-limit windows as complete for window reset fields', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('enterprise-null-windows');
+            const requiredFields = ['sessionUsage', 'sessionResetAt', 'weeklyUsage', 'weeklyResetAt', 'weeklySonnetResetAt', 'weeklyOpusResetAt'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: enterpriseNullWindowsResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 0,
+                weeklyUsage: 0,
+                weeklySonnetUsage: 0,
+                weeklyOpusUsage: 0,
+                extraUsageEnabled: true,
+                extraUsageLimit: 50000,
+                extraUsageCurrency: 'USD',
+                extraUsageUsed: 0
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            // The probe writes usage.json with a real-wall-clock mtime, so derive
+            // 'now' from it (not the mocked epoch) to keep the cache within
+            // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
+            // render takes, rather than depending on a lingering lock to suppress
+            // the refetch.
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
                 pathDir: home.bin,
                 requiredFields
             });

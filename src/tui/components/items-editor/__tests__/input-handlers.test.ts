@@ -532,6 +532,59 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.character).toBe('-');
     });
 
+    it('toggles auto-align exclusion when the editor marks it available', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'x',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            canExcludeAlign: true,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.excludeFromAutoAlign).toBe(true);
+    });
+
+    it('ignores the auto-align exclusion shortcut when the editor marks it unavailable', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'x',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            canExcludeAlign: false,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+    });
+
     it('applies custom widget keybind actions in normal mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'session-usage' }

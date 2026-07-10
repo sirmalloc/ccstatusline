@@ -47,6 +47,14 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.22 - Powerline flex mode, dim styling, safer config, and polish
+
+![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
+
+- **⚡ Powerline flex mode** - Flex separators now work in Powerline mode, letting Powerline status lines right-align content or absorb available width.
+- **🌗 Per-widget dim styling** - The color editor can dim an entire widget or only parenthesized text, with reset and clear-all actions covering dim state.
+- **🧯 Safer settings recovery** - Invalid `settings.json` files are left untouched, defaults render in memory, and the status line shows an invalid-config warning.
+
 ### v2.2.21 - Cache widgets, compaction details, extra usage currency, and package fixes
 
 - **🔣 Custom widget glyphs** - Git and JJ symbol widgets can override or suppress their built-in glyphs from the TUI.
@@ -358,11 +366,12 @@ If ccstatusline is useful to you, consider buying me a coffee:
 
 ## 🔗 Related Projects
 
+- [ccstatusline-editor](https://github.com/refinist/ccstatusline-editor) - A visual editor for building ccstatusline configurations — drag, drop, preview, ship.
 - [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
 - [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
 - [codachi](https://github.com/vincent-k2026/codachi) - A tamagotchi-style statusline pet that grows with your context window.
 - [AIWatch](https://ai-watch.dev) - Live status monitor for 30+ AI APIs and apps; pairs with a Custom Command widget to surface provider outages in your status line.
-
+- [crispy-recall](https://github.com/TheSylvester/crispy-recall) - Searchable memory for your Claude Code and Codex sessions. Local, fast, no daemon.
 
 ## 🙏 Acknowledgments
 

@@ -37,13 +37,13 @@ export class SessionUsageWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item)
+            modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true })
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
-            return cycleUsageDisplayMode(item, [], true);
+            return cycleUsageDisplayMode(item, [], true, true);
         }
 
         if (action === 'toggle-invert') {
@@ -79,7 +79,7 @@ export class SessionUsageWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Session: ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Session: ', `${previewPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Session: ', `${renderedPercent.toFixed(1)}%`);
         }
 
         const data = context.usageData ?? {};
@@ -114,7 +114,7 @@ export class SessionUsageWidget implements Widget {
             return formatRawOrLabeledValue(item, 'Session: ', sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, 'Session: ', `${percent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Session: ', `${renderedPercent.toFixed(1)}%`);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

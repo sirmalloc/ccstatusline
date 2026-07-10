@@ -43,12 +43,10 @@ export function getAllWidgetTypes(settings: Settings): WidgetItemType[] {
     const allTypes = WIDGET_MANIFEST.map(entry => entry.type);
 
     // Add separator types based on settings
-    if (!settings.powerline.enabled) {
-        if (!settings.defaultSeparator) {
-            allTypes.push('separator');
-        }
-        allTypes.push('flex-separator');
+    if (!settings.powerline.enabled && !settings.defaultSeparator) {
+        allTypes.push('separator');
     }
+    allTypes.push('flex-separator');
 
     return allTypes;
 }
