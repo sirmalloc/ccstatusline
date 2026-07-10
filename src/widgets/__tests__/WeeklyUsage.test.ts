@@ -69,7 +69,7 @@ describe('WeeklyUsageWidget', () => {
         createWidget: () => new WeeklyUsageWidget(),
         errorMessageMock: usageErrorMessageMock,
         expectedInvertedTime: 'Weekly: 57.9%',
-        expectedModifierText: '(long bar, inverted)',
+        expectedModifierText: '(long bar, remaining)',
         expectedPreviewInvertedTime: 'Weekly: 88.0%',
         expectedProgress: 'Weekly: [███████████████████░░░░░░░░░░░░░] 57.9%',
         expectedRawInvertedTime: '57.9%',

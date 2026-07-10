@@ -74,8 +74,7 @@ describe('ExtraUsageUtilizationWidget', () => {
 
         expect(widget.getCustomKeybinds(baseItem)).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
+            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
             { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
         ]);
         expect(widget.getCustomKeybinds({
@@ -83,20 +82,30 @@ describe('ExtraUsageUtilizationWidget', () => {
             metadata: { display: 'progress' }
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' },
-            { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-            { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' },
+            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
             { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
         ]);
-        expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
+        expect(widget.getCustomKeybinds({
+            ...baseItem,
+            metadata: { invert: 'true' }
+        })).toEqual([
+            { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+            { key: 'u', label: '(u) show used', action: 'toggle-invert' },
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+        ]);
+        expect(widget.getEditorDisplay(baseItem).modifierText).toBe('(used)');
+        expect(widget.getEditorDisplay({
+            ...baseItem,
+            metadata: { invert: 'true' }
+        }).modifierText).toBe('(remaining)');
 
         const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
         expect(hidden?.metadata?.hideIfDisabled).toBe('true');
-        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(hide if disabled)');
+        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(used, hide if disabled)');
         expect(widget.getEditorDisplay({
             ...baseItem,
             metadata: { display: 'progress', hideIfDisabled: 'true' }
-        }).modifierText).toBe('(long bar, hide if disabled)');
+        }).modifierText).toBe('(long bar, used, hide if disabled)');
 
         const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
         expect(shown?.metadata?.hideIfDisabled).toBe('false');

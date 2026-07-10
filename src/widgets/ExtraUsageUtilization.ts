@@ -38,7 +38,10 @@ export class ExtraUsageUtilizationWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: appendHideDisabledModifier(getUsageDisplayModifierText(item), item)
+            modifierText: appendHideDisabledModifier(
+                getUsageDisplayModifierText(item, { showUsageDirection: true }),
+                item
+            )
         };
     }
 
@@ -114,7 +117,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return [...getUsagePercentCustomKeybinds(item), getHideExtraUsageDisabledKeybind()];
+        return [...getUsagePercentCustomKeybinds(item, false), getHideExtraUsageDisabledKeybind()];
     }
 
     supportsRawValue(): boolean { return true; }

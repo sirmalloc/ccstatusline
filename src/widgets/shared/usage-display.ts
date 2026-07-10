@@ -19,7 +19,6 @@ export type UsageDisplayMode = 'time' | 'progress' | 'progress-short' | 'slider'
 const SLIDER_WIDTH = 10;
 
 const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
-const USED_REMAINING_TOGGLE_KEYBIND: CustomKeybind = { key: 'u', label: '(u)sed/remaining', action: 'toggle-invert' };
 const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
 const CURSOR_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' };
@@ -168,6 +167,7 @@ export function toggleUsageWeekday(item: WidgetItem): WidgetItem {
 interface UsageDisplayModifierOptions {
     includeCompact?: boolean;
     includeDate?: boolean;
+    showUsageDirection?: boolean;
 }
 
 export function getUsageDisplayModifierText(
@@ -187,7 +187,9 @@ export function getUsageDisplayModifierText(
         modifiers.push('short bar only');
     }
 
-    if (isUsageInverted(item)) {
+    if (options.showUsageDirection) {
+        modifiers.push(isUsageInverted(item) ? 'remaining' : 'used');
+    } else if (isUsageInverted(item)) {
         modifiers.push('inverted');
     }
 
@@ -258,14 +260,14 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
-export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-    const keybinds = [
+export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
+    const nextDirection = item && isUsageInverted(item) ? 'used' : 'remaining';
+    const keybinds: CustomKeybind[] = [
         PROGRESS_TOGGLE_KEYBIND,
-        USED_REMAINING_TOGGLE_KEYBIND,
-        INVERT_TOGGLE_KEYBIND
+        { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
     ];
 
-    if (item) {
+    if (item && includeCursor) {
         const mode = getUsageDisplayMode(item);
         if (isUsageProgressMode(mode) || isUsageSliderMode(mode)) {
             keybinds.push(CURSOR_TOGGLE_KEYBIND);
