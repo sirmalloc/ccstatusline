@@ -87,9 +87,11 @@ Configure global formatting preferences that apply to all widgets:
 
 ### Default Padding & Separators
 
-- **Default Padding** - Add consistent padding to the left and right of each widget
+- **Default Padding** - Add consistent padding around each widget
+- **Padding Side** - Choose whether default padding applies to **Both** sides (default), **Left only**, or **Right only**
 - **Default Separator** - Automatically insert a separator between all widgets
   - Press **(p)** to edit padding
+  - Press **(d)** to cycle padding side
   - Press **(s)** to edit separator
 - Manual separators collapse around widgets that render empty, so hide-when-empty widgets do not leave dangling dividers.
 

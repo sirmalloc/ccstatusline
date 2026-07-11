@@ -6,7 +6,10 @@ import {
 import React, { useState } from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
-import type { Settings } from '../../types/Settings';
+import {
+    DefaultPaddingSideSchema,
+    type Settings
+} from '../../types/Settings';
 import {
     COLOR_MAP,
     applyColors,
@@ -231,6 +234,16 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideForegroundColor: undefined
                 };
                 onUpdate(updatedSettings);
+            } else if (input === 'd' || input === 'D') {
+                // Cycle through padding sides: both -> left -> right -> both
+                const paddingSides = DefaultPaddingSideSchema.options;
+                const currentIndex = paddingSides.indexOf(settings.defaultPaddingSide);
+                const nextSide = paddingSides[(currentIndex + 1) % paddingSides.length] ?? 'both';
+                const updatedSettings = {
+                    ...settings,
+                    defaultPaddingSide: nextSide
+                };
+                onUpdate(updatedSettings);
             }
         }
     });
@@ -298,7 +311,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             {editingPadding ? (
                 <Box flexDirection='column'>
                     <Box>
-                        <Text>Enter default padding (applied to left and right of each widget): </Text>
+                        <Text>Enter default padding (applied per the Padding Side setting): </Text>
                         <Text color='cyan'>{paddingInput ? `"${paddingInput}"` : '(empty)'}</Text>
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
@@ -363,6 +376,12 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         <Text>  Default Padding: </Text>
                         <Text color='cyan'>{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
                         <Text dimColor> - Press (p) to edit</Text>
+                    </Box>
+
+                    <Box>
+                        <Text>     Padding Side: </Text>
+                        <Text color='cyan'>{settings.defaultPaddingSide === 'left' ? 'Left only' : settings.defaultPaddingSide === 'right' ? 'Right only' : 'Both'}</Text>
+                        <Text dimColor> - Press (d) to cycle</Text>
                     </Box>
 
                     <Box>
@@ -441,6 +460,9 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     <Box marginTop={1} flexDirection='column'>
                         <Text dimColor wrap='wrap'>
                             Note: These settings are applied during rendering and don't add widgets to your widget list.
+                        </Text>
+                        <Text dimColor wrap='wrap'>
+                            • Padding Side: Choose whether default padding applies to both sides, left only, or right only
                         </Text>
                         <Text dimColor wrap='wrap'>
                             • Inherit colors: Separators will use colors from the preceding widget
