@@ -21,6 +21,7 @@ import { GitDeletionsWidget } from '../GitDeletions';
 import { GitInsertionsWidget } from '../GitInsertions';
 import { GitRootDirWidget } from '../GitRootDir';
 import { GitShaWidget } from '../GitSha';
+import { GitStatusWidget } from '../GitStatus';
 import { GitWorktreeWidget } from '../GitWorktree';
 
 vi.mock('child_process', () => ({
@@ -57,6 +58,8 @@ function installExecMock(options: { insideJjRepo: boolean }): void {
                 return '/tmp/my-repo';
             if (args[0] === 'rev-parse' && args[1] === '--git-dir')
                 return '.git';
+            if (args[0] === 'status' && args[1] === '--porcelain')
+                return ' M file.txt\0';
             throw new Error(`unexpected git args: ${args.join(' ')}`);
         }
 
@@ -85,7 +88,8 @@ const cases: {
     { name: 'GitInsertionsWidget', gitType: 'git-insertions', jjType: 'jj-insertions', widget: new GitInsertionsWidget() },
     { name: 'GitDeletionsWidget', gitType: 'git-deletions', jjType: 'jj-deletions', widget: new GitDeletionsWidget() },
     { name: 'GitRootDirWidget', gitType: 'git-root-dir', jjType: 'jj-root-dir', widget: new GitRootDirWidget() },
-    { name: 'GitWorktreeWidget', gitType: 'git-worktree', jjType: 'jj-workspace', widget: new GitWorktreeWidget() }
+    { name: 'GitWorktreeWidget', gitType: 'git-worktree', jjType: 'jj-workspace', widget: new GitWorktreeWidget() },
+    { name: 'GitStatusWidget', gitType: 'git-status', jjType: 'jj-changes', widget: new GitStatusWidget() }
 ];
 
 describe('Git widgets defer to their Jj analog', () => {
