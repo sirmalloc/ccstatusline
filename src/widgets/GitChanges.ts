@@ -11,6 +11,7 @@ import {
     isInsideGitWorkTree
 } from '../utils/git';
 
+import { shouldHideGitWidgetForJj } from './shared/git-jj-precedence';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
@@ -34,11 +35,15 @@ export class GitChangesWidget implements Widget {
         return handleToggleNoGitAction(action, item);
     }
 
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
             return '(+42,-10)';
+        }
+
+        if (shouldHideGitWidgetForJj('git-changes', context, settings)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {

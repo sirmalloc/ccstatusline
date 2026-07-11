@@ -19,6 +19,7 @@ import {
 } from '../utils/hyperlink';
 
 import { makeModifierText } from './shared/editor-display';
+import { shouldHideGitWidgetForJj } from './shared/git-jj-precedence';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
@@ -71,13 +72,17 @@ export class GitRootDirWidget implements Widget {
         return handleToggleNoGitAction(action, item);
     }
 
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
         const ideLinkMode = this.getIdeLinkMode(item);
 
         if (context.isPreview) {
             const name = 'my-repo';
             return ideLinkMode ? renderOsc8Link(buildIdeFileUrl('/Users/example/my-repo', ideLinkMode), name) : name;
+        }
+
+        if (shouldHideGitWidgetForJj('git-root-dir', context, settings)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
