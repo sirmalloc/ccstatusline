@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import {
     afterEach,
     beforeEach,
@@ -21,9 +21,9 @@ vi.mock('child_process', () => ({
 }));
 
 describe('terminal utils', () => {
-    const mockExecSync = execSync as unknown as {
+    const mockExecFileSync = execFileSync as unknown as {
         mock: { calls: unknown[][] };
-        mockImplementation: (impl: (command: string) => string) => void;
+        mockImplementation: (impl: (file: string, args: string[]) => string) => void;
         mockImplementationOnce: (impl: () => never) => void;
         mockReturnValueOnce: (value: string) => void;
     };
@@ -58,54 +58,54 @@ describe('terminal utils', () => {
 
     it('returns width from the immediate parent tty when available', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return 'ttys001\n';
             }
 
-            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
-                return '120\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                return '24 120\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBe(120);
-        expect(mockExecSync.mock.calls.map(([command]) => command)).toEqual([
+        expect(mockExecFileSync.mock.calls.map(([file, args]) => `${file as string} ${(args as string[]).join(' ')}`)).toEqual([
             `ps -o ppid= -p ${process.pid}`,
             'ps -o tty= -p 1234',
-            `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`
+            'stty -F /dev/ttys001 size'
         ]);
     });
 
     it('walks ancestor processes until it finds a valid tty', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return '??\n';
             }
 
-            if (command === 'ps -o ppid= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
                 return '5678\n';
             }
 
-            if (command === 'ps -o tty= -p 5678') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 5678') {
                 return ' ttys009 \n';
             }
 
-            if (command === `stty -F /dev/ttys009 size 2>/dev/null | awk '{print $2}'`) {
-                return '104\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys009 size') {
+                return '24 104\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBe(104);
@@ -113,26 +113,25 @@ describe('terminal utils', () => {
 
     it('falls back through stty variants when the first form returns no value', () => {
         pinPosixPlatform();
-        // Simulates BSD/macOS, where `stty -F` exits with an error and yields
-        // empty output via the `2>/dev/null | awk` pipeline; `stty -f` succeeds.
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        // Simulates BSD/macOS, where `stty -F` exits with an error; `stty -f` succeeds.
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return 'ttys003\n';
             }
 
-            if (command === `stty -F /dev/ttys003 size 2>/dev/null | awk '{print $2}'`) {
-                return '\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys003 size') {
+                throw new Error('stty: invalid argument');
             }
 
-            if (command === `stty -f /dev/ttys003 size 2>/dev/null | awk '{print $2}'`) {
-                return '142\n';
+            if (file === 'stty' && args.join(' ') === '-f /dev/ttys003 size') {
+                return '24 142\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBe(142);
@@ -140,39 +139,38 @@ describe('terminal utils', () => {
 
     it('falls back to tput cols when ancestor probing fails', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementationOnce(() => { throw new Error('ps unavailable'); });
-        mockExecSync.mockReturnValueOnce('90\n');
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('ps unavailable'); });
+        mockExecFileSync.mockReturnValueOnce('90\n');
 
         expect(getTerminalWidth()).toBe(90);
-        expect(mockExecSync.mock.calls[1]?.[0]).toBe('tput cols 2>/dev/null');
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('tput');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['cols']);
     });
 
     it('returns null when ancestor and fallback probes fail', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return 'ttys001\n';
             }
 
-            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`
-                || command === `stty -f /dev/ttys001 size 2>/dev/null | awk '{print $2}'`
-                || command === `stty size < /dev/ttys001 2>/dev/null | awk '{print $2}'`) {
-                return 'not-a-number\n';
+            if (file === 'stty') {
+                return 'not-a-number not-a-number\n';
             }
 
-            if (command === 'ps -o ppid= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
                 return '0\n';
             }
 
-            if (command === 'tput cols 2>/dev/null') {
+            if (file === 'tput') {
                 throw new Error('tput unavailable');
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBeNull();
@@ -180,28 +178,28 @@ describe('terminal utils', () => {
 
     it('detects availability when an ancestor tty probe succeeds', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return '??\n';
             }
 
-            if (command === 'ps -o ppid= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
                 return '5678\n';
             }
 
-            if (command === 'ps -o tty= -p 5678') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 5678') {
                 return 'ttys010\n';
             }
 
-            if (command === `stty -F /dev/ttys010 size 2>/dev/null | awk '{print $2}'`) {
-                return '80\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys010 size') {
+                return '24 80\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(canDetectTerminalWidth()).toBe(true);
@@ -209,8 +207,8 @@ describe('terminal utils', () => {
 
     it('returns false for availability when all probes fail', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementationOnce(() => { throw new Error('tty unavailable'); });
-        mockExecSync.mockImplementationOnce(() => { throw new Error('tput unavailable'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('tty unavailable'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('tput unavailable'); });
 
         expect(canDetectTerminalWidth()).toBe(false);
     });
@@ -219,27 +217,27 @@ describe('terminal utils', () => {
         process.env.CCSTATUSLINE_WIDTH = '220';
 
         expect(getTerminalWidth()).toBe(220);
-        expect(mockExecSync.mock.calls.length).toBe(0);
+        expect(mockExecFileSync.mock.calls.length).toBe(0);
     });
 
     it('ignores a non-positive CCSTATUSLINE_WIDTH and falls back to probing', () => {
         pinPosixPlatform();
         process.env.CCSTATUSLINE_WIDTH = '0';
 
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return 'ttys001\n';
             }
 
-            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
-                return '160\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                return '24 160\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBe(160);
@@ -249,20 +247,20 @@ describe('terminal utils', () => {
         pinPosixPlatform();
         process.env.CCSTATUSLINE_WIDTH = 'wide';
 
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return 'ttys001\n';
             }
 
-            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
-                return '160\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                return '24 160\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBe(160);
@@ -274,7 +272,7 @@ describe('terminal utils', () => {
 
         expect(getTerminalWidth()).toBe(180);
         expect(canDetectTerminalWidth()).toBe(true);
-        expect(mockExecSync.mock.calls.length).toBe(0);
+        expect(mockExecFileSync.mock.calls.length).toBe(0);
     });
 
     it('disables width detection on Windows', () => {
@@ -282,33 +280,33 @@ describe('terminal utils', () => {
 
         expect(getTerminalWidth()).toBeNull();
         expect(canDetectTerminalWidth()).toBe(false);
-        expect(mockExecSync.mock.calls.length).toBe(0);
+        expect(mockExecFileSync.mock.calls.length).toBe(0);
     });
 
     it('probes only once across repeated calls when a width is found', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementation((command: string) => {
-            if (command === `ps -o ppid= -p ${process.pid}`) {
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
                 return '1234\n';
             }
 
-            if (command === 'ps -o tty= -p 1234') {
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
                 return 'ttys001\n';
             }
 
-            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
-                return '120\n';
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                return '24 120\n';
             }
 
-            throw new Error(`Unexpected command: ${command}`);
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
         });
 
         expect(getTerminalWidth()).toBe(120);
         expect(getTerminalWidth()).toBe(120);
         expect(canDetectTerminalWidth()).toBe(true);
 
-        const ppidProbes = mockExecSync.mock.calls.filter(
-            call => typeof call[0] === 'string' && call[0].startsWith('ps -o ppid=')
+        const ppidProbes = mockExecFileSync.mock.calls.filter(
+            call => call[0] === 'ps' && Array.isArray(call[1]) && (call[1])[1] === 'ppid='
         );
         expect(ppidProbes).toHaveLength(1);
     });
@@ -318,7 +316,7 @@ describe('terminal utils', () => {
     // getTerminalWidth()`, so a memo that does not cache null re-probes forever.
     it('probes only once when NO tty is found (null is memoized)', () => {
         pinPosixPlatform();
-        mockExecSync.mockImplementation(() => {
+        mockExecFileSync.mockImplementation(() => {
             throw new Error('no tty anywhere');
         });
 
@@ -327,8 +325,8 @@ describe('terminal utils', () => {
         expect(getTerminalWidth()).toBeNull();
         expect(canDetectTerminalWidth()).toBe(false);
 
-        const ppidProbes = mockExecSync.mock.calls.filter(
-            call => typeof call[0] === 'string' && call[0].startsWith('ps -o ppid=')
+        const ppidProbes = mockExecFileSync.mock.calls.filter(
+            call => call[0] === 'ps' && Array.isArray(call[1]) && (call[1])[1] === 'ppid='
         );
         expect(ppidProbes).toHaveLength(1);
     });

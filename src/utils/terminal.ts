@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -78,7 +78,7 @@ function probeTerminalWidth(): number | null {
 
     // Fallback: try tput cols which might work in some environments
     try {
-        const width = execSync('tput cols 2>/dev/null', {
+        const width = execFileSync('tput', ['cols'], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             windowsHide: true
@@ -103,10 +103,9 @@ function parsePositiveInteger(value: string): number | null {
 
 function getParentProcessId(pid: number): number | null {
     try {
-        const parentPidOutput = execSync(`ps -o ppid= -p ${pid}`, {
+        const parentPidOutput = execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh',
             windowsHide: true
         }).trim();
 
@@ -118,10 +117,9 @@ function getParentProcessId(pid: number): number | null {
 
 function getTTYForProcess(pid: number): string | null {
     try {
-        const tty = execSync(`ps -o tty= -p ${pid}`, {
+        const tty = execFileSync('ps', ['-o', 'tty=', '-p', String(pid)], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh',
             windowsHide: true
         }).replace(/\s+/g, '');
 
@@ -140,23 +138,25 @@ function getWidthForTTY(tty: string): number | null {
     // when the calling process has no controlling terminal — the case under
     // Claude Code >= 2.1.139, which spawns statusline/hooks without terminal
     // access. `stty -F` / `-f` ask stty to open the device itself (with
-    // O_NOCTTY semantics) and succeed regardless of controlling-tty status.
+    // O_NOCTTY semantics) and succeed regardless of controlling-tty status,
+    // so the legacy redirect form (which also required a shell) is dropped.
+    // The "rows cols" output is parsed here rather than piped through awk:
+    // no shell, one process instead of three.
     const devicePath = `/dev/${tty}`;
-    const attempts = [
-        `stty -F ${devicePath} size`,   // GNU coreutils (Linux)
-        `stty -f ${devicePath} size`,   // BSD stty (macOS, *BSD)
-        `stty size < ${devicePath}`     // legacy fallback
+    const attempts: string[][] = [
+        ['-F', devicePath, 'size'],   // GNU coreutils (Linux)
+        ['-f', devicePath, 'size']    // BSD stty (macOS, *BSD)
     ];
 
-    for (const cmd of attempts) {
+    for (const args of attempts) {
         try {
-            const width = execSync(`${cmd} 2>/dev/null | awk '{print $2}'`, {
+            const output = execFileSync('stty', args, {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
-                shell: '/bin/sh',
                 windowsHide: true
             }).trim();
-            const parsed = parsePositiveInteger(width);
+
+            const parsed = parsePositiveInteger(output.split(/\s+/)[1] ?? '');
             if (parsed !== null) {
                 return parsed;
             }
