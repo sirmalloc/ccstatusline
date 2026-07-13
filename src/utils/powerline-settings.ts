@@ -13,7 +13,7 @@ function resolveEnabledPowerlineTheme(theme: string | undefined): string {
 export function buildEnabledPowerlineSettings(settings: Settings, removeManualSeparators: boolean): Settings {
     const powerlineConfig = settings.powerline;
     const lines = removeManualSeparators
-        ? settings.lines.map(line => line.filter(item => item.type !== 'separator' && item.type !== 'flex-separator'))
+        ? settings.lines.map(line => line.filter(item => item.type !== 'separator'))
         : settings.lines;
 
     return {

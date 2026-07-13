@@ -4,6 +4,7 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -26,8 +27,21 @@ import {
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    MAX_WIDTH_ACTION,
+    applyMaxWidth,
+    getMaxWidthKeybind,
+    getMaxWidthModifier,
+    renderMaxWidthEditor
+} from './shared/max-width';
 import { isMetadataFlagEnabled } from './shared/metadata';
+import {
+    formatSymbolPrefix,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
 
+const DEFAULT_SYMBOL = '⎇';
 const LINK_KEY = 'linkToRepo';
 const LEGACY_LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
@@ -71,6 +85,9 @@ export class GitBranchWidget implements Widget {
             modifiers.push('hide \'no git\'');
         if (isLink)
             modifiers.push('repo link');
+        const maxWidthText = getMaxWidthModifier(item);
+        if (maxWidthText)
+            modifiers.push(maxWidthText);
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
@@ -88,22 +105,23 @@ export class GitBranchWidget implements Widget {
         void settings;
         const hideNoGit = isHideNoGitEnabled(item);
         const isLink = isLinkEnabled(item);
+        const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            const text = item.rawValue ? 'main' : '⎇ main';
+            const text = item.rawValue ? 'main' : `${prefix}main`;
             return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
         }
 
         if (!isInsideGitWorkTree(context)) {
-            return hideNoGit ? null : '⎇ no git';
+            return hideNoGit ? null : `${prefix}no git`;
         }
 
         const branch = this.getGitBranch(context);
         if (!branch) {
-            return hideNoGit ? null : '⎇ no git';
+            return hideNoGit ? null : `${prefix}no git`;
         }
 
-        const displayText = item.rawValue ? branch : `⎇ ${branch}`;
+        const displayText = applyMaxWidth(item.rawValue ? branch : `${prefix}${branch}`, item.maxWidth);
 
         if (isLink) {
             const origin = getRemoteInfo('origin', context);
@@ -125,8 +143,17 @@ export class GitBranchWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
-            { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION }
+            { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION },
+            getMaxWidthKeybind(),
+            getSymbolKeybind()
         ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        if (props.action === MAX_WIDTH_ACTION) {
+            return renderMaxWidthEditor(props);
+        }
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     supportsRawValue(): boolean { return true; }

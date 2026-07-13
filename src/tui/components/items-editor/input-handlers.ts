@@ -338,6 +338,7 @@ export interface HandleNormalInputModeArgs {
     key: InputKey;
     widgets: WidgetItem[];
     selectedIndex: number;
+    canExcludeAlign?: boolean;
     separatorChars: string[];
     onBack: () => void;
     onUpdate: (widgets: WidgetItem[]) => void;
@@ -356,6 +357,7 @@ export function handleNormalInputMode({
     key,
     widgets,
     selectedIndex,
+    canExcludeAlign = false,
     separatorChars,
     onBack,
     onUpdate,
@@ -454,6 +456,19 @@ export function handleNormalInputMode({
                 newWidgets[selectedIndex] = rest;
             } else {
                 newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
+            }
+            onUpdate(newWidgets);
+        }
+    } else if (input === 'x' && widgets.length > 0) {
+        const currentWidget = widgets[selectedIndex];
+        if (canExcludeAlign && currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
+            const newWidgets = [...widgets];
+            if (currentWidget.excludeFromAutoAlign) {
+                const { excludeFromAutoAlign, ...rest } = currentWidget;
+                void excludeFromAutoAlign; // Intentionally unused
+                newWidgets[selectedIndex] = rest;
+            } else {
+                newWidgets[selectedIndex] = { ...currentWidget, excludeFromAutoAlign: true };
             }
             onUpdate(newWidgets);
         }

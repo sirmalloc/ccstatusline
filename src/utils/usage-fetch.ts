@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -33,6 +34,17 @@ const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageUtilization'
 ]);
 
+// Maps each window reset field to the utilization field parsed from the same
+// API bucket. A null bucket (Enterprise accounts have no rate-limit windows,
+// #343) parses to utilization 0 with no resets_at, so once the utilization is
+// cached the missing timestamp is conclusive and refetching cannot produce it.
+const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataField>> = {
+    sessionResetAt: 'sessionUsage',
+    weeklyResetAt: 'weeklyUsage',
+    weeklySonnetResetAt: 'weeklySonnetUsage',
+    weeklyOpusResetAt: 'weeklyOpusUsage'
+};
+
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
@@ -53,8 +65,11 @@ const CachedUsageDataSchema = z.object({
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
     extraUsageUtilization: z.number().nullable().optional(),
+    extraUsageCurrency: z.string().nullable().optional(),
     error: z.string().nullable().optional()
 });
+
+const CachedTokenHashSchema = z.object({ tokenHash: z.string().optional() });
 
 const UsageApiBucketSchema = z.looseObject({
     utilization: z.number().nullable().optional(),
@@ -72,7 +87,8 @@ const UsageApiResponseSchema = z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
         used_credits: z.number().nullable().optional(),
-        utilization: z.number().nullable().optional()
+        utilization: z.number().nullable().optional(),
+        currency: z.string().nullable().optional()
     }).nullable().optional()
 });
 
@@ -115,8 +131,30 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
         extraUsageUtilization: parsed.extraUsageUtilization ?? undefined,
+        extraUsageCurrency: parsed.extraUsageCurrency ?? undefined,
         error: parsedError.success ? parsedError.data : undefined
     };
+}
+
+// One-way fingerprint of the usage token, persisted alongside the cache so a
+// login switch (e.g. enterprise<->personal, a different token) invalidates the
+// cache immediately instead of waiting out the TTL. A truncated SHA-256 is a
+// stable identifier, not the token itself, so it is safe to write to disk.
+function fingerprintUsageToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+function readCachedTokenHash(rawJson: string): string | undefined {
+    return parseJsonWithSchema(rawJson, CachedTokenHashSchema)?.tokenHash;
+}
+
+function tokenHashMatches(cachedHash: string | undefined, currentHash: string | null): boolean {
+    // With no current token we cannot fingerprint-gate, so fall through to the
+    // existing no-token handling rather than discarding an otherwise usable cache.
+    if (currentHash === null) {
+        return true;
+    }
+    return cachedHash === currentHash;
 }
 
 function parseUsageApiResponse(rawJson: string): UsageData | null {
@@ -137,7 +175,8 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
-        extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined
+        extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined,
+        extraUsageCurrency: parsed.extra_usage?.currency ?? undefined
     };
 }
 
@@ -181,7 +220,15 @@ function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean 
         return true;
     }
 
-    return data.extraUsageEnabled === false && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+    const windowSentinel = WINDOW_RESET_FIELD_SENTINELS[field];
+    if (windowSentinel !== undefined && data[windowSentinel] !== undefined) {
+        return true;
+    }
+
+    // Once the API has reported the extra usage state, missing detail fields are
+    // conclusive: accounts without a configured monthly limit never report
+    // monthly_limit/utilization, so refetching cannot produce them (#413).
+    return data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field);
 }
 
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
@@ -191,10 +238,11 @@ function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageD
 function getStaleUsageOrError(
     error: UsageError,
     now: number,
+    currentTokenHash: string | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache();
+    const stale = readStaleUsageCache(currentTokenHash);
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
@@ -359,9 +407,13 @@ export function getUsageToken(): string | null {
         ?? readUsageTokenFromCredentialsFile();
 }
 
-function readStaleUsageCache(): UsageData | null {
+function readStaleUsageCache(currentTokenHash: string | null): UsageData | null {
     try {
-        return parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
+        const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+        if (!tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)) {
+            return null;
+        }
+        return parseCachedUsageData(rawCache);
     } catch {
         return null;
     }
@@ -371,6 +423,14 @@ function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
     try {
         ensureCacheDirExists();
         fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+    } catch {
+        // Ignore lock file errors
+    }
+}
+
+function clearUsageLock(): void {
+    try {
+        fs.rmSync(LOCK_FILE, { force: true });
     } catch {
         // Ignore lock file errors
     }
@@ -538,13 +598,23 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
     }
 
+    // Resolve the token up front (before lock/rate-limit checks so auth
+    // failures are not masked as timeout) and fingerprint it so the file cache
+    // can be invalidated on an account switch: a different token, written by a
+    // logout/login, no longer matches the cached fingerprint.
+    const token = getUsageToken();
+    const currentTokenHash = token ? fingerprintUsageToken(token) : null;
+
     // Check file cache
     try {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         if (fileAge < CACHE_MAX_AGE) {
-            const fileData = parseCachedUsageData(fs.readFileSync(CACHE_FILE, 'utf8'));
-            if (fileData && !fileData.error && hasRequiredUsageFields(fileData, requiredFields)) {
+            const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+            const fileData = parseCachedUsageData(rawCache);
+            if (fileData && !fileData.error
+                && tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)
+                && hasRequiredUsageFields(fileData, requiredFields)) {
                 return cacheUsageData(fileData, now);
             }
         }
@@ -552,10 +622,8 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // File doesn't exist or read error - continue to API call
     }
 
-    // Get token before lock/rate-limit checks so auth failures are not masked as timeout.
-    const token = getUsageToken();
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('no-credentials', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -563,6 +631,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return getStaleUsageOrError(
             activeLock.error,
             now,
+            currentTokenHash,
             Math.max(1, activeLock.blockedUntil - now),
             requiredFields
         );
@@ -576,36 +645,43 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError('rate-limited', now, currentTokenHash, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('api-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify(usageData));
+            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: currentTokenHash ?? undefined }));
         } catch {
             // Ignore cache write errors
+        }
+
+        // Clear the in-flight lock written above only once this response satisfies
+        // the caller's requested fields. Incomplete 200 responses are cached but
+        // still need the short throttle so later renders do not refetch every time.
+        if (hasRequiredUsageFields(usageData, requiredFields)) {
+            clearUsageLock();
         }
 
         return cacheUsageData(usageData, now);
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
     }
 }

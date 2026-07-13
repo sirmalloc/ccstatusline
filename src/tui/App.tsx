@@ -34,6 +34,7 @@ import {
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
 import {
+    getConfigLoadError,
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
@@ -122,7 +123,7 @@ type AppScreen = 'main'
 
 type PinnedVersionMismatchAction = 'update' | 'exit';
 
-interface ConfirmDialogState {
+export interface ConfirmDialogState {
     message: string;
     action: () => Promise<void>;
     cancelScreen?: Exclude<AppScreen, 'confirm'>;
@@ -413,11 +414,38 @@ export function clearInstallMenuSelection(menuSelections: Record<string, number>
     return next;
 }
 
+export function buildConfigLoadWarning(configLoadError: string | null): string | null {
+    if (!configLoadError) {
+        return null;
+    }
+
+    return `⚠ ${configLoadError} — showing defaults; saving here overwrites the file.`;
+}
+
+export function buildInvalidConfigSaveConfirm(
+    configLoadError: string | null,
+    onConfirm: () => void
+): ConfirmDialogState | null {
+    if (!configLoadError) {
+        return null;
+    }
+
+    return {
+        message: `${configLoadError} and is preserved on disk. Saving replaces it with the current configuration. Continue?`,
+        action: () => {
+            onConfirm();
+            return Promise.resolve();
+        },
+        cancelScreen: 'main'
+    };
+}
+
 export const App: React.FC = () => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
+    const [configLoadError, setConfigLoadError] = useState<string | null>(null);
     const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
@@ -459,6 +487,10 @@ export const App: React.FC = () => {
             chalk.level = loadedSettings.colorLevel;
             setSettings(loadedSettings);
             setOriginalSettings(cloneSettings(loadedSettings));
+            // Capture why settings.json was rejected (if at all) so the TUI can warn and
+            // guard saves. Read it here, in the load callback: the module-scoped signal is
+            // reset by any later loadSettings/saveInstallationMetadata call.
+            setConfigLoadError(getConfigLoadError());
         });
         void isInstalled()
             .then(setIsClaudeInstalled)
@@ -509,7 +541,7 @@ export const App: React.FC = () => {
             exit();
         }
         // Global save shortcut
-        if (key.ctrl && input === 's' && settings) {
+        if (key.ctrl && input === 's' && settings && screen !== 'confirm') {
             const installation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings);
             const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
                 ? inspectActiveGlobalCommand({ commandAvailability })
@@ -520,15 +552,41 @@ export const App: React.FC = () => {
                 return;
             }
 
-            void (async () => {
-                await saveSettings(settings);
-                setOriginalSettings(cloneSettings(settings));
-                setHasChanges(false);
-                setFlashMessage({
-                    text: '✓ Configuration saved',
-                    color: 'green'
-                });
-            })();
+            const performSave = () => {
+                void (async () => {
+                    try {
+                        await saveSettings(settings);
+                        setOriginalSettings(cloneSettings(settings));
+                        setHasChanges(false);
+                        // File is valid again after an explicit save → clear the banner + guard.
+                        setConfigLoadError(null);
+                        setFlashMessage({
+                            text: '✓ Configuration saved',
+                            color: 'green'
+                        });
+                    } catch {
+                        setFlashMessage({
+                            text: '✗ Could not save configuration',
+                            color: 'red'
+                        });
+                    }
+                })();
+            };
+
+            const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
+                // The confirm dialog doesn't self-dismiss; its action must navigate away
+                // (matching the other confirm flows in this file). Return to the main menu
+                // before saving so the success flash isn't hidden behind the dialog.
+                setConfirmDialog(null);
+                setScreen('main');
+                performSave();
+            });
+            if (saveGuard) {
+                setConfirmDialog(saveGuard);
+                setScreen('confirm');
+            } else {
+                performSave();
+            }
         }
     });
 
@@ -573,6 +631,10 @@ export const App: React.FC = () => {
                             supportsRefreshInterval,
                             installationMetadata: selection.metadata
                         });
+
+                        // Install re-ran loadSettings internally — re-sync the captured
+                        // config-load error so the banner/guard reflect the file's current state.
+                        setConfigLoadError(getConfigLoadError());
 
                         const installedStatusLineState = await loadClaudeStatusLineState();
                         setIsClaudeInstalled(true);
@@ -673,6 +735,7 @@ export const App: React.FC = () => {
                     };
 
                     await saveInstallationMetadata(installation);
+                    setConfigLoadError(getConfigLoadError());
                     setSettings(prev => prev
                         ? { ...prev, installation }
                         : prev);
@@ -739,6 +802,7 @@ export const App: React.FC = () => {
             };
 
             await saveInstallationMetadata(installation);
+            setConfigLoadError(getConfigLoadError());
             setSettings(prev => prev
                 ? { ...prev, installation }
                 : prev);
@@ -780,6 +844,7 @@ export const App: React.FC = () => {
 
                 try {
                     await uninstallStatusLine();
+                    setConfigLoadError(getConfigLoadError());
                     removedClaudeSettings = true;
 
                     for (const packageManager of selection.packageManagers) {
@@ -907,12 +972,36 @@ export const App: React.FC = () => {
                 });
                 setScreen('confirm');
                 break;
-            case 'save':
-                await saveSettings(settings);
-                setOriginalSettings(cloneSettings(settings)); // Update original after save
-                setHasChanges(false);
-                exit();
+            case 'save': {
+                const saveAndExit = async () => {
+                    try {
+                        await saveSettings(settings);
+                        setOriginalSettings(cloneSettings(settings));
+                        setHasChanges(false);
+                        exit();
+                    } catch {
+                        setFlashMessage({
+                            text: '✗ Could not save configuration',
+                            color: 'red'
+                        });
+                    }
+                };
+
+                // Save & Exit is the second explicit-save route (besides Ctrl+S); guard it
+                // the same way so an invalid settings.json isn't overwritten without consent.
+                const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
+                    setConfirmDialog(null);
+                    setScreen('main');
+                    void saveAndExit();
+                });
+                if (saveGuard) {
+                    setConfirmDialog(saveGuard);
+                    setScreen('confirm');
+                } else {
+                    await saveAndExit();
+                }
                 break;
+            }
             case 'exit':
                 exit();
                 break;
@@ -964,6 +1053,8 @@ export const App: React.FC = () => {
         setScreen('items');
     };
 
+    const configWarning = buildConfigLoadWarning(configLoadError);
+
     return (
         <Box flexDirection='column'>
             <Box marginBottom={1}>
@@ -981,6 +1072,9 @@ export const App: React.FC = () => {
                     </Text>
                 )}
             </Box>
+            {configWarning && (
+                <Text color='red' wrap='wrap'>{configWarning}</Text>
+            )}
             {isCustomConfigPath() && (
                 <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
             )}

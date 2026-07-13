@@ -11,7 +11,10 @@ import {
     getCommandResolutionPaths,
     inspectGlobalCommandResolution
 } from '../global-command-resolution';
-import { getPackageManagerExecutable } from '../package-manager-executable';
+import {
+    getPackageManagerExecutable,
+    getPackageManagerShellOptions
+} from '../package-manager-executable';
 
 function mockExecFileSync(responses: Record<string, string>) {
     return vi.spyOn(childProcess, 'execFileSync').mockImplementation((command, args) => {
@@ -32,7 +35,7 @@ describe('global command resolution', () => {
     });
 
     it('uses where on Windows and treats same-directory shims as one install', () => {
-        mockExecFileSync({
+        const execFileSyncSpy = mockExecFileSync({
             'where ccstatusline': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.cmd\r\nC:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.ps1\r\n',
             'npm.cmd prefix -g': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\r\n'
         });
@@ -44,12 +47,20 @@ describe('global command resolution', () => {
             'C:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.ps1'
         ]);
         expect(resolution.warning).toBeNull();
+        expect(execFileSyncSpy).toHaveBeenCalledWith(
+            'npm.cmd',
+            ['prefix', '-g'],
+            expect.objectContaining({ shell: true })
+        );
     });
 
     it('resolves the Windows npm executable shim for execFile calls', () => {
         expect(getPackageManagerExecutable('npm', 'win32')).toBe('npm.cmd');
         expect(getPackageManagerExecutable('npm', 'linux')).toBe('npm');
         expect(getPackageManagerExecutable('bun', 'win32')).toBe('bun');
+        expect(getPackageManagerShellOptions('npm.cmd', 'win32')).toEqual({ shell: true });
+        expect(getPackageManagerShellOptions('npm', 'linux')).toEqual({});
+        expect(getPackageManagerShellOptions('bun', 'win32')).toEqual({});
     });
 
     it('uses which -a on POSIX/WSL', () => {
@@ -58,6 +69,32 @@ describe('global command resolution', () => {
         expect(getCommandResolutionPaths('ccstatusline', { platform: 'linux' })).toEqual([
             '/home/alice/.bun/bin/ccstatusline'
         ]);
+    });
+
+    it('silences child stderr on best-effort probes so failures cannot leak to the terminal', () => {
+        const execFileSyncSpy = mockExecFileSync({
+            'which -a ccstatusline': '/home/alice/.bun/bin/ccstatusline\n',
+            'bun pm bin -g': '/home/alice/.bun/bin\n'
+        });
+
+        inspectGlobalCommandResolution('bun', { platform: 'linux' });
+
+        expect(execFileSyncSpy).toHaveBeenCalled();
+        for (const call of execFileSyncSpy.mock.calls) {
+            const options = call[2] as { stdio?: string[] };
+            expect(options.stdio).toEqual(['ignore', 'pipe', 'ignore']);
+        }
+    });
+
+    it('treats a probe that throws with stderr output as not found without surfacing an error', () => {
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation(() => {
+            throw new Error('error: No package.json was found for directory "C:\\Users\\alice\\.bun\\install\\global"');
+        });
+
+        const resolution = inspectGlobalCommandResolution('bun', { platform: 'win32' });
+
+        expect(resolution.resolvedPaths).toEqual([]);
+        expect(resolution.expectedBinDir).toBeNull();
     });
 
     it('warns when multiple PATH directories contain ccstatusline', () => {
