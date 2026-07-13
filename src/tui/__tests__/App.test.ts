@@ -1,3 +1,5 @@
+import * as os from 'os';
+import * as path from 'path';
 import {
     describe,
     expect,
@@ -9,6 +11,7 @@ import {
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
+import { getProjectConfigPath } from '../../utils/scope';
 import {
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
@@ -16,7 +19,9 @@ import {
     getConfirmCancelScreen,
     getCurrentInstallation,
     getPathInferredInstallation,
-    getPinnedVersionMismatch
+    getPinnedVersionMismatch,
+    getScopeIndicator,
+    planScopeSwitch
 } from '../App';
 import {
     buildMainMenuItems,
@@ -24,6 +29,7 @@ import {
     getMainMenuSelectionIndex
 } from '../components/MainMenu';
 import { buildManageInstallationItems } from '../components/ManageInstallationMenu';
+import { getScopeSwitchMenuItems } from '../components/ScopeSwitchMenu';
 
 function getMenuValues(
     isClaudeInstalled: boolean,
@@ -286,5 +292,88 @@ describe('Invalid-config TUI guards', () => {
             .toContain('settings.json is not valid JSON');
         expect(buildInvalidConfigSaveConfirm('settings.json is not in a valid format', vi.fn())?.message)
             .toContain('not in a valid format');
+    });
+});
+
+describe('Scope indicator', () => {
+    it('shows global mode with the switch hint', () => {
+        expect(getScopeIndicator({ type: 'global' })).toBe('Mode: Global · ctrl+p to switch');
+    });
+
+    it('shows the ~-abbreviated resolved config path when the root is under the home dir', () => {
+        const root = path.join(os.homedir(), 'some', 'project');
+        const expectedConfigPath = path.join('~', 'some', 'project', '.claude', 'ccstatusline.json');
+        expect(getScopeIndicator({ type: 'project', root }))
+            .toBe(`Mode: Project (${expectedConfigPath}) · ctrl+p to switch`);
+    });
+
+    it('shows the raw resolved config path when the root is outside the home dir', () => {
+        const outsideRoot = path.join(path.parse(os.homedir()).root, 'outside-of-home', 'project');
+        expect(outsideRoot.startsWith(os.homedir())).toBe(false);
+        expect(getScopeIndicator({ type: 'project', root: outsideRoot }))
+            .toBe(`Mode: Project (${getProjectConfigPath(outsideRoot)}) · ctrl+p to switch`);
+    });
+
+    it('returns null for custom scope so the Config path line renders instead', () => {
+        expect(getScopeIndicator({ type: 'custom' })).toBeNull();
+    });
+});
+
+describe('Scope switch planning', () => {
+    it('blocks when switching is unavailable (custom scope)', () => {
+        expect(planScopeSwitch({
+            switchingAvailable: false,
+            hasChanges: false,
+            enteringProject: true,
+            projectConfigExists: false
+        })).toBe('blocked');
+    });
+
+    it('asks about unsaved changes first', () => {
+        expect(planScopeSwitch({
+            switchingAvailable: true,
+            hasChanges: true,
+            enteringProject: true,
+            projectConfigExists: false
+        })).toBe('confirm-unsaved');
+    });
+
+    it('offers seeding when entering a project without a config', () => {
+        expect(planScopeSwitch({
+            switchingAvailable: true,
+            hasChanges: false,
+            enteringProject: true,
+            projectConfigExists: false
+        })).toBe('offer-seed');
+    });
+
+    it('switches directly into an existing project config', () => {
+        expect(planScopeSwitch({
+            switchingAvailable: true,
+            hasChanges: false,
+            enteringProject: true,
+            projectConfigExists: true
+        })).toBe('switch');
+    });
+
+    it('switches directly back to global', () => {
+        expect(planScopeSwitch({
+            switchingAvailable: true,
+            hasChanges: false,
+            enteringProject: false,
+            projectConfigExists: false
+        })).toBe('switch');
+    });
+});
+
+describe('Scope switch menu items', () => {
+    it('offers save/discard/cancel for unsaved changes', () => {
+        expect(getScopeSwitchMenuItems('unsaved').map(item => item.value))
+            .toEqual(['save', 'discard', 'cancel']);
+    });
+
+    it('offers copy/defaults/cancel for an empty project', () => {
+        expect(getScopeSwitchMenuItems('seed').map(item => item.value))
+            .toEqual(['copy', 'defaults', 'cancel']);
     });
 });
