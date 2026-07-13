@@ -10,7 +10,8 @@ import {
 
 import {
     canDetectTerminalWidth,
-    getTerminalWidth
+    getTerminalWidth,
+    resetTerminalWidthCache
 } from '../terminal';
 
 vi.mock('child_process', () => ({
@@ -43,6 +44,10 @@ describe('terminal utils', () => {
         vi.clearAllMocks();
         vi.restoreAllMocks();
         delete process.env.CCSTATUSLINE_WIDTH;
+    });
+
+    beforeEach(() => {
+        resetTerminalWidthCache();
     });
 
     afterEach(() => {
@@ -278,5 +283,65 @@ describe('terminal utils', () => {
         expect(getTerminalWidth()).toBeNull();
         expect(canDetectTerminalWidth()).toBe(false);
         expect(mockExecSync.mock.calls.length).toBe(0);
+    });
+
+    it('probes only once across repeated calls when a width is found', () => {
+        pinPosixPlatform();
+        mockExecSync.mockImplementation((command: string) => {
+            if (command === `ps -o ppid= -p ${process.pid}`) {
+                return '1234\n';
+            }
+
+            if (command === 'ps -o tty= -p 1234') {
+                return 'ttys001\n';
+            }
+
+            if (command === `stty -F /dev/ttys001 size 2>/dev/null | awk '{print $2}'`) {
+                return '120\n';
+            }
+
+            throw new Error(`Unexpected command: ${command}`);
+        });
+
+        expect(getTerminalWidth()).toBe(120);
+        expect(getTerminalWidth()).toBe(120);
+        expect(canDetectTerminalWidth()).toBe(true);
+
+        const ppidProbes = mockExecSync.mock.calls.filter(
+            call => typeof call[0] === 'string' && call[0].startsWith('ps -o ppid=')
+        );
+        expect(ppidProbes).toHaveLength(1);
+    });
+
+    // Regression test for the 113-spawn bug: Claude Code spawns the statusline with
+    // no TTY, so the probe returns null. Callers use `context.terminalWidth ??
+    // getTerminalWidth()`, so a memo that does not cache null re-probes forever.
+    it('probes only once when NO tty is found (null is memoized)', () => {
+        pinPosixPlatform();
+        mockExecSync.mockImplementation(() => {
+            throw new Error('no tty anywhere');
+        });
+
+        expect(getTerminalWidth()).toBeNull();
+        expect(getTerminalWidth()).toBeNull();
+        expect(getTerminalWidth()).toBeNull();
+        expect(canDetectTerminalWidth()).toBe(false);
+
+        const ppidProbes = mockExecSync.mock.calls.filter(
+            call => typeof call[0] === 'string' && call[0].startsWith('ps -o ppid=')
+        );
+        expect(ppidProbes).toHaveLength(1);
+    });
+
+    it('resetTerminalWidthCache forces a re-probe', () => {
+        pinPosixPlatform();
+        process.env.CCSTATUSLINE_WIDTH = '150';
+        expect(getTerminalWidth()).toBe(150);
+
+        process.env.CCSTATUSLINE_WIDTH = '175';
+        expect(getTerminalWidth()).toBe(150); // memoized, not re-read
+
+        resetTerminalWidthCache();
+        expect(getTerminalWidth()).toBe(175);
     });
 });

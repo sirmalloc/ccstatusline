@@ -168,12 +168,32 @@ function getWidthForTTY(tty: string): number | null {
     return null;
 }
 
+// Memoized probe result. `hasProbed` is a separate flag rather than a
+// `null`-check on `cachedWidth`, because `null` (no TTY found) is a real,
+// cacheable answer -- and the common one: Claude Code spawns the statusline
+// with no controlling terminal. Callers do `context.terminalWidth ??
+// getTerminalWidth()`, so treating `null` as "not yet probed" would re-run the
+// full ancestor walk on every line of every render.
+let hasProbed = false;
+let cachedWidth: number | null = null;
+
+/** Clear the memoized width. For tests, and for the TUI to re-probe after a resize. */
+export function resetTerminalWidthCache(): void {
+    hasProbed = false;
+    cachedWidth = null;
+}
+
 // Get terminal width
 export function getTerminalWidth(): number | null {
-    return probeTerminalWidth();
+    if (!hasProbed) {
+        cachedWidth = probeTerminalWidth();
+        hasProbed = true;
+    }
+
+    return cachedWidth;
 }
 
 // Check if terminal width detection is available
 export function canDetectTerminalWidth(): boolean {
-    return probeTerminalWidth() !== null;
+    return getTerminalWidth() !== null;
 }
