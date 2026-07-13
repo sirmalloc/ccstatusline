@@ -69,6 +69,12 @@ export const SettingsSchema = z.object({
     overrideForegroundColor: z.string().optional(),
     globalBold: z.boolean().default(false),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
+    // How long a probed terminal width is reused, in seconds. The probe is the
+    // most expensive thing a render does, so the result is shared across renders
+    // and sessions via ~/.cache/ccstatusline/terminal-width.json.
+    // NOTE: 0 disables the cache (always probe). This deliberately differs from
+    // gitCacheTtlSeconds above, where 0 means "never expire".
+    terminalWidthCacheTtlSeconds: z.number().min(0).max(300).default(5),
     minimalistMode: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,

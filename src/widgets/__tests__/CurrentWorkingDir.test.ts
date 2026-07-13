@@ -42,6 +42,7 @@ describe('CurrentWorkingDirWidget', () => {
         inheritSeparatorColors: false,
         globalBold: false,
         gitCacheTtlSeconds: 5,
+        terminalWidthCacheTtlSeconds: 5,
         minimalistMode: false,
         powerline: {
             enabled: false,

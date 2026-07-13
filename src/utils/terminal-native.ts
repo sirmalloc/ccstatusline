@@ -26,7 +26,11 @@ const defaultDeps: NativeProbeDeps = {
         const columns = stream.columns;
         return typeof columns === 'number' && columns > 0 ? columns : null;
     },
-    platform: process.platform
+    // Read at call time, not module-load time: tests pin process.platform per
+    // case, and a snapshot taken at import would ignore the pin.
+    get platform(): string {
+        return process.platform;
+    }
 };
 
 /**

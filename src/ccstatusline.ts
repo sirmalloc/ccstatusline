@@ -167,10 +167,14 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration,
         skillsMetrics,
         compactionData,
-        terminalWidth: getTerminalWidth(),
+        terminalWidth: getTerminalWidth({
+            sessionId: data.session_id,
+            ttlSeconds: settings.terminalWidthCacheTtlSeconds
+        }),
         isPreview: false,
         minimalist: settings.minimalistMode,
-        gitCacheTtlSeconds: settings.gitCacheTtlSeconds
+        gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
+        terminalWidthCacheTtlSeconds: settings.terminalWidthCacheTtlSeconds
     };
 
     // Always pre-render all widgets once (for efficiency)

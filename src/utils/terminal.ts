@@ -2,6 +2,12 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { probeWidthNative } from './terminal-native';
+import {
+    readCachedWidth,
+    writeCachedWidth
+} from './terminal-width-cache';
+
 // Get package version
 // __PACKAGE_VERSION__ will be replaced at build time
 const PACKAGE_VERSION = '__PACKAGE_VERSION__';
@@ -51,6 +57,13 @@ function probeTerminalWidth(): number | null {
     // This avoids Unix fallback command behavior (e.g. 2>/dev/null) on Windows.
     if (process.platform === 'win32') {
         return null;
+    }
+
+    // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Returns null on
+    // other platforms and falls through to the portable ps/stty/tput walk below.
+    const nativeWidth = probeWidthNative();
+    if (nativeWidth !== null) {
+        return nativeWidth;
     }
 
     // Claude Code can spawn ccstatusline with piped stdio, leaving the immediate
@@ -183,11 +196,39 @@ export function resetTerminalWidthCache(): void {
     cachedWidth = null;
 }
 
-// Get terminal width
-export function getTerminalWidth(): number | null {
-    if (!hasProbed) {
-        cachedWidth = probeTerminalWidth();
-        hasProbed = true;
+export interface TerminalWidthOptions {
+    sessionId?: string;
+    ttlSeconds?: number;
+}
+
+// Get terminal width.
+//
+// Callers that pass no options (renderer.ts, widgets/TerminalWidth.ts) read the
+// in-process memo, which the entry point has already populated. Only the entry
+// point supplies a session, so only it consults or writes the shared L2 cache.
+export function getTerminalWidth(options?: TerminalWidthOptions): number | null {
+    if (hasProbed) {
+        return cachedWidth;
+    }
+
+    const sessionId = options?.sessionId;
+    const ttlSeconds = options?.ttlSeconds ?? 0;
+
+    // L2: another process in this session may have already paid for the probe.
+    if (sessionId) {
+        const cached = readCachedWidth(sessionId, ttlSeconds);
+        if (cached) {
+            cachedWidth = cached.width;
+            hasProbed = true;
+            return cachedWidth;
+        }
+    }
+
+    cachedWidth = probeTerminalWidth();
+    hasProbed = true;
+
+    if (sessionId && ttlSeconds > 0) {
+        writeCachedWidth(sessionId, cachedWidth);
     }
 
     return cachedWidth;
