@@ -28,6 +28,7 @@ import {
     isInstalled,
     isKnownCommand,
     loadClaudeSettings,
+    loadClaudeSettingsSync,
     saveClaudeSettings,
     setRefreshInterval,
     uninstallStatusLine
@@ -810,5 +811,179 @@ describe('getVoiceConfig', () => {
             writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
             expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
         });
+    });
+});
+
+describe('claude-settings target routing', () => {
+    let targetDir = '';
+    let targetPath = '';
+
+    beforeEach(() => {
+        targetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-target-'));
+        targetPath = path.join(targetDir, 'settings.local.json');
+    });
+
+    afterEach(() => {
+        fs.rmSync(targetDir, { recursive: true, force: true });
+    });
+
+    it('saveClaudeSettings writes to an explicit targetPath and leaves the default file alone', async () => {
+        await saveClaudeSettings({ statusLine: { type: 'command', command: 'x', padding: 0 } }, targetPath);
+
+        expect(fs.existsSync(targetPath)).toBe(true);
+        const written = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as { statusLine?: { command?: string } };
+        expect(written.statusLine?.command).toBe('x');
+        expect(fs.existsSync(getClaudeSettingsPath())).toBe(false);
+    });
+
+    it('loadClaudeSettings reads from an explicit targetPath', async () => {
+        fs.writeFileSync(targetPath, JSON.stringify({ statusLine: { type: 'command', command: 'y', padding: 0 } }), 'utf-8');
+
+        const loaded = await loadClaudeSettings({ logErrors: false, targetPath });
+        expect(loaded.statusLine?.command).toBe('y');
+    });
+
+    it('loadClaudeSettingsSync reads from an explicit targetPath', () => {
+        fs.writeFileSync(targetPath, JSON.stringify({ effortLevel: 'high' }), 'utf-8');
+
+        const loaded = loadClaudeSettingsSync({ logErrors: false, targetPath });
+        expect(loaded).toEqual({ effortLevel: 'high' });
+    });
+
+    it('saveClaudeSettings backs up the target file, not the default file', async () => {
+        fs.writeFileSync(targetPath, JSON.stringify({ old: true }), 'utf-8');
+
+        await saveClaudeSettings({}, targetPath);
+
+        expect(fs.existsSync(`${targetPath}.bak`)).toBe(true);
+        expect(fs.existsSync(`${getClaudeSettingsPath()}.bak`)).toBe(false);
+    });
+
+    it('isInstalled and getExistingStatusLine read the explicit target', async () => {
+        fs.writeFileSync(targetPath, JSON.stringify({ statusLine: { type: 'command', command: 'bunx -y ccstatusline@latest', padding: 0 } }), 'utf-8');
+
+        expect(await isInstalled({ targetPath })).toBe(true);
+        expect(await getExistingStatusLine({ targetPath })).toBe('bunx -y ccstatusline@latest');
+        expect(await isInstalled()).toBe(false);
+    });
+
+    it('get/setRefreshInterval operate on the explicit target', async () => {
+        fs.writeFileSync(targetPath, JSON.stringify({ statusLine: { type: 'command', command: 'bunx -y ccstatusline@latest', padding: 0 } }), 'utf-8');
+
+        await setRefreshInterval(7, { targetPath });
+        expect(await getRefreshInterval({ targetPath })).toBe(7);
+        expect(await getRefreshInterval()).toBeNull();
+    });
+
+    it('installStatusLine writes statusLine + hooks to the target and preserves unrelated keys', async () => {
+        fs.writeFileSync(targetPath, JSON.stringify({
+            sandbox: { enabled: true },
+            permissions: { allow: ['Bash'] }
+        }), 'utf-8');
+
+        await installStatusLine({
+            commandMode: 'auto-bunx',
+            supportsRefreshInterval: false,
+            targetPath
+        });
+
+        const written = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as {
+            statusLine?: { command?: string };
+            sandbox?: unknown;
+            permissions?: unknown;
+        };
+        expect(written.statusLine?.command).toContain('ccstatusline');
+        expect(written.sandbox).toEqual({ enabled: true });
+        expect(written.permissions).toEqual({ allow: ['Bash'] });
+        expect(fs.existsSync(getClaudeSettingsPath())).toBe(false);
+    });
+
+    it('installStatusLine writes managed hooks to the explicit target, not the default file', async () => {
+        const configPath = config.getConfigPath();
+        fs.writeFileSync(configPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        }, null, 2), 'utf-8');
+
+        await installStatusLine({
+            commandMode: 'auto-bunx',
+            supportsRefreshInterval: false,
+            targetPath
+        });
+
+        const installedCommand = `${CCSTATUSLINE_COMMANDS.BUNX} --config ${configPath}`;
+        const written = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as {
+            statusLine?: { command?: string };
+            hooks?: Record<string, { _tag?: string; matcher?: string; hooks?: { type: string; command: string }[] }[]>;
+        };
+        expect(written.statusLine?.command).toBe(installedCommand);
+
+        const hooks = written.hooks ?? {};
+        expect(hooks.PreToolUse).toEqual([
+            {
+                _tag: 'ccstatusline-managed',
+                matcher: 'Skill',
+                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+            }
+        ]);
+        expect(hooks.UserPromptSubmit).toEqual([
+            {
+                _tag: 'ccstatusline-managed',
+                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+            }
+        ]);
+        expect(fs.existsSync(getClaudeSettingsPath())).toBe(false);
+    });
+
+    it('uninstallStatusLine removes statusLine from the target and preserves unrelated keys', async () => {
+        fs.writeFileSync(targetPath, JSON.stringify({
+            statusLine: { type: 'command', command: 'bunx -y ccstatusline@latest', padding: 0 },
+            sandbox: { enabled: true }
+        }), 'utf-8');
+
+        await uninstallStatusLine({ targetPath });
+
+        const written = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as {
+            statusLine?: unknown;
+            sandbox?: unknown;
+        };
+        expect(written.statusLine).toBeUndefined();
+        expect(written.sandbox).toEqual({ enabled: true });
+    });
+
+    it('uninstallStatusLine removes managed hooks from the explicit target only, leaving the default file untouched', async () => {
+        const seededShape = {
+            statusLine: { type: 'command', command: CCSTATUSLINE_COMMANDS.NPM, padding: 0 },
+            hooks: {
+                PreToolUse: [
+                    {
+                        _tag: 'ccstatusline-managed',
+                        matcher: 'Skill',
+                        hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.NPM} --hook` }]
+                    }
+                ]
+            },
+            sandbox: { enabled: true }
+        };
+        fs.writeFileSync(targetPath, JSON.stringify(seededShape), 'utf-8');
+        writeRawClaudeSettings(JSON.stringify(seededShape));
+
+        await uninstallStatusLine({ targetPath });
+
+        const updatedTarget = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as {
+            statusLine?: unknown;
+            hooks?: Record<string, unknown[]>;
+            sandbox?: unknown;
+        };
+        expect(updatedTarget.statusLine).toBeUndefined();
+        expect(updatedTarget.hooks).toBeUndefined();
+        expect(updatedTarget.sandbox).toEqual({ enabled: true });
+
+        const updatedDefault = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as {
+            statusLine?: { command?: string };
+            hooks?: Record<string, unknown[]>;
+        };
+        expect(updatedDefault.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
+        expect(updatedDefault.hooks).toEqual(seededShape.hooks);
     });
 });

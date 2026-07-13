@@ -14,6 +14,7 @@ import {
     DEFAULT_SETTINGS,
     SettingsSchema
 } from '../../types/Settings';
+import { getClaudeSettingsPath } from '../claude-settings';
 import {
     removeManagedHooks,
     syncWidgetHooks
@@ -22,7 +23,7 @@ import {
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let testClaudeConfigDir = '';
 
-function getClaudeSettingsPath(): string {
+function getLocalClaudeSettingsPath(): string {
     return path.join(testClaudeConfigDir, 'settings.json');
 }
 
@@ -47,7 +48,7 @@ describe('syncWidgetHooks', () => {
     });
 
     it('removes managed hooks and persists cleanup when status line is unset', async () => {
-        const settingsPath = getClaudeSettingsPath();
+        const settingsPath = getLocalClaudeSettingsPath();
         fs.writeFileSync(settingsPath, JSON.stringify({
             hooks: {
                 PreToolUse: [
@@ -84,7 +85,7 @@ describe('syncWidgetHooks', () => {
     });
 
     it('heals legacy untagged ccstatusline hooks instead of leaving duplicates', async () => {
-        const settingsPath = getClaudeSettingsPath();
+        const settingsPath = getLocalClaudeSettingsPath();
         const command = '/Users/test/.bun/bin/ccstatusline';
         fs.writeFileSync(settingsPath, JSON.stringify({
             statusLine: { type: 'command', command },
@@ -132,7 +133,7 @@ describe('syncWidgetHooks', () => {
     });
 
     it('preserves other commands in mixed legacy hook entries while syncing', async () => {
-        const settingsPath = getClaudeSettingsPath();
+        const settingsPath = getLocalClaudeSettingsPath();
         const command = '/Users/test/.bun/bin/ccstatusline';
         fs.writeFileSync(settingsPath, JSON.stringify({
             statusLine: { type: 'command', command },
@@ -176,7 +177,7 @@ describe('syncWidgetHooks', () => {
     });
 
     it('preserves other commands in mixed legacy hook entries while removing managed hooks', async () => {
-        const settingsPath = getClaudeSettingsPath();
+        const settingsPath = getLocalClaudeSettingsPath();
         fs.writeFileSync(settingsPath, JSON.stringify({
             hooks: {
                 PreToolUse: [
@@ -214,7 +215,7 @@ describe('syncWidgetHooks', () => {
     });
 
     it('is idempotent — repeated syncs heal legacy hooks without accumulating', async () => {
-        const settingsPath = getClaudeSettingsPath();
+        const settingsPath = getLocalClaudeSettingsPath();
         const command = '/Users/test/.bun/bin/ccstatusline';
         // Seed a legacy untagged hook so the first sync exercises the heal (regex) path,
         // not just the tagged-entry path.
@@ -243,5 +244,76 @@ describe('syncWidgetHooks', () => {
         const saved = JSON.parse(afterSecond) as { hooks?: Record<string, unknown[]> };
         expect(saved.hooks?.PreToolUse).toHaveLength(1);
         expect(saved.hooks?.UserPromptSubmit).toHaveLength(1);
+    });
+});
+
+describe('hooks target routing', () => {
+    let previousConfigDir: string | undefined;
+    let claudeDir = '';
+    let targetDir = '';
+    let targetPath = '';
+
+    beforeEach(() => {
+        claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-hooks-claude-'));
+        previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_CONFIG_DIR = claudeDir;
+        targetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-hooks-target-'));
+        targetPath = path.join(targetDir, 'settings.local.json');
+    });
+
+    afterEach(() => {
+        if (previousConfigDir === undefined) {
+            delete process.env.CLAUDE_CONFIG_DIR;
+        } else {
+            process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+        }
+        fs.rmSync(claudeDir, { recursive: true, force: true });
+        fs.rmSync(targetDir, { recursive: true, force: true });
+    });
+
+    it('removeManagedHooks strips tagged entries from the explicit target only', async () => {
+        const tagged = {
+            hooks: {
+                PostToolUse: [{
+                    _tag: 'ccstatusline-managed',
+                    hooks: [{ type: 'command', command: 'bunx -y ccstatusline@latest --hook' }]
+                }]
+            },
+            sandbox: { enabled: true }
+        };
+        fs.writeFileSync(targetPath, JSON.stringify(tagged), 'utf-8');
+        fs.writeFileSync(getClaudeSettingsPath(), JSON.stringify(tagged), 'utf-8');
+
+        await removeManagedHooks({ targetPath });
+
+        const target = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as { hooks?: unknown; sandbox?: unknown };
+        expect(target.hooks).toBeUndefined();
+        expect(target.sandbox).toEqual({ enabled: true });
+
+        const globalFile = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { hooks?: unknown };
+        expect(globalFile.hooks).toBeDefined();
+    });
+
+    it('syncWidgetHooks with no hook widgets strips managed hooks in the explicit target only', async () => {
+        const tagged = {
+            statusLine: { type: 'command', command: 'bunx -y ccstatusline@latest', padding: 0 },
+            hooks: {
+                PostToolUse: [{
+                    _tag: 'ccstatusline-managed',
+                    hooks: [{ type: 'command', command: 'bunx -y ccstatusline@latest --hook' }]
+                }]
+            }
+        };
+        fs.writeFileSync(targetPath, JSON.stringify(tagged), 'utf-8');
+        fs.writeFileSync(getClaudeSettingsPath(), JSON.stringify(tagged), 'utf-8');
+
+        await syncWidgetHooks(DEFAULT_SETTINGS, { targetPath });
+
+        const target = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as { hooks?: unknown; statusLine?: unknown };
+        expect(target.hooks).toBeUndefined();
+        expect(target.statusLine).toBeDefined();
+
+        const globalFile = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { hooks?: unknown };
+        expect(globalFile.hooks).toBeDefined();
     });
 });

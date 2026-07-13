@@ -13,6 +13,8 @@ export interface WidgetHookDef {
     matcher?: string;
 }
 
+export interface SyncWidgetHooksOptions { targetPath?: string }
+
 const HOOK_TAG = 'ccstatusline-managed';
 
 // Matches ccstatusline hook commands written by any install method
@@ -98,18 +100,18 @@ function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
     return defs;
 }
 
-export async function syncWidgetHooks(settings: Settings): Promise<void> {
+export async function syncWidgetHooks(settings: Settings, options: SyncWidgetHooksOptions = {}): Promise<void> {
     const needed = getActiveHookDefs(settings);
-    const claudeSettings = await loadClaudeSettings({ logErrors: false });
+    const claudeSettings = await loadClaudeSettings({ logErrors: false, targetPath: options.targetPath });
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
 
     // Remove tagged entries and legacy untagged ccstatusline hook commands
     stripManagedHooks(hooks);
 
-    const statusCommand = await getExistingStatusLine();
+    const statusCommand = await getExistingStatusLine({ targetPath: options.targetPath });
     if (!statusCommand) {
         claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-        await saveClaudeSettings(claudeSettings);
+        await saveClaudeSettings(claudeSettings, options.targetPath);
         return;
     }
     const hookCommand = `${statusCommand} --hook`;
@@ -128,15 +130,15 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     }
 
     claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-    await saveClaudeSettings(claudeSettings);
+    await saveClaudeSettings(claudeSettings, options.targetPath);
 }
 
-export async function removeManagedHooks(): Promise<void> {
-    const claudeSettings = await loadClaudeSettings({ logErrors: false });
+export async function removeManagedHooks(options: SyncWidgetHooksOptions = {}): Promise<void> {
+    const claudeSettings = await loadClaudeSettings({ logErrors: false, targetPath: options.targetPath });
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
 
     stripManagedHooks(hooks);
 
     claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
-    await saveClaudeSettings(claudeSettings);
+    await saveClaudeSettings(claudeSettings, options.targetPath);
 }
