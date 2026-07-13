@@ -16,6 +16,7 @@ import {
     isCustomConfigPath,
     saveInstallationMetadata
 } from './config';
+import { getProjectInstallTargetPath } from './scope';
 
 // Re-export for backward compatibility
 export type { ClaudeSettings };
@@ -141,12 +142,16 @@ export function getClaudeSettingsPath(): string {
 }
 
 /**
- * Default Claude-settings file all reads/writes target when no explicit
- * targetPath is given. Becomes scope-aware in the project-mode work
- * (project scope routes to <root>/.claude/settings.local.json).
+ * The Claude-settings file all reads/writes target when no explicit targetPath
+ * is given: the project's settings.local.json in project scope, else the
+ * user-global settings.json (CLAUDE_CONFIG_DIR-aware).
  */
+export function getInstallTargetPath(): string {
+    return getProjectInstallTargetPath() ?? getClaudeSettingsPath();
+}
+
 function defaultTargetPath(): string {
-    return getClaudeSettingsPath();
+    return getInstallTargetPath();
 }
 
 /**
@@ -501,10 +506,13 @@ export async function getRefreshInterval(options: ClaudeTargetOptions = {}): Pro
 }
 
 export async function setRefreshInterval(interval: number | null, options: ClaudeTargetOptions = {}): Promise<void> {
+    // Resolve once so an in-flight scope switch cannot split the read and the
+    // write across different settings files.
+    const targetPath = options.targetPath ?? defaultTargetPath();
     let settings: ClaudeSettings;
 
     try {
-        settings = await loadClaudeSettings({ logErrors: false, targetPath: options.targetPath });
+        settings = await loadClaudeSettings({ logErrors: false, targetPath });
     } catch {
         return;
     }
@@ -519,7 +527,7 @@ export async function setRefreshInterval(interval: number | null, options: Claud
         settings.statusLine.refreshInterval = interval;
     }
 
-    await saveClaudeSettings(settings, options.targetPath);
+    await saveClaudeSettings(settings, targetPath);
 }
 
 const VoiceConfigSchema = z.object({ enabled: z.boolean().optional() });

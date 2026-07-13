@@ -21,6 +21,7 @@ import {
     getClaudeJsonPath,
     getClaudeSettingsPath,
     getExistingStatusLine,
+    getInstallTargetPath,
     getRefreshInterval,
     getVoiceConfig,
     installStatusLine,
@@ -34,6 +35,10 @@ import {
     uninstallStatusLine
 } from '../claude-settings';
 import * as config from '../config';
+import {
+    initScope,
+    setScope
+} from '../scope';
 
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let testClaudeConfigDir = '';
@@ -824,6 +829,7 @@ describe('claude-settings target routing', () => {
     });
 
     afterEach(() => {
+        initScope({});
         fs.rmSync(targetDir, { recursive: true, force: true });
     });
 
@@ -985,5 +991,60 @@ describe('claude-settings target routing', () => {
         };
         expect(updatedDefault.statusLine?.command).toBe(CCSTATUSLINE_COMMANDS.NPM);
         expect(updatedDefault.hooks).toEqual(seededShape.hooks);
+    });
+
+    it('project scope routes default target to the project settings.local.json', async () => {
+        const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-scope-target-'));
+        try {
+            setScope({ type: 'project', root: projectDir });
+
+            expect(getInstallTargetPath()).toBe(path.join(projectDir, '.claude', 'settings.local.json'));
+
+            await saveClaudeSettings({ effortLevel: 'high' });
+            expect(fs.existsSync(path.join(projectDir, '.claude', 'settings.local.json'))).toBe(true);
+            expect(fs.existsSync(getClaudeSettingsPath())).toBe(false);
+
+            const command = buildStatusLineCommand('auto-bunx');
+            expect(command).toContain(`--config`);
+            expect(command).toContain(path.join(projectDir, '.claude', 'ccstatusline.json'));
+            expect(classifyInstallation(command).method).toBe('auto-update');
+        } finally {
+            initScope({});
+            fs.rmSync(projectDir, { recursive: true, force: true });
+        }
+    });
+
+    it('global scope keeps the default target on the user settings.json', () => {
+        initScope({});
+        expect(getInstallTargetPath()).toBe(getClaudeSettingsPath());
+        expect(buildStatusLineCommand('auto-bunx')).not.toContain('--config');
+    });
+
+    it('setRefreshInterval resolves its target once so a mid-flight scope change cannot write across scopes', async () => {
+        const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-refresh-race-'));
+        try {
+            setScope({ type: 'project', root: projectDir });
+            const projectTarget = path.join(projectDir, '.claude', 'settings.local.json');
+            fs.mkdirSync(path.dirname(projectTarget), { recursive: true });
+            fs.writeFileSync(projectTarget, JSON.stringify({
+                statusLine: { type: 'command', command: 'bunx -y ccstatusline@latest', padding: 0 },
+                sandbox: { enabled: true }
+            }), 'utf-8');
+
+            const pending = setRefreshInterval(7);
+            initScope({});
+            await pending;
+
+            const project = JSON.parse(fs.readFileSync(projectTarget, 'utf-8')) as {
+                statusLine?: { refreshInterval?: number };
+                sandbox?: unknown;
+            };
+            expect(project.statusLine?.refreshInterval).toBe(7);
+            expect(project.sandbox).toEqual({ enabled: true });
+            expect(fs.existsSync(getClaudeSettingsPath())).toBe(false);
+        } finally {
+            initScope({});
+            fs.rmSync(projectDir, { recursive: true, force: true });
+        }
     });
 });

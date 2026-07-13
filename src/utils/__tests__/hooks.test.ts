@@ -316,4 +316,12 @@ describe('hooks target routing', () => {
         const globalFile = JSON.parse(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')) as { hooks?: unknown };
         expect(globalFile.hooks).toBeDefined();
     });
+
+    it('syncWidgetHooks with no hook widgets and a nonexistent explicit target does not create the file', async () => {
+        expect(fs.existsSync(targetPath)).toBe(false);
+
+        await syncWidgetHooks(DEFAULT_SETTINGS, { targetPath });
+
+        expect(fs.existsSync(targetPath)).toBe(false);
+    });
 });
