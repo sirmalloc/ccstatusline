@@ -47,6 +47,13 @@
 
 ## 🆕 Recent Updates
 
+### Unreleased - Terminal width probing no longer spawns 100+ processes per render
+
+- **⚡ Zero-subprocess width detection** - On Linux the terminal width is now read from `/proc` and `TIOCGWINSZ` instead of shelling out. A render went from **122 spawned processes to 1** (`node` itself) and from **4.37 CPU-seconds to 1.08** on the benchmark payload. macOS/BSD keep the portable `ps`/`stty`/`tput` walk, now invoked without a `/bin/sh` wrapper.
+- **🎯 Correct width, not just faster** - The old `tput cols` fallback reported its no-TTY default of 80 columns on terminals that were actually 209 wide. The new probe finds the real pty and reports the true width.
+- **♻️ The width is cached** - Claude Code spawns the status line without a TTY, so the probe returned `null`; because callers read it as `context.terminalWidth ?? getTerminalWidth()`, that `null` re-ran the whole ancestor walk **once per configured line, on every render**. The result (including a `null`) is now memoized in-process and shared across renders and sessions via `~/.cache/ccstatusline/terminal-width.json`.
+- **⏱️ `terminalWidthCacheTtlSeconds`** - New setting, default `5`, range 0–300. Controls how long a probed width is reused; resize your terminal and the status line corrects itself within this many seconds. Set to `0` to probe on every render. (Note: unlike `gitCacheTtlSeconds`, where `0` means "never expire", `0` here disables the cache.)
+
 ### v2.2.22 - v2.2.23 - Powerline flex mode, layout controls, composable metrics, and safer config
 
 ![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
