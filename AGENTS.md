@@ -101,6 +101,8 @@ All widgets must implement:
 **Available Widgets:**
 - Model, Version, OutputStyle, VoiceStatus - Claude Code metadata display
 - GitBranch, GitChanges, GitInsertions, GitDeletions, GitWorktree - Git repository status
+- JjBookmarks, JjRevision, JjChanges, JjDescription, JjWorkspace - Jujutsu (jj) repository status
+- AtomicView, AtomicChange, AtomicDescription, AtomicChanges, AtomicInsertions, AtomicDeletions, AtomicRootDir - Atomic VCS status (detects `.atomic` repo; shows configurable `no atomic` fallback). Utilities in src/utils/atomic.ts wrap the `atomic` CLI (`status --short` for repo detection, `diff --stat`, `view list`, `change`) and walk up for `.atomic` to find the repo root
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
 - ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5 with [1m] suffix, 200k for all other models)
 - BlockTimer, SessionClock, SessionCost - Time and cost tracking

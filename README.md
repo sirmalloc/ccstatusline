@@ -47,6 +47,10 @@
 
 ## 🆕 Recent Updates
 
+### Unreleased - Atomic VCS widgets
+
+- **⚛️ Atomic version control support** - Added widgets for the [Atomic](https://atomic.dev) VCS: `Atomic View` (current view/branch), `Atomic Change` (current change hash), `Atomic Description` (change message), `Atomic Changes`/`Atomic Insertions`/`Atomic Deletions` (working-copy diff stats), and `Atomic Root Dir`. Each detects whether the working directory is inside an Atomic repository and shows a configurable `no atomic` message otherwise.
+
 ### v2.2.22 - v2.2.23 - Powerline flex mode, layout controls, composable metrics, and safer config
 
 ![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)

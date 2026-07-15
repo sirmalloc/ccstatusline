@@ -1,0 +1,101 @@
+import { execFileSync } from 'child_process';
+import {
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi
+} from 'vitest';
+
+import type { RenderContext } from '../../types/RenderContext';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
+import { AtomicChangesWidget } from '../AtomicChanges';
+
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+
+const mockExecFileSync = execFileSync as unknown as {
+    mock: { calls: unknown[][] };
+    mockImplementation: (impl: () => never) => void;
+    mockReturnValue: (value: string) => void;
+    mockReturnValueOnce: (value: string) => void;
+};
+
+function render(options: {
+    cwd?: string;
+    hideNoAtomic?: boolean;
+    isPreview?: boolean;
+} = {}) {
+    const widget = new AtomicChangesWidget();
+    const context: RenderContext = {
+        isPreview: options.isPreview,
+        data: options.cwd ? { cwd: options.cwd } : undefined
+    };
+    const item: WidgetItem = {
+        id: 'atomic-changes',
+        type: 'atomic-changes',
+        metadata: options.hideNoAtomic ? { hideNoAtomic: 'true' } : undefined
+    };
+
+    return widget.render(item, context, DEFAULT_SETTINGS);
+}
+
+describe('AtomicChangesWidget', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('should render preview', () => {
+        expect(render({ isPreview: true })).toBe('(+42,-10)');
+    });
+
+    it('should render changes from atomic diff --stat', () => {
+        mockExecFileSync.mockReturnValueOnce('M  a.txt\n');
+        mockExecFileSync.mockReturnValueOnce(' a.txt | 5 +++--\n 1 file changed, 3 insertions(+), 2 deletions(-)');
+
+        expect(render({ cwd: '/tmp/repo' })).toBe('(+3,-2)');
+        expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('atomic');
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['status', '--short']);
+        expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true,
+            cwd: '/tmp/repo'
+        });
+        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('atomic');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
+    });
+
+    it('should render zero counts when repo is clean', () => {
+        mockExecFileSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ cwd: '/tmp/repo' })).toBe('(+0,-0)');
+    });
+
+    it('should render no atomic when not in atomic repo', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not an atomic repo'); });
+
+        expect(render()).toBe('(no atomic)');
+    });
+
+    it('should hide no atomic when configured', () => {
+        mockExecFileSync.mockImplementation(() => { throw new Error('Not an atomic repo'); });
+
+        expect(render({ hideNoAtomic: true })).toBeNull();
+    });
+
+    it('should handle insertions only', () => {
+        mockExecFileSync.mockReturnValueOnce('M  a.txt\n');
+        mockExecFileSync.mockReturnValueOnce(' a.txt | 5 +++++\n 1 file changed, 5 insertions(+), 0 deletions(-)');
+
+        expect(render()).toBe('(+5,-0)');
+    });
+
+    it('should handle deletions only', () => {
+        mockExecFileSync.mockReturnValueOnce('M  a.txt\n');
+        mockExecFileSync.mockReturnValueOnce(' a.txt | 3 ---\n 1 file changed, 0 insertions(+), 3 deletions(-)');
+
+        expect(render()).toBe('(+0,-3)');
+    });
+});
