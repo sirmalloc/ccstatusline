@@ -57,6 +57,8 @@ const CachedUsageDataSchema = z.object({
     sessionResetAt: z.string().nullable().optional(),
     weeklyUsage: z.number().nullable().optional(),
     weeklyResetAt: z.string().nullable().optional(),
+    monthlyUsage: z.number().nullable().optional(),
+    monthlyResetAt: z.string().nullable().optional(),
     weeklySonnetUsage: z.number().nullable().optional(),
     weeklySonnetResetAt: z.string().nullable().optional(),
     weeklyOpusUsage: z.number().nullable().optional(),
@@ -123,6 +125,8 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         sessionResetAt: parsed.sessionResetAt ?? undefined,
         weeklyUsage: parsed.weeklyUsage ?? undefined,
         weeklyResetAt: parsed.weeklyResetAt ?? undefined,
+        monthlyUsage: parsed.monthlyUsage ?? undefined,
+        monthlyResetAt: parsed.monthlyResetAt ?? undefined,
         weeklySonnetUsage: parsed.weeklySonnetUsage ?? undefined,
         weeklySonnetResetAt: parsed.weeklySonnetResetAt ?? undefined,
         weeklyOpusUsage: parsed.weeklyOpusUsage ?? undefined,
@@ -535,7 +539,7 @@ export function isZaiProvider(): boolean {
 
 export function getZaiAuthToken(): string | null {
     const token = process.env[ZAI_AUTH_TOKEN_ENV]?.trim();
-    return token ? token : null;
+    return token ?? null;
 }
 
 const ZaiQuotaLimitSchema = z.looseObject({
@@ -548,11 +552,7 @@ const ZaiQuotaLimitSchema = z.looseObject({
     nextResetTime: z.number().nullable().optional()
 }).nullable().optional();
 
-const ZaiQuotaResponseSchema = z.looseObject({
-    data: z.looseObject({
-        limits: z.array(ZaiQuotaLimitSchema).nullable().optional()
-    }).nullable().optional()
-});
+const ZaiQuotaResponseSchema = z.looseObject({ data: z.looseObject({ limits: z.array(ZaiQuotaLimitSchema).nullable().optional() }).nullable().optional() });
 
 // ZAI returns nextResetTime as epoch milliseconds; UsageData expects ISO strings.
 function isoFromZaiResetTime(epochMs: number | null | undefined): string | undefined {
@@ -566,7 +566,7 @@ function isoFromZaiResetTime(epochMs: number | null | undefined): string | undef
     }
 }
 
-function parseZaiQuotaResponse(rawJson: string): UsageData | null {
+export function parseZaiQuotaResponse(rawJson: string): UsageData | null {
     const parsed = parseJsonWithSchema(rawJson, ZaiQuotaResponseSchema);
     const limits = parsed?.data?.limits;
     if (!limits || limits.length === 0) {
@@ -579,25 +579,32 @@ function parseZaiQuotaResponse(rawJson: string): UsageData | null {
             continue;
         }
         const unit = limit.unit ?? undefined;
-        const number = limit.number ?? undefined;
         const percentage = limit.percentage ?? undefined;
         const resetAt = isoFromZaiResetTime(limit.nextResetTime);
 
         if (limit.type === 'TOKENS_LIMIT') {
             // unit 3 + number 5 => 5-hour token window -> Session Usage.
             if (unit === 3) {
-                if (percentage !== undefined) data.sessionUsage = percentage;
-                if (resetAt !== undefined) data.sessionResetAt = resetAt;
-            }
-            // unit 6 + number 1 => 1-month token window -> Weekly Usage.
-            // (ccstatusline has no monthly widget; the weekly bar is the closest.)
-            else if (unit === 6) {
-                if (percentage !== undefined) data.weeklyUsage = percentage;
-                if (resetAt !== undefined) data.weeklyResetAt = resetAt;
+                if (percentage !== undefined) {
+                    data.sessionUsage = percentage;
+                }
+                if (resetAt !== undefined) {
+                    data.sessionResetAt = resetAt;
+                }
+            } else if (unit === 6) {
+                // unit 6 + number 1 => 1-month token window -> Monthly Usage.
+                if (percentage !== undefined) {
+                    data.monthlyUsage = percentage;
+                }
+                if (resetAt !== undefined) {
+                    data.monthlyResetAt = resetAt;
+                }
             }
         } else if (limit.type === 'TIME_LIMIT') {
             // Monthly MCP / tool quota -> Extra Usage Utilization.
-            if (percentage !== undefined) data.extraUsageUtilization = percentage;
+            if (percentage !== undefined) {
+                data.extraUsageUtilization = percentage;
+            }
             data.extraUsageEnabled = true;
         }
     }
@@ -841,7 +848,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
 
         // Validate we got actual data
-        if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
+        if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined && usageData.monthlyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
             return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
