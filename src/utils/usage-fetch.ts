@@ -501,6 +501,110 @@ const USAGE_API_HOST = 'api.anthropic.com';
 const USAGE_API_PATH = '/api/oauth/usage';
 const USAGE_API_TIMEOUT_MS = 5000;
 
+// --- ZAI / GLM Coding Plan provider ---
+// ccstatusline normally talks to Anthropic's OAuth usage API. When Claude Code
+// runs against a ZAI (z.ai) or ZHIPU (bigmodel) backend via ANTHROPIC_BASE_URL,
+// there is no Anthropic OAuth token, so that path fails. Instead we call ZAI's
+// quota endpoint (the same one the glm-plan-usage plugin uses) and map the
+// response into the same UsageData shape the existing widgets consume.
+const ZAI_BASE_URL_ENV = 'ANTHROPIC_BASE_URL';
+const ZAI_AUTH_TOKEN_ENV = 'ANTHROPIC_AUTH_TOKEN';
+const ZAI_QUOTA_PATH = '/api/monitor/usage/quota/limit';
+const ZAI_HOST_PATTERNS = ['z.ai', 'open.bigmodel.cn', 'dev.bigmodel.cn'];
+
+function getZaiBaseUrl(): string | null {
+    const baseUrl = process.env[ZAI_BASE_URL_ENV]?.trim();
+    if (!baseUrl) {
+        return null;
+    }
+    try {
+        const parsed = new URL(baseUrl);
+        return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+        return null;
+    }
+}
+
+export function isZaiProvider(): boolean {
+    const baseUrl = process.env[ZAI_BASE_URL_ENV]?.trim() ?? '';
+    if (!baseUrl) {
+        return false;
+    }
+    return ZAI_HOST_PATTERNS.some(pattern => baseUrl.includes(pattern));
+}
+
+export function getZaiAuthToken(): string | null {
+    const token = process.env[ZAI_AUTH_TOKEN_ENV]?.trim();
+    return token ? token : null;
+}
+
+const ZaiQuotaLimitSchema = z.looseObject({
+    type: z.string().nullable().optional(),
+    // ZAI encodes the window in (unit, number): unit 3 = hour, unit 6 = month,
+    // unit 5 = MCP/monthly-time. `number` is the count of those units.
+    unit: z.number().nullable().optional(),
+    number: z.number().nullable().optional(),
+    percentage: z.number().nullable().optional(),
+    nextResetTime: z.number().nullable().optional()
+}).nullable().optional();
+
+const ZaiQuotaResponseSchema = z.looseObject({
+    data: z.looseObject({
+        limits: z.array(ZaiQuotaLimitSchema).nullable().optional()
+    }).nullable().optional()
+});
+
+// ZAI returns nextResetTime as epoch milliseconds; UsageData expects ISO strings.
+function isoFromZaiResetTime(epochMs: number | null | undefined): string | undefined {
+    if (epochMs === null || epochMs === undefined || !Number.isFinite(epochMs) || epochMs <= 0) {
+        return undefined;
+    }
+    try {
+        return new Date(epochMs).toISOString();
+    } catch {
+        return undefined;
+    }
+}
+
+function parseZaiQuotaResponse(rawJson: string): UsageData | null {
+    const parsed = parseJsonWithSchema(rawJson, ZaiQuotaResponseSchema);
+    const limits = parsed?.data?.limits;
+    if (!limits || limits.length === 0) {
+        return null;
+    }
+
+    const data: UsageData = {};
+    for (const limit of limits) {
+        if (!limit) {
+            continue;
+        }
+        const unit = limit.unit ?? undefined;
+        const number = limit.number ?? undefined;
+        const percentage = limit.percentage ?? undefined;
+        const resetAt = isoFromZaiResetTime(limit.nextResetTime);
+
+        if (limit.type === 'TOKENS_LIMIT') {
+            // unit 3 + number 5 => 5-hour token window -> Session Usage.
+            if (unit === 3) {
+                if (percentage !== undefined) data.sessionUsage = percentage;
+                if (resetAt !== undefined) data.sessionResetAt = resetAt;
+            }
+            // unit 6 + number 1 => 1-month token window -> Weekly Usage.
+            // (ccstatusline has no monthly widget; the weekly bar is the closest.)
+            else if (unit === 6) {
+                if (percentage !== undefined) data.weeklyUsage = percentage;
+                if (resetAt !== undefined) data.weeklyResetAt = resetAt;
+            }
+        } else if (limit.type === 'TIME_LIMIT') {
+            // Monthly MCP / tool quota -> Extra Usage Utilization.
+            if (percentage !== undefined) data.extraUsageUtilization = percentage;
+            data.extraUsageEnabled = true;
+        }
+    }
+
+    return data;
+}
+
 function getUsageApiProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
     if (proxyUrl === '') {
@@ -583,6 +687,79 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
     });
 }
 
+function getZaiQuotaRequestOptions(token: string): https.RequestOptions | null {
+    const baseUrl = getZaiBaseUrl();
+    if (!baseUrl) {
+        return null;
+    }
+
+    const proxyUrl = getUsageApiProxyUrl();
+
+    try {
+        const parsed = new URL(baseUrl + ZAI_QUOTA_PATH);
+        return {
+            hostname: parsed.hostname,
+            port: parsed.port ? Number(parsed.port) : 443,
+            path: `${parsed.pathname}${parsed.search}`,
+            method: 'GET',
+            headers: {
+                // ZAI expects the raw token (no Bearer prefix).
+                'Authorization': token,
+                'Accept-Language': 'en-US,en',
+                'Content-Type': 'application/json'
+            },
+            timeout: USAGE_API_TIMEOUT_MS,
+            ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
+        };
+    } catch {
+        return null;
+    }
+}
+
+async function fetchFromZaiQuotaApi(token: string): Promise<UsageApiFetchResult> {
+    return new Promise((resolve) => {
+        let settled = false;
+
+        const finish = (value: UsageApiFetchResult) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            resolve(value);
+        };
+
+        const requestOptions = getZaiQuotaRequestOptions(token);
+        if (!requestOptions) {
+            finish({ kind: 'error' });
+            return;
+        }
+
+        const request = https.request(requestOptions, (response) => {
+            let data = '';
+            response.setEncoding('utf8');
+
+            response.on('data', (chunk: string) => {
+                data += chunk;
+            });
+
+            response.on('end', () => {
+                if (response.statusCode === 200 && data) {
+                    finish({ kind: 'success', body: data });
+                    return;
+                }
+                finish({ kind: 'error' });
+            });
+        });
+
+        request.on('error', () => { finish({ kind: 'error' }); });
+        request.on('timeout', () => {
+            request.destroy();
+            finish({ kind: 'error' });
+        });
+        request.end();
+    });
+}
+
 export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promise<UsageData> {
     const now = Math.floor(Date.now() / 1000);
     const requiredFields = options.requiredFields ?? [];
@@ -602,7 +779,12 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     // failures are not masked as timeout) and fingerprint it so the file cache
     // can be invalidated on an account switch: a different token, written by a
     // logout/login, no longer matches the cached fingerprint.
-    const token = getUsageToken();
+    //
+    // For the ZAI/GLM provider there is no OAuth token; the API token comes
+    // from ANTHROPIC_AUTH_TOKEN. Fingerprint that instead so a token rotation
+    // still invalidates the cache.
+    const zaiProvider = isZaiProvider();
+    const token = zaiProvider ? getZaiAuthToken() : getUsageToken();
     const currentTokenHash = token ? fingerprintUsageToken(token) : null;
 
     // Check file cache
@@ -641,7 +823,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
     // Fetch from API using Node's https module
     try {
-        const response = await fetchFromUsageApi(token);
+        const response = zaiProvider ? await fetchFromZaiQuotaApi(token) : await fetchFromUsageApi(token);
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
@@ -652,7 +834,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             return getStaleUsageOrError('api-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
         }
 
-        const usageData = parseUsageApiResponse(response.body);
+        const usageData = zaiProvider ? parseZaiQuotaResponse(response.body) : parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
             return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
