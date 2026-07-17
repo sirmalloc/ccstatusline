@@ -30,3 +30,22 @@ export interface UsageWindowMetrics {
     elapsedPercent: number;
     remainingPercent: number;
 }
+
+export type UsageDataField = Exclude<keyof UsageData, 'error'>;
+
+// Single source of truth for the per-model weekly usage buckets (Sonnet, Opus,
+// ...). Every place that used to hand-list "sonnet, then opus" (the widget
+// registry, the API/cache schemas, the rate-limits extractor) now derives from
+// this array instead, so adding or renaming a model bucket can't desync one of
+// those spots from the others.
+export interface WeeklyModelUsageBucket {
+    widgetType: string;
+    apiBucketKey: string; // key in both the /api/oauth/usage response and the rate_limits hook payload, e.g. "seven_day_sonnet"
+    usageField: UsageDataField;
+    resetField: UsageDataField;
+}
+
+export const WEEKLY_MODEL_USAGE_BUCKETS: readonly WeeklyModelUsageBucket[] = [
+    { widgetType: 'weekly-sonnet-usage', apiBucketKey: 'seven_day_sonnet', usageField: 'weeklySonnetUsage', resetField: 'weeklySonnetResetAt' },
+    { widgetType: 'weekly-opus-usage', apiBucketKey: 'seven_day_opus', usageField: 'weeklyOpusUsage', resetField: 'weeklyOpusResetAt' }
+];

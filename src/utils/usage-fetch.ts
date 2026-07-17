@@ -10,9 +10,13 @@ import { z } from 'zod';
 import { getClaudeConfigDir } from './claude-settings';
 import type {
     UsageData,
+    UsageDataField,
     UsageError
 } from './usage-types';
-import { UsageErrorSchema } from './usage-types';
+import {
+    UsageErrorSchema,
+    WEEKLY_MODEL_USAGE_BUCKETS
+} from './usage-types';
 
 // Cache configuration
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
@@ -23,8 +27,6 @@ const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
-
-type UsageDataField = Exclude<keyof UsageData, 'error'>;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
@@ -38,11 +40,13 @@ const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
 // API bucket. A null bucket (Enterprise accounts have no rate-limit windows,
 // #343) parses to utilization 0 with no resets_at, so once the utilization is
 // cached the missing timestamp is conclusive and refetching cannot produce it.
+// The per-model entries are derived from WEEKLY_MODEL_USAGE_BUCKETS (see
+// usage-types.ts) instead of hand-listed, so this can't drift from the schemas
+// below when a model bucket is added or renamed.
 const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataField>> = {
     sessionResetAt: 'sessionUsage',
     weeklyResetAt: 'weeklyUsage',
-    weeklySonnetResetAt: 'weeklySonnetUsage',
-    weeklyOpusResetAt: 'weeklyOpusUsage'
+    ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.resetField, bucket.usageField]))
 };
 
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
@@ -52,6 +56,13 @@ const UsageLockSchema = z.object({
     error: UsageLockErrorSchema.optional()
 });
 
+// The per-model fields (weeklySonnetUsage, weeklyOpusUsage, ...) are declared
+// by hand here and in UsageApiResponseSchema below because Zod object shapes
+// need statically-known keys to keep field-level type inference for the
+// parse* functions further down. usage-fetch.test.ts's schema-parity test
+// asserts both schemas cover every WEEKLY_MODEL_USAGE_BUCKETS entry, so a
+// bucket added to one but not the other fails a test instead of silently
+// dropping data after a cache round-trip.
 const CachedUsageDataSchema = z.object({
     sessionUsage: z.number().nullable().optional(),
     sessionResetAt: z.string().nullable().optional(),
@@ -78,6 +89,8 @@ const UsageApiBucketSchema = z.looseObject({
 
 type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
 
+// See the comment on CachedUsageDataSchema above re: why these per-model keys
+// are hand-declared rather than generated from WEEKLY_MODEL_USAGE_BUCKETS.
 const UsageApiResponseSchema = z.looseObject({
     five_hour: UsageApiBucketSchema,
     seven_day: UsageApiBucketSchema,
@@ -91,6 +104,13 @@ const UsageApiResponseSchema = z.looseObject({
         currency: z.string().nullable().optional()
     }).nullable().optional()
 });
+
+// Exposed only so usage-fetch.test.ts can assert schema/registry parity (see
+// the comment on CachedUsageDataSchema above) without duplicating the shapes.
+export const __testing = {
+    CachedUsageDataSchema,
+    UsageApiResponseSchema
+};
 
 function getUsageApiBucketUtilization(bucket: UsageApiBucket): number | undefined {
     return bucket === null ? 0 : bucket?.utilization ?? undefined;

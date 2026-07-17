@@ -11,6 +11,9 @@ import {
     it
 } from 'vitest';
 
+import { __testing } from '../usage-fetch';
+import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
+
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
 
@@ -1253,6 +1256,57 @@ describe('fetchUsageData error handling', () => {
             expect(result.requestCount).toBe(0);
         } finally {
             harness.cleanup();
+        }
+    });
+});
+
+// Guards the exact failure mode described in the code review that motivated
+// WEEKLY_MODEL_USAGE_BUCKETS (usage-types.ts): CachedUsageDataSchema and
+// UsageApiResponseSchema are hand-declared (see the comments on them in
+// usage-fetch.ts for why they can't just be generated from the registry) and
+// therefore CAN drift from it silently -- a field present in one schema but
+// missing from the other would parse fine from a live API fetch, then vanish
+// the moment that response round-trips through the on-disk cache. This test
+// makes that drift fail loudly instead.
+describe('WEEKLY_MODEL_USAGE_BUCKETS schema parity', () => {
+    it('declares every registry bucket field in CachedUsageDataSchema', () => {
+        const cachedKeys = new Set(Object.keys(__testing.CachedUsageDataSchema.shape));
+
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            expect(cachedKeys.has(bucket.usageField), `CachedUsageDataSchema is missing "${bucket.usageField}"`).toBe(true);
+            expect(cachedKeys.has(bucket.resetField), `CachedUsageDataSchema is missing "${bucket.resetField}"`).toBe(true);
+        }
+    });
+
+    it('declares every registry bucket\'s API key in UsageApiResponseSchema', () => {
+        const apiKeys = new Set(Object.keys(__testing.UsageApiResponseSchema.shape));
+
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            expect(apiKeys.has(bucket.apiBucketKey), `UsageApiResponseSchema is missing "${bucket.apiBucketKey}"`).toBe(true);
+        }
+    });
+
+    it('round-trips every registry bucket through an API fetch and a cache read', () => {
+        const apiResponse: Record<string, unknown> = {
+            five_hour: { utilization: 10, resets_at: '2026-01-01T00:00:00Z' },
+            seven_day: { utilization: 20, resets_at: '2026-01-08T00:00:00Z' }
+        };
+        for (const [index, bucket] of WEEKLY_MODEL_USAGE_BUCKETS.entries()) {
+            apiResponse[bucket.apiBucketKey] = { utilization: 30 + index, resets_at: `2026-01-0${index + 1}T00:00:00Z` };
+        }
+
+        const fromApi = __testing.UsageApiResponseSchema.parse(apiResponse);
+        const cachePayload: Record<string, unknown> = {};
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            const apiBucket = fromApi[bucket.apiBucketKey] as { utilization?: number; resets_at?: string } | null | undefined;
+            cachePayload[bucket.usageField] = apiBucket?.utilization;
+            cachePayload[bucket.resetField] = apiBucket?.resets_at;
+        }
+
+        const fromCache = __testing.CachedUsageDataSchema.parse(cachePayload);
+
+        for (const [index, bucket] of WEEKLY_MODEL_USAGE_BUCKETS.entries()) {
+            expect(fromCache[bucket.usageField], `"${bucket.usageField}" did not survive the cache round-trip`).toBe(30 + index);
         }
     });
 });
