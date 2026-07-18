@@ -1,11 +1,28 @@
-import type { RenderContext } from '../types/RenderContext';
+import type {
+    CompactionData,
+    RenderContext
+} from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { ZERO_COMPACTION_STATS } from '../utils/compaction';
+import { formatTokens } from '../utils/format-tokens';
+
+import {
+    isMetadataFlagEnabled,
+    toggleMetadataFlag
+} from './shared/metadata';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
 
 const COMPACTION_ICON = '↻';
 const COMPACTION_NERD_FONT_ICON = '\uF021';
@@ -18,6 +35,16 @@ const TOGGLE_HIDE_ZERO_ACTION = 'toggle-hide-zero';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
 const HIDE_ZERO_METADATA_KEY = 'hideZero';
 const NERD_FONT_METADATA_KEY = 'nerdFont';
+const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
+const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
+const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
+const SHOW_RECLAIMED_METADATA_KEY = 'showReclaimed';
+const RECLAIMED_SLOT: SymbolSlot = { id: 'symbolReclaimed', label: 'Reclaimed', defaultSymbol: '↓' };
+const SAMPLE_STATS: CompactionData = Object.freeze({
+    count: 2,
+    byTrigger: Object.freeze({ auto: 1, manual: 1, unknown: 0 }),
+    tokensReclaimed: 120000
+});
 
 function getFormat(item: WidgetItem): CompactionCounterFormat {
     const format = item.metadata?.format;
@@ -75,6 +102,39 @@ function toggleHideZero(item: WidgetItem): WidgetItem {
     };
 }
 
+function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
+    if (tokensReclaimed <= 0) {
+        return '';
+    }
+    const symbol = getSlotSymbol(item, RECLAIMED_SLOT);
+    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed)}` : ` ${formatTokens(tokensReclaimed)}`;
+}
+
+function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
+    const parts: string[] = [];
+    if (byTrigger.auto > 0) {
+        parts.push(`${byTrigger.auto} auto`);
+    }
+    if (byTrigger.manual > 0) {
+        parts.push(`${byTrigger.manual} manual`);
+    }
+    if (byTrigger.unknown > 0) {
+        parts.push(`${byTrigger.unknown} unknown`);
+    }
+    return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+}
+
+function formatStats(data: CompactionData, item: WidgetItem, icon: string): string {
+    let out = formatCount(data.count, getFormat(item), icon);
+    if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
+        out += formatTriggerSuffix(data.byTrigger);
+    }
+    if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
+        out += formatReclaimedSuffix(data.tokensReclaimed, item);
+    }
+    return out;
+}
+
 function toggleNerdFont(item: WidgetItem): WidgetItem {
     if (getFormat(item) !== DEFAULT_FORMAT) {
         return removeNerdFont(item);
@@ -106,7 +166,7 @@ function formatCount(count: number, format: CompactionCounterFormat, icon: strin
  *
  * Claude Code periodically compacts (summarizes) conversation context when it
  * approaches the context window limit. This widget tracks how many times
- * compaction has occurred by detecting drops in used_percentage between renders.
+ * compaction has occurred by counting compact_boundary markers in the transcript.
  *
  * Shows ↻ N by default, including ↻ 0 before compaction occurs. Can be
  * configured to hide when count is 0.
@@ -120,6 +180,12 @@ export class CompactionCounterWidget implements Widget {
         const modifiers: string[] = [getFormat(item)];
         if (isNerdFontEnabled(item)) {
             modifiers.push('nerd font');
+        }
+        if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
+            modifiers.push('trigger split');
+        }
+        if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
+            modifiers.push('reclaimed');
         }
         if (isHideZeroEnabled(item)) {
             modifiers.push('hide zero');
@@ -147,22 +213,30 @@ export class CompactionCounterWidget implements Widget {
             return toggleNerdFont(item);
         }
 
+        if (action === TOGGLE_TRIGGERS_ACTION) {
+            return toggleMetadataFlag(item, SHOW_TRIGGERS_METADATA_KEY);
+        }
+
+        if (action === TOGGLE_RECLAIMED_ACTION) {
+            return toggleMetadataFlag(item, SHOW_RECLAIMED_METADATA_KEY);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const format = getFormat(item);
+        void settings;
         const icon = isNerdFontEnabled(item) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
 
         if (context.isPreview) {
-            return formatCount(2, format, icon);
+            return formatStats(SAMPLE_STATS, item, icon);
         }
 
-        const count = context.compactionData?.count ?? 0;
-        if (count === 0 && isHideZeroEnabled(item))
+        const data = context.compactionData ?? ZERO_COMPACTION_STATS;
+        if (data.count === 0 && isHideZeroEnabled(item))
             return null;
 
-        return formatCount(count, format, icon);
+        return formatStats(data, item, icon);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -174,9 +248,16 @@ export class CompactionCounterWidget implements Widget {
             keybinds.push({ key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION });
         }
 
+        keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
+        keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
         keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
+        keybinds.push(getSymbolKeybind());
 
         return keybinds;
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, [RECLAIMED_SLOT]);
     }
 
     supportsRawValue(): boolean { return false; }

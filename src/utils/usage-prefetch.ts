@@ -15,7 +15,8 @@ const USAGE_WIDGET_TYPES = new Set<string>([
     'reset-timer',
     'weekly-reset-timer',
     'extra-usage-utilization',
-    'extra-usage-remaining'
+    'extra-usage-remaining',
+    'extra-usage-used'
 ]);
 
 const USAGE_DATA_FIELDS: UsageDataField[] = [
@@ -30,7 +31,8 @@ const USAGE_DATA_FIELDS: UsageDataField[] = [
     'extraUsageEnabled',
     'extraUsageLimit',
     'extraUsageUsed',
-    'extraUsageUtilization'
+    'extraUsageUtilization',
+    'extraUsageCurrency'
 ];
 
 interface UsageFieldRequirement {
@@ -55,6 +57,10 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'extra-usage-remaining': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageLimit' },
+        { field: 'extraUsageUsed' }
+    ],
+    'extra-usage-used': [
+        { field: 'extraUsageEnabled' },
         { field: 'extraUsageUsed' }
     ]
 };
@@ -132,7 +138,8 @@ function pickDefinedUsageFields(data: UsageData | null | undefined): Partial<Usa
         ...(data?.extraUsageEnabled !== undefined ? { extraUsageEnabled: data.extraUsageEnabled } : {}),
         ...(data?.extraUsageLimit !== undefined ? { extraUsageLimit: data.extraUsageLimit } : {}),
         ...(data?.extraUsageUsed !== undefined ? { extraUsageUsed: data.extraUsageUsed } : {}),
-        ...(data?.extraUsageUtilization !== undefined ? { extraUsageUtilization: data.extraUsageUtilization } : {})
+        ...(data?.extraUsageUtilization !== undefined ? { extraUsageUtilization: data.extraUsageUtilization } : {}),
+        ...(data?.extraUsageCurrency !== undefined ? { extraUsageCurrency: data.extraUsageCurrency } : {})
     };
 }
 

@@ -28,7 +28,7 @@ describe('initConfigPath / getConfigPath', () => {
 
     it('should return a custom settings path when a file path is provided', () => {
         initConfigPath('/tmp/my-ccsl/settings.json');
-        expect(getConfigPath()).toBe('/tmp/my-ccsl/settings.json');
+        expect(getConfigPath()).toBe(path.resolve('/tmp/my-ccsl/settings.json'));
         expect(isCustomConfigPath()).toBe(true);
     });
 
