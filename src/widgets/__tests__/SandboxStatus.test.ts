@@ -39,7 +39,10 @@ describe('SandboxStatusWidget', () => {
         });
 
         it('has correct description', () => {
-            expect(new SandboxStatusWidget().getDescription()).toBe('Shows whether Claude Code bash sandbox mode is enabled');
+            expect(new SandboxStatusWidget().getDescription()).toBe([
+                'Shows whether Claude Code bash sandbox mode is enabled',
+                'Best effort: may not reflect active sandboxing when managed or CLI settings override it, or when sandbox initialization fails.'
+            ].join('\n'));
         });
 
         it('has correct category', () => {
@@ -167,6 +170,7 @@ describe('SandboxStatusWidget', () => {
 
     describe('render() - format bare (glyph only)', () => {
         const FORMAT_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'bare' } };
+        const FORMAT_NERD_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'bare', nerdFont: 'true' } };
 
         it('renders ○ when OFF', () => {
             vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: false });
@@ -176,6 +180,14 @@ describe('SandboxStatusWidget', () => {
         it('renders ● when ON', () => {
             vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: true });
             expect(new SandboxStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('●');
+        });
+
+        it('renders only the configured Nerd Font glyph', () => {
+            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: false });
+            expect(new SandboxStatusWidget().render(FORMAT_NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(UNLOCK);
+
+            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: true });
+            expect(new SandboxStatusWidget().render(FORMAT_NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(LOCK);
         });
     });
 
@@ -242,6 +254,19 @@ describe('SandboxStatusWidget', () => {
         it('returns "off" when OFF', () => {
             vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: false });
             expect(new SandboxStatusWidget().render(RAW_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('off');
+        });
+
+        it('returns the semantic value regardless of format and Nerd Font settings', () => {
+            const rawNerdItem: WidgetItem = {
+                ...RAW_ITEM,
+                metadata: { format: 'glyph', nerdFont: 'true' }
+            };
+
+            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: false });
+            expect(new SandboxStatusWidget().render(rawNerdItem, makeContext(), DEFAULT_SETTINGS)).toBe('off');
+
+            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: true });
+            expect(new SandboxStatusWidget().render(rawNerdItem, makeContext(), DEFAULT_SETTINGS)).toBe('on');
         });
 
         it('returns "on" in preview mode', () => {

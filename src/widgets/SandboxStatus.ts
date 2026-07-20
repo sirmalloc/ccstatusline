@@ -100,7 +100,13 @@ function resolveSandboxConfigCwd(context: RenderContext): string | undefined {
 
 export class SandboxStatusWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows whether Claude Code bash sandbox mode is enabled'; }
+    getDescription(): string {
+        return [
+            'Shows whether Claude Code bash sandbox mode is enabled',
+            'Best effort: may not reflect active sandboxing when managed or CLI settings override it, or when sandbox initialization fails.'
+        ].join('\n');
+    }
+
     getDisplayName(): string { return 'Sandbox Status'; }
     getCategory(): string { return 'Core'; }
 
