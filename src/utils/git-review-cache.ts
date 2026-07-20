@@ -94,6 +94,8 @@ export function computeCiRollup(rollup: unknown): GitCiChecks | null {
 const GIT_REVIEW_CACHE_TTL = 30_000;
 const CLI_TIMEOUT = 5_000;
 const DEFAULT_TITLE_MAX_WIDTH = 30;
+const GH_PR_METADATA_FIELDS = 'url,number,title,state,reviewDecision';
+const GH_PR_WITH_CHECKS_FIELDS = `${GH_PR_METADATA_FIELDS},statusCheckRollup`;
 
 export interface GitReviewCacheDeps {
     execFileSync: typeof execFileSync;
@@ -336,21 +338,15 @@ function mapGlabState(state: string): string {
     return state.toUpperCase();
 }
 
-function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
-    const args = ['pr', 'view'];
-    if (repoRef) {
-        // `--repo` disables branch auto-resolution, so pass the branch explicitly.
-        const branch = getCurrentBranch(cwd, deps);
-        if (!branch) {
-            return null;
-        }
-        args.push(branch, '--repo', repoRef);
-    }
-    args.push('--json', 'url,number,title,state,reviewDecision,statusCheckRollup');
-
+function queryGhPr(
+    cwd: string,
+    args: string[],
+    fields: string,
+    deps: GitReviewCacheDeps
+): Record<string, unknown> | null {
     const output = deps.execFileSync(
         'gh',
-        args,
+        [...args, '--json', fields],
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
@@ -364,7 +360,30 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
         return null;
     }
 
-    const parsed = JSON.parse(output) as Record<string, unknown>;
+    return JSON.parse(output) as Record<string, unknown>;
+}
+
+function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
+    const args = ['pr', 'view'];
+    if (repoRef) {
+        // `--repo` disables branch auto-resolution, so pass the branch explicitly.
+        const branch = getCurrentBranch(cwd, deps);
+        if (!branch) {
+            return null;
+        }
+        args.push(branch, '--repo', repoRef);
+    }
+
+    let parsed: Record<string, unknown> | null;
+    try {
+        parsed = queryGhPr(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deps);
+    } catch {
+        parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deps);
+    }
+
+    if (!parsed) {
+        return null;
+    }
     if (typeof parsed.number !== 'number' || typeof parsed.url !== 'string') {
         return null;
     }
