@@ -34,6 +34,11 @@ const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageUtilization'
 ]);
 
+const FABLE_USAGE_FIELDS = new Set<UsageDataField>([
+    'fableUsage',
+    'fableResetAt'
+]);
+
 // Maps each window reset field to the utilization field parsed from the same
 // API bucket. A null bucket (Enterprise accounts have no rate-limit windows,
 // #343) parses to utilization 0 with no resets_at, so once the utilization is
@@ -42,7 +47,8 @@ const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataFiel
     sessionResetAt: 'sessionUsage',
     weeklyResetAt: 'weeklyUsage',
     weeklySonnetResetAt: 'weeklySonnetUsage',
-    weeklyOpusResetAt: 'weeklyOpusUsage'
+    weeklyOpusResetAt: 'weeklyOpusUsage',
+    fableResetAt: 'fableUsage'
 };
 
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
@@ -61,6 +67,8 @@ const CachedUsageDataSchema = z.object({
     weeklySonnetResetAt: z.string().nullable().optional(),
     weeklyOpusUsage: z.number().nullable().optional(),
     weeklyOpusResetAt: z.string().nullable().optional(),
+    fableUsage: z.number().nullable().optional(),
+    fableResetAt: z.string().nullable().optional(),
     extraUsageEnabled: z.boolean().nullable().optional(),
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
@@ -85,7 +93,8 @@ type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
 const UsageApiLimitSchema = z.looseObject({
     kind: z.string().nullable().optional(),
     percent: z.number().nullable().optional(),
-    resets_at: z.string().nullable().optional()
+    resets_at: z.string().nullable().optional(),
+    scope: z.looseObject({ model: z.looseObject({ display_name: z.string().nullable().optional() }).nullable().optional() }).nullable().catch(null).optional()
 });
 
 type UsageApiLimit = z.infer<typeof UsageApiLimitSchema>;
@@ -159,6 +168,8 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         weeklySonnetResetAt: parsed.weeklySonnetResetAt ?? undefined,
         weeklyOpusUsage: parsed.weeklyOpusUsage ?? undefined,
         weeklyOpusResetAt: parsed.weeklyOpusResetAt ?? undefined,
+        fableUsage: parsed.fableUsage ?? undefined,
+        fableResetAt: parsed.fableResetAt ?? undefined,
         extraUsageEnabled: parsed.extraUsageEnabled ?? undefined,
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
@@ -201,6 +212,7 @@ export function parseUsageApiResponse(rawJson: string): UsageData | null {
     // the percentage and resets_at can each come from a different source (#503).
     const sessionLimit = findUsageApiLimit(parsed.limits, 'session');
     const weeklyLimit = findUsageApiLimit(parsed.limits, 'weekly_all');
+    const fableLimit = parsed.limits?.find(limit => limit.kind === 'weekly_scoped' && (limit.scope?.model?.display_name ?? '').toLowerCase().includes('fable'));
 
     return {
         sessionUsage: getUsageApiBucketUtilization(parsed.five_hour) ?? getUsageApiLimitPercent(sessionLimit),
@@ -211,6 +223,8 @@ export function parseUsageApiResponse(rawJson: string): UsageData | null {
         weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
         weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
         weeklyOpusResetAt: parsed.seven_day_opus?.resets_at ?? undefined,
+        fableUsage: getUsageApiLimitPercent(fableLimit),
+        fableResetAt: getUsageApiLimitResetAt(fableLimit),
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
@@ -267,7 +281,14 @@ function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean 
     // Once the API has reported the extra usage state, missing detail fields are
     // conclusive: accounts without a configured monthly limit never report
     // monthly_limit/utilization, so refetching cannot produce them (#413).
-    return data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+    if (data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field)) {
+        return true;
+    }
+
+    // Once the API has reported the core usage state, a missing fable window is
+    // conclusive: legacy accounts and non-Fable plans never report a fable
+    // limit, so refetching cannot produce it.
+    return (data.sessionUsage !== undefined || data.weeklyUsage !== undefined) && FABLE_USAGE_FIELDS.has(field);
 }
 
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {

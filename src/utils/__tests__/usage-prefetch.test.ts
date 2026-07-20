@@ -217,6 +217,32 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
+    it('triggers API fetch for fable-weekly-usage even when stdin rate_limits is fully populated', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 42,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 15,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z',
+            fableUsage: 5,
+            fableResetAt: '2026-03-27T12:00:00.000Z'
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'fable-weekly-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
+            }
+        });
+
+        expect(usageData?.fableUsage).toBe(5);
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'] }]);
+    });
+
     it.each([
         {
             apiUsageData: { weeklySonnetUsage: 8 },
@@ -377,6 +403,23 @@ describe('usage prefetch', () => {
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
         expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
+    });
+
+    it('uses aggregate weekly reset as the cursor fallback without fetching for fable reset data', async () => {
+        mockFetchUsageData.mockResolvedValue({ fableUsage: 8 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'fable-weekly-usage', metadata: { cursor: 'true' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { resets_at: 1774540000 } } });
+
+        expect(usageData).toEqual({
+            weeklyResetAt: epochToIso(1774540000),
+            fableUsage: 8
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'] }]);
     });
 
     it('fetches extra usage fields while preserving statusline usage data', async () => {
