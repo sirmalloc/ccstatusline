@@ -11,6 +11,8 @@ import {
     it
 } from 'vitest';
 
+import { parseUsageApiResponse } from '../usage-fetch';
+
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
 
@@ -261,6 +263,19 @@ describe('fetchUsageData error handling', () => {
             utilization: 17,
             resets_at: '2030-01-07T00:00:00.000Z'
         }
+    });
+    const placeholderFableResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        limits: [
+            { kind: 'weekly_scoped', percent: 0, resets_at: null, scope: { model: { display_name: 'Claude 3.5 Fable' } } }
+        ]
     });
     const updatedSuccessResponseBody = JSON.stringify({
         five_hour: {
@@ -679,6 +694,92 @@ describe('fetchUsageData error handling', () => {
             // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
             // render takes, rather than depending on a lingering lock to suppress
             // the refetch.
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats a missing fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('missing-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats a placeholder fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('placeholder-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: placeholderFableResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
             const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
@@ -1254,5 +1355,353 @@ describe('fetchUsageData error handling', () => {
         } finally {
             harness.cleanup();
         }
+    });
+});
+
+describe('parseUsageApiResponse limits[] fallback (#503)', () => {
+    const limitsOnlyResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                group: 'session',
+                percent: 15,
+                is_active: false,
+                resets_at: '2030-02-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                group: 'weekly',
+                percent: 36,
+                is_active: false,
+                resets_at: '2030-02-07T00:00:00.000Z'
+            }
+        ]
+    });
+    const flatAndLimitsResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-03-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-03-07T00:00:00.000Z'
+        },
+        limits: [
+            {
+                kind: 'session',
+                percent: 99,
+                resets_at: '2030-09-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                percent: 88,
+                resets_at: '2030-09-07T00:00:00.000Z'
+            }
+        ]
+    });
+    const partialFallbackResponseBody = JSON.stringify({
+        seven_day: {
+            utilization: null,
+            resets_at: '2030-04-07T00:00:00.000Z'
+        },
+        limits: [
+            {
+                kind: 'weekly_all',
+                percent: 71,
+                resets_at: '2099-01-01T00:00:00.000Z'
+            }
+        ]
+    });
+    const placeholderLimitResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: 0,
+                resets_at: null
+            }
+        ]
+    });
+    const unknownKindsAndScopedResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 10,
+            resets_at: '2030-05-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 20,
+            resets_at: '2030-05-07T00:00:00.000Z'
+        },
+        limits: [
+            {
+                kind: 'session',
+                percent: 10,
+                resets_at: '2030-05-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                percent: 20,
+                resets_at: '2030-05-07T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_scoped',
+                group: 'weekly',
+                percent: 71,
+                severity: 'normal',
+                scope: {
+                    model: {
+                        id: null,
+                        display_name: 'Fable'
+                    },
+                    surface: null
+                },
+                is_active: true,
+                resets_at: '2030-05-07T00:00:00.000Z'
+            },
+            {
+                kind: 'some_future_kind',
+                percent: 55,
+                resets_at: '2030-05-09T00:00:00.000Z'
+            }
+        ]
+    });
+    const noLimitsResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        }
+    });
+    const zeroPercentWithResetsResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: 0,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            }
+        ]
+    });
+    const nullPercentWithResetsResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: null,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            }
+        ]
+    });
+    const weeklyOnlyLimitsResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'weekly_all',
+                percent: 44,
+                resets_at: '2030-06-07T00:00:00.000Z'
+            }
+        ]
+    });
+    const nullKindEntryResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: null,
+                percent: 50,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            },
+            {
+                kind: 'session',
+                percent: 12,
+                resets_at: '2030-06-02T00:00:00.000Z'
+            }
+        ]
+    });
+    const duplicateSessionKindResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: 12,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            },
+            {
+                kind: 'session',
+                percent: 99,
+                resets_at: '2099-01-01T00:00:00.000Z'
+            }
+        ]
+    });
+    // Whole-bucket null (five_hour/seven_day explicitly null, not merely
+    // absent) is indistinguishable between an Enterprise account with no
+    // rate-limit window (#343, correctly pinned to 0%) and a migrated
+    // account whose flat buckets were hollowed out to null alongside a live
+    // limits[] (#503). getUsageApiBucketUtilization(null) intentionally
+    // returns 0 (the #343 rule) even though resets_at still falls back to
+    // limits[] here - this is a known, accepted limitation: the parser
+    // cannot tell the two cases apart from the payload alone, so the
+    // percent stays pinned to 0 while the reset timer still advances.
+    const nullBucketsWithLiveLimitsResponseBody = JSON.stringify({
+        five_hour: null,
+        seven_day: null,
+        limits: [
+            {
+                kind: 'session',
+                percent: 63,
+                resets_at: '2030-07-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                percent: 81,
+                resets_at: '2030-07-07T00:00:00.000Z'
+            }
+        ]
+    });
+
+    it('derives session and weekly percentages and resets_at from limits[] when flat buckets are absent', () => {
+        expect(parseUsageApiResponse(limitsOnlyResponseBody)).toEqual({
+            sessionUsage: 15,
+            sessionResetAt: '2030-02-01T00:00:00.000Z',
+            weeklyUsage: 36,
+            weeklyResetAt: '2030-02-07T00:00:00.000Z'
+        });
+    });
+
+    it('prefers flat bucket values over limits[] when both are present', () => {
+        expect(parseUsageApiResponse(flatAndLimitsResponseBody)).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: '2030-03-01T00:00:00.000Z',
+            weeklyUsage: 17,
+            weeklyResetAt: '2030-03-07T00:00:00.000Z'
+        });
+    });
+
+    it('falls back to limits[] percent independently of a present flat resets_at', () => {
+        expect(parseUsageApiResponse(partialFallbackResponseBody)).toEqual({
+            weeklyUsage: 71,
+            weeklyResetAt: '2030-04-07T00:00:00.000Z'
+        });
+    });
+
+    it('treats a limits[] entry with percent 0 and no resets_at as a placeholder (#343 rationale)', () => {
+        expect(parseUsageApiResponse(placeholderLimitResponseBody)).toEqual({});
+    });
+
+    it('ignores unknown limits[] kinds but consumes fable weekly_scoped entries', () => {
+        expect(parseUsageApiResponse(unknownKindsAndScopedResponseBody)).toEqual({
+            sessionUsage: 10,
+            sessionResetAt: '2030-05-01T00:00:00.000Z',
+            weeklyUsage: 20,
+            weeklyResetAt: '2030-05-07T00:00:00.000Z',
+            fableUsage: 71,
+            fableResetAt: '2030-05-07T00:00:00.000Z'
+        });
+    });
+
+    it('derives fable usage/reset from a weekly_scoped entry with Fable case variants', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 22,
+                    resets_at: '2030-05-08T00:00:00.000Z',
+                    scope: { model: { display_name: 'claude 3.5 fAbLe' } }
+                }
+            ]
+        }))).toEqual({
+            fableUsage: 22,
+            fableResetAt: '2030-05-08T00:00:00.000Z'
+        });
+    });
+
+    it('ignores weekly_scoped entry with NON-fable display_name', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 99,
+                    resets_at: '2030-05-08T00:00:00.000Z',
+                    scope: { model: { display_name: 'Sonnet' } }
+                }
+            ]
+        }))).toEqual({});
+    });
+
+    it('absent when fable placeholder (percent 0, no resets_at)', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 0,
+                    resets_at: null,
+                    scope: { model: { display_name: 'Fable' } }
+                }
+            ]
+        }))).toEqual({});
+    });
+
+    it('ignores weekly_scoped when no scope -> no crash', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 10,
+                    resets_at: '2030-05-08T00:00:00.000Z'
+                }
+            ]
+        }))).toEqual({});
+    });
+
+    it('behaves identically to before when limits[] is absent', () => {
+        expect(parseUsageApiResponse(noLimitsResponseBody)).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: '2030-01-01T00:00:00.000Z',
+            weeklyUsage: 17,
+            weeklyResetAt: '2030-01-07T00:00:00.000Z'
+        });
+    });
+
+    it('surfaces a limits[] entry reporting percent 0 with a resets_at as a real 0%, not a placeholder', () => {
+        expect(parseUsageApiResponse(zeroPercentWithResetsResponseBody)).toEqual({
+            sessionUsage: 0,
+            sessionResetAt: '2030-06-01T00:00:00.000Z'
+        });
+    });
+
+    it('treats a limits[] entry with percent null and a present resets_at as usage-undefined but keeps the reset time', () => {
+        expect(parseUsageApiResponse(nullPercentWithResetsResponseBody)).toEqual({ sessionResetAt: '2030-06-01T00:00:00.000Z' });
+    });
+
+    it('does not reject the whole response when a limits[] entry has kind: null (F7)', () => {
+        expect(parseUsageApiResponse(nullKindEntryResponseBody)).toEqual({
+            sessionUsage: 12,
+            sessionResetAt: '2030-06-02T00:00:00.000Z'
+        });
+    });
+
+    it('derives only weekly fields when limits[] contains just a weekly_all entry (no session entry)', () => {
+        expect(parseUsageApiResponse(weeklyOnlyLimitsResponseBody)).toEqual({
+            weeklyUsage: 44,
+            weeklyResetAt: '2030-06-07T00:00:00.000Z'
+        });
+    });
+
+    it('takes the first match when limits[] has duplicate kind: session entries (documents current find() behavior)', () => {
+        expect(parseUsageApiResponse(duplicateSessionKindResponseBody)).toEqual({
+            sessionUsage: 12,
+            sessionResetAt: '2030-06-01T00:00:00.000Z'
+        });
+    });
+
+    // Known limitation (#343 vs #503 ambiguity) - see the comment on
+    // nullBucketsWithLiveLimitsResponseBody above. This locks the current,
+    // deliberately-accepted behavior in place: whole-bucket null keeps the
+    // #343 zero-pin on percent even when a live limits[] could otherwise
+    // supply a real percentage, while resets_at still falls back to
+    // limits[] independently, which can recreate the "frozen percent, live
+    // timer" symptom from #503 for this specific payload shape.
+    it('keeps percent pinned to 0 for whole-bucket null buckets even with live limits[] data, while resets_at still falls back (known #343/#503 overlap)', () => {
+        expect(parseUsageApiResponse(nullBucketsWithLiveLimitsResponseBody)).toEqual({
+            sessionUsage: 0,
+            sessionResetAt: '2030-07-01T00:00:00.000Z',
+            weeklyUsage: 0,
+            weeklyResetAt: '2030-07-07T00:00:00.000Z'
+        });
     });
 });
