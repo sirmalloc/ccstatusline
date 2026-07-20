@@ -29,6 +29,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'git-clean-status', create: () => new widgets.GitCleanStatusWidget() },
     { type: 'git-root-dir', create: () => new widgets.GitRootDirWidget() },
     { type: 'git-review', create: () => new widgets.GitPrWidget() },
+    { type: 'git-ci-status', create: () => new widgets.GitCiStatusWidget() },
     { type: 'git-worktree', create: () => new widgets.GitWorktreeWidget() },
     { type: 'git-status', create: () => new widgets.GitStatusWidget() },
     { type: 'git-staged', create: () => new widgets.GitStagedWidget() },

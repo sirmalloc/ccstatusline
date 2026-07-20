@@ -160,11 +160,12 @@ describe('git-review-cache', () => {
     it('negative-caches failed gh PR lookups', () => {
         const harness = createHarness();
         harness.ghResponses.push(new Error('no pull request found'));
+        harness.ghResponses.push(new Error('no pull request found'));
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
 
         const ghCallsAfterFirstRender = harness.execCalls.filter(call => call.cmd === 'gh');
-        expect(ghCallsAfterFirstRender).toHaveLength(2);
+        expect(ghCallsAfterFirstRender).toHaveLength(3);
 
         const cachedMissEntry = [...harness.cacheFiles.values()].at(0);
         expect(cachedMissEntry?.content).toBe('');
@@ -172,7 +173,7 @@ describe('git-review-cache', () => {
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
 
         const ghCallsAfterSecondRender = harness.execCalls.filter(call => call.cmd === 'gh');
-        expect(ghCallsAfterSecondRender).toHaveLength(2);
+        expect(ghCallsAfterSecondRender).toHaveLength(3);
     });
 
     it('uses a different cache entry for each checked-out branch', () => {
@@ -279,18 +280,28 @@ describe('git-review-cache', () => {
         expect(data?.state).toBe('MERGED');
     });
 
-    it('uses gh\'s default repo resolution when it succeeds (no --repo pin needed)', () => {
+    it('uses gh\'s default repo resolution and includes CI checks in one query', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
         harness.ghResponses.push(JSON.stringify({
             number: 42,
             reviewDecision: '',
             state: 'OPEN',
+            statusCheckRollup: [
+                { conclusion: 'SUCCESS', status: 'COMPLETED' },
+                { conclusion: '', status: 'IN_PROGRESS' }
+            ],
             title: 'Standard PR',
             url: 'https://github.com/example-owner/example-repo/pull/42'
         }));
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            checks: {
+                failing: 0,
+                pending: 1,
+                state: 'pending',
+                success: 1
+            },
             number: 42,
             provider: 'gh',
             reviewDecision: '',
@@ -304,6 +315,51 @@ describe('git-review-cache', () => {
         );
         expect(ghPrCalls).toHaveLength(1);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
+        expect(ghPrCalls[0]?.args.at(-1)).toBe(
+            'url,number,title,state,reviewDecision,statusCheckRollup'
+        );
+    });
+
+    it('retries metadata-only when gh cannot query CI checks', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(new Error('statusCheckRollup is unavailable'));
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            reviewDecision: 'APPROVED',
+            state: 'OPEN',
+            title: 'Restricted token PR',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        }));
+
+        const expected = {
+            number: 42,
+            provider: 'gh' as const,
+            reviewDecision: 'APPROVED',
+            state: 'OPEN',
+            title: 'Restricted token PR',
+            url: 'https://github.com/example-owner/example-repo/pull/42'
+        };
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual(expected);
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls[0]?.args.slice(0, -2)).toEqual(ghPrCalls[1]?.args.slice(0, -2));
+        expect(ghPrCalls[0]?.args.at(-1)).toBe(
+            'url,number,title,state,reviewDecision,statusCheckRollup'
+        );
+        expect(ghPrCalls[1]?.args.at(-1)).toBe('url,number,title,state,reviewDecision');
+
+        const cachedEntry = [...harness.cacheFiles.values()].at(0);
+        expect(JSON.parse(cachedEntry?.content ?? '')).toEqual(expected);
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual(expected);
+        const cachedGhPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(cachedGhPrCalls).toHaveLength(2);
     });
 
     it('falls back to --repo <origin> for forked GitHub repos when gh\'s default resolves elsewhere', () => {
@@ -335,6 +391,39 @@ describe('git-review-cache', () => {
         expect(ghPrCalls[1]?.args).toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('https://github.com/fork-owner/example-repo');
         expect(ghPrCalls[1]?.args).toContain('feature/cache-a');
+    });
+
+    it('reuses the pinned PR target for the metadata-only compatibility retry', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.ghResponses.push('');
+        harness.ghResponses.push(new Error('statusCheckRollup is unavailable'));
+        harness.ghResponses.push(JSON.stringify({
+            number: 1,
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Forked PR',
+            url: 'https://github.com/fork-owner/example-repo/pull/1'
+        }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual({
+            number: 1,
+            provider: 'gh',
+            reviewDecision: '',
+            state: 'OPEN',
+            title: 'Forked PR',
+            url: 'https://github.com/fork-owner/example-repo/pull/1'
+        });
+
+        const ghPrCalls = harness.execCalls.filter(
+            call => call.cmd === 'gh' && call.args[0] === 'pr'
+        );
+        expect(ghPrCalls).toHaveLength(3);
+        expect(ghPrCalls[1]?.args.slice(0, -2)).toEqual(ghPrCalls[2]?.args.slice(0, -2));
+        expect(ghPrCalls[1]?.args).toContain('feature/cache-a');
+        expect(ghPrCalls[1]?.args).toContain('--repo');
+        expect(ghPrCalls[1]?.args).toContain('https://github.com/fork-owner/example-repo');
+        expect(ghPrCalls[2]?.args.at(-1)).toBe('url,number,title,state,reviewDecision');
     });
 
     it('resolves SSH host aliases before selecting GitHub and pinning --repo', () => {
