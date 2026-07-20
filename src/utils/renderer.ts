@@ -8,7 +8,10 @@ import {
     getColorLevelString,
     type ColorLevel
 } from '../types/ColorLevel';
-import type { Settings } from '../types/Settings';
+import type {
+    DefaultPaddingSide,
+    Settings
+} from '../types/Settings';
 
 import {
     applyLineGradient,
@@ -52,6 +55,16 @@ function maybeApplyForegroundGradient(
 ): string {
     const stops = parseGradientSpec(settings.overrideForegroundColor);
     return stops ? applyLineGradient(line, stops, colorLevel) : line;
+}
+
+// Split the default padding string into the leading/trailing pieces that
+// actually get applied, based on which side(s) padding is configured for.
+function resolvePaddingSides(padding: string, side: DefaultPaddingSide | undefined): { leading: string; trailing: string } {
+    if (side === 'left')
+        return { leading: padding, trailing: '' };
+    if (side === 'right')
+        return { leading: '', trailing: padding };
+    return { leading: padding, trailing: padding };
 }
 
 function resolveEffectiveTerminalWidth(
@@ -249,6 +262,7 @@ function renderPowerlineStatusLine(
         if (widgetText) {
             // Apply default padding from settings
             const padding = settings.defaultPadding ?? '';
+            const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
 
             // If override FG color is set and this is a custom command with preserveColors,
             // we need to strip the ANSI codes from the widget text
@@ -270,8 +284,8 @@ function renderPowerlineStatusLine(
                 && canMergeWithNextRenderedWidget(previousRenderedIndex ?? undefined);
             const omitTrailingPadding = widget.merge === 'no-padding' && mergesWithNext;
 
-            const leadingPadding = omitLeadingPadding ? '' : padding;
-            const trailingPadding = omitTrailingPadding ? '' : padding;
+            const leadingPadding = omitLeadingPadding ? '' : sideLeadingPadding;
+            const trailingPadding = omitTrailingPadding ? '' : sideTrailingPadding;
             const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
 
             // Determine colors
@@ -826,7 +840,8 @@ export function calculateMaxWidthsFromPreRendered(
 ): number[] {
     const maxWidths: number[] = [];
     const defaultPadding = settings.defaultPadding ?? '';
-    const paddingLength = defaultPadding.length;
+    const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(defaultPadding, settings.defaultPaddingSide);
+    const paddingPairLength = sideLeadingPadding.length + sideTrailingPadding.length;
 
     for (const preRenderedLine of preRenderedLines) {
         const isSeparatorBoundary = (entry: PreRenderedWidget | undefined): boolean => (
@@ -867,7 +882,7 @@ export function calculateMaxWidthsFromPreRendered(
 
             // Calculate the total width for this alignment position
             // If this widget is merged with the next, accumulate their widths
-            let totalWidth = widget.plainLength + (paddingLength * 2);
+            let totalWidth = widget.plainLength + paddingPairLength;
 
             // Check if this widget merges with the next one(s)
             let j = i;
@@ -880,7 +895,7 @@ export function calculateMaxWidthsFromPreRendered(
                     if (renderedWidgets[j - 1]?.widget.merge === 'no-padding') {
                         totalWidth += nextWidget.plainLength;
                     } else {
-                        totalWidth += nextWidget.plainLength + (paddingLength * 2);
+                        totalWidth += nextWidget.plainLength + paddingPairLength;
                     }
                 }
             }
@@ -1098,6 +1113,7 @@ export function renderStatusLine(
     // Apply default padding and separators
     const finalElements: string[] = [];
     const padding = settings.defaultPadding ?? '';
+    const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
     const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
 
     elements.forEach((elem, index) => {
@@ -1153,16 +1169,15 @@ export function renderStatusLine(
 
             if (padding && (elem.widget?.backgroundColor || hasColorOverride)) {
                 // Apply colors to padding - applyColorsWithOverride will handle the overrides
-                const leadingPadding = omitLeadingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
-                const trailingPadding = omitTrailingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
+                const leadingPadding = omitLeadingPadding || !sideLeadingPadding ? '' : applyColorsWithOverride(sideLeadingPadding, undefined, elem.widget?.backgroundColor);
+                const trailingPadding = omitTrailingPadding || !sideTrailingPadding ? '' : applyColorsWithOverride(sideTrailingPadding, undefined, elem.widget?.backgroundColor);
                 const paddedContent = leadingPadding + elem.content + trailingPadding;
                 finalElements.push(paddedContent);
             } else if (padding) {
                 // Wrap padding in ANSI reset codes to prevent trimming
                 // This ensures leading spaces aren't trimmed by terminals
-                const protectedPadding = chalk.reset(padding);
-                const leadingPadding = omitLeadingPadding ? '' : protectedPadding;
-                const trailingPadding = omitTrailingPadding ? '' : protectedPadding;
+                const leadingPadding = omitLeadingPadding || !sideLeadingPadding ? '' : chalk.reset(sideLeadingPadding);
+                const trailingPadding = omitTrailingPadding || !sideTrailingPadding ? '' : chalk.reset(sideTrailingPadding);
                 finalElements.push(leadingPadding + elem.content + trailingPadding);
             } else {
                 // No padding
