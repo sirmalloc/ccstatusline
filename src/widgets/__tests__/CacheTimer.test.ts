@@ -111,6 +111,22 @@ describe('CacheTimer widget', () => {
         expect(widget.render(item(), transcriptContext([apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
     });
 
+    it('finds the trailing record even when it exceeds the initial 32 KiB tail read', () => {
+        const widget = new CacheTimerWidget();
+        // A pending user row bigger than the initial tail (e.g. a pasted prompt
+        // or large tool result) must still report HOT...
+        const bigUser = JSON.stringify({ type: 'user', content: 'x'.repeat(64 * 1024) });
+        expect(widget.render(item(), transcriptContext([assistant(400), bigUser]), DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
+        // ...and an oversized trailing assistant row must still drive the countdown.
+        const bigAssistant = JSON.stringify({ type: 'assistant', timestamp: isoAgo(10), content: 'x'.repeat(64 * 1024) });
+        expect(widget.render(item(), transcriptContext([bigAssistant]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+    });
+
+    it('stops expanding the tail at the cap for a degenerate unparseable file', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext(['x'.repeat(2 * 1024 * 1024)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
+    });
+
     it('treats a malformed assistant timestamp as no data instead of rendering NaN', () => {
         const widget = new CacheTimerWidget();
         const context = transcriptContext([JSON.stringify({ type: 'assistant', timestamp: 'not-a-date' })]);

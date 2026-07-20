@@ -55,25 +55,35 @@ interface TranscriptEntry {
     isApiErrorMessage?: boolean;
 }
 
+// A single transcript record can exceed the initial tail read (pasted prompts
+// and tool results reach hundreds of KiB), leaving only an unparseable
+// fragment in view, so the read doubles until a relevant record fits; the cap
+// bounds the work done per render on degenerate files.
+const INITIAL_TAIL_BYTES = 32768;
+const MAX_TAIL_BYTES = 1024 * 1024;
+
 /**
- * Read the last N bytes of a file and return as string.
- * Avoids loading large transcript files entirely.
+ * Read the last N bytes of a file, reporting whether the read reached back to
+ * the start of the file. Avoids loading large transcript files entirely.
  */
-function readFileTail(filePath: string, bytes = 32768): string {
+function readFileTail(filePath: string, bytes: number): { text: string; isComplete: boolean } | null {
     try {
         const fd = fs.openSync(filePath, 'r');
-        const stat = fs.fstatSync(fd);
-        const size = stat.size;
-        const readSize = Math.min(bytes, size);
-        const offset = size - readSize;
-        const buf = Buffer.alloc(readSize);
-        fs.readSync(fd, buf, 0, readSize, offset);
-        fs.closeSync(fd);
-        return buf.toString('utf-8');
+        try {
+            const size = fs.fstatSync(fd).size;
+            const readSize = Math.min(bytes, size);
+            const buf = Buffer.alloc(readSize);
+            fs.readSync(fd, buf, 0, readSize, size - readSize);
+            return { text: buf.toString('utf-8'), isComplete: readSize === size };
+        } finally {
+            fs.closeSync(fd);
+        }
     } catch {
-        return '';
+        return null;
     }
 }
+
+type TranscriptState = { isWorking: true } | { isWorking: false; lastAssistant: Date | null };
 
 /**
  * Find the most recent user/assistant entry in the transcript tail.
@@ -81,13 +91,28 @@ function readFileTail(filePath: string, bytes = 32768): string {
  * role 'user' by Claude Code) means a turn is in flight and the cache is being
  * refreshed, so report { isWorking: true }. A trailing assistant entry means
  * the turn finished, so return its timestamp to drive the countdown.
+ * The tail read grows until a relevant record fits in view, so a trailing
+ * record larger than the initial read still resolves to a state.
  */
-function getTranscriptState(transcriptPath: string): { isWorking: true } | { isWorking: false; lastAssistant: Date | null } {
-    const tail = readFileTail(transcriptPath);
-    if (!tail) {
-        return { isWorking: false, lastAssistant: null };
+function getTranscriptState(transcriptPath: string): TranscriptState {
+    for (let bytes = INITIAL_TAIL_BYTES; ; bytes *= 2) {
+        const tail = readFileTail(transcriptPath, bytes);
+        if (!tail || tail.text.length === 0) {
+            return { isWorking: false, lastAssistant: null };
+        }
+        const state = scanTailForState(tail.text);
+        if (state) {
+            return state;
+        }
+        if (tail.isComplete || bytes >= MAX_TAIL_BYTES) {
+            return { isWorking: false, lastAssistant: null };
+        }
     }
+}
 
+// Scan the tail's lines newest-first for the state; null means no relevant
+// record was found (so a larger tail may still surface one).
+function scanTailForState(tail: string): TranscriptState | null {
     const lines = tail.split('\n').reverse();
     for (const line of lines) {
         const trimmed = line.trim();
@@ -119,7 +144,7 @@ function getTranscriptState(transcriptPath: string): { isWorking: true } | { isW
             continue;
         }
     }
-    return { isWorking: false, lastAssistant: null };
+    return null;
 }
 
 // The configured TTL in seconds. Defaults to 5 minutes; the (t)tl keybind cycles
