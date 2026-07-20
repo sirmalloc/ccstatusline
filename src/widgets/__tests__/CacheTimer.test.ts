@@ -22,6 +22,8 @@ const assistant = (seconds: number): string => JSON.stringify({ type: 'assistant
 const pendingUser = JSON.stringify({ type: 'user' });
 const sidechain = (type: string, seconds: number): string => JSON.stringify({ type, timestamp: isoAgo(seconds), isSidechain: true });
 const apiError = (seconds: number): string => JSON.stringify({ type: 'assistant', timestamp: isoAgo(seconds), isApiErrorMessage: true });
+const assistantUsage = (seconds: number, usage: object): string => JSON.stringify({ type: 'assistant', timestamp: isoAgo(seconds), message: { usage } });
+const noCacheUsage = { cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 
 describe('CacheTimer widget', () => {
     let tmpDir: string;
@@ -109,6 +111,21 @@ describe('CacheTimer widget', () => {
         expect(widget.render(item(), transcriptContext([assistant(400), apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
         // ...and with no prior main-chain row there is no cache event to report.
         expect(widget.render(item(), transcriptContext([apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
+    });
+
+    it('skips assistant rows whose request had no cache activity', () => {
+        const widget = new CacheTimerWidget();
+        // The prior row that actually touched the cache still drives the countdown...
+        const cached = assistantUsage(400, { cache_read_input_tokens: 100, cache_creation_input_tokens: 0 });
+        expect(widget.render(item(), transcriptContext([cached, assistantUsage(10, noCacheUsage)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        // ...and when caching never happened at all there is nothing to count down.
+        expect(widget.render(item(), transcriptContext([assistantUsage(10, noCacheUsage)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
+    });
+
+    it('starts the countdown from rows with cache reads or cache writes', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_read_input_tokens: 1234 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+        expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_creation_input_tokens: 55 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
     });
 
     it('finds the trailing record even when it exceeds the initial 32 KiB tail read', () => {

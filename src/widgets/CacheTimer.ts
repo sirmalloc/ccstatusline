@@ -53,6 +53,23 @@ interface TranscriptEntry {
     timestamp?: string;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    message?: {
+        usage?: {
+            cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
+        };
+    };
+}
+
+// Whether this assistant row's request actually read or wrote the prompt
+// cache. Rows without usage data cannot be classified and are assumed to be
+// cache events so older transcript formats keep driving the countdown.
+function hasCacheActivity(entry: TranscriptEntry): boolean {
+    const usage = entry.message?.usage;
+    if (!usage) {
+        return true;
+    }
+    return (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) > 0;
 }
 
 // A single transcript record can exceed the initial tail read (pasted prompts
@@ -130,6 +147,12 @@ function scanTailForState(tail: string): TranscriptState | null {
             }
             if (entry.type === 'user') {
                 return { isWorking: true };
+            }
+            // A request with no cache reads or writes (caching disabled or
+            // unsupported) refreshed nothing, so it must not advertise a hot
+            // cache; keep scanning for the newest row that touched it.
+            if (entry.type === 'assistant' && !hasCacheActivity(entry)) {
+                continue;
             }
             if (entry.type === 'assistant' && entry.timestamp) {
                 const parsed = new Date(entry.timestamp);
