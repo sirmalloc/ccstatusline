@@ -103,11 +103,12 @@ function readFileTail(filePath: string, bytes: number): { text: string; isComple
 type TranscriptState = { isWorking: true } | { isWorking: false; lastAssistant: Date | null };
 
 /**
- * Find the most recent user/assistant entry in the transcript tail.
- * A trailing user-role entry (a prompt or a tool result, both recorded as
- * role 'user' by Claude Code) means a turn is in flight and the cache is being
- * refreshed, so report { isWorking: true }. A trailing assistant entry means
- * the turn finished, so return its timestamp to drive the countdown.
+ * Find the cache state from the newest main-chain rows in the transcript tail.
+ * A trailing user-role row (a prompt or a tool result, both recorded as role
+ * 'user' by Claude Code) means a turn is in flight and the cache is being
+ * refreshed, so report { isWorking: true }. Once an assistant row has ended
+ * the turn, the countdown anchors on the newest assistant row whose request
+ * actually read or wrote the cache.
  * The tail read grows until a relevant record fits in view, so a trailing
  * record larger than the initial read still resolves to a state.
  */
@@ -131,6 +132,10 @@ function getTranscriptState(transcriptPath: string): TranscriptState {
 // record was found (so a larger tail may still surface one).
 function scanTailForState(tail: string): TranscriptState | null {
     const lines = tail.split('\n').reverse();
+    // Set once an assistant row is seen: the turn is over, so any older user
+    // row belongs to a previous exchange and must not report HOT while the
+    // scan keeps looking for the newest row with real cache activity.
+    let turnFinished = false;
     for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) {
@@ -138,30 +143,27 @@ function scanTailForState(tail: string): TranscriptState | null {
         }
         try {
             const entry = JSON.parse(trimmed) as TranscriptEntry;
-            // Sidechain (subagent) traffic and synthetic API-error rows never
-            // touch the main conversation's cache, so they must not flip the
-            // state to HOT or restart the countdown; keep scanning for the
-            // newest main-chain row instead.
-            if (entry.isSidechain === true || entry.isApiErrorMessage === true) {
+            // Sidechain (subagent) traffic runs against its own prompt prefix
+            // and never touches this conversation's cache.
+            if (entry.isSidechain === true) {
                 continue;
             }
-            if (entry.type === 'user') {
+            if (entry.type === 'assistant') {
+                turnFinished = true;
+                // Synthetic API-error rows and requests with no cache reads
+                // or writes (caching disabled or unsupported) refreshed
+                // nothing: they end the in-flight state but must not anchor
+                // the countdown. A malformed timestamp is likewise no anchor.
+                if (entry.isApiErrorMessage !== true && hasCacheActivity(entry) && entry.timestamp) {
+                    const parsed = new Date(entry.timestamp);
+                    if (!Number.isNaN(parsed.getTime())) {
+                        return { isWorking: false, lastAssistant: parsed };
+                    }
+                }
+                continue;
+            }
+            if (entry.type === 'user' && !turnFinished) {
                 return { isWorking: true };
-            }
-            // A request with no cache reads or writes (caching disabled or
-            // unsupported) refreshed nothing, so it must not advertise a hot
-            // cache; keep scanning for the newest row that touched it.
-            if (entry.type === 'assistant' && !hasCacheActivity(entry)) {
-                continue;
-            }
-            if (entry.type === 'assistant' && entry.timestamp) {
-                const parsed = new Date(entry.timestamp);
-                // A malformed timestamp must not flow through to a NaN countdown;
-                // treat it as no data so the empty-state path renders instead.
-                return {
-                    isWorking: false,
-                    lastAssistant: Number.isNaN(parsed.getTime()) ? null : parsed
-                };
             }
         } catch {
             continue;

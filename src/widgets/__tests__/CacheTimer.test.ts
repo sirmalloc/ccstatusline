@@ -122,6 +122,22 @@ describe('CacheTimer widget', () => {
         expect(widget.render(item(), transcriptContext([assistantUsage(10, noCacheUsage)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
     });
 
+    it('does not report HOT for a finished turn whose response had no cache activity', () => {
+        const widget = new CacheTimerWidget();
+        // The user row that started the turn precedes the zero-cache response,
+        // as in a real transcript; the finished turn must not read as in-flight.
+        expect(widget.render(item(), transcriptContext([pendingUser, assistantUsage(10, noCacheUsage)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
+        // An older cache event still drives the countdown instead.
+        const cached = assistantUsage(400, { cache_read_input_tokens: 100, cache_creation_input_tokens: 0 });
+        expect(widget.render(item(), transcriptContext([cached, pendingUser, assistantUsage(10, noCacheUsage)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+    });
+
+    it('does not report HOT for a turn that ended in an API error', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext([pendingUser, apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
+        expect(widget.render(item(), transcriptContext([assistant(400), pendingUser, apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+    });
+
     it('starts the countdown from rows with cache reads or cache writes', () => {
         const widget = new CacheTimerWidget();
         expect(widget.render(item(), transcriptContext([assistantUsage(10, { cache_read_input_tokens: 1234 })]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
