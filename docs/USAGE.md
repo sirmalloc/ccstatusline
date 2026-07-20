@@ -261,6 +261,7 @@ Execute shell commands and display their output dynamically:
   - `date +%H:%M` - Display current time
   - `curl -s wttr.in?format="%t"` - Show current temperature
   - `npx -y ccusage@latest statusline` - Display Claude usage metrics (set timeout: 5000ms)
+  - `cc-session-num` - Show current session rank (`#1`, `#2`, …) from [ccsessions](https://github.com/treebird7/ccsessions)
 
 > ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
 
@@ -303,6 +304,25 @@ Create clickable links in terminals that support OSC 8 hyperlinks:
 When every tracked service is operational the command prints nothing, so the widget renders empty and manual separators collapse around it. The endpoint is JSON, CORS-enabled, and served with a ~5-minute cache.
 
 > 📄 **Variants:** See [ai-watch.dev/#statusline](https://ai-watch.dev/#statusline) for count-only, compact, provider-scoped, and clickable OSC 8 link presets.
+
+## Integration Example: ccsessions
+
+[ccsessions](https://github.com/treebird7/ccsessions) is a CLI session manager for Claude Code. Its companion script `cc-session-num` shows the current session's rank (`#1`, `#2`, …) matched against the same mtime-sorted list that `ccsessions` uses.
+
+1. Install `cc-session-num`:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/treebird7/ccsessions/main/cc-session-num \
+     -o ~/.local/bin/cc-session-num && chmod +x ~/.local/bin/cc-session-num
+   ```
+
+2. Add a Custom Command widget
+3. Set command: `cc-session-num`
+4. Leave timeout at default (the script reads `~/.claude/projects/` locally and returns in milliseconds)
+
+The widget renders nothing when the current session isn't found, so manual separators collapse around it cleanly.
+
+> 📄 **How it works:** `cc-session-num` reads `CLAUDE_CODE_SESSION_ID` from the environment (set by Claude Code), then ranks `~/.claude/projects/*/*.jsonl` files by modification time — the same sort order `ccsessions` uses — and prints the matching position.
 
 ## Smart Truncation
 
