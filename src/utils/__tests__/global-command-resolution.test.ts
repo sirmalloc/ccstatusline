@@ -71,6 +71,32 @@ describe('global command resolution', () => {
         ]);
     });
 
+    it('silences child stderr on best-effort probes so failures cannot leak to the terminal', () => {
+        const execFileSyncSpy = mockExecFileSync({
+            'which -a ccstatusline': '/home/alice/.bun/bin/ccstatusline\n',
+            'bun pm bin -g': '/home/alice/.bun/bin\n'
+        });
+
+        inspectGlobalCommandResolution('bun', { platform: 'linux' });
+
+        expect(execFileSyncSpy).toHaveBeenCalled();
+        for (const call of execFileSyncSpy.mock.calls) {
+            const options = call[2] as { stdio?: string[] };
+            expect(options.stdio).toEqual(['ignore', 'pipe', 'ignore']);
+        }
+    });
+
+    it('treats a probe that throws with stderr output as not found without surfacing an error', () => {
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation(() => {
+            throw new Error('error: No package.json was found for directory "C:\\Users\\alice\\.bun\\install\\global"');
+        });
+
+        const resolution = inspectGlobalCommandResolution('bun', { platform: 'win32' });
+
+        expect(resolution.resolvedPaths).toEqual([]);
+        expect(resolution.expectedBinDir).toBeNull();
+    });
+
     it('warns when multiple PATH directories contain ccstatusline', () => {
         mockExecFileSync({
             'which -a ccstatusline': '/home/alice/.bun/bin/ccstatusline\n/usr/local/bin/ccstatusline\n',

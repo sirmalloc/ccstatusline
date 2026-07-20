@@ -167,6 +167,7 @@ export function toggleUsageWeekday(item: WidgetItem): WidgetItem {
 interface UsageDisplayModifierOptions {
     includeCompact?: boolean;
     includeDate?: boolean;
+    showUsageDirection?: boolean;
 }
 
 export function getUsageDisplayModifierText(
@@ -186,7 +187,9 @@ export function getUsageDisplayModifierText(
         modifiers.push('short bar only');
     }
 
-    if (isUsageInverted(item)) {
+    if (options.showUsageDirection) {
+        modifiers.push(isUsageInverted(item) ? 'remaining' : 'used');
+    } else if (isUsageInverted(item)) {
         modifiers.push('inverted');
     }
 
@@ -219,7 +222,7 @@ export function getUsageDisplayModifierText(
     return makeModifierText(modifiers);
 }
 
-export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: string[] = [], includeSlider = false): WidgetItem {
+export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: string[] = [], includeSlider = false, preserveInvertInTime = false): WidgetItem {
     const currentMode = getUsageDisplayMode(item);
     let nextMode: UsageDisplayMode;
     if (includeSlider) {
@@ -240,7 +243,7 @@ export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: 
                 : 'time';
     }
 
-    const keysToRemove = nextMode === 'time' ? ['invert', 'cursor'] : disabledInProgressKeys;
+    const keysToRemove = nextMode === 'time' ? (preserveInvertInTime ? ['cursor'] : ['invert', 'cursor']) : disabledInProgressKeys;
     const nextItem = removeMetadataKeys(item, keysToRemove);
     const nextMetadata: Record<string, string> = {
         ...(nextItem.metadata ?? {}),
@@ -257,14 +260,15 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
-export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-    const keybinds = [PROGRESS_TOGGLE_KEYBIND];
+export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
+    const nextDirection = item && isUsageInverted(item) ? 'used' : 'remaining';
+    const keybinds: CustomKeybind[] = [
+        PROGRESS_TOGGLE_KEYBIND,
+        { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
+    ];
 
-    if (item) {
+    if (item && includeCursor) {
         const mode = getUsageDisplayMode(item);
-        if (isUsageProgressMode(mode) || isUsageSliderMode(mode)) {
-            keybinds.push(INVERT_TOGGLE_KEYBIND);
-        }
         if (isUsageProgressMode(mode) || isUsageSliderMode(mode)) {
             keybinds.push(CURSOR_TOGGLE_KEYBIND);
         }

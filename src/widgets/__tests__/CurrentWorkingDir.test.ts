@@ -56,13 +56,15 @@ describe('CurrentWorkingDirWidget', () => {
 
     const createItem = (
         metadata?: Record<string, string>,
-        rawValue = false
+        rawValue = false,
+        character?: string
     ): WidgetItem => ({
         id: 'test',
         type: 'current-working-dir',
         backgroundColor: 'bgBlue',
         rawValue,
-        metadata
+        metadata,
+        character
     });
 
     describe('abbreviateHome', () => {
@@ -214,6 +216,45 @@ describe('CurrentWorkingDirWidget', () => {
             expect(homeKeybind).toBeDefined();
             expect(homeKeybind?.label).toBe('(h)ome ~');
             expect(homeKeybind?.action).toBe('toggle-abbreviate-home');
+        });
+
+        it('should expose a (g)lyph symbol-override keybind', () => {
+            const keybinds = widget.getCustomKeybinds();
+            const glyphKeybind = keybinds.find(k => k.key === 'g');
+            expect(glyphKeybind).toBeDefined();
+            expect(glyphKeybind?.action).toBe('edit-symbol-override');
+        });
+    });
+
+    describe('glyph symbol override', () => {
+        it('renders no glyph prefix by default, leaving the cwd: label intact', () => {
+            const item = createItem(undefined, false);
+            const result = widget.render(item, createContext('/var/www/site'), defaultSettings);
+            expect(result).toBe('cwd: /var/www/site');
+        });
+
+        it('prefixes the labeled output with the configured glyph', () => {
+            const item = createItem(undefined, false, '📁');
+            const result = widget.render(item, createContext('/var/www/site'), defaultSettings);
+            expect(result).toBe('📁 cwd: /var/www/site');
+        });
+
+        it('keeps the glyph in raw value mode while dropping the cwd: label', () => {
+            const item = createItem(undefined, true, '📁');
+            const result = widget.render(item, createContext('/var/www/site'), defaultSettings);
+            expect(result).toBe('📁 /var/www/site');
+        });
+
+        it('composes the glyph with raw value and segment truncation', () => {
+            const item = createItem({ segments: '2' }, true, '📁');
+            const result = widget.render(item, createContext('/var/www/html/my-project'), defaultSettings);
+            expect(result).toBe('📁 .../html/my-project');
+        });
+
+        it('shows the glyph in preview mode', () => {
+            const item = createItem(undefined, true, '📁');
+            const result = widget.render(item, createContext(undefined, true), defaultSettings);
+            expect(result).toBe('📁 /Users/example/Documents/Projects/my-project');
         });
     });
 });

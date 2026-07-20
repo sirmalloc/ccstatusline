@@ -33,6 +33,7 @@ function render(options: {
     hideNoGit?: boolean;
     isPreview?: boolean;
     linkToRepo?: boolean;
+    maxWidth?: number;
     metadata?: Record<string, string>;
     rawValue?: boolean;
 } = {}) {
@@ -50,6 +51,7 @@ function render(options: {
         id: 'git-branch',
         type: 'git-branch',
         rawValue: options.rawValue,
+        maxWidth: options.maxWidth,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined
     };
 
@@ -172,6 +174,44 @@ describe('GitBranchWidget', () => {
         mockExecFileSync.mockReturnValueOnce('main');
 
         expect(render({ metadata: { linkToRepo: 'false', linkToGitHub: 'true' } })).toBe('⎇ main');
+    });
+
+    describe('max width', () => {
+        const widget = new GitBranchWidget();
+
+        it.each([
+            { name: 'truncates the branch with an ellipsis', maxWidth: 10, expected: 'feature...' },
+            { name: 'leaves the branch untouched when it fits', maxWidth: 100, expected: 'feature/worktree' }
+        ])('$name', ({ maxWidth, expected }) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce('feature/worktree');
+
+            expect(render({ rawValue: true, maxWidth })).toBe(expected);
+        });
+
+        it('truncates the visible link label but keeps the full link target', () => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce('feature/worktree');
+            mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
+
+            expect(render({ rawValue: true, linkToRepo: true, maxWidth: 10 })).toBe(renderOsc8Link(
+                'https://github.com/owner/repo/tree/feature/worktree',
+                'feature...'
+            ));
+        });
+
+        it('shows the max-width modifier in the editor display', () => {
+            expect(widget.getEditorDisplay({ id: 'git-branch', type: 'git-branch', maxWidth: 12 }).modifierText)
+                .toBe('(max:12)');
+        });
+
+        it('exposes the width keybind', () => {
+            expect(widget.getCustomKeybinds()).toContainEqual({
+                key: 'w',
+                label: '(w)idth',
+                action: 'edit-max-width'
+            });
+        });
     });
 
     describe('toggle action', () => {
