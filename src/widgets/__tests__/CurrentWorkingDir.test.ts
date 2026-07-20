@@ -39,6 +39,7 @@ describe('CurrentWorkingDirWidget', () => {
         compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
+        defaultPaddingSide: 'both',
         inheritSeparatorColors: false,
         globalBold: false,
         gitCacheTtlSeconds: 5,
