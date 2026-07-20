@@ -1,9 +1,15 @@
-import { execFileSync } from 'child_process';
 import {
+    execFileSync,
+    spawn
+} from 'child_process';
+import {
+    closeSync,
     existsSync,
     mkdirSync,
+    openSync,
     readFileSync,
     statSync,
+    unlinkSync,
     writeFileSync
 } from 'fs';
 import { createHash } from 'node:crypto';
@@ -31,6 +37,20 @@ export interface GitReviewData {
     reviewDecision: string;
     provider?: GitReviewProvider;
     checks?: GitCiChecks;
+}
+
+export interface GitReviewFetchOptions { includeChecks?: boolean }
+
+interface StoredGitReviewCache {
+    version: 1;
+    data: GitReviewData | null;
+    checksQueried: boolean;
+}
+
+interface CachedGitReviewData {
+    data: GitReviewData | null;
+    checksQueried: boolean;
+    stale: boolean;
 }
 
 type CiCheckKind = 'success' | 'failed' | 'pending' | 'ignored';
@@ -93,27 +113,41 @@ export function computeCiRollup(rollup: unknown): GitCiChecks | null {
 
 const GIT_REVIEW_CACHE_TTL = 30_000;
 const CLI_TIMEOUT = 5_000;
+const REFRESH_LOCK_STALE_MS = 30_000;
 const DEFAULT_TITLE_MAX_WIDTH = 30;
 const GH_PR_METADATA_FIELDS = 'url,number,title,state,reviewDecision';
 const GH_PR_WITH_CHECKS_FIELDS = `${GH_PR_METADATA_FIELDS},statusCheckRollup`;
+export const GIT_REVIEW_REFRESH_FLAG = '--internal-refresh-git-review-cache';
 
 export interface GitReviewCacheDeps {
+    closeSync: typeof closeSync;
     execFileSync: typeof execFileSync;
     existsSync: typeof existsSync;
+    getExecPath: () => string;
     mkdirSync: typeof mkdirSync;
+    openSync: typeof openSync;
     readFileSync: typeof readFileSync;
+    getScriptPath: () => string | undefined;
+    spawn: typeof spawn;
     statSync: typeof statSync;
+    unlinkSync: typeof unlinkSync;
     writeFileSync: typeof writeFileSync;
     getHomedir: typeof os.homedir;
     now: typeof Date.now;
 }
 
 const DEFAULT_GIT_REVIEW_CACHE_DEPS: GitReviewCacheDeps = {
+    closeSync,
     execFileSync,
     existsSync,
+    getExecPath: () => process.execPath,
     mkdirSync,
+    openSync,
     readFileSync,
+    getScriptPath: () => process.argv[1],
+    spawn,
     statSync,
+    unlinkSync,
     writeFileSync,
     getHomedir: os.homedir,
     now: Date.now
@@ -170,36 +204,84 @@ function getCachePath(cwd: string, ref: string, deps: GitReviewCacheDeps): strin
     return path.join(getGitReviewCacheDir(deps), `git-review-${hash}.json`);
 }
 
-function readCache(cachePath: string, deps: GitReviewCacheDeps): GitReviewData | null | 'miss' {
+function isGitReviewData(value: unknown): value is GitReviewData {
+    if (typeof value !== 'object' || value === null) {
+        return false;
+    }
+    const candidate = value as Partial<GitReviewData>;
+    return typeof candidate.number === 'number' && typeof candidate.url === 'string';
+}
+
+function decodeCache(content: string): Omit<CachedGitReviewData, 'stale'> | 'miss' {
+    if (content.length === 0) {
+        // v2.2.24 and earlier represented a cached "no PR" result as an
+        // empty file. A missing PR also implies that no CI checks can exist.
+        return { data: null, checksQueried: true };
+    }
+
+    const parsed = JSON.parse(content) as unknown;
+    if (typeof parsed === 'object' && parsed !== null) {
+        const stored = parsed as Partial<StoredGitReviewCache>;
+        if (stored.version === 1
+            && typeof stored.checksQueried === 'boolean'
+            && (stored.data === null || isGitReviewData(stored.data))) {
+            return {
+                data: stored.data,
+                checksQueried: stored.data === null || stored.checksQueried
+            };
+        }
+    }
+
+    if (isGitReviewData(parsed)) {
+        // Legacy cache files stored GitReviewData directly. The presence of
+        // checks proves the old lookup included CI data; absence is treated
+        // as metadata-only because an empty rollup was previously omitted.
+        return {
+            data: parsed,
+            checksQueried: parsed.checks !== undefined
+        };
+    }
+
+    return 'miss';
+}
+
+function readCache(cachePath: string, deps: GitReviewCacheDeps): CachedGitReviewData | 'miss' {
     try {
         if (!deps.existsSync(cachePath)) {
             return 'miss';
         }
         const age = deps.now() - deps.statSync(cachePath).mtimeMs;
-        if (age > GIT_REVIEW_CACHE_TTL) {
-            return 'miss';
-        }
         const content = deps.readFileSync(cachePath, 'utf-8').trim();
-        if (content.length === 0) {
-            return null;
-        }
-        const data = JSON.parse(content) as GitReviewData;
-        if (typeof data.number !== 'number' || typeof data.url !== 'string') {
+        const decoded = decodeCache(content);
+        if (decoded === 'miss') {
             return 'miss';
         }
-        return data;
+        return {
+            ...decoded,
+            stale: age > GIT_REVIEW_CACHE_TTL
+        };
     } catch {
         return 'miss';
     }
 }
 
-function writeCache(cachePath: string, data: GitReviewData | null, deps: GitReviewCacheDeps): void {
+function writeCache(
+    cachePath: string,
+    data: GitReviewData | null,
+    checksQueried: boolean,
+    deps: GitReviewCacheDeps
+): void {
     try {
         const cacheDir = getGitReviewCacheDir(deps);
         if (!deps.existsSync(cacheDir)) {
             deps.mkdirSync(cacheDir, { recursive: true });
         }
-        deps.writeFileSync(cachePath, data ? JSON.stringify(data) : '', 'utf-8');
+        const stored: StoredGitReviewCache = {
+            version: 1,
+            data,
+            checksQueried: data === null || checksQueried
+        };
+        deps.writeFileSync(cachePath, JSON.stringify(stored), 'utf-8');
     } catch {
         // Best-effort caching
     }
@@ -300,11 +382,21 @@ function getProviderCandidates(cwd: string, deps: GitReviewCacheDeps): GitReview
     return authed;
 }
 
-function isCliAvailable(cli: GitReviewProvider, deps: GitReviewCacheDeps): boolean {
+class GitReviewDeadlineError extends Error {}
+
+function getRemainingTimeout(deadline: number, deps: GitReviewCacheDeps): number {
+    const remaining = deadline - deps.now();
+    if (remaining <= 0) {
+        throw new GitReviewDeadlineError('Git review lookup deadline exceeded');
+    }
+    return Math.max(1, Math.min(CLI_TIMEOUT, remaining));
+}
+
+function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitReviewCacheDeps): boolean {
     try {
         deps.execFileSync(cli, ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
-            timeout: CLI_TIMEOUT,
+            timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         });
         return true;
@@ -338,10 +430,29 @@ function mapGlabState(state: string): string {
     return state.toUpperCase();
 }
 
+function errorText(error: unknown): string {
+    if (!(error instanceof Error)) {
+        return '';
+    }
+
+    const stderr = 'stderr' in error
+        ? (error as Error & { stderr?: Buffer | string }).stderr
+        : undefined;
+    const stderrText = Buffer.isBuffer(stderr) ? stderr.toString('utf8') : (stderr ?? '');
+    return `${error.message}\n${stderrText}`.toLowerCase();
+}
+
+function isCiFieldUnavailableError(error: unknown): boolean {
+    const text = errorText(error);
+    return text.includes('statuscheckrollup')
+        || text.includes('resource not accessible by integration');
+}
+
 function queryGhPr(
     cwd: string,
     args: string[],
     fields: string,
+    deadline: number,
     deps: GitReviewCacheDeps
 ): Record<string, unknown> | null {
     const output = deps.execFileSync(
@@ -349,9 +460,9 @@ function queryGhPr(
         [...args, '--json', fields],
         {
             encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
+            stdio: ['pipe', 'pipe', 'pipe'],
             cwd,
-            timeout: CLI_TIMEOUT,
+            timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
     ).trim();
@@ -363,7 +474,13 @@ function queryGhPr(
     return JSON.parse(output) as Record<string, unknown>;
 }
 
-function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
+function fetchFromGh(
+    cwd: string,
+    repoRef: string | null,
+    includeChecks: boolean,
+    deadline: number,
+    deps: GitReviewCacheDeps
+): GitReviewData | null {
     const args = ['pr', 'view'];
     if (repoRef) {
         // `--repo` disables branch auto-resolution, so pass the branch explicitly.
@@ -375,10 +492,17 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
     }
 
     let parsed: Record<string, unknown> | null;
-    try {
-        parsed = queryGhPr(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deps);
-    } catch {
-        parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deps);
+    if (includeChecks) {
+        try {
+            parsed = queryGhPr(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deadline, deps);
+        } catch (error) {
+            if (!isCiFieldUnavailableError(error)) {
+                throw error;
+            }
+            parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
+        }
+    } else {
+        parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
     }
 
     if (!parsed) {
@@ -398,7 +522,12 @@ function fetchFromGh(cwd: string, repoRef: string | null, deps: GitReviewCacheDe
     };
 }
 
-function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
+function fetchFromGlab(
+    cwd: string,
+    repoRef: string | null,
+    deadline: number,
+    deps: GitReviewCacheDeps
+): GitReviewData | null {
     const args = ['mr', 'view'];
     if (repoRef) {
         // `--repo` disables branch auto-resolution, so pass the branch explicitly.
@@ -417,7 +546,7 @@ function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCache
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
-            timeout: CLI_TIMEOUT,
+            timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
     ).trim();
@@ -442,46 +571,188 @@ function fetchFromGlab(cwd: string, repoRef: string | null, deps: GitReviewCache
 
 // First try the CLI's own repo resolution, then fall back to pinning `--repo`
 // to origin. The pinned pass catches forks where the CLI resolves to upstream.
-function fetchFromProvider(provider: GitReviewProvider, cwd: string, repoRef: string | null, deps: GitReviewCacheDeps): GitReviewData | null {
-    const fetchFn = provider === 'gh' ? fetchFromGh : fetchFromGlab;
+function fetchFromProvider(
+    provider: GitReviewProvider,
+    cwd: string,
+    repoRef: string | null,
+    includeChecks: boolean,
+    deadline: number,
+    deps: GitReviewCacheDeps
+): GitReviewData | null {
+    const fetch = (targetRepoRef: string | null): GitReviewData | null => provider === 'gh'
+        ? fetchFromGh(cwd, targetRepoRef, includeChecks, deadline, deps)
+        : fetchFromGlab(cwd, targetRepoRef, deadline, deps);
 
     try {
-        const unpinned = fetchFn(cwd, null, deps);
+        const unpinned = fetch(null);
         if (unpinned) {
             return unpinned;
         }
     } catch { /* fall through */ }
 
     if (repoRef) {
-        return fetchFn(cwd, repoRef, deps);
+        return fetch(repoRef);
     }
     return null;
 }
 
-export function fetchGitReviewData(cwd: string, deps: GitReviewCacheDeps = DEFAULT_GIT_REVIEW_CACHE_DEPS): GitReviewData | null {
+export function fetchGitReviewData(
+    cwd: string,
+    deps: GitReviewCacheDeps = DEFAULT_GIT_REVIEW_CACHE_DEPS,
+    options: GitReviewFetchOptions = {}
+): GitReviewData | null {
+    const includeChecks = options.includeChecks ?? false;
     const cachePath = getCachePath(cwd, getCacheRef(cwd, deps), deps);
     const cached = readCache(cachePath, deps);
-    if (cached !== 'miss') {
-        return cached;
+    if (cached !== 'miss'
+        && !cached.stale
+        && (!includeChecks || cached.checksQueried)) {
+        return cached.data;
     }
-
     const repoRef = getOriginRepoRef(cwd, deps);
+    const deadline = deps.now() + CLI_TIMEOUT;
 
     for (const provider of getProviderCandidates(cwd, deps)) {
-        if (!isCliAvailable(provider, deps)) {
+        if (!isCliAvailable(provider, deadline, deps)) {
             continue;
         }
         try {
-            const data = fetchFromProvider(provider, cwd, repoRef, deps);
+            const data = fetchFromProvider(provider, cwd, repoRef, includeChecks, deadline, deps);
             if (data) {
-                writeCache(cachePath, data, deps);
+                writeCache(cachePath, data, includeChecks, deps);
                 return data;
             }
         } catch { /* try next provider */ }
     }
 
-    writeCache(cachePath, null, deps);
+    // Keep useful stale data on transient refresh failures. A later statusline
+    // invocation will schedule another refresh because its mtime stays stale.
+    if (cached !== 'miss' && cached.data !== null) {
+        return cached.data;
+    }
+
+    writeCache(cachePath, null, true, deps);
     return null;
+}
+
+function getRefreshLockPath(cachePath: string): string {
+    return `${cachePath}.lock`;
+}
+
+function releaseRefreshLock(lockPath: string, deps: GitReviewCacheDeps): void {
+    try {
+        deps.unlinkSync(lockPath);
+    } catch {
+        // Another process may already have cleaned up a stale lock.
+    }
+}
+
+function createRefreshLock(cachePath: string, deps: GitReviewCacheDeps): string | null {
+    const cacheDir = getGitReviewCacheDir(deps);
+    try {
+        if (!deps.existsSync(cacheDir)) {
+            deps.mkdirSync(cacheDir, { recursive: true });
+        }
+    } catch {
+        return null;
+    }
+
+    const lockPath = getRefreshLockPath(cachePath);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const descriptor = deps.openSync(lockPath, 'wx');
+            deps.closeSync(descriptor);
+            return lockPath;
+        } catch {
+            try {
+                const age = deps.now() - deps.statSync(lockPath).mtimeMs;
+                if (age <= REFRESH_LOCK_STALE_MS) {
+                    return null;
+                }
+                deps.unlinkSync(lockPath);
+            } catch {
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
+function scheduleRefresh(
+    cwd: string,
+    cachePath: string,
+    includeChecks: boolean,
+    deps: GitReviewCacheDeps
+): void {
+    const scriptPath = deps.getScriptPath();
+    if (!scriptPath) {
+        return;
+    }
+
+    const lockPath = createRefreshLock(cachePath, deps);
+    if (!lockPath) {
+        return;
+    }
+
+    try {
+        const child = deps.spawn(
+            deps.getExecPath(),
+            [
+                scriptPath,
+                GIT_REVIEW_REFRESH_FLAG,
+                cwd,
+                includeChecks ? 'checks' : 'metadata',
+                lockPath
+            ],
+            {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true
+            }
+        );
+        child.unref();
+    } catch {
+        releaseRefreshLock(lockPath, deps);
+    }
+}
+
+export function getCachedGitReviewData(
+    cwd: string,
+    options: GitReviewFetchOptions = {},
+    deps: GitReviewCacheDeps = DEFAULT_GIT_REVIEW_CACHE_DEPS
+): GitReviewData | null {
+    const includeChecks = options.includeChecks ?? false;
+    const cachePath = getCachePath(cwd, getCacheRef(cwd, deps), deps);
+    const cached = readCache(cachePath, deps);
+    const needsRefresh = cached === 'miss'
+        || cached.stale
+        || (includeChecks && !cached.checksQueried);
+
+    if (needsRefresh) {
+        scheduleRefresh(cwd, cachePath, includeChecks, deps);
+    }
+
+    return cached === 'miss' ? null : cached.data;
+}
+
+export function refreshGitReviewCacheFromCli(
+    cwd: string,
+    options: GitReviewFetchOptions,
+    lockPath: string,
+    deps: GitReviewCacheDeps = DEFAULT_GIT_REVIEW_CACHE_DEPS
+): void {
+    const expectedLockPath = getRefreshLockPath(
+        getCachePath(cwd, getCacheRef(cwd, deps), deps)
+    );
+    try {
+        fetchGitReviewData(cwd, deps, options);
+    } finally {
+        // Only unlink the path derived from the supplied repository. This
+        // keeps the internal CLI mode from becoming an arbitrary file delete.
+        if (lockPath === expectedLockPath) {
+            releaseRefreshLock(lockPath, deps);
+        }
+    }
 }
 
 export function getGitReviewStatusLabel(state: string, reviewDecision: string): string {

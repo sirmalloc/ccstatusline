@@ -11,7 +11,7 @@ import {
     resolveGitCwd
 } from '../utils/git';
 import type { GitCiChecks } from '../utils/git-review-cache';
-import { fetchGitReviewData } from '../utils/git-review-cache';
+import { getCachedGitReviewData } from '../utils/git-review-cache';
 
 import {
     getHideNoGitKeybinds,
@@ -29,14 +29,14 @@ const SYMBOLS = {
 } as const;
 
 export interface GitCiStatusWidgetDeps {
-    fetchGitReviewData: typeof fetchGitReviewData;
+    getCachedGitReviewData: typeof getCachedGitReviewData;
     getProcessCwd: typeof process.cwd;
     isInsideGitWorkTree: typeof isInsideGitWorkTree;
     resolveGitCwd: typeof resolveGitCwd;
 }
 
 const DEFAULT_DEPS: GitCiStatusWidgetDeps = {
-    fetchGitReviewData,
+    getCachedGitReviewData,
     getProcessCwd: () => process.cwd(),
     isInsideGitWorkTree,
     resolveGitCwd
@@ -110,7 +110,7 @@ export class GitCiStatusWidget implements Widget {
         }
 
         const cwd = this.deps.resolveGitCwd(context) ?? this.deps.getProcessCwd();
-        const checks = this.deps.fetchGitReviewData(cwd)?.checks;
+        const checks = this.deps.getCachedGitReviewData(cwd, { includeChecks: true })?.checks;
         if (!checks) {
             return NO_CHECKS;
         }

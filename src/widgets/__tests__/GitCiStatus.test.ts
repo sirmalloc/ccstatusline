@@ -29,7 +29,7 @@ const PASSING_PR = prWithChecks('passing', 0, 0, 5);
 
 function createDeps(overrides: Partial<GitCiStatusWidgetDeps> = {}): GitCiStatusWidgetDeps {
     return {
-        fetchGitReviewData: () => PASSING_PR,
+        getCachedGitReviewData: () => PASSING_PR,
         getProcessCwd: () => '/tmp/process-cwd',
         isInsideGitWorkTree: () => true,
         resolveGitCwd: context => context.data?.cwd,
@@ -71,12 +71,12 @@ describe('GitCiStatusWidget', () => {
         ['mixed', prWithChecks('failing', 1, 1, 97), '✗1 ●1 ✓97'],
         ['zeros are hidden', prWithChecks('failing', 2, 0, 0), '✗2']
     ])('renders %s as non-zero glyph + count', (_label, pr, expected) => {
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => pr })).toBe(expected);
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => pr })).toBe(expected);
     });
 
     it('falls back to ✓0 when only skipped/neutral checks exist', () => {
         const allIgnored = prWithChecks('passing', 0, 0, 0);
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => allIgnored })).toBe('✓0');
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => allIgnored })).toBe('✓0');
     });
 
     it.each([
@@ -84,16 +84,16 @@ describe('GitCiStatusWidget', () => {
         ['failing', prWithChecks('failing', 1, 0, 4), 'failing'],
         ['pending', prWithChecks('pending', 0, 3, 2), 'pending']
     ])('renders rawValue %s as the state word', (_label, pr, expected) => {
-        expect(render({ cwd: '/tmp/repo', rawValue: true }, { fetchGitReviewData: () => pr })).toBe(expected);
+        expect(render({ cwd: '/tmp/repo', rawValue: true }, { getCachedGitReviewData: () => pr })).toBe(expected);
     });
 
     it('renders "-" when no PR exists', () => {
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => null })).toBe('-');
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => null })).toBe('-');
     });
 
     it('renders "-" when the PR has no checks', () => {
         const noChecks = { ...PASSING_PR, checks: undefined };
-        expect(render({ cwd: '/tmp/repo' }, { fetchGitReviewData: () => noChecks })).toBe('-');
+        expect(render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => noChecks })).toBe('-');
     });
 
     it('returns (no git) when not in a git repo', () => {
@@ -105,8 +105,8 @@ describe('GitCiStatusWidget', () => {
     });
 
     it('uses process cwd when repo path is omitted', () => {
-        const fetchGitReviewData = vi.fn(() => PASSING_PR);
-        render({}, { fetchGitReviewData, resolveGitCwd: () => undefined });
-        expect(fetchGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd');
+        const getCachedGitReviewData = vi.fn(() => PASSING_PR);
+        render({}, { getCachedGitReviewData, resolveGitCwd: () => undefined });
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', { includeChecks: true });
     });
 });
