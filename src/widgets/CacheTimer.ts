@@ -74,10 +74,10 @@ function hasCacheActivity(entry: TranscriptEntry): boolean {
 
 // A single transcript record can exceed the initial tail read (pasted prompts
 // and tool results reach hundreds of KiB), leaving only an unparseable
-// fragment in view, so the read doubles until a relevant record fits; the cap
-// bounds the work done per render on degenerate files.
+// fragment in view, so the read doubles until the state resolves or the whole
+// file has been scanned — the same worst case as the full-file transcript
+// reads the token widgets already do every render.
 const INITIAL_TAIL_BYTES = 32768;
-const MAX_TAIL_BYTES = 1024 * 1024;
 
 /**
  * Read the last N bytes of a file, reporting whether the read reached back to
@@ -122,7 +122,7 @@ function getTranscriptState(transcriptPath: string): TranscriptState {
         if (state) {
             return state;
         }
-        if (tail.isComplete || bytes >= MAX_TAIL_BYTES) {
+        if (tail.isComplete) {
             return { isWorking: false, lastAssistant: null };
         }
     }

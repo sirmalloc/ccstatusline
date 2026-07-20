@@ -155,7 +155,13 @@ describe('CacheTimer widget', () => {
         expect(widget.render(item(), transcriptContext([bigAssistant]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
     });
 
-    it('stops expanding the tail at the cap for a degenerate unparseable file', () => {
+    it('finds a valid trailing record larger than 1 MiB', () => {
+        const widget = new CacheTimerWidget();
+        const huge = JSON.stringify({ type: 'assistant', timestamp: isoAgo(10), message: { usage: { cache_read_input_tokens: 42 } }, content: 'x'.repeat(2 * 1024 * 1024) });
+        expect(widget.render(item(), transcriptContext([huge]), DEFAULT_SETTINGS)).toMatch(/^Cache: 🟢 \d+:\d{2}$/);
+    });
+
+    it('renders n/a after scanning a file with no parseable records', () => {
         const widget = new CacheTimerWidget();
         expect(widget.render(item(), transcriptContext(['x'.repeat(2 * 1024 * 1024)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
     });
