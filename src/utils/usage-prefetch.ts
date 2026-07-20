@@ -38,6 +38,7 @@ const USAGE_DATA_FIELDS: UsageDataField[] = [
 interface UsageFieldRequirement {
     alternatives?: UsageDataField[];
     field: UsageDataField;
+    suppressFetchError?: boolean;
 }
 
 const EMPTY_USAGE_REQUIREMENTS: UsageFieldRequirement[] = [];
@@ -47,9 +48,9 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'weekly-usage': [{ field: 'weeklyUsage' }],
     'weekly-sonnet-usage': [{ field: 'weeklySonnetUsage' }],
     'weekly-opus-usage': [{ field: 'weeklyOpusUsage' }],
-    'block-timer': [{ field: 'sessionResetAt' }],
-    'reset-timer': [{ field: 'sessionResetAt' }],
-    'weekly-reset-timer': [{ field: 'weeklyResetAt' }],
+    'block-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
+    'reset-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
+    'weekly-reset-timer': [{ field: 'weeklyResetAt', suppressFetchError: true }],
     'extra-usage-utilization': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageUtilization' }
@@ -109,16 +110,26 @@ function isUsageRequirementSatisfied(data: UsageData | null, requirement: UsageF
     return requirement.alternatives?.some(field => hasUsageDataField(data, field)) ?? false;
 }
 
-function getMissingFetchFields(data: UsageData | null, requirements: UsageFieldRequirement[]): UsageDataField[] {
+function getMissingFetchRequirements(
+    data: UsageData | null,
+    requirements: UsageFieldRequirement[]
+): { fields: UsageDataField[]; suppressFetchError: boolean } {
     const missing = new Set<UsageDataField>();
+    let hasUnsuppressedMissingRequirement = false;
 
     for (const requirement of requirements) {
         if (!isUsageRequirementSatisfied(data, requirement)) {
             missing.add(requirement.field);
+            if (!requirement.suppressFetchError) {
+                hasUnsuppressedMissingRequirement = true;
+            }
         }
     }
 
-    return Array.from(missing);
+    return {
+        fields: Array.from(missing),
+        suppressFetchError: missing.size > 0 && !hasUnsuppressedMissingRequirement
+    };
 }
 
 function hasAnyUsageDataField(data: UsageData | null | undefined): boolean {
@@ -195,12 +206,17 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
-    const missingFields = getMissingFetchFields(rateLimitsData, requirements);
+    const missingRequirements = getMissingFetchRequirements(rateLimitsData, requirements);
+    const missingFields = missingRequirements.fields;
 
     if (missingFields.length === 0) {
         return rateLimitsData;
     }
 
     const apiData = await fetchUsageData({ requiredFields: missingFields });
+    if (apiData.error && missingRequirements.suppressFetchError) {
+        return rateLimitsData;
+    }
+
     return mergeUsageData(rateLimitsData, apiData);
 }

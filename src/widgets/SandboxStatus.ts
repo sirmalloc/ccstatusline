@@ -6,34 +6,28 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getRemoteControlStatus } from '../utils/claude-settings';
+import { getSandboxConfig } from '../utils/claude-settings';
 
-const SATELLITE_EMOJI = '📡';
-const SATELLITE_NERD_FONT = '';
-const SATELLITE_SLASH_NERD_FONT = '';
-const STATE_DOT_OFF = '○';
-const STATE_DOT_ON = '◉';
+const DOT_ON = '●';
+const DOT_OFF = '○';
+const LOCK_NERD_FONT = '';
+const UNLOCK_NERD_FONT = '';
 
-const FORMATS = ['icon', 'icon-text', 'text', 'word', 'label-check', 'label-mark'] as const;
-const CHECK_EMOJI = '✅';
-const CROSS_EMOJI = '❌';
-const CHECK_MARK = '✓';
-const CROSS_MARK = '✗';
-type RemoteFormat = typeof FORMATS[number];
+const FORMATS = ['glyph', 'text', 'word'] as const;
+type SandboxFormat = typeof FORMATS[number];
 
-const DEFAULT_FORMAT: RemoteFormat = 'icon';
+const DEFAULT_FORMAT: SandboxFormat = 'glyph';
 const CYCLE_FORMAT_ACTION = 'cycle-format';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
 const NERD_FONT_METADATA_KEY = 'nerdFont';
 
-function getFormat(item: WidgetItem): RemoteFormat {
+function getFormat(item: WidgetItem): SandboxFormat {
     const f = item.metadata?.format;
-    return (FORMATS as readonly string[]).includes(f ?? '') ? (f as RemoteFormat) : DEFAULT_FORMAT;
+    return (FORMATS as readonly string[]).includes(f ?? '') ? (f as SandboxFormat) : DEFAULT_FORMAT;
 }
 
 function canUseNerdFont(item: WidgetItem): boolean {
-    const format = getFormat(item);
-    return format === 'icon' || (format === 'icon-text' && !item.rawValue);
+    return getFormat(item) === 'glyph';
 }
 
 function removeNerdFont(item: WidgetItem): WidgetItem {
@@ -46,7 +40,7 @@ function removeNerdFont(item: WidgetItem): WidgetItem {
     };
 }
 
-function setFormat(item: WidgetItem, format: RemoteFormat): WidgetItem {
+function setFormat(item: WidgetItem, format: SandboxFormat): WidgetItem {
     let updatedItem: WidgetItem;
 
     if (format === DEFAULT_FORMAT) {
@@ -92,33 +86,42 @@ function toggleNerdFont(item: WidgetItem): WidgetItem {
     return removeNerdFont(item);
 }
 
-function formatStatus(enabled: boolean, format: RemoteFormat, nerdFont: boolean, rawValue: boolean): string {
-    const stateText = enabled ? 'on' : 'off';
-    const stateDot = enabled ? STATE_DOT_ON : STATE_DOT_OFF;
-    const icon = nerdFont
-        ? (enabled ? SATELLITE_NERD_FONT : SATELLITE_SLASH_NERD_FONT)
-        : SATELLITE_EMOJI;
+function formatStatus(enabled: boolean, format: SandboxFormat, nerdFont: boolean, rawValue: boolean): string {
+    const stateText = enabled ? 'ON' : 'OFF';
+    const glyph = nerdFont
+        ? (enabled ? LOCK_NERD_FONT : UNLOCK_NERD_FONT)
+        : (enabled ? DOT_ON : DOT_OFF);
 
     switch (format) {
-        case 'icon':
-            return nerdFont ? icon : (rawValue ? stateDot : `${icon} ${stateDot}`);
-        case 'icon-text':
-            return rawValue ? stateText : `${icon} ${stateText}`;
+        case 'glyph':
+            return rawValue ? glyph : `SB: ${glyph}`;
         case 'text':
-            return stateText;
+            return rawValue ? stateText : `SB: ${stateText}`;
         case 'word':
-            return rawValue ? stateText : `remote ${stateText}`;
-        case 'label-check':
-            return rawValue ? (enabled ? CHECK_EMOJI : CROSS_EMOJI) : `remote ${enabled ? CHECK_EMOJI : CROSS_EMOJI}`;
-        case 'label-mark':
-            return rawValue ? (enabled ? CHECK_MARK : CROSS_MARK) : `remote ${enabled ? CHECK_MARK : CROSS_MARK}`;
+            return rawValue ? stateText : `Sandbox: ${stateText}`;
     }
 }
 
-export class RemoteControlStatusWidget implements Widget {
-    getDefaultColor(): string { return 'blue'; }
-    getDescription(): string { return 'Shows whether Claude Code remote control is attached to the current session'; }
-    getDisplayName(): string { return 'Remote Control Status'; }
+function resolveSandboxConfigCwd(context: RenderContext): string | undefined {
+    const candidates = [
+        context.data?.workspace?.project_dir,
+        context.data?.cwd,
+        context.data?.workspace?.current_dir
+    ];
+
+    return candidates.find(candidate => typeof candidate === 'string' && candidate.trim().length > 0);
+}
+
+export class SandboxStatusWidget implements Widget {
+    getDefaultColor(): string { return 'green'; }
+    getDescription(): string {
+        return [
+            'Shows whether Claude Code bash sandbox mode is enabled',
+            'Best effort: may not reflect active sandboxing when managed or CLI settings override it, or when sandbox initialization fails.'
+        ].join('\n');
+    }
+
+    getDisplayName(): string { return 'Sandbox Status'; }
     getCategory(): string { return 'Core'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
@@ -156,12 +159,12 @@ export class RemoteControlStatusWidget implements Widget {
             return formatStatus(true, format, nerdFont, item.rawValue ?? false);
         }
 
-        const status = getRemoteControlStatus(context.data?.session_id);
-        if (status === null) {
+        const config = getSandboxConfig(resolveSandboxConfigCwd(context));
+        if (config === null) {
             return null;
         }
 
-        return formatStatus(status.enabled, format, nerdFont, item.rawValue ?? false);
+        return formatStatus(config.enabled, format, nerdFont, item.rawValue ?? false);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
