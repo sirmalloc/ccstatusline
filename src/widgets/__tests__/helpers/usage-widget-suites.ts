@@ -24,9 +24,12 @@ interface UsagePercentWidgetSuiteConfig<TWidget extends UsageWidgetLike> {
     createWidget: () => TWidget;
     errorMessageMock: { mockReturnValue: (value: string) => void };
     expectedModifierText: string;
+    expectedPreviewInvertedTime: string;
     expectedProgress: string;
+    expectedRawInvertedTime: string;
     expectedRawProgress: string;
     expectedRawTime: string;
+    expectedInvertedTime: string;
     expectedTime: string;
     modifierItem: WidgetItem;
     progressItem: WidgetItem;
@@ -49,16 +52,6 @@ interface UsageTimerEditorSuiteConfig<TWidget extends UsageWidgetLike & { getDis
     expectedTimeKeybinds?: CustomKeybind[];
 }
 
-const EXPECTED_USAGE_KEYBINDS: CustomKeybind[] = [
-    { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' }
-];
-
-const EXPECTED_USAGE_PROGRESS_KEYBINDS: CustomKeybind[] = [
-    { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-    { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' },
-    { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' }
-];
-
 const EXPECTED_TIMER_TIME_KEYBINDS: CustomKeybind[] = [
     { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
     { key: 's', label: '(s)hort time', action: 'toggle-compact' }
@@ -73,6 +66,20 @@ function getUsageContext(field: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUs
     return { usageData: { [field]: value } };
 }
 
+function getExpectedUsageKeybinds(item: WidgetItem, includeCursor = false): CustomKeybind[] {
+    const nextDirection = item.metadata?.invert === 'true' ? 'used' : 'remaining';
+    const keybinds: CustomKeybind[] = [
+        { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
+        { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
+    ];
+
+    if (includeCursor) {
+        keybinds.push({ key: 't', label: '(t)ime cursor', action: 'toggle-cursor' });
+    }
+
+    return keybinds;
+}
+
 export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(config: UsagePercentWidgetSuiteConfig<TWidget>): void {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -80,18 +87,20 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
 
     it('exposes widget-managed keybinds for time and bar modes', () => {
         const widget = config.createWidget();
-
-        expect(widget.supportsRawValue()).toBe(true);
-        expect(widget.getCustomKeybinds(config.baseItem)).toEqual(EXPECTED_USAGE_KEYBINDS);
-        expect(widget.getCustomKeybinds(config.progressItem)).toEqual(EXPECTED_USAGE_PROGRESS_KEYBINDS);
-        expect(widget.getCustomKeybinds({
+        const sliderItem: WidgetItem = {
             ...config.baseItem,
             metadata: { display: 'slider' }
-        })).toEqual(EXPECTED_USAGE_PROGRESS_KEYBINDS);
-        expect(widget.getCustomKeybinds({
+        };
+        const sliderOnlyItem: WidgetItem = {
             ...config.baseItem,
             metadata: { display: 'slider-only' }
-        })).toEqual(EXPECTED_USAGE_PROGRESS_KEYBINDS);
+        };
+
+        expect(widget.supportsRawValue()).toBe(true);
+        expect(widget.getCustomKeybinds(config.baseItem)).toEqual(getExpectedUsageKeybinds(config.baseItem));
+        expect(widget.getCustomKeybinds(config.progressItem)).toEqual(getExpectedUsageKeybinds(config.progressItem, true));
+        expect(widget.getCustomKeybinds(sliderItem)).toEqual(getExpectedUsageKeybinds(sliderItem, true));
+        expect(widget.getCustomKeybinds(sliderOnlyItem)).toEqual(getExpectedUsageKeybinds(sliderOnlyItem, true));
     });
 
     it.each([
@@ -141,7 +150,24 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, config.baseItem, context)).toBe(config.expectedTime);
     });
 
-    it('clears invert and cursor metadata when cycling back to time mode', () => {
+    it('renders inverted percentage in time mode', () => {
+        const widget = config.createWidget();
+        const context = getUsageContext(config.usageField, config.usageValue);
+        const invertedTimeItem: WidgetItem = {
+            ...config.baseItem,
+            metadata: { invert: 'true' }
+        };
+        const rawInvertedTimeItem: WidgetItem = {
+            ...config.rawTimeItem,
+            metadata: { invert: 'true' }
+        };
+
+        expect(config.render(widget, invertedTimeItem, context)).toBe(config.expectedInvertedTime);
+        expect(config.render(widget, rawInvertedTimeItem, context)).toBe(config.expectedRawInvertedTime);
+        expect(config.render(widget, invertedTimeItem, { isPreview: true })).toBe(config.expectedPreviewInvertedTime);
+    });
+
+    it('preserves invert and clears cursor metadata when cycling back to time mode', () => {
         const widget = config.createWidget();
         const updated = widget.handleEditorAction('toggle-progress', {
             ...config.baseItem,
@@ -153,7 +179,7 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         });
 
         expect(updated?.metadata?.display).toBe('time');
-        expect(updated?.metadata?.invert).toBeUndefined();
+        expect(updated?.metadata?.invert).toBe('true');
         expect(updated?.metadata?.cursor).toBeUndefined();
     });
 
@@ -173,7 +199,7 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(fifth?.metadata?.display).toBe('time');
     });
 
-    it('toggles invert metadata and shows editor modifiers', () => {
+    it('toggles invert metadata and shows used/remaining editor modifiers', () => {
         const widget = config.createWidget();
 
         const inverted = widget.handleEditorAction('toggle-invert', config.baseItem);
@@ -181,7 +207,7 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
 
         expect(inverted?.metadata?.invert).toBe('true');
         expect(cleared?.metadata?.invert).toBe('false');
-        expect(widget.getEditorDisplay(config.baseItem).modifierText).toBeUndefined();
+        expect(widget.getEditorDisplay(config.baseItem).modifierText).toBe('(used)');
         expect(widget.getEditorDisplay(config.modifierItem).modifierText).toBe(config.expectedModifierText);
     });
 
@@ -194,14 +220,14 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
                 cursor: 'true',
                 display: 'slider'
             }
-        }).modifierText).toBe('(short bar, time cursor)');
+        }).modifierText).toBe('(short bar, used, time cursor)');
         expect(widget.getEditorDisplay({
             ...config.baseItem,
             metadata: {
                 cursor: 'true',
                 display: 'slider-only'
             }
-        }).modifierText).toBe('(short bar only, time cursor)');
+        }).modifierText).toBe('(short bar only, used, time cursor)');
     });
 
     it('ignores stale compact metadata in editor modifiers', () => {
@@ -217,7 +243,7 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(widget.getEditorDisplay({
             ...config.baseItem,
             metadata: { compact: 'true' }
-        }).modifierText).toBeUndefined();
+        }).modifierText).toBe('(used)');
         expect(widget.getEditorDisplay(modifierItemWithCompact).modifierText).toBe(config.expectedModifierText);
     });
 }

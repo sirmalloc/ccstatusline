@@ -7,6 +7,7 @@ export { GitDeletionsWidget } from './GitDeletions';
 export { GitStagedFilesWidget } from './GitStagedFiles';
 export { GitUnstagedFilesWidget } from './GitUnstagedFiles';
 export { GitUntrackedFilesWidget } from './GitUntrackedFiles';
+export { GitCiStatusWidget } from './GitCiStatus';
 export { GitCleanStatusWidget } from './GitCleanStatus';
 export { GitRootDirWidget } from './GitRootDir';
 export { GitPrWidget } from './GitPr';

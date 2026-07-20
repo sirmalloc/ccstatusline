@@ -10,6 +10,7 @@ Once configured, `ccstatusline` automatically formats your Claude Code status li
 
 - **Interactive mode (TUI)**: Launches when there is no stdin input
 - **Piped mode (renderer)**: Parses Claude Code status JSON from stdin and prints one or more formatted lines
+- **Version mode**: Prints the installed ccstatusline package version and exits when passed `--version`
 
 ```bash
 # Interactive TUI
@@ -17,6 +18,9 @@ bun run start
 
 # Piped mode with example payload
 bun run example
+
+# Print the installed package version
+ccstatusline --version
 ```
 
 ## Available Widgets
@@ -31,7 +35,7 @@ bun run example
 
 ### Git
 
-- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Works with GitHub (`gh`) and GitLab (`glab`); SSH remote aliases are resolved with `ssh -G` before provider detection, while canonical GitHub/GitLab remotes keep their original forge hosts. For self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
+- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Git Branch and Git Root Dir can cap their visible labels to a per-widget maximum width; truncation keeps OSC 8 hyperlink targets intact. Works with GitHub (`gh`) and GitLab (`glab`); SSH remote aliases are resolved with `ssh -G` before provider detection, while canonical GitHub/GitLab remotes keep their original forge hosts. For self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
 - **Git Changes** / **Git Insertions** / **Git Deletions** - Show aggregate file-change counts and dedicated insertion/deletion counts.
 - **Git Status** / **Git Staged** / **Git Unstaged** / **Git Untracked** / **Git Ahead/Behind** / **Git Conflicts** / **Git SHA** - Show compact repo-state indicators, upstream divergence, merge-conflict count, and the current short commit SHA.
 - **Git Staged Files** / **Git Unstaged Files** / **Git Untracked Files** / **Git Clean Status** - Show file-level status counts and clean/dirty state.
@@ -44,13 +48,13 @@ bun run example
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts. Input/output prefer cumulative transcript metrics and fall back to `context_window.total_input_tokens` / `context_window.total_output_tokens` when transcript metrics are unavailable; cached/total use transcript metrics.
 - **Cache Hit Rate** / **Cache Read** / **Cache Write** - Show prompt-cache efficiency. Cache Hit Rate uses cache reads divided by cache reads plus cache writes; Cache Read and Cache Write include each value's share of prompt context. They default to the latest turn from `context_window.current_usage`, can switch to cumulative session totals, and can hide when empty.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
-- **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar.
-- **Compaction Counter** - Show how many context compactions have been detected in the current session by scanning transcript compaction markers. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero. Two optional, independent per-item add-ons toggle extra detail: a trigger split (`↻ 3 (2 auto, 1 manual)`; a compaction whose trigger is missing or unrecognized is bucketed as `unknown`) and tokens reclaimed (`↻ 3 ↓887.0k`, each compaction's `preTokens - postTokens` floored at 0 and summed, shown only when greater than 0 — so very old transcripts predating the `postTokens` field display nothing).
-- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Extra Usage Used** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Extra usage widgets accept known extra-usage state as complete when an account has no monthly limit configured, avoid repeated refetches and stale `[Timeout]` output, and format amounts with the API-reported billing currency when available. Session and weekly usage bars can show a time cursor; reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls.
+- **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar. The window size is taken from Claude Code's reported `context_window.context_window_size` when present, then from a model-name hint (e.g. a `[1m]` suffix), and finally from a fixed fallback. Set `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` to a positive integer to override that last-resort fallback (defaults to `200000`) — useful when an older Claude Code does not report the window size for a 1M-context model, so the bar would otherwise read against 200k.
+- **Compaction Counter** - Show how many context compactions have been detected in the current session by scanning transcript compaction markers. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero. Two optional, independent per-item add-ons toggle extra detail: a trigger split (`↻ 3 (2 auto, 1 manual)`; a compaction whose trigger is missing or unrecognized is bucketed as `unknown`) and tokens reclaimed (`↻ 3 ↓887.0k`, each compaction's `preTokens - postTokens` floored at 0 and summed, shown only when greater than 0 — so very old transcripts predating the `postTokens` field display nothing). Its value selector can instead render the total count, one trigger count (`auto`, `manual`, or `unknown`), or reclaimed tokens as a standalone value; hide-when-zero applies to the selected value.
+- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Extra Usage Used** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. The all-models weekly bar covers `seven_day` from the usage API; the per-model variants surface the `seven_day_sonnet` and `seven_day_opus` buckets that Claude Code's own `/usage` panel shows. Session Usage, the weekly percentage widgets, and Extra Usage Utilization can show either used or remaining percentage in every display mode. Session and weekly usage bars can also show a time cursor. Extra usage widgets accept known extra-usage state as complete when an account has no monthly limit configured, avoid repeated refetches and stale `[Timeout]` output, and format amounts with the API-reported billing currency when available. Reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls; while reset data is still arriving at startup, they show a labeled loading placeholder instead of a transient API error.
 
 ### Environment, Layout & Custom
 
-- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage.
+- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label.
 - **Custom Text** / **Custom Symbol** / **Custom Command** / **Link** - Add user-defined text, a single symbol or emoji, custom command output, or a clickable OSC 8 hyperlink.
 - **Separator** / **Flex Separator** - Add a manual divider or a width-filling flexible spacer. Manual separators are disabled in Powerline mode, but flex separators still work there as layout spacers.
 
@@ -71,6 +75,10 @@ CCSTATUSLINE_WIDTH=160 ccstatusline
 
 The override is checked before automatic width detection, so it also works in wrapper processes, IDE integrations, nested PTYs, and Windows environments where probing may be unavailable. Invalid values such as `0`, negative numbers, or non-numeric strings are ignored and ccstatusline falls back to normal detection.
 
+## Powerline Auto-Alignment
+
+Powerline Setup can align widgets into shared columns across multiple status lines; press `a` there to toggle **Align Widgets**. When auto-alignment makes a naturally wide value stretch later columns, select that widget in the line editor and press `x` (**exclude align**). The selected widget and everything after it on that line keep their natural widths, while earlier columns remain aligned. This control is available only when Powerline auto-alignment is enabled and the selected widget is not merged into the previous widget.
+
 ## Global Options
 
 Configure global formatting preferences that apply to all widgets:
@@ -79,9 +87,11 @@ Configure global formatting preferences that apply to all widgets:
 
 ### Default Padding & Separators
 
-- **Default Padding** - Add consistent padding to the left and right of each widget
+- **Default Padding** - Add consistent padding around each widget
+- **Padding Side** - Choose whether default padding applies to **Both** sides (default), **Left only**, or **Right only**
 - **Default Separator** - Automatically insert a separator between all widgets
   - Press **(p)** to edit padding
+  - Press **(d)** to cycle padding side
   - Press **(s)** to edit separator
 - Manual separators collapse around widgets that render empty, so hide-when-empty widgets do not leave dangling dividers.
 
@@ -139,7 +149,7 @@ When ccstatusline is installed in Claude Code, the main menu includes **Configur
 
 ## Settings Recovery
 
-If `settings.json` is unreadable or invalid, ccstatusline leaves the file unchanged, renders with built-in defaults for that run, and prepends an invalid-config warning badge to the status line. Fix the JSON or open the TUI and save intentionally to replace it.
+If `settings.json` is unreadable or invalid, ccstatusline leaves the file unchanged, renders with built-in defaults for that run, and prepends an invalid-config warning badge to the status line. The TUI shows the same warning and asks for confirmation before either **Save & Exit** or `Ctrl+S` replaces the invalid file. Fix the JSON to preserve its contents, or confirm the save to replace it with the configuration currently shown in the TUI.
 
 ## Block Timer Widget
 
@@ -182,6 +192,7 @@ Common controls in the line editor:
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
+- `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back
 
 Widget picker:
@@ -194,22 +205,22 @@ The keybind footer in the TUI only shows shortcuts that apply to the currently s
 Widget-specific shortcuts:
 - **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
 - **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, JJ Bookmarks, JJ Workspace): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status) edit each part in one list
-- **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted)
-- **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`)
+- **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted), `w` set a maximum visible width (blank removes the limit)
+- **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`), `w` set a maximum visible width (blank removes the limit)
 - **Git PR**: `h` hide empty/no-PR/MR output, `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
 - **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `h` hide when no remote, `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Is Fork**: `h` hide when the repo is not a fork
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
-- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage**: `p` cycle percentage/full bar/medium bar/short bar/short bar only, `v` invert fill in progress mode, `t` toggle the time cursor in bar modes
+- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Session and weekly usage widgets use `t` to toggle the time cursor in bar modes; Extra Usage Utilization uses `h` to hide itself when extra usage is disabled.
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only progress bar
-- **Compaction Counter**: `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed, `h` hide when zero
+- **Compaction Counter**: `v` cycle value (count/auto/manual/unknown/reclaimed), `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed, `h` hide when zero
 - **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope, `h` hide when empty
 - **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
-- **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
+- **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)
 - **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
 - **Custom Text / Custom Symbol**: `e` edit text or symbol
@@ -250,6 +261,7 @@ Execute shell commands and display their output dynamically:
   - `date +%H:%M` - Display current time
   - `curl -s wttr.in?format="%t"` - Show current temperature
   - `npx -y ccusage@latest statusline` - Display Claude usage metrics (set timeout: 5000ms)
+  - `cc-session-num` - Show current session rank (`#1`, `#2`, …) from [ccsessions](https://github.com/treebird7/ccsessions)
 
 > ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
 
@@ -292,6 +304,25 @@ Create clickable links in terminals that support OSC 8 hyperlinks:
 When every tracked service is operational the command prints nothing, so the widget renders empty and manual separators collapse around it. The endpoint is JSON, CORS-enabled, and served with a ~5-minute cache.
 
 > 📄 **Variants:** See [ai-watch.dev/#statusline](https://ai-watch.dev/#statusline) for count-only, compact, provider-scoped, and clickable OSC 8 link presets.
+
+## Integration Example: ccsessions
+
+[ccsessions](https://github.com/treebird7/ccsessions) is a CLI session manager for Claude Code. Its companion script `cc-session-num` shows the current session's rank (`#1`, `#2`, …) matched against the same mtime-sorted list that `ccsessions` uses.
+
+1. Install `cc-session-num`:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/treebird7/ccsessions/main/cc-session-num \
+     -o ~/.local/bin/cc-session-num && chmod +x ~/.local/bin/cc-session-num
+   ```
+
+2. Add a Custom Command widget
+3. Set command: `cc-session-num`
+4. Leave timeout at default (the script reads `~/.claude/projects/` locally and returns in milliseconds)
+
+The widget renders nothing when the current session isn't found, so manual separators collapse around it cleanly.
+
+> 📄 **How it works:** `cc-session-num` reads `CLAUDE_CODE_SESSION_ID` from the environment (set by Claude Code), then ranks `~/.claude/projects/*/*.jsonl` files by modification time — the same sort order `ccsessions` uses — and prints the matching position.
 
 ## Smart Truncation
 

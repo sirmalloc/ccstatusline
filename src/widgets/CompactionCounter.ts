@@ -39,6 +39,15 @@ const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
 const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
 const SHOW_RECLAIMED_METADATA_KEY = 'showReclaimed';
+// Selectable metric. The default 'count' keeps the full composite display
+// (icon, count, optional trigger split, optional reclaimed). The other metrics
+// render just that one value as a raw number, so several instances can be
+// composed with custom separators/symbols into a layout like "2 · 1a 1m · ↓2M".
+const METRICS = ['count', 'auto', 'manual', 'unknown', 'reclaimed'] as const;
+type CompactionMetric = typeof METRICS[number];
+const DEFAULT_METRIC: CompactionMetric = 'count';
+const METRIC_METADATA_KEY = 'metric';
+const CYCLE_METRIC_ACTION = 'cycle-metric';
 const RECLAIMED_SLOT: SymbolSlot = { id: 'symbolReclaimed', label: 'Reclaimed', defaultSymbol: '↓' };
 const SAMPLE_STATS: CompactionData = Object.freeze({
     count: 2,
@@ -100,6 +109,41 @@ function toggleHideZero(item: WidgetItem): WidgetItem {
             [HIDE_ZERO_METADATA_KEY]: (!isHideZeroEnabled(item)).toString()
         }
     };
+}
+
+function getMetric(item: WidgetItem): CompactionMetric {
+    const metric = item.metadata?.[METRIC_METADATA_KEY];
+    return (METRICS as readonly string[]).includes(metric ?? '') ? (metric as CompactionMetric) : DEFAULT_METRIC;
+}
+
+function setMetric(item: WidgetItem, metric: CompactionMetric): WidgetItem {
+    if (metric === DEFAULT_METRIC) {
+        const { [METRIC_METADATA_KEY]: removedMetric, ...restMetadata } = item.metadata ?? {};
+        void removedMetric;
+
+        return {
+            ...item,
+            metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
+        };
+    }
+
+    return {
+        ...item,
+        metadata: {
+            ...(item.metadata ?? {}),
+            [METRIC_METADATA_KEY]: metric
+        }
+    };
+}
+
+function getMetricValue(data: CompactionData, metric: CompactionMetric): number {
+    switch (metric) {
+        case 'count': return data.count;
+        case 'auto': return data.byTrigger.auto;
+        case 'manual': return data.byTrigger.manual;
+        case 'unknown': return data.byTrigger.unknown;
+        case 'reclaimed': return data.tokensReclaimed;
+    }
 }
 
 function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
@@ -169,7 +213,9 @@ function formatCount(count: number, format: CompactionCounterFormat, icon: strin
  * compaction has occurred by counting compact_boundary markers in the transcript.
  *
  * Shows ↻ N by default, including ↻ 0 before compaction occurs. Can be
- * configured to hide when count is 0.
+ * configured to hide when count is 0. A `metric` selector switches it to emit a
+ * single raw value (count, auto, manual, unknown, or reclaimed) so several
+ * instances can be composed into a custom layout.
  */
 export class CompactionCounterWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -177,15 +223,22 @@ export class CompactionCounterWidget implements Widget {
     getDisplayName(): string { return 'Compaction Counter'; }
     getCategory(): string { return 'Context'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [getFormat(item)];
-        if (isNerdFontEnabled(item)) {
-            modifiers.push('nerd font');
-        }
-        if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
-            modifiers.push('trigger split');
-        }
-        if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
-            modifiers.push('reclaimed');
+        const metric = getMetric(item);
+        const modifiers: string[] = [];
+
+        if (metric !== DEFAULT_METRIC) {
+            modifiers.push(`${metric} value`);
+        } else {
+            modifiers.push(getFormat(item));
+            if (isNerdFontEnabled(item)) {
+                modifiers.push('nerd font');
+            }
+            if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
+                modifiers.push('trigger split');
+            }
+            if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
+                modifiers.push('reclaimed');
+            }
         }
         if (isHideZeroEnabled(item)) {
             modifiers.push('hide zero');
@@ -198,6 +251,13 @@ export class CompactionCounterWidget implements Widget {
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === CYCLE_METRIC_ACTION) {
+            const currentMetric = getMetric(item);
+            const nextMetric = METRICS[(METRICS.indexOf(currentMetric) + 1) % METRICS.length] ?? DEFAULT_METRIC;
+
+            return setMetric(item, nextMetric);
+        }
+
         if (action === CYCLE_FORMAT_ACTION) {
             const currentFormat = getFormat(item);
             const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
@@ -226,28 +286,41 @@ export class CompactionCounterWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         void settings;
-        const icon = isNerdFontEnabled(item) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
+        const data = context.isPreview ? SAMPLE_STATS : (context.compactionData ?? ZERO_COMPACTION_STATS);
+        const metric = getMetric(item);
 
-        if (context.isPreview) {
-            return formatStats(SAMPLE_STATS, item, icon);
+        if (metric !== DEFAULT_METRIC) {
+            const value = getMetricValue(data, metric);
+            if (value === 0 && isHideZeroEnabled(item) && !context.isPreview) {
+                return null;
+            }
+            return metric === 'reclaimed' ? formatTokens(value) : String(value);
         }
 
-        const data = context.compactionData ?? ZERO_COMPACTION_STATS;
-        if (data.count === 0 && isHideZeroEnabled(item))
+        if (data.count === 0 && isHideZeroEnabled(item) && !context.isPreview) {
             return null;
+        }
 
+        const icon = isNerdFontEnabled(item) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
         return formatStats(data, item, icon);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds: CustomKeybind[] = [
-            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION }
+            { key: 'v', label: '(v)alue', action: CYCLE_METRIC_ACTION }
         ];
 
+        // The format / glyph / trigger toggles only shape the composite 'count'
+        // display; a single-metric value just needs the metric and hide-zero.
+        if (item !== undefined && getMetric(item) !== DEFAULT_METRIC) {
+            keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
+            return keybinds;
+        }
+
+        keybinds.push({ key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION });
         if (item === undefined || getFormat(item) === DEFAULT_FORMAT) {
             keybinds.push({ key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION });
         }
-
         keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
         keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
         keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });

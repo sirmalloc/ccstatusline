@@ -57,13 +57,14 @@ bun run docs
 
 If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
 
-Settings saves are atomic and preserve symlinked `settings.json` files by writing through the resolved target. Invalid or unreadable settings are never overwritten during load; `loadSettings()` returns in-memory defaults, records `getConfigLoadError()`, and renderer paths surface that state with an invalid-config warning badge.
+Settings saves are atomic and preserve symlinked `settings.json` files by writing through the resolved target. Invalid or unreadable settings are never overwritten during load; `loadSettings()` returns in-memory defaults, records `getConfigLoadError()`, and renderer paths surface that state with an invalid-config warning badge. The TUI captures that load error, keeps a visible warning active, and guards both save paths with an overwrite confirmation until a valid configuration is saved.
 
 Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
 ## Build Notes
 
 - Build target is Node.js 14+ (`dist/ccstatusline.js`)
+- `postbuild` replaces the bundled `__PACKAGE_VERSION__` placeholder from `package.json`; `ccstatusline --version` reads that value and exits before mode detection
 - During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
 - React and React DOM are exact-version pins; dependency refreshes should update `package.json` and `bun.lock` together
 
