@@ -51,6 +51,8 @@ const SYMBOL_SLOTS: SymbolSlot[] = [HOT_SLOT, FRESH_SLOT, DRAINING_SLOT, URGENT_
 interface TranscriptEntry {
     type?: string;
     timestamp?: string;
+    isSidechain?: boolean;
+    isApiErrorMessage?: boolean;
 }
 
 /**
@@ -94,6 +96,13 @@ function getTranscriptState(transcriptPath: string): { isWorking: true } | { isW
         }
         try {
             const entry = JSON.parse(trimmed) as TranscriptEntry;
+            // Sidechain (subagent) traffic and synthetic API-error rows never
+            // touch the main conversation's cache, so they must not flip the
+            // state to HOT or restart the countdown; keep scanning for the
+            // newest main-chain row instead.
+            if (entry.isSidechain === true || entry.isApiErrorMessage === true) {
+                continue;
+            }
             if (entry.type === 'user') {
                 return { isWorking: true };
             }

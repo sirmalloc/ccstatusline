@@ -20,6 +20,8 @@ const hidden: Partial<WidgetItem> = { metadata: { hideWhenEmpty: 'true' } };
 const isoAgo = (seconds: number): string => new Date(Date.now() - seconds * 1000).toISOString();
 const assistant = (seconds: number): string => JSON.stringify({ type: 'assistant', timestamp: isoAgo(seconds) });
 const pendingUser = JSON.stringify({ type: 'user' });
+const sidechain = (type: string, seconds: number): string => JSON.stringify({ type, timestamp: isoAgo(seconds), isSidechain: true });
+const apiError = (seconds: number): string => JSON.stringify({ type: 'assistant', timestamp: isoAgo(seconds), isApiErrorMessage: true });
 
 describe('CacheTimer widget', () => {
     let tmpDir: string;
@@ -91,6 +93,22 @@ describe('CacheTimer widget', () => {
         const widget = new CacheTimerWidget();
         const out = widget.render(item({ rawValue: true }), transcriptContext([assistant(10)]), DEFAULT_SETTINGS);
         expect(out).toMatch(/^🟢 \d+:\d{2}$/);
+    });
+
+    it('ignores sidechain rows when deriving the cache state', () => {
+        const widget = new CacheTimerWidget();
+        // A trailing sidechain user row must not report HOT...
+        expect(widget.render(item(), transcriptContext([assistant(400), sidechain('user', 5)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        // ...and a trailing sidechain assistant row must not restart the countdown.
+        expect(widget.render(item(), transcriptContext([assistant(400), sidechain('assistant', 5)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+    });
+
+    it('ignores synthetic API-error rows when deriving the cache state', () => {
+        const widget = new CacheTimerWidget();
+        // A failed request refreshes nothing, so the prior event still drives the countdown...
+        expect(widget.render(item(), transcriptContext([assistant(400), apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        // ...and with no prior main-chain row there is no cache event to report.
+        expect(widget.render(item(), transcriptContext([apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
     });
 
     it('treats a malformed assistant timestamp as no data instead of rendering NaN', () => {
