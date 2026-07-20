@@ -16,6 +16,7 @@ import {
     isCustomConfigPath,
     saveInstallationMetadata
 } from './config';
+import { getProjectInstallTargetPath } from './scope';
 
 // Re-export for backward compatibility
 export type { ClaudeSettings };
@@ -46,6 +47,7 @@ export interface InstallStatusLineOptions {
     commandMode: StatusLineCommandMode;
     supportsRefreshInterval?: boolean;
     installationMetadata?: InstallationMetadata;
+    targetPath?: string;
 }
 
 export interface PackageCommandAvailability {
@@ -140,10 +142,23 @@ export function getClaudeSettingsPath(): string {
 }
 
 /**
+ * The Claude-settings file all reads/writes target when no explicit targetPath
+ * is given: the project's settings.local.json in project scope, else the
+ * user-global settings.json (CLAUDE_CONFIG_DIR-aware).
+ */
+export function getInstallTargetPath(): string {
+    return getProjectInstallTargetPath() ?? getClaudeSettingsPath();
+}
+
+function defaultTargetPath(): string {
+    return getInstallTargetPath();
+}
+
+/**
  * Creates a backup of the current Claude settings file.
  */
-async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
-    const settingsPath = getClaudeSettingsPath();
+async function backupClaudeSettings(suffix = '.bak', targetPath = defaultTargetPath()): Promise<string | null> {
+    const settingsPath = targetPath;
     const backupPath = settingsPath + suffix;
     try {
         if (fs.existsSync(settingsPath)) {
@@ -158,11 +173,16 @@ async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
     return null;
 }
 
-interface LoadClaudeSettingsOptions { logErrors?: boolean }
+interface LoadClaudeSettingsOptions {
+    logErrors?: boolean;
+    targetPath?: string;
+}
+
+export interface ClaudeTargetOptions { targetPath?: string }
 
 export function loadClaudeSettingsSync(options: LoadClaudeSettingsOptions = {}): ClaudeSettings {
-    const { logErrors = true } = options;
-    const settingsPath = getClaudeSettingsPath();
+    const { logErrors = true, targetPath } = options;
+    const settingsPath = targetPath ?? defaultTargetPath();
 
     // File doesn't exist - return empty object
     if (!fs.existsSync(settingsPath)) {
@@ -181,8 +201,8 @@ export function loadClaudeSettingsSync(options: LoadClaudeSettingsOptions = {}):
 }
 
 export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}): Promise<ClaudeSettings> {
-    const { logErrors = true } = options;
-    const settingsPath = getClaudeSettingsPath();
+    const { logErrors = true, targetPath } = options;
+    const settingsPath = targetPath ?? defaultTargetPath();
 
     // File doesn't exist - return empty object
     if (!fs.existsSync(settingsPath)) {
@@ -201,23 +221,24 @@ export async function loadClaudeSettings(options: LoadClaudeSettingsOptions = {}
 }
 
 export async function saveClaudeSettings(
-    settings: ClaudeSettings
+    settings: ClaudeSettings,
+    targetPath = defaultTargetPath()
 ): Promise<void> {
-    const settingsPath = getClaudeSettingsPath();
+    const settingsPath = targetPath;
     const dir = path.dirname(settingsPath);
 
     // Backup settings before overwriting
-    await backupClaudeSettings();
+    await backupClaudeSettings('.bak', settingsPath);
 
     await mkdir(dir, { recursive: true });
     await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
-export async function isInstalled(): Promise<boolean> {
+export async function isInstalled(options: ClaudeTargetOptions = {}): Promise<boolean> {
     let settings: ClaudeSettings;
 
     try {
-        settings = await loadClaudeSettings({ logErrors: false });
+        settings = await loadClaudeSettings({ logErrors: false, targetPath: options.targetPath });
     } catch {
         return false; // Can't determine if installed, assume not
     }
@@ -400,15 +421,17 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
 export async function installStatusLine({
     commandMode,
     supportsRefreshInterval = false,
-    installationMetadata
+    installationMetadata,
+    targetPath
 }: InstallStatusLineOptions): Promise<void> {
+    const resolvedTarget = targetPath ?? defaultTargetPath();
     let settings: ClaudeSettings;
 
-    const backupPath = await backupClaudeSettings('.orig');
+    const backupPath = await backupClaudeSettings('.orig', resolvedTarget);
     try {
-        settings = await loadClaudeSettings({ logErrors: false });
+        settings = await loadClaudeSettings({ logErrors: false, targetPath: resolvedTarget });
     } catch {
-        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
+        const fallbackBackupPath = `${resolvedTarget}.orig`;
         console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
         settings = {};
     }
@@ -426,7 +449,7 @@ export async function installStatusLine({
         settings.statusLine.refreshInterval = existingRefreshInterval ?? 10;
     }
 
-    await saveClaudeSettings(settings);
+    await saveClaudeSettings(settings, resolvedTarget);
     if (installationMetadata !== undefined) {
         await saveInstallationMetadata(installationMetadata);
     }
@@ -434,15 +457,16 @@ export async function installStatusLine({
     const savedSettings = await loadSavedSettingsForHookSync();
     if (savedSettings) {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(savedSettings);
+        await syncWidgetHooks(savedSettings, { targetPath: resolvedTarget });
     }
 }
 
-export async function uninstallStatusLine(): Promise<void> {
+export async function uninstallStatusLine(options: ClaudeTargetOptions = {}): Promise<void> {
+    const resolvedTarget = options.targetPath ?? defaultTargetPath();
     let settings: ClaudeSettings;
 
     try {
-        settings = await loadClaudeSettings({ logErrors: false });
+        settings = await loadClaudeSettings({ logErrors: false, targetPath: resolvedTarget });
     } catch {
         console.error('Warning: Could not read existing Claude settings.');
         return; // if we can't read, return... what are we uninstalling?
@@ -450,42 +474,45 @@ export async function uninstallStatusLine(): Promise<void> {
 
     if (settings.statusLine) {
         delete settings.statusLine;
-        await saveClaudeSettings(settings);
+        await saveClaudeSettings(settings, resolvedTarget);
     }
 
     await saveInstallationMetadata(undefined);
 
     try {
         const { removeManagedHooks } = await import('./hooks');
-        await removeManagedHooks();
+        await removeManagedHooks({ targetPath: resolvedTarget });
     } catch {
         // Ignore hook cleanup failures during uninstall
     }
 }
 
-export async function getExistingStatusLine(): Promise<string | null> {
+export async function getExistingStatusLine(options: ClaudeTargetOptions = {}): Promise<string | null> {
     try {
-        const settings = await loadClaudeSettings({ logErrors: false });
+        const settings = await loadClaudeSettings({ logErrors: false, targetPath: options.targetPath });
         return settings.statusLine?.command ?? null;
     } catch {
         return null; // Can't read settings, return null
     }
 }
 
-export async function getRefreshInterval(): Promise<number | null> {
+export async function getRefreshInterval(options: ClaudeTargetOptions = {}): Promise<number | null> {
     try {
-        const settings = await loadClaudeSettings({ logErrors: false });
+        const settings = await loadClaudeSettings({ logErrors: false, targetPath: options.targetPath });
         return settings.statusLine?.refreshInterval ?? null;
     } catch {
         return null;
     }
 }
 
-export async function setRefreshInterval(interval: number | null): Promise<void> {
+export async function setRefreshInterval(interval: number | null, options: ClaudeTargetOptions = {}): Promise<void> {
+    // Resolve once so an in-flight scope switch cannot split the read and the
+    // write across different settings files.
+    const targetPath = options.targetPath ?? defaultTargetPath();
     let settings: ClaudeSettings;
 
     try {
-        settings = await loadClaudeSettings({ logErrors: false });
+        settings = await loadClaudeSettings({ logErrors: false, targetPath });
     } catch {
         return;
     }
@@ -500,7 +527,7 @@ export async function setRefreshInterval(interval: number | null): Promise<void>
         settings.statusLine.refreshInterval = interval;
     }
 
-    await saveClaudeSettings(settings);
+    await saveClaudeSettings(settings, targetPath);
 }
 
 const VoiceConfigSchema = z.object({ enabled: z.boolean().optional() });

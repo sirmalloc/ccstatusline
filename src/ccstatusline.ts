@@ -36,6 +36,7 @@ import {
     preRenderAllWidgets,
     renderStatusLine
 } from './utils/renderer';
+import { initScope } from './utils/scope';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
 import { getSkillsMetrics } from './utils/skills';
 import {
@@ -284,7 +285,8 @@ async function main() {
     }
 
     // Parse --config before anything else
-    initConfigPath(parseConfigArg());
+    const explicitConfigPath = parseConfigArg();
+    initConfigPath(explicitConfigPath);
 
     // Handle --hook mode (cross-platform hook handler for widgets)
     if (process.argv.includes('--hook')) {
@@ -318,6 +320,8 @@ async function main() {
         }
     } else {
         // Interactive mode - run TUI
+        initScope({ explicitConfigPath, detectProject: true });
+
         // Remove updatemessage before running TUI
         const settings = await loadSettings();
         if (settings.updatemessage) {

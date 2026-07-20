@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import * as fs from 'fs';
 import {
     Box,
     Text,
@@ -7,23 +8,26 @@ import {
     useInput
 } from 'ink';
 import Gradient from 'ink-gradient';
+import * as os from 'os';
 import React, {
     useCallback,
     useEffect,
+    useRef,
     useState
 } from 'react';
 
-import type {
-    InstallationMetadata,
-    ResolvedInstallationMetadata,
-    Settings
+import {
+    DEFAULT_SETTINGS,
+    type InstallationMetadata,
+    type ResolvedInstallationMetadata,
+    type Settings
 } from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
 import {
     buildStatusLineCommand,
     classifyInstallation,
-    getClaudeSettingsPath,
     getExistingStatusLine,
+    getInstallTargetPath,
     getPackageCommandAvailability,
     installStatusLine,
     isClaudeCodeVersionAtLeast,
@@ -60,6 +64,14 @@ import {
     installPowerlineFonts,
     type PowerlineFontStatus
 } from '../utils/powerline';
+import {
+    getProjectConfigPath,
+    getScope,
+    isScopeSwitchingAvailable,
+    setScope,
+    type Scope,
+    type SwitchableScope
+} from '../utils/scope';
 import { getPackageVersion } from '../utils/terminal';
 import {
     checkForUpdates,
@@ -96,6 +108,11 @@ import {
     List,
     type ListEntry
 } from './components/List';
+import {
+    ScopeSwitchMenu,
+    type ScopeSwitchChoice,
+    type ScopeSwitchStage
+} from './components/ScopeSwitchMenu';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -119,7 +136,8 @@ type AppScreen = 'main'
     | 'manageInstallation'
     | 'uninstallOptions'
     | 'updates'
-    | 'refreshInterval';
+    | 'refreshInterval'
+    | 'scopeSwitch';
 
 type PinnedVersionMismatchAction = 'update' | 'exit';
 
@@ -279,14 +297,14 @@ function getGlobalUninstallCommand(packageManager: GlobalPackageManager): string
 
 function buildUninstallConfirmMessage(selection: UninstallSelection): string {
     if (selection.packageManagers.length === 0) {
-        return `This will remove ccstatusline from ${getClaudeSettingsPath()}. Continue?`;
+        return `This will remove ccstatusline from ${getInstallTargetPath()}. Continue?`;
     }
 
     const commands = selection.packageManagers
         .map(packageManager => getGlobalUninstallCommand(packageManager))
         .join('\n');
 
-    return `This will remove ccstatusline from ${getClaudeSettingsPath()} and run:\n\n${commands}\n\nContinue?`;
+    return `This will remove ccstatusline from ${getInstallTargetPath()} and run:\n\n${commands}\n\nContinue?`;
 }
 
 function clearInstallationMetadata(settings: Settings | null): Settings | null {
@@ -422,6 +440,45 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
     return `⚠ ${configLoadError} — showing defaults; saving here overwrites the file.`;
 }
 
+/**
+ * Replaces a leading os.homedir() prefix with ~. Only a leading prefix is
+ * abbreviated (startsWith + slice, not a global replace); paths outside the
+ * home dir are returned as-is.
+ */
+function abbreviateHomeDir(target: string): string {
+    const homeDir = os.homedir();
+    return target.startsWith(homeDir) ? `~${target.slice(homeDir.length)}` : target;
+}
+
+export function getScopeIndicator(scope: Scope): string | null {
+    switch (scope.type) {
+        case 'custom':
+            return null;
+        case 'global':
+            return 'Mode: Global · ctrl+p to switch';
+        case 'project':
+            return `Mode: Project (${abbreviateHomeDir(getProjectConfigPath(scope.root))}) · ctrl+p to switch`;
+    }
+}
+
+export function planScopeSwitch(input: {
+    switchingAvailable: boolean;
+    hasChanges: boolean;
+    enteringProject: boolean;
+    projectConfigExists: boolean;
+}): 'blocked' | 'confirm-unsaved' | 'offer-seed' | 'switch' {
+    if (!input.switchingAvailable) {
+        return 'blocked';
+    }
+    if (input.hasChanges) {
+        return 'confirm-unsaved';
+    }
+    if (input.enteringProject && !input.projectConfigExists) {
+        return 'offer-seed';
+    }
+    return 'switch';
+}
+
 export function buildInvalidConfigSaveConfirm(
     configLoadError: string | null,
     onConfirm: () => void
@@ -467,21 +524,26 @@ export const App: React.FC = () => {
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
-
+    const [scope, setScopeState] = useState<Scope>(() => getScope());
+    const settingsRef = useRef(settings);
     useEffect(() => {
-        void loadClaudeStatusLineState()
-            .then((statusLineState) => {
-                setExistingStatusLine(statusLineState.existingStatusLine);
-                setCurrentRefreshInterval(statusLineState.refreshInterval);
-            })
-            .catch(() => {
-                setExistingStatusLine(null);
-                setCurrentRefreshInterval(null);
-            })
-            .finally(() => {
-                setHasLoadedClaudeStatus(true);
-            });
-        void loadSettings().then((loadedSettings) => {
+        settingsRef.current = settings;
+    }, [settings]);
+
+    const reloadScopeData = useCallback(async (options: { skipSettings?: boolean } = {}) => {
+        try {
+            const statusLineState = await loadClaudeStatusLineState();
+            setExistingStatusLine(statusLineState.existingStatusLine);
+            setCurrentRefreshInterval(statusLineState.refreshInterval);
+        } catch {
+            setExistingStatusLine(null);
+            setCurrentRefreshInterval(null);
+        } finally {
+            setHasLoadedClaudeStatus(true);
+        }
+
+        if (!options.skipSettings) {
+            const loadedSettings = await loadSettings();
             // Set global chalk level based on settings (default to 256 colors for compatibility)
             chalk.level = loadedSettings.colorLevel;
             setSettings(loadedSettings);
@@ -490,13 +552,159 @@ export const App: React.FC = () => {
             // guard saves. Read it here, in the load callback: the module-scoped signal is
             // reset by any later loadSettings/saveInstallationMetadata call.
             setConfigLoadError(getConfigLoadError());
-        });
-        void isInstalled()
-            .then(setIsClaudeInstalled)
-            .catch(() => { setIsClaudeInstalled(false); })
-            .finally(() => {
-                setHasLoadedInstalledState(true);
+        }
+
+        try {
+            setIsClaudeInstalled(await isInstalled());
+        } catch {
+            setIsClaudeInstalled(false);
+        } finally {
+            setHasLoadedInstalledState(true);
+        }
+    }, []);
+
+    const [scopeSwitchStage, setScopeSwitchStage] = useState<ScopeSwitchStage | null>(null);
+    const [pendingScopeTarget, setPendingScopeTarget] = useState<SwitchableScope | null>(null);
+
+    const executeSwitch = useCallback((target: SwitchableScope, seed: 'none' | 'copy' | 'defaults') => {
+        // Seed source must be the last on-disk global state, captured before the
+        // scope flips: after the unsaved-changes menu, originalSettings is it.
+        // A copy seed strips installation metadata: that block describes how the
+        // *global* scope's file was installed and must not leak into what becomes
+        // the committable project config.
+        const seedSource = seed === 'copy' && originalSettings
+            ? clearInstallationMetadata(cloneSettings(originalSettings)) ?? cloneSettings(DEFAULT_SETTINGS)
+            : cloneSettings(DEFAULT_SETTINGS);
+
+        setScope(target);
+        setScopeState(getScope());
+        setScopeSwitchStage(null);
+        setPendingScopeTarget(null);
+        setScreen('main');
+
+        if (seed === 'none') {
+            void reloadScopeData();
+            return;
+        }
+
+        // Seeded entry populates the editor in memory only; the project file is
+        // created by an explicit save, never by the switch itself. originalSettings
+        // stays null so the change detector leaves hasChanges alone.
+        setSettings(seedSource);
+        setOriginalSettings(null);
+        setHasChanges(true);
+        // A seeded scope has no on-disk file yet, so it cannot have a load error;
+        // clear any stale banner/guard carried over from the scope being left.
+        setConfigLoadError(null);
+        void reloadScopeData({ skipSettings: true });
+    }, [originalSettings, reloadScopeData]);
+
+    const continueScopeSwitch = useCallback((target: SwitchableScope) => {
+        if (target.type === 'project' && !fs.existsSync(getProjectConfigPath(target.root))) {
+            setScopeSwitchStage('seed');
+            setScreen('scopeSwitch');
+            return;
+        }
+        executeSwitch(target, 'none');
+    }, [executeSwitch]);
+
+    const requestScopeSwitch = useCallback(() => {
+        if (!isScopeSwitchingAvailable()) {
+            setFlashMessage({
+                text: '⚠ Mode switching is disabled when --config is passed',
+                color: 'yellow'
             });
+            return;
+        }
+        const target: SwitchableScope = scope.type === 'project'
+            ? { type: 'global' }
+            : { type: 'project', root: process.cwd() };
+
+        const plan = planScopeSwitch({
+            switchingAvailable: true,
+            hasChanges,
+            enteringProject: target.type === 'project',
+            projectConfigExists: target.type === 'project' && fs.existsSync(getProjectConfigPath(target.root))
+        });
+
+        setPendingScopeTarget(target);
+        if (plan === 'confirm-unsaved') {
+            setScopeSwitchStage('unsaved');
+            setScreen('scopeSwitch');
+            return;
+        }
+        if (plan === 'offer-seed') {
+            setScopeSwitchStage('seed');
+            setScreen('scopeSwitch');
+            return;
+        }
+        executeSwitch(target, 'none');
+    }, [scope, hasChanges, executeSwitch]);
+
+    const handleScopeSwitchChoice = useCallback((choice: ScopeSwitchChoice) => {
+        const target = pendingScopeTarget;
+        if (!target || choice === 'cancel') {
+            setScopeSwitchStage(null);
+            setPendingScopeTarget(null);
+            setScreen('main');
+            return;
+        }
+
+        if (choice === 'save' && settings) {
+            const performSave = () => {
+                void (async () => {
+                    try {
+                        await saveSettings(settings);
+                        setOriginalSettings(cloneSettings(settings));
+                        setHasChanges(false);
+                        setConfigLoadError(null);
+                        // continueScopeSwitch may re-enter the 'seed' stage (project scope with
+                        // no config file yet), which relies on pendingScopeTarget being set for
+                        // the next handleScopeSwitchChoice call. Re-establish it here since the
+                        // guard branch below clears it while the confirm dialog is shown.
+                        setPendingScopeTarget(target);
+                        continueScopeSwitch(target);
+                    } catch {
+                        setScopeSwitchStage(null);
+                        setPendingScopeTarget(null);
+                        setScreen('main');
+                        setFlashMessage({ text: '✗ Could not save configuration', color: 'red' });
+                    }
+                })();
+            };
+
+            // Mirror the ctrl+s guard: an invalid on-disk config must not be silently
+            // overwritten by "Save and switch" either. Show the same confirm dialog, and
+            // clear the switcher state so a cancel (which lands on the dialog's default
+            // 'main' cancelScreen) leaves no stale scope-switch state behind.
+            const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
+                setConfirmDialog(null);
+                setScreen('main');
+                performSave();
+            });
+            if (saveGuard) {
+                setScopeSwitchStage(null);
+                setPendingScopeTarget(null);
+                setConfirmDialog(saveGuard);
+                setScreen('confirm');
+            } else {
+                performSave();
+            }
+            return;
+        }
+
+        if (choice === 'discard') {
+            continueScopeSwitch(target);
+            return;
+        }
+
+        if (choice === 'copy' || choice === 'defaults') {
+            executeSwitch(target, choice);
+        }
+    }, [pendingScopeTarget, settings, configLoadError, continueScopeSwitch, executeSwitch]);
+
+    useEffect(() => {
+        void reloadScopeData();
 
         // Check for Powerline fonts on startup (use sync version that doesn't call execSync)
         const fontStatus = checkPowerlineFonts();
@@ -515,7 +723,7 @@ export const App: React.FC = () => {
         return () => {
             process.stdout.off('resize', handleResize);
         };
-    }, []);
+    }, [reloadScopeData]);
 
     // Check for changes whenever settings update
     useEffect(() => {
@@ -535,18 +743,26 @@ export const App: React.FC = () => {
         }
     }, [flashMessage]);
 
+    // Shared by the ctrl+s save shortcut and the ctrl+p scope-switch shortcut: both
+    // must refuse to act while the running TUI doesn't match the pinned global
+    // install, since either one can end up writing config the pinned runtime may
+    // not support.
+    const computeActivePinnedVersionMismatch = useCallback((currentSettings: Settings) => {
+        const installation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, currentSettings);
+        const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
+            ? inspectActiveGlobalCommand({ commandAvailability })
+            : null;
+        const effectiveInstallation = getPathInferredInstallation(installation, activeCommand);
+        return getPinnedVersionMismatch(effectiveInstallation, getPackageVersion(), 'ccstatusline');
+    }, [isClaudeInstalled, existingStatusLine, commandAvailability]);
+
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
             exit();
         }
         // Global save shortcut
         if (key.ctrl && input === 's' && settings && screen !== 'confirm') {
-            const installation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings);
-            const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
-                ? inspectActiveGlobalCommand({ commandAvailability })
-                : null;
-            const effectiveInstallation = getPathInferredInstallation(installation, activeCommand);
-            const mismatch = getPinnedVersionMismatch(effectiveInstallation, getPackageVersion(), 'ccstatusline');
+            const mismatch = computeActivePinnedVersionMismatch(settings);
             if (mismatch) {
                 return;
             }
@@ -587,6 +803,18 @@ export const App: React.FC = () => {
                 performSave();
             }
         }
+
+        // Global scope switch shortcut (main screen only: submenus hold settings
+        // state that a scope flip would swap out from under them)
+        if (key.ctrl && input === 'p' && settings && screen === 'main') {
+            // Mirror the ctrl+s guard: the mismatch screen only early-returns from
+            // render without changing `screen`, so without this check ctrl+p would
+            // still fire (and switch scope) behind it.
+            if (computeActivePinnedVersionMismatch(settings)) {
+                return;
+            }
+            requestScopeSwitch();
+        }
     });
 
     const getGlobalResolutionWarning = useCallback((packageManager: 'npm' | 'bun') => (
@@ -599,7 +827,10 @@ export const App: React.FC = () => {
             const finalCommand = buildStatusLineCommand(selection.commandMode);
             const hookCommand = `${finalCommand} --hook`;
             const sideEffects = [
-                `Claude settings path: ${getClaudeSettingsPath()}`,
+                `Claude settings path: ${getInstallTargetPath()}`,
+                ...(getScope().type === 'project' && !fs.existsSync(getConfigPath())
+                    ? [`Project config will be saved first: ${getConfigPath()}`]
+                    : []),
                 ...(selection.globalInstallCommand
                     ? [`Global install command before settings write: ${selection.globalInstallCommand}`]
                     : []),
@@ -623,6 +854,15 @@ export const App: React.FC = () => {
                     try {
                         if (selection.globalInstallCommand) {
                             await runGlobalPackageInstall(selection.packageManager, getPackageVersion());
+                        }
+
+                        // In project mode the installed command carries --config
+                        // pointing at the project file; make sure it exists before
+                        // the install references it.
+                        if (getScope().type === 'project' && !fs.existsSync(getConfigPath()) && settingsRef.current) {
+                            await saveSettings(settingsRef.current);
+                            setOriginalSettings(cloneSettings(settingsRef.current));
+                            setHasChanges(false);
                         }
 
                         await installStatusLine({
@@ -1062,9 +1302,11 @@ export const App: React.FC = () => {
             {configWarning && (
                 <Text color='red' wrap='wrap'>{configWarning}</Text>
             )}
-            {isCustomConfigPath() && (
-                <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
-            )}
+            {getScopeIndicator(scope)
+                ? <Text dimColor>{getScopeIndicator(scope)}</Text>
+                : isCustomConfigPath() && (
+                    <Text dimColor>{`Config: ${getConfigPath()}`}</Text>
+                )}
 
             <StatusLinePreview
                 lines={settings.lines}
@@ -1342,6 +1584,12 @@ export const App: React.FC = () => {
                         installingFonts={installingFonts}
                         fontInstallMessage={fontInstallMessage}
                         onClearMessage={() => { setFontInstallMessage(null); }}
+                    />
+                )}
+                {screen === 'scopeSwitch' && scopeSwitchStage && (
+                    <ScopeSwitchMenu
+                        stage={scopeSwitchStage}
+                        onSelect={handleScopeSwitchChoice}
                     />
                 )}
             </Box>
