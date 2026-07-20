@@ -70,6 +70,18 @@ describe('SandboxStatusWidget', () => {
             ]);
         });
 
+        it('exposes the Nerd Font keybind only for glyph format', () => {
+            const widget = new SandboxStatusWidget();
+            const nerdFontKeybind = { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' };
+
+            expect(widget.getCustomKeybinds(ITEM)).toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, rawValue: true })).toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'text' } }))
+                .not.toContainEqual(nerdFontKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'word' } }))
+                .not.toContainEqual(nerdFontKeybind);
+        });
+
         it('defaults to glyph in the editor display', () => {
             expect(new SandboxStatusWidget().getEditorDisplay(ITEM)).toEqual({
                 displayText: 'Sandbox Status',
@@ -80,24 +92,39 @@ describe('SandboxStatusWidget', () => {
         it('shows the configured format and nerd font in the editor display', () => {
             expect(new SandboxStatusWidget().getEditorDisplay({
                 ...ITEM,
-                metadata: { format: 'word', nerdFont: 'true' }
+                metadata: { nerdFont: 'true' }
             })).toEqual({
                 displayText: 'Sandbox Status',
-                modifierText: '(word, nerd font)'
+                modifierText: '(glyph, nerd font)'
             });
         });
 
-        it('cycles glyph -> text -> word -> bare -> glyph', () => {
+        it('hides stale Nerd Font metadata in text-only editor displays', () => {
+            expect(new SandboxStatusWidget().getEditorDisplay({
+                ...ITEM,
+                metadata: { format: 'word', nerdFont: 'true' }
+            })).toEqual({
+                displayText: 'Sandbox Status',
+                modifierText: '(word)'
+            });
+        });
+
+        it('cycles glyph -> text -> word -> glyph', () => {
             const widget = new SandboxStatusWidget();
             const text = widget.handleEditorAction('cycle-format', ITEM);
             const word = widget.handleEditorAction('cycle-format', text ?? ITEM);
-            const bare = widget.handleEditorAction('cycle-format', word ?? ITEM);
-            const back = widget.handleEditorAction('cycle-format', bare ?? ITEM);
+            const back = widget.handleEditorAction('cycle-format', word ?? ITEM);
 
             expect(text?.metadata?.format).toBe('text');
             expect(word?.metadata?.format).toBe('word');
-            expect(bare?.metadata?.format).toBe('bare');
             expect(back?.metadata?.format).toBeUndefined();
+        });
+
+        it('clears Nerd Font metadata when cycling to text format', () => {
+            const item: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true' } };
+            const text = new SandboxStatusWidget().handleEditorAction('cycle-format', item);
+
+            expect(text?.metadata).toEqual({ format: 'text' });
         });
 
         it('toggles nerd font metadata on and off', () => {
@@ -107,6 +134,20 @@ describe('SandboxStatusWidget', () => {
 
             expect(enabled?.metadata?.nerdFont).toBe('true');
             expect(disabled?.metadata?.nerdFont).toBeUndefined();
+        });
+
+        it('does not toggle Nerd Font in text-only formats', () => {
+            const widget = new SandboxStatusWidget();
+            const textItem: WidgetItem = { ...ITEM, metadata: { format: 'text' } };
+            const staleWordItem: WidgetItem = {
+                ...ITEM,
+                metadata: { format: 'word', nerdFont: 'true' }
+            };
+
+            expect(widget.handleEditorAction('toggle-nerd-font', textItem)?.metadata)
+                .toEqual({ format: 'text' });
+            expect(widget.handleEditorAction('toggle-nerd-font', staleWordItem)?.metadata)
+                .toEqual({ format: 'word' });
         });
 
         it('returns null for unknown editor actions', () => {
@@ -168,29 +209,6 @@ describe('SandboxStatusWidget', () => {
         });
     });
 
-    describe('render() - format bare (glyph only)', () => {
-        const FORMAT_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'bare' } };
-        const FORMAT_NERD_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'bare', nerdFont: 'true' } };
-
-        it('renders ○ when OFF', () => {
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: false });
-            expect(new SandboxStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('○');
-        });
-
-        it('renders ● when ON', () => {
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: true });
-            expect(new SandboxStatusWidget().render(FORMAT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('●');
-        });
-
-        it('renders only the configured Nerd Font glyph', () => {
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: false });
-            expect(new SandboxStatusWidget().render(FORMAT_NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(UNLOCK);
-
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: true });
-            expect(new SandboxStatusWidget().render(FORMAT_NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(LOCK);
-        });
-    });
-
     describe('render() - sandbox config cwd', () => {
         it('uses the project dir for project-local Claude settings', () => {
             const context = makeContext({
@@ -245,32 +263,40 @@ describe('SandboxStatusWidget', () => {
 
     describe('render() - raw value', () => {
         const RAW_ITEM: WidgetItem = { ...ITEM, rawValue: true };
+        const cases: { name: string; item: WidgetItem; off: string; on: string }[] = [
+            { name: 'glyph', item: RAW_ITEM, off: '○', on: '●' },
+            {
+                name: 'glyph with Nerd Font',
+                item: { ...RAW_ITEM, metadata: { nerdFont: 'true' } },
+                off: UNLOCK,
+                on: LOCK
+            },
+            {
+                name: 'text',
+                item: { ...RAW_ITEM, metadata: { format: 'text' } },
+                off: 'OFF',
+                on: 'ON'
+            },
+            {
+                name: 'word',
+                item: { ...RAW_ITEM, metadata: { format: 'word' } },
+                off: 'OFF',
+                on: 'ON'
+            }
+        ];
 
-        it('returns "on" when ON', () => {
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: true });
-            expect(new SandboxStatusWidget().render(RAW_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('on');
+        it.each(cases)('removes only the label from $name format', ({ item, off, on }) => {
+            const configSpy = vi.spyOn(claudeSettings, 'getSandboxConfig');
+
+            configSpy.mockReturnValue({ enabled: false });
+            expect(new SandboxStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe(off);
+
+            configSpy.mockReturnValue({ enabled: true });
+            expect(new SandboxStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe(on);
         });
 
-        it('returns "off" when OFF', () => {
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValue({ enabled: false });
-            expect(new SandboxStatusWidget().render(RAW_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('off');
-        });
-
-        it('returns the semantic value regardless of format and Nerd Font settings', () => {
-            const rawNerdItem: WidgetItem = {
-                ...RAW_ITEM,
-                metadata: { format: 'glyph', nerdFont: 'true' }
-            };
-
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: false });
-            expect(new SandboxStatusWidget().render(rawNerdItem, makeContext(), DEFAULT_SETTINGS)).toBe('off');
-
-            vi.spyOn(claudeSettings, 'getSandboxConfig').mockReturnValueOnce({ enabled: true });
-            expect(new SandboxStatusWidget().render(rawNerdItem, makeContext(), DEFAULT_SETTINGS)).toBe('on');
-        });
-
-        it('returns "on" in preview mode', () => {
-            expect(new SandboxStatusWidget().render(RAW_ITEM, makeContext({ isPreview: true }), DEFAULT_SETTINGS)).toBe('on');
+        it('preserves the default glyph format in preview mode', () => {
+            expect(new SandboxStatusWidget().render(RAW_ITEM, makeContext({ isPreview: true }), DEFAULT_SETTINGS)).toBe('●');
         });
 
         it('returns null when config is null', () => {
