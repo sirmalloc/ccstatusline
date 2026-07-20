@@ -83,3 +83,4 @@ export { CompactionCounterWidget } from './CompactionCounter';
 export { SandboxStatusWidget } from './SandboxStatus';
 export { VoiceStatusWidget } from './VoiceStatus';
 export { RemoteControlStatusWidget } from './RemoteControlStatus';
+export { CavemanModeWidget } from './CavemanMode';
