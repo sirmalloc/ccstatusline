@@ -360,8 +360,11 @@ describe('RCloneRemoteEditor', () => {
         try {
             await flushInk();
             // Backspace out "dropbox" (7 chars), then type "gdrive".
-            rendered.stdin.write('\b'.repeat(7));
-            await flushInk();
+            // Write each backspace separately with flush to ensure they arrive as individual key.backspace events
+            for (let i = 0; i < 7; i++) {
+                rendered.stdin.write('\b');
+                await flushInk();
+            }
             rendered.stdin.write('gdrive');
             await flushInk();
             rendered.stdin.write('\r');
@@ -378,8 +381,11 @@ describe('RCloneRemoteEditor', () => {
         const rendered = renderRemoteEditor({ id: 'rc', type: 'rclone-queue' });
         try {
             await flushInk();
-            rendered.stdin.write('\b'.repeat(7));
-            await flushInk();
+            // Write each backspace separately with flush to ensure they arrive as individual key.backspace events
+            for (let i = 0; i < 7; i++) {
+                rendered.stdin.write('\b');
+                await flushInk();
+            }
             rendered.stdin.write('\r');
             await flushInk();
 
