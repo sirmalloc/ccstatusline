@@ -37,7 +37,8 @@ Status lines can render many times per second in an active terminal session (thi
 - In-process cache: a `Map<remoteName, { value: number | null, createdAt: number }>`.
 - TTL: 15 seconds, fixed constant (not user-configurable — the underlying source only updates every ~60s, so 15s is already a safe margin against staleness while cutting re-parses by ~4x during rapid re-renders).
 - No persistent cross-process cache is needed (unlike the git cache, which caches expensive git subprocess calls across processes) — a single log-tail read is cheap enough that in-process-only caching suffices.
-- To avoid reading an ever-growing log file from the start every time, read only the last N bytes (e.g. last 64KB) via a seek-from-end read, then take the last regex match within that window. Rclone log files can grow large over weeks of uptime (observed >800k lines in production on this box), so a full-file read/scan must be avoided.
+- To avoid reading an ever-growing log file from the start every time, read only the last 64KB via a seek-from-end read (`fs.readSync` with an offset from the end, or read the file size first and slice), then split into lines and take the regex match from the last line that matches, scanning backwards. Rclone log files can grow large over weeks of uptime (observed >800k lines in production on this box), so a full-file read/scan must be avoided.
+- Edge case: if the read window's first line is a partial line (cut off mid-write by the 64KB boundary), discard that first partial line before scanning — do not attempt to parse it. This only risks losing the single oldest line in the window, which is never the one being searched for (the newest matching line is always fully contained since 64KB comfortably covers many minutes of log output at this line rate).
 
 ## Registration
 
