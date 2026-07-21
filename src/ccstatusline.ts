@@ -22,6 +22,10 @@ import {
     loadSettings,
     saveSettings
 } from './utils/config';
+import {
+    GIT_REVIEW_REFRESH_FLAG,
+    refreshGitReviewCacheFromCli
+} from './utils/git-review-cache';
 import { handleHookInput } from './utils/hook-handler';
 import {
     getSessionDuration,
@@ -174,7 +178,8 @@ async function renderMultipleLines(data: StatusJSON) {
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
-        terminalWidthCacheTtlSeconds: settings.terminalWidthCacheTtlSeconds
+        terminalWidthCacheTtlSeconds: settings.terminalWidthCacheTtlSeconds,
+        gitReviewNeedsChecks: lines.some(line => line.some(item => item.type === 'git-ci-status'))
     };
 
     // Always pre-render all widgets once (for efficiency)
@@ -280,7 +285,30 @@ async function handleHook(): Promise<void> {
     handleHookInput(input);
 }
 
+function handleGitReviewRefresh(): boolean {
+    const flagIndex = process.argv.indexOf(GIT_REVIEW_REFRESH_FLAG);
+    if (flagIndex === -1) {
+        return false;
+    }
+
+    const cwd = process.argv[flagIndex + 1];
+    const mode = process.argv[flagIndex + 2];
+    const lockPath = process.argv[flagIndex + 3];
+    if (!cwd || (mode !== 'metadata' && mode !== 'checks') || !lockPath) {
+        return true;
+    }
+
+    refreshGitReviewCacheFromCli(cwd, { includeChecks: mode === 'checks' }, lockPath);
+    return true;
+}
+
 async function main() {
+    // Detached cache refreshes re-enter this executable without reading stdin
+    // or loading user settings. This mode intentionally emits no output.
+    if (handleGitReviewRefresh()) {
+        return;
+    }
+
     // Print version and exit (#461). Standard CLI behavior, runs before any other mode.
     if (process.argv.includes('--version')) {
         console.log(getPackageVersion());

@@ -45,6 +45,7 @@ export interface RenderContext {
     minimalist?: boolean;
     gitCacheTtlSeconds?: number;
     terminalWidthCacheTtlSeconds?: number;
+    gitReviewNeedsChecks?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
 
