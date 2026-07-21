@@ -11,6 +11,7 @@ import {
     parseJsonlLine,
     readJsonlLines
 } from './jsonl-lines';
+import { costForUsage } from './model-pricing';
 
 export interface SpeedMetricsOptions {
     includeSubagents?: boolean;
@@ -488,6 +489,73 @@ function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: 
     }
 
     return matchedPaths;
+}
+
+// Sum the USD cost of one subagent transcript from its per-call token usage.
+// Mirrors getTokenMetrics' streaming dedup: when entries carry stop_reason,
+// count finalized entries plus the latest unfinished one; otherwise count all.
+function subagentCostFromLines(lines: string[]): number {
+    const parsedEntries: TranscriptLine[] = [];
+    let hasStopReasonField = false;
+
+    for (const line of lines) {
+        const data = parseJsonlLine(line) as TranscriptLine | null;
+        if (data?.message?.usage && !data.isApiErrorMessage) {
+            parsedEntries.push(data);
+            if (Object.hasOwn(data.message, 'stop_reason')) {
+                hasStopReasonField = true;
+            }
+        }
+    }
+
+    const entriesToCount = hasStopReasonField
+        ? parsedEntries.filter((data, index) => {
+            const stopReason = data.message?.stop_reason;
+            return Boolean(stopReason) || (stopReason === null && index === parsedEntries.length - 1);
+        })
+        : parsedEntries;
+
+    let cost = 0;
+    for (const data of entriesToCount) {
+        const usage = data.message?.usage;
+        if (!usage) {
+            continue;
+        }
+        cost += costForUsage(data.message?.model ?? '', {
+            inputTokens: usage.input_tokens || 0,
+            outputTokens: usage.output_tokens || 0,
+            cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+            cacheCreationTokens: usage.cache_creation_input_tokens ?? 0
+        });
+    }
+    return cost;
+}
+
+// Total USD cost of all subagents (Task/Agent tool) referenced this session.
+// Claude Code's cost.total_cost_usd covers only the main transcript; this fills
+// the gap by pricing the separate subagents/agent-*.jsonl transcripts.
+export async function getSubagentCostUsd(transcriptPath: string): Promise<number> {
+    try {
+        if (!fs.existsSync(transcriptPath)) {
+            return 0;
+        }
+
+        const mainLines = await readJsonlLines(transcriptPath);
+        const referencedSubagentIds = getReferencedSubagentIds(mainLines);
+        const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedSubagentIds);
+
+        const costs = await Promise.all(subagentPaths.map(async (subagentPath) => {
+            try {
+                return subagentCostFromLines(await readJsonlLines(subagentPath));
+            } catch {
+                return 0;
+            }
+        }));
+
+        return costs.reduce((sum, c) => sum + c, 0);
+    } catch {
+        return 0;
+    }
 }
 
 export async function getSpeedMetricsCollection(

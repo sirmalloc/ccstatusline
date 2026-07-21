@@ -70,6 +70,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'context-percentage-usable', create: () => new widgets.ContextPercentageUsableWidget() },
     { type: 'session-clock', create: () => new widgets.SessionClockWidget() },
     { type: 'session-cost', create: () => new widgets.SessionCostWidget() },
+    { type: 'session-cost-total', create: () => new widgets.SessionCostTotalWidget() },
     { type: 'block-timer', create: () => new widgets.BlockTimerWidget() },
     { type: 'terminal-width', create: () => new widgets.TerminalWidthWidget() },
     { type: 'version', create: () => new widgets.VersionWidget() },
