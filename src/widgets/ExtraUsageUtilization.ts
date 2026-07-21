@@ -18,6 +18,7 @@ import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     cycleUsageDisplayMode,
+    getSliderBarChars,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsagePercentCustomKeybinds,
@@ -77,7 +78,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(renderedPercent);
+                const slider = makeSliderBar(renderedPercent, getSliderBarChars(item));
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
                 return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
             }
@@ -108,7 +109,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
         }
 
         if (isUsageSliderMode(displayMode)) {
-            const slider = makeSliderBar(renderedPercent);
+            const slider = makeSliderBar(renderedPercent, getSliderBarChars(item));
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
             return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
         }
