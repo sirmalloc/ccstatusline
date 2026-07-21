@@ -9,12 +9,19 @@ import {
     it
 } from 'vitest';
 
+import type {
+    RenderContext,
+    WidgetItem
+} from '../../types';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CACHE_TTL_MS,
     DEFAULT_REMOTE_NAME,
+    RCloneQueueWidget,
     clearRCloneQueueCache,
     getQueueLength,
     getRcloneLogPath,
+    getRemoteName,
     parseQueueLength,
     readLogTail
 } from '../RCloneQueue';
@@ -133,5 +140,118 @@ describe('getQueueLength (cache)', () => {
 
     it('derives the log path from ~/.cache/rclone/<remoteName>.log', () => {
         expect(getRcloneLogPath('gdrive')).toBe(path.join(os.homedir(), '.cache', 'rclone', 'gdrive.log'));
+    });
+});
+
+describe('RCloneQueueWidget', () => {
+    const remoteName = 'test-remote-widget';
+    const logPath = getRcloneLogPath(remoteName);
+
+    beforeEach(() => {
+        clearRCloneQueueCache();
+        fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    });
+
+    afterEach(() => {
+        clearRCloneQueueCache();
+        if (fs.existsSync(logPath)) {
+            fs.rmSync(logPath);
+        }
+    });
+
+    describe('metadata', () => {
+        const widget = new RCloneQueueWidget();
+
+        it('returns correct display name', () => {
+            expect(widget.getDisplayName()).toBe('RClone Queue');
+        });
+
+        it('returns correct category', () => {
+            expect(widget.getCategory()).toBe('Environment');
+        });
+
+        it('returns blue as default color', () => {
+            expect(widget.getDefaultColor()).toBe('blue');
+        });
+
+        it('supports raw value', () => {
+            expect(widget.supportsRawValue()).toBe(true);
+        });
+
+        it('supports colors', () => {
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue' };
+            expect(widget.supportsColors(item)).toBe(true);
+        });
+
+        it('shows the default remote name in the editor display when unset', () => {
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue' };
+            expect(widget.getEditorDisplay(item).displayText).toBe('RClone Queue (dropbox)');
+        });
+
+        it('shows the configured remote name in the editor display', () => {
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', metadata: { remoteName: 'gdrive' } };
+            expect(widget.getEditorDisplay(item).displayText).toBe('RClone Queue (gdrive)');
+        });
+    });
+
+    describe('preview mode', () => {
+        const widget = new RCloneQueueWidget();
+
+        it('returns labeled mock data', () => {
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue' };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('RClone: 385');
+        });
+
+        it('returns bare mock data when rawValue is set', () => {
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', rawValue: true };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('385');
+        });
+    });
+
+    describe('render', () => {
+        const widget = new RCloneQueueWidget();
+
+        it('renders the queue length from the configured remote\'s log', () => {
+            fs.writeFileSync(logPath, 'INFO : vfs cache: cleaned: in use 10, to upload 12, uploading 1, total size 1Gi\n');
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', metadata: { remoteName } };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('RClone: 12');
+        });
+
+        it('renders the bare number when rawValue is set', () => {
+            fs.writeFileSync(logPath, 'INFO : vfs cache: cleaned: in use 10, to upload 12, uploading 1, total size 1Gi\n');
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', metadata: { remoteName }, rawValue: true };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('12');
+        });
+
+        it('renders "n/a" when the log file does not exist', () => {
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', metadata: { remoteName } };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('RClone: n/a');
+        });
+
+        it('renders bare "n/a" when the log file does not exist and rawValue is set', () => {
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', metadata: { remoteName }, rawValue: true };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('n/a');
+        });
+
+        it('renders 0 as a real value, not as n/a', () => {
+            fs.writeFileSync(logPath, 'INFO : vfs cache: cleaned: in use 10, to upload 0, uploading 0, total size 1Gi\n');
+            const context: RenderContext = {};
+            const item: WidgetItem = { id: 'rc', type: 'rclone-queue', metadata: { remoteName } };
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('RClone: 0');
+        });
+
+        it('defaults to the dropbox remote when no metadata is set', () => {
+            expect(getRemoteName({ id: 'rc', type: 'rclone-queue' })).toBe('dropbox');
+        });
+
+        it('uses the configured remote name from metadata', () => {
+            expect(getRemoteName({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: 'gdrive' } })).toBe('gdrive');
+        });
     });
 });

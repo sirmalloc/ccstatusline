@@ -2,6 +2,14 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
+import type { RenderContext } from '../types/RenderContext';
+import type { Settings } from '../types/Settings';
+import type {
+    Widget,
+    WidgetEditorDisplay,
+    WidgetItem
+} from '../types/Widget';
+
 export const DEFAULT_REMOTE_NAME = 'dropbox';
 export const CACHE_TTL_MS = 15_000;
 const TAIL_BYTES = 64 * 1024;
@@ -81,4 +89,37 @@ export function getQueueLength(remoteName: string, now: number = Date.now()): nu
 
 export function clearRCloneQueueCache(): void {
     queueCache.clear();
+}
+
+export function getRemoteName(item: WidgetItem): string {
+    return item.metadata?.remoteName ?? DEFAULT_REMOTE_NAME;
+}
+
+export class RCloneQueueWidget implements Widget {
+    getDefaultColor(): string { return 'blue'; }
+    getDescription(): string { return 'Shows the pending upload queue length for an rclone VFS mount (e.g. Dropbox)'; }
+    getDisplayName(): string { return 'RClone Queue'; }
+    getCategory(): string { return 'Environment'; }
+
+    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        return { displayText: `${this.getDisplayName()} (${getRemoteName(item)})` };
+    }
+
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        if (context.isPreview) {
+            return item.rawValue ? '385' : 'RClone: 385';
+        }
+
+        const remoteName = getRemoteName(item);
+        const queueLength = getQueueLength(remoteName);
+
+        if (queueLength === null) {
+            return item.rawValue ? 'n/a' : 'RClone: n/a';
+        }
+
+        return item.rawValue ? `${queueLength}` : `RClone: ${queueLength}`;
+    }
+
+    supportsRawValue(): boolean { return true; }
+    supportsColors(item: WidgetItem): boolean { return true; }
 }
