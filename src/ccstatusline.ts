@@ -178,7 +178,6 @@ async function renderMultipleLines(data: StatusJSON) {
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
-        terminalWidthCacheTtlSeconds: settings.terminalWidthCacheTtlSeconds,
         gitReviewNeedsChecks: lines.some(line => line.some(item => item.type === 'git-ci-status'))
     };
 

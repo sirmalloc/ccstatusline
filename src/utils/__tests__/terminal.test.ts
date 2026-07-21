@@ -13,12 +13,19 @@ import {
     getTerminalWidth,
     resetTerminalWidthCache
 } from '../terminal';
+import * as terminalWidthCache from '../terminal-width-cache';
 
 vi.mock('child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
 }));
+
+// vi.spyOn on the module namespace rather than vi.mock('../terminal-width-cache', ...):
+// a factory-based vi.mock on a shared module is not reliably file-scoped under this
+// test runner and leaked into terminal-width-cache.test.ts's own (unmocked) import of
+// the same module when both files ran in the same test invocation, silently replacing
+// the real readCachedWidth/writeCachedWidth with no-ops there too.
 
 describe('terminal utils', () => {
     const mockExecFileSync = execFileSync as unknown as {
@@ -341,5 +348,109 @@ describe('terminal utils', () => {
 
         resetTerminalWidthCache();
         expect(getTerminalWidth()).toBe(175);
+    });
+
+    // Wiring coverage for the sessionId/ttlSeconds L2-cache integration: unlike
+    // the tests above (which never pass options), these mock ../terminal-width-cache
+    // directly and assert on the exact arguments getTerminalWidth calls it with.
+    // A wiring regression here (wrong args, wrong condition) would pass every
+    // other test in this suite while silently breaking the cross-process cache.
+    describe('getTerminalWidth session cache wiring', () => {
+        function spyOnReadCachedWidth() {
+            return vi.spyOn(terminalWidthCache, 'readCachedWidth');
+        }
+        function spyOnWriteCachedWidth() {
+            return vi.spyOn(terminalWidthCache, 'writeCachedWidth');
+        }
+
+        let readSpy: ReturnType<typeof spyOnReadCachedWidth>;
+        let writeSpy: ReturnType<typeof spyOnWriteCachedWidth>;
+
+        beforeEach(() => {
+            readSpy = spyOnReadCachedWidth().mockReturnValue(null);
+            writeSpy = spyOnWriteCachedWidth().mockImplementation(() => undefined);
+        });
+
+        afterEach(() => {
+            readSpy.mockRestore();
+            writeSpy.mockRestore();
+        });
+
+        it('consults the L2 cache with the given sessionId and ttlSeconds before probing', () => {
+            pinPosixPlatform();
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('no tty anywhere');
+            });
+
+            getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 42 });
+
+            expect(readSpy).toHaveBeenCalledWith('session-a', 42);
+        });
+
+        it('does not consult the L2 cache when no sessionId is given', () => {
+            pinPosixPlatform();
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('no tty anywhere');
+            });
+
+            getTerminalWidth();
+
+            expect(readSpy).not.toHaveBeenCalled();
+        });
+
+        it('returns the L2-cached width on a hit without probing', () => {
+            readSpy.mockReturnValue({ width: null });
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('should not probe on an L2 cache hit');
+            });
+
+            expect(getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 5 })).toBeNull();
+            expect(mockExecFileSync).not.toHaveBeenCalled();
+        });
+
+        it('persists a "no TTY" probe result to the L2 cache with the given sessionId', () => {
+            pinPosixPlatform();
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('no tty anywhere');
+            });
+
+            getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 5 });
+
+            expect(writeSpy).toHaveBeenCalledWith('session-a', null);
+        });
+
+        it('never persists a discovered numeric width to the L2 cache', () => {
+            pinPosixPlatform();
+            mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+                if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
+                    return '1234\n';
+                }
+
+                if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
+                    return 'ttys001\n';
+                }
+
+                if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                    return '24 120\n';
+                }
+
+                throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
+            });
+
+            expect(getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 5 })).toBe(120);
+
+            expect(writeSpy).not.toHaveBeenCalled();
+        });
+
+        it('does not persist to the L2 cache when ttlSeconds is 0', () => {
+            pinPosixPlatform();
+            mockExecFileSync.mockImplementation(() => {
+                throw new Error('no tty anywhere');
+            });
+
+            getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 0 });
+
+            expect(writeSpy).not.toHaveBeenCalled();
+        });
     });
 });

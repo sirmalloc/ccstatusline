@@ -215,10 +215,12 @@ export function getTerminalWidth(options?: TerminalWidthOptions): number | null 
     const ttlSeconds = options?.ttlSeconds ?? 0;
 
     // L2: another process in this session may have already paid for the probe.
+    // Only ever consulted for a cached "no TTY" result -- see the write side
+    // below for why a discovered numeric width is never read back here either.
     if (sessionId) {
         const cached = readCachedWidth(sessionId, ttlSeconds);
-        if (cached) {
-            cachedWidth = cached.width;
+        if (cached?.width === null) {
+            cachedWidth = null;
             hasProbed = true;
             return cachedWidth;
         }
@@ -227,8 +229,17 @@ export function getTerminalWidth(options?: TerminalWidthOptions): number | null 
     cachedWidth = probeTerminalWidth();
     hasProbed = true;
 
-    if (sessionId && ttlSeconds > 0) {
-        writeCachedWidth(sessionId, cachedWidth);
+    // Persist only the "no TTY" result, never a discovered numeric width.
+    // The no-TTY case is the one this cache exists for (Claude Code spawning
+    // the statusline without a controlling terminal is stable for the life of
+    // a session, so it's safe to cache indefinitely and expensive to keep
+    // re-walking). A real width is comparatively cheap to redetect and, unlike
+    // "no TTY", is NOT stable per session: the same session_id can be resumed
+    // in a different terminal with a different width, and persisting a numeric
+    // width across processes would serve that stale width for up to
+    // ttlSeconds after the resume.
+    if (sessionId && ttlSeconds > 0 && cachedWidth === null) {
+        writeCachedWidth(sessionId, null);
     }
 
     return cachedWidth;
