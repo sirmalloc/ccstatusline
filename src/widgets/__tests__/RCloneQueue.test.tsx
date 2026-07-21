@@ -1,12 +1,16 @@
 import fs from 'fs';
+import { render } from 'ink';
+import { PassThrough } from 'node:stream';
 import os from 'os';
 import path from 'path';
+import stripAnsi from 'strip-ansi';
 import {
     afterEach,
     beforeEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import type {
@@ -253,5 +257,150 @@ describe('RCloneQueueWidget', () => {
         it('uses the configured remote name from metadata', () => {
             expect(getRemoteName({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: 'gdrive' } })).toBe('gdrive');
         });
+    });
+});
+
+class MockTtyStream extends PassThrough {
+    isTTY = true;
+    columns = 120;
+    rows = 40;
+
+    setRawMode() {
+        return this;
+    }
+
+    ref() {
+        return this;
+    }
+
+    unref() {
+        return this;
+    }
+}
+
+interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+
+function createMockStdin(): NodeJS.ReadStream {
+    return new MockTtyStream() as unknown as NodeJS.ReadStream;
+}
+
+function createMockStdout(): CapturedWriteStream {
+    const stream = new MockTtyStream();
+    const chunks: string[] = [];
+    stream.on('data', (chunk: Buffer | string) => {
+        chunks.push(chunk.toString());
+    });
+    return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        getOutput() {
+            return chunks.join('');
+        }
+    });
+}
+
+function flushInk() {
+    return new Promise((resolve) => {
+        setTimeout(resolve, 25);
+    });
+}
+
+function renderRemoteEditor(item: WidgetItem, onComplete = vi.fn(), onCancel = vi.fn()) {
+    const widget = new RCloneQueueWidget();
+    const editorElement = widget.renderEditor({ widget: item, onComplete, onCancel, action: 'edit-remote' });
+
+    const stdin = createMockStdin();
+    const stdout = createMockStdout();
+    const stderr = createMockStdout();
+    const instance = render(editorElement, {
+        stdin,
+        stdout,
+        stderr,
+        debug: true,
+        exitOnCtrlC: false,
+        patchConsole: false
+    });
+
+    return { instance, stdin, stdout, stderr, onComplete, onCancel };
+}
+
+function cleanupEditor(rendered: ReturnType<typeof renderRemoteEditor>): void {
+    rendered.instance.unmount();
+    rendered.instance.cleanup();
+    rendered.stdin.destroy();
+    rendered.stdout.destroy();
+    rendered.stderr.destroy();
+}
+
+function getPlainOutput(output: string): string {
+    return stripAnsi(output).replace(/\r\n/g, '\n');
+}
+
+describe('RCloneQueueWidget custom keybind', () => {
+    it('exposes an (e)dit remote keybind', () => {
+        const widget = new RCloneQueueWidget();
+        expect(widget.getCustomKeybinds()).toEqual([
+            { key: 'e', label: '(e)dit remote', action: 'edit-remote' }
+        ]);
+    });
+});
+
+describe('RCloneRemoteEditor', () => {
+    it('shows the current remote name pre-filled', async () => {
+        const rendered = renderRemoteEditor({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: 'gdrive' } });
+        try {
+            await flushInk();
+            const output = getPlainOutput(rendered.stdout.getOutput());
+            expect(output).toContain('gdrive');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('saves the typed remote name on Enter', async () => {
+        const rendered = renderRemoteEditor({ id: 'rc', type: 'rclone-queue' });
+        try {
+            await flushInk();
+            // Backspace out "dropbox" (7 chars), then type "gdrive".
+            rendered.stdin.write('\b'.repeat(7));
+            await flushInk();
+            rendered.stdin.write('gdrive');
+            await flushInk();
+            rendered.stdin.write('\r');
+            await flushInk();
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.remoteName).toBe('gdrive');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('falls back to the default remote name when saved empty', async () => {
+        const rendered = renderRemoteEditor({ id: 'rc', type: 'rclone-queue' });
+        try {
+            await flushInk();
+            rendered.stdin.write('\b'.repeat(7));
+            await flushInk();
+            rendered.stdin.write('\r');
+            await flushInk();
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.remoteName).toBe('dropbox');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('cancels without calling onComplete on Escape', async () => {
+        const rendered = renderRemoteEditor({ id: 'rc', type: 'rclone-queue' });
+        try {
+            await flushInk();
+            rendered.stdin.write('\x1b');
+            await flushInk();
+
+            expect(rendered.onComplete).not.toHaveBeenCalled();
+            expect(rendered.onCancel).toHaveBeenCalledTimes(1);
+        } finally {
+            cleanupEditor(rendered);
+        }
     });
 });
