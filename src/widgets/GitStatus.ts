@@ -13,6 +13,7 @@ import {
 } from '../utils/git';
 
 import { makeModifierText } from './shared/editor-display';
+import { shouldHideGitWidgetForJj } from './shared/git-jj-precedence';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
@@ -53,11 +54,15 @@ export class GitStatusWidget implements Widget {
         return handleToggleNoGitAction(action, item);
     }
 
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
 
         if (context.isPreview) {
             return this.formatStatus(item, { staged: true, unstaged: true, untracked: false, conflicts: false });
+        }
+
+        if (shouldHideGitWidgetForJj('git-status', context, settings)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {

@@ -1,4 +1,5 @@
 import type { RenderContext } from '../types/RenderContext';
+import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     Widget,
@@ -11,6 +12,7 @@ import {
     runGit
 } from '../utils/git';
 
+import { shouldHideGitWidgetForJj } from './shared/git-jj-precedence';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
@@ -41,12 +43,16 @@ export class GitWorktreeWidget implements Widget {
         return handleToggleNoGitAction(action, item);
     }
 
-    render(item: WidgetItem, context: RenderContext): string | null {
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview)
             return item.rawValue ? 'main' : `${prefix}main`;
+
+        if (shouldHideGitWidgetForJj('git-worktree', context, settings)) {
+            return null;
+        }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : `${prefix}no git`;
