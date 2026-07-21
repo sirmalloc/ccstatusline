@@ -1,17 +1,27 @@
 import fs from 'fs';
+import {
+    Box,
+    Text,
+    useInput
+} from 'ink';
 import os from 'os';
 import path from 'path';
+import React, { useState } from 'react';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { shouldInsertInput } from '../utils/input-guards';
 
 export const DEFAULT_REMOTE_NAME = 'dropbox';
 export const CACHE_TTL_MS = 15_000;
+export const EDIT_REMOTE_ACTION = 'edit-remote';
 const TAIL_BYTES = 64 * 1024;
 const TO_UPLOAD_RE = /to upload (\d+)/;
 
@@ -105,6 +115,10 @@ export class RCloneQueueWidget implements Widget {
         return { displayText: `${this.getDisplayName()} (${getRemoteName(item)})` };
     }
 
+    getCustomKeybinds(): CustomKeybind[] {
+        return [{ key: 'e', label: '(e)dit remote', action: EDIT_REMOTE_ACTION }];
+    }
+
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
             return item.rawValue ? '385' : 'RClone: 385';
@@ -122,4 +136,65 @@ export class RCloneQueueWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+
+    renderEditor(props: WidgetEditorProps): React.ReactElement {
+        return <RCloneRemoteEditor {...props} />;
+    }
 }
+
+const RCloneRemoteEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
+    const [text, setText] = useState(getRemoteName(widget));
+    const [cursorPos, setCursorPos] = useState(text.length);
+
+    useInput((input, key) => {
+        if (key.return) {
+            const trimmed = text.trim();
+            onComplete({
+                ...widget,
+                metadata: { ...(widget.metadata ?? {}), remoteName: trimmed.length > 0 ? trimmed : DEFAULT_REMOTE_NAME }
+            });
+        } else if (key.escape) {
+            onCancel();
+        } else if (key.leftArrow) {
+            setCursorPos(pos => Math.max(0, pos - 1));
+        } else if (key.rightArrow) {
+            setCursorPos(pos => Math.min(text.length, pos + 1));
+        } else if (key.backspace) {
+            setCursorPos((pos) => {
+                if (pos > 0) {
+                    setText(t => t.slice(0, pos - 1) + t.slice(pos));
+                    return pos - 1;
+                }
+                return pos;
+            });
+        } else if (key.delete) {
+            setText((t) => {
+                if (cursorPos < t.length) {
+                    return t.slice(0, cursorPos) + t.slice(cursorPos + 1);
+                }
+                return t;
+            });
+        } else if (shouldInsertInput(input, key)) {
+            setText(t => t.slice(0, cursorPos) + input + t.slice(cursorPos));
+            setCursorPos(pos => pos + input.length);
+        }
+    });
+
+    let display = 'Enter rclone remote name: ';
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (char !== undefined) {
+            display += i === cursorPos ? `\x1b[7m${char}\x1b[0m` : char;
+        }
+    }
+    if (cursorPos >= text.length) {
+        display += '\x1b[7m \x1b[0m';
+    }
+
+    return (
+        <Box flexDirection='column'>
+            <Text>{display}</Text>
+            <Text dimColor>←→ move cursor, Enter save, ESC cancel (default: dropbox)</Text>
+        </Box>
+    );
+};
