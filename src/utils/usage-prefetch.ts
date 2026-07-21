@@ -9,11 +9,13 @@ type UsageDataField = Exclude<keyof UsageData, 'error'>;
 const USAGE_WIDGET_TYPES = new Set<string>([
     'session-usage',
     'weekly-usage',
+    'monthly-usage',
     'weekly-sonnet-usage',
     'weekly-opus-usage',
     'block-timer',
     'reset-timer',
     'weekly-reset-timer',
+    'monthly-reset-timer',
     'extra-usage-utilization',
     'extra-usage-remaining',
     'extra-usage-used'
@@ -24,6 +26,8 @@ const USAGE_DATA_FIELDS: UsageDataField[] = [
     'sessionResetAt',
     'weeklyUsage',
     'weeklyResetAt',
+    'monthlyUsage',
+    'monthlyResetAt',
     'weeklySonnetUsage',
     'weeklySonnetResetAt',
     'weeklyOpusUsage',
@@ -46,11 +50,13 @@ const EMPTY_USAGE_REQUIREMENTS: UsageFieldRequirement[] = [];
 const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'session-usage': [{ field: 'sessionUsage' }],
     'weekly-usage': [{ field: 'weeklyUsage' }],
+    'monthly-usage': [{ field: 'monthlyUsage' }],
     'weekly-sonnet-usage': [{ field: 'weeklySonnetUsage' }],
     'weekly-opus-usage': [{ field: 'weeklyOpusUsage' }],
     'block-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
     'reset-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
     'weekly-reset-timer': [{ field: 'weeklyResetAt', suppressFetchError: true }],
+    'monthly-reset-timer': [{ field: 'monthlyResetAt', suppressFetchError: true }],
     'extra-usage-utilization': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageUtilization' }
@@ -69,6 +75,7 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
 const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     'session-usage': { field: 'sessionResetAt' },
     'weekly-usage': { field: 'weeklyResetAt' },
+    'monthly-usage': { field: 'monthlyResetAt' },
     'weekly-sonnet-usage': { field: 'weeklySonnetResetAt', alternatives: ['weeklyResetAt'] },
     'weekly-opus-usage': { field: 'weeklyOpusResetAt', alternatives: ['weeklyResetAt'] }
 };
@@ -142,6 +149,8 @@ function pickDefinedUsageFields(data: UsageData | null | undefined): Partial<Usa
         ...(data?.sessionResetAt !== undefined ? { sessionResetAt: data.sessionResetAt } : {}),
         ...(data?.weeklyUsage !== undefined ? { weeklyUsage: data.weeklyUsage } : {}),
         ...(data?.weeklyResetAt !== undefined ? { weeklyResetAt: data.weeklyResetAt } : {}),
+        ...(data?.monthlyUsage !== undefined ? { monthlyUsage: data.monthlyUsage } : {}),
+        ...(data?.monthlyResetAt !== undefined ? { monthlyResetAt: data.monthlyResetAt } : {}),
         ...(data?.weeklySonnetUsage !== undefined ? { weeklySonnetUsage: data.weeklySonnetUsage } : {}),
         ...(data?.weeklySonnetResetAt !== undefined ? { weeklySonnetResetAt: data.weeklySonnetResetAt } : {}),
         ...(data?.weeklyOpusUsage !== undefined ? { weeklyOpusUsage: data.weeklyOpusUsage } : {}),

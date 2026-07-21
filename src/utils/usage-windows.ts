@@ -4,6 +4,7 @@ import { getCachedBlockMetrics } from './jsonl';
 import {
     FIVE_HOUR_BLOCK_MS,
     SEVEN_DAY_WINDOW_MS,
+    THIRTY_DAY_WINDOW_MS,
     type UsageData,
     type UsageError,
     type UsageWindowMetrics
@@ -85,8 +86,25 @@ export function getWeeklyUsageWindowFromResetAt(weeklyResetAt: string | undefine
     return buildUsageWindow(resetAtMs, nowMs, SEVEN_DAY_WINDOW_MS);
 }
 
+export function getMonthlyUsageWindowFromResetAt(monthlyResetAt: string | undefined, nowMs = Date.now()): UsageWindowMetrics | null {
+    if (!monthlyResetAt) {
+        return null;
+    }
+
+    const resetAtMs = Date.parse(monthlyResetAt);
+    if (Number.isNaN(resetAtMs)) {
+        return null;
+    }
+
+    return buildUsageWindow(resetAtMs, nowMs, THIRTY_DAY_WINDOW_MS);
+}
+
 export function resolveWeeklyUsageWindow(usageData: UsageData, nowMs = Date.now()): UsageWindowMetrics | null {
     return getWeeklyUsageWindowFromResetAt(usageData.weeklyResetAt, nowMs);
+}
+
+export function resolveMonthlyUsageWindow(usageData: UsageData, nowMs = Date.now()): UsageWindowMetrics | null {
+    return getMonthlyUsageWindowFromResetAt(usageData.monthlyResetAt, nowMs);
 }
 
 export function resolveWeeklySonnetUsageWindow(usageData: UsageData, nowMs = Date.now()): UsageWindowMetrics | null {
