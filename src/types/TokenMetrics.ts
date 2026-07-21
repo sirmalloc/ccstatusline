@@ -6,7 +6,7 @@ export interface TokenUsage {
 }
 
 export interface TranscriptLine {
-    message?: { usage?: TokenUsage; stop_reason?: string | null };
+    message?: { usage?: TokenUsage; stop_reason?: string | null; id?: string };
     isSidechain?: boolean;
     timestamp?: string;
     isApiErrorMessage?: boolean;
