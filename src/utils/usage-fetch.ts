@@ -10,9 +10,14 @@ import { z } from 'zod';
 import { getClaudeConfigDir } from './claude-settings';
 import type {
     UsageData,
+    UsageDataField,
     UsageError
 } from './usage-types';
-import { UsageErrorSchema } from './usage-types';
+import {
+    UsageErrorSchema,
+    WEEKLY_MODEL_USAGE_BUCKETS,
+    setUsageField
+} from './usage-types';
 
 // Cache configuration
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
@@ -23,8 +28,6 @@ const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
-
-type UsageDataField = Exclude<keyof UsageData, 'error'>;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
@@ -38,11 +41,13 @@ const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
 // API bucket. A null bucket (Enterprise accounts have no rate-limit windows,
 // #343) parses to utilization 0 with no resets_at, so once the utilization is
 // cached the missing timestamp is conclusive and refetching cannot produce it.
+// The per-model entries are derived from WEEKLY_MODEL_USAGE_BUCKETS (see
+// usage-types.ts) instead of hand-listed, so this can't drift from the schemas
+// below when a model bucket is added or renamed.
 const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataField>> = {
     sessionResetAt: 'sessionUsage',
     weeklyResetAt: 'weeklyUsage',
-    weeklySonnetResetAt: 'weeklySonnetUsage',
-    weeklyOpusResetAt: 'weeklyOpusUsage'
+    ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.resetField, bucket.usageField]))
 };
 
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
@@ -52,6 +57,13 @@ const UsageLockSchema = z.object({
     error: UsageLockErrorSchema.optional()
 });
 
+// The per-model fields (weeklySonnetUsage, weeklyOpusUsage, ...) are declared
+// by hand here and in UsageApiResponseSchema below because Zod object shapes
+// need statically-known keys to keep field-level type inference for the
+// parse* functions further down. usage-fetch.test.ts's schema-parity test
+// asserts both schemas cover every WEEKLY_MODEL_USAGE_BUCKETS entry, so a
+// bucket added to one but not the other fails a test instead of silently
+// dropping data after a cache round-trip.
 const CachedUsageDataSchema = z.object({
     sessionUsage: z.number().nullable().optional(),
     sessionResetAt: z.string().nullable().optional(),
@@ -78,11 +90,27 @@ const UsageApiBucketSchema = z.looseObject({
 
 type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
 
+// Per-model weekly usage now arrives as an entry in this array (kind:
+// "weekly_scoped", scope.model.display_name identifying the model) rather
+// than as a flat seven_day_<model> bucket -- see the comment on
+// WeeklyModelUsageBucket in usage-types.ts.
+const UsageLimitEntrySchema = z.looseObject({
+    kind: z.string().nullable().optional(),
+    percent: z.number().nullable().optional(),
+    resets_at: z.string().nullable().optional(),
+    scope: z.looseObject({ model: z.looseObject({ display_name: z.string().nullable().optional() }).nullable().optional() }).nullable().optional()
+});
+
+type UsageLimitEntry = z.infer<typeof UsageLimitEntrySchema>;
+
+// See the comment on CachedUsageDataSchema above re: why the legacy per-model
+// keys are hand-declared rather than generated from WEEKLY_MODEL_USAGE_BUCKETS.
 const UsageApiResponseSchema = z.looseObject({
     five_hour: UsageApiBucketSchema,
     seven_day: UsageApiBucketSchema,
     seven_day_sonnet: UsageApiBucketSchema,
     seven_day_opus: UsageApiBucketSchema,
+    limits: z.array(UsageLimitEntrySchema).nullable().optional(),
     extra_usage: z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
@@ -92,8 +120,26 @@ const UsageApiResponseSchema = z.looseObject({
     }).nullable().optional()
 });
 
+// Exposed only so usage-fetch.test.ts can assert schema/registry parity (see
+// the comment on CachedUsageDataSchema above) and the limits[]-vs-legacy-field
+// precedence (see parseUsageApiResponse) without duplicating the shapes/logic.
+export const __testing = {
+    CachedUsageDataSchema,
+    UsageApiResponseSchema,
+    parseUsageApiResponse
+};
+
 function getUsageApiBucketUtilization(bucket: UsageApiBucket): number | undefined {
     return bucket === null ? 0 : bucket?.utilization ?? undefined;
+}
+
+// Finds this model's weekly quota in the new limits[] array. Returns
+// undefined (not 0) when absent -- unlike a legacy `null` flat bucket, "no
+// weekly_scoped entry for this model" isn't a documented "0% used" signal, so
+// treating it as unset (and falling back to the legacy field, see below) is
+// the safer read.
+function findWeeklyScopedLimit(limits: UsageLimitEntry[] | null | undefined, modelDisplayName: string): UsageLimitEntry | undefined {
+    return limits?.find(limit => limit.kind === 'weekly_scoped' && limit.scope?.model?.display_name === modelDisplayName) ?? undefined;
 }
 
 function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
@@ -157,27 +203,50 @@ function tokenHashMatches(cachedHash: string | undefined, currentHash: string | 
     return cachedHash === currentHash;
 }
 
+// parsed is a UsageApiResponseSchema-derived looseObject: declared keys (like
+// the legacy seven_day_sonnet/seven_day_opus fallback below) keep their exact
+// types, but looseObject's passthrough means indexing by a dynamic string
+// (bucket.apiBucketKey) only has `unknown` to offer TS -- hence the cast,
+// scoped to this one lookup rather than to the whole parsed object.
+function getLegacyUsageApiBucket(parsed: Record<string, unknown>, apiBucketKey: string): UsageApiBucket {
+    return parsed[apiBucketKey] as UsageApiBucket;
+}
+
 function parseUsageApiResponse(rawJson: string): UsageData | null {
     const parsed = parseJsonWithSchema(rawJson, UsageApiResponseSchema);
     if (!parsed) {
         return null;
     }
 
-    return {
+    const result: UsageData = {
         sessionUsage: getUsageApiBucketUtilization(parsed.five_hour),
         sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
         weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day),
         weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
-        weeklySonnetUsage: getUsageApiBucketUtilization(parsed.seven_day_sonnet),
-        weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
-        weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
-        weeklyOpusResetAt: parsed.seven_day_opus?.resets_at ?? undefined,
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
         extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined,
         extraUsageCurrency: parsed.extra_usage?.currency ?? undefined
     };
+
+    for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+        const scopedLimit = findWeeklyScopedLimit(parsed.limits, bucket.modelDisplayName);
+        const scopedPercent = scopedLimit?.percent ?? undefined;
+        if (scopedPercent !== undefined) {
+            setUsageField(result, bucket.usageField, scopedPercent);
+            setUsageField(result, bucket.resetField, scopedLimit?.resets_at ?? undefined);
+            continue;
+        }
+
+        // Fallback for API responses (or code paths) that still populate the
+        // legacy flat bucket instead of limits[].
+        const legacyBucket = getLegacyUsageApiBucket(parsed, bucket.apiBucketKey);
+        setUsageField(result, bucket.usageField, getUsageApiBucketUtilization(legacyBucket));
+        setUsageField(result, bucket.resetField, legacyBucket?.resets_at ?? undefined);
+    }
+
+    return result;
 }
 
 // Memory caches

@@ -11,6 +11,9 @@ import {
     it
 } from 'vitest';
 
+import { __testing } from '../usage-fetch';
+import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
+
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
 
@@ -1253,6 +1256,133 @@ describe('fetchUsageData error handling', () => {
             expect(result.requestCount).toBe(0);
         } finally {
             harness.cleanup();
+        }
+    });
+});
+
+// Guards the exact failure mode described in the code review that motivated
+// WEEKLY_MODEL_USAGE_BUCKETS (usage-types.ts): CachedUsageDataSchema and
+// UsageApiResponseSchema are hand-declared (see the comments on them in
+// usage-fetch.ts for why they can't just be generated from the registry) and
+// therefore CAN drift from it silently -- a field present in one schema but
+// missing from the other would parse fine from a live API fetch, then vanish
+// the moment that response round-trips through the on-disk cache. This test
+// makes that drift fail loudly instead.
+describe('WEEKLY_MODEL_USAGE_BUCKETS schema parity', () => {
+    it('declares every registry bucket field in CachedUsageDataSchema', () => {
+        const cachedKeys = new Set(Object.keys(__testing.CachedUsageDataSchema.shape));
+
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            expect(cachedKeys.has(bucket.usageField), `CachedUsageDataSchema is missing "${bucket.usageField}"`).toBe(true);
+            expect(cachedKeys.has(bucket.resetField), `CachedUsageDataSchema is missing "${bucket.resetField}"`).toBe(true);
+        }
+    });
+
+    it('declares every registry bucket\'s API key in UsageApiResponseSchema', () => {
+        const apiKeys = new Set(Object.keys(__testing.UsageApiResponseSchema.shape));
+
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            expect(apiKeys.has(bucket.apiBucketKey), `UsageApiResponseSchema is missing "${bucket.apiBucketKey}"`).toBe(true);
+        }
+    });
+
+    it('round-trips every registry bucket through an API fetch and a cache read', () => {
+        const apiResponse: Record<string, unknown> = {
+            five_hour: { utilization: 10, resets_at: '2026-01-01T00:00:00Z' },
+            seven_day: { utilization: 20, resets_at: '2026-01-08T00:00:00Z' }
+        };
+        for (const [index, bucket] of WEEKLY_MODEL_USAGE_BUCKETS.entries()) {
+            apiResponse[bucket.apiBucketKey] = { utilization: 30 + index, resets_at: `2026-01-0${index + 1}T00:00:00Z` };
+        }
+
+        const fromApi = __testing.UsageApiResponseSchema.parse(apiResponse);
+        const cachePayload: Record<string, unknown> = {};
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            const apiBucket = fromApi[bucket.apiBucketKey] as { utilization?: number; resets_at?: string } | null | undefined;
+            cachePayload[bucket.usageField] = apiBucket?.utilization;
+            cachePayload[bucket.resetField] = apiBucket?.resets_at;
+        }
+
+        const fromCache = __testing.CachedUsageDataSchema.parse(cachePayload);
+
+        for (const [index, bucket] of WEEKLY_MODEL_USAGE_BUCKETS.entries()) {
+            expect(fromCache[bucket.usageField], `"${bucket.usageField}" did not survive the cache round-trip`).toBe(30 + index);
+        }
+    });
+
+    it('prefers a weekly_scoped limits[] entry over the legacy flat bucket for the same model', () => {
+        // Shape captured from a live /api/oauth/usage response (2026-07):
+        // the legacy seven_day_sonnet/seven_day_opus keys return null even
+        // when the model has real usage; the real number is in limits[].
+        const sonnetBucket = WEEKLY_MODEL_USAGE_BUCKETS.find(bucket => bucket.modelDisplayName === 'Sonnet');
+        if (!sonnetBucket) {
+            throw new Error('expected a Sonnet entry in WEEKLY_MODEL_USAGE_BUCKETS for this test');
+        }
+
+        const parsed = __testing.parseUsageApiResponse(JSON.stringify({
+            five_hour: { utilization: 48, resets_at: '2026-07-17T13:50:00Z' },
+            seven_day: { utilization: 18, resets_at: '2026-07-23T04:00:00Z' },
+            seven_day_sonnet: null,
+            seven_day_opus: null,
+            limits: [
+                { kind: 'session', percent: 48, resets_at: '2026-07-17T13:50:00Z', scope: null },
+                { kind: 'weekly_all', percent: 18, resets_at: '2026-07-23T04:00:00Z', scope: null },
+                { kind: 'weekly_scoped', percent: 3, resets_at: '2026-07-23T04:00:00Z', scope: { model: { display_name: 'Sonnet' } } }
+            ]
+        }));
+
+        expect(parsed?.[sonnetBucket.usageField]).toBe(3);
+        expect(parsed?.[sonnetBucket.resetField]).toBe('2026-07-23T04:00:00Z');
+    });
+
+    it('falls back to the legacy flat bucket when a model has no weekly_scoped limits[] entry', () => {
+        const opusBucket = WEEKLY_MODEL_USAGE_BUCKETS.find(bucket => bucket.modelDisplayName === 'Opus');
+        if (!opusBucket) {
+            throw new Error('expected an Opus entry in WEEKLY_MODEL_USAGE_BUCKETS for this test');
+        }
+
+        const parsed = __testing.parseUsageApiResponse(JSON.stringify({
+            five_hour: { utilization: 48, resets_at: '2026-07-17T13:50:00Z' },
+            seven_day: { utilization: 18, resets_at: '2026-07-23T04:00:00Z' },
+            seven_day_opus: { utilization: 42, resets_at: '2026-07-23T04:00:00Z' },
+            limits: [
+                { kind: 'weekly_scoped', percent: 3, resets_at: '2026-07-23T04:00:00Z', scope: { model: { display_name: 'Sonnet' } } }
+            ]
+        }));
+
+        expect(parsed?.[opusBucket.usageField]).toBe(42);
+        expect(parsed?.[opusBucket.resetField]).toBe('2026-07-23T04:00:00Z');
+    });
+
+    it('handles a real live-captured response (Fable-only limits[], no matching Sonnet/Opus entry) without erroring', () => {
+        // Exact shape of a live response where only Fable has a weekly_scoped
+        // entry. Sonnet/Opus have no limits[] entry, so they fall back to
+        // their (explicitly null) legacy bucket -- 0%, per the pre-existing
+        // #343 "null bucket -> 0 usage" convention preserved by that fallback.
+        const parsed = __testing.parseUsageApiResponse(JSON.stringify({
+            five_hour: { utilization: 48, resets_at: '2026-07-17T13:50:00.885205+00:00' },
+            seven_day: { utilization: 18, resets_at: '2026-07-23T04:00:00.885227+00:00' },
+            seven_day_opus: null,
+            seven_day_sonnet: null,
+            limits: [
+                { kind: 'session', group: 'session', percent: 48, resets_at: '2026-07-17T13:50:00.885205+00:00', scope: null, is_active: true },
+                { kind: 'weekly_all', group: 'weekly', percent: 18, resets_at: '2026-07-23T04:00:00.885227+00:00', scope: null, is_active: false },
+                {
+                    kind: 'weekly_scoped',
+                    group: 'weekly',
+                    percent: 3,
+                    resets_at: '2026-07-23T04:00:00.885562+00:00',
+                    scope: { model: { id: null, display_name: 'Fable' }, surface: null },
+                    is_active: false
+                }
+            ],
+            extra_usage: { is_enabled: false }
+        }));
+
+        expect(parsed?.sessionUsage).toBe(48);
+        expect(parsed?.weeklyUsage).toBe(18);
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            expect(parsed?.[bucket.usageField], `expected ${bucket.usageField} to fall back to the legacy null-bucket -> 0 convention`).toBe(0);
         }
     });
 });
