@@ -90,7 +90,10 @@ function writePersistentQueueCache(cache: PersistentQueueCache): void {
 }
 
 export function getRcloneLogPath(remoteName: string): string {
-    return path.join(os.homedir(), '.cache', 'rclone', `${remoteName}.log`);
+    // path.basename strips any directory separators (including "../" traversal
+    // segments), so a remoteName sourced from freely-typed metadata can never
+    // resolve outside ~/.cache/rclone/.
+    return path.join(os.homedir(), '.cache', 'rclone', `${path.basename(remoteName)}.log`);
 }
 
 export function readLogTail(logPath: string, maxBytes: number = TAIL_BYTES): string | null {
