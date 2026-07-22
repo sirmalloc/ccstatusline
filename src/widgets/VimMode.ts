@@ -23,31 +23,54 @@ function getFormat(item: WidgetItem): VimFormat {
     return (FORMATS as readonly string[]).includes(f ?? '') ? (f as VimFormat) : DEFAULT_FORMAT;
 }
 
+function canUseNerdFont(item: WidgetItem): boolean {
+    const format = getFormat(item);
+    return format === 'icon-dash-letter' || format === 'icon-letter' || format === 'icon';
+}
+
+function removeNerdFont(item: WidgetItem): WidgetItem {
+    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
+    void removedNerdFont;
+
+    return {
+        ...item,
+        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
+    };
+}
+
 function setFormat(item: WidgetItem, format: VimFormat): WidgetItem {
+    let updatedItem: WidgetItem;
+
     if (format === DEFAULT_FORMAT) {
         const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
         void removedFormat;
 
-        return {
+        updatedItem = {
             ...item,
             metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
         };
+    } else {
+        updatedItem = {
+            ...item,
+            metadata: {
+                ...(item.metadata ?? {}),
+                format
+            }
+        };
     }
 
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            format
-        }
-    };
+    return canUseNerdFont(updatedItem) ? updatedItem : removeNerdFont(updatedItem);
 }
 
 function isNerdFontEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
+    return canUseNerdFont(item) && item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
 }
 
 function toggleNerdFont(item: WidgetItem): WidgetItem {
+    if (!canUseNerdFont(item)) {
+        return removeNerdFont(item);
+    }
+
     if (!isNerdFontEnabled(item)) {
         return {
             ...item,
@@ -58,13 +81,7 @@ function toggleNerdFont(item: WidgetItem): WidgetItem {
         };
     }
 
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
+    return removeNerdFont(item);
 }
 
 function formatMode(mode: string, format: VimFormat, icon: string): string {
@@ -125,11 +142,14 @@ export class VimModeWidget implements Widget {
         return formatMode(mode, format, icon);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION },
-            { key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION }
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        const keybinds: CustomKeybind[] = [
+            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION }
         ];
+        if (item === undefined || canUseNerdFont(item)) {
+            keybinds.push({ key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION });
+        }
+        return keybinds;
     }
 
     supportsRawValue(): boolean { return false; }
