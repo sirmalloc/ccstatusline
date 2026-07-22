@@ -94,6 +94,35 @@ describe('readLogTail', () => {
         expect(tail).not.toContain('AAA');
         expect(parseQueueLength(tail ?? '')).toBe(42);
     });
+
+    it('does not pad the result with stale/zero bytes when fewer bytes are read than requested', () => {
+        const logPath = path.join(tmpDir, 'short-read.log');
+        fs.writeFileSync(logPath, 'to upload 5\n');
+
+        const realReadSync = fs.readSync.bind(fs);
+        const shortRead = ((
+            fdArg: number,
+            bufferArg: NodeJS.ArrayBufferView,
+            offsetArg: number,
+            _lengthArg: number,
+            positionArg: number | bigint | null
+        ): number => {
+            // Simulate a short read (e.g. the file shrank between fstatSync and readSync,
+            // as with logrotate copytruncate): only report a few bytes as actually read,
+            // even though a larger length was requested.
+            const shortLength = 6;
+            return realReadSync(fdArg, bufferArg, offsetArg, shortLength, positionArg);
+        }) as typeof fs.readSync;
+        const spy = vi.spyOn(fs, 'readSync').mockImplementationOnce(shortRead);
+
+        try {
+            const tail = readLogTail(logPath, 1024);
+            expect(tail).toBe('to upl');
+            expect(tail?.length).toBe(6);
+        } finally {
+            spy.mockRestore();
+        }
+    });
 });
 
 describe('getQueueLength (cache)', () => {

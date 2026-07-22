@@ -49,11 +49,12 @@ export function readLogTail(logPath: string, maxBytes: number = TAIL_BYTES): str
         const readSize = Math.min(size, maxBytes);
         const start = size - readSize;
         const buffer = Buffer.alloc(readSize);
+        let bytesRead = 0;
         if (readSize > 0) {
-            fs.readSync(fd, buffer, 0, readSize, start);
+            bytesRead = fs.readSync(fd, buffer, 0, readSize, start);
         }
 
-        let text = buffer.toString('utf8');
+        let text = buffer.subarray(0, bytesRead).toString('utf8');
         if (start > 0) {
             // The window may start mid-line; discard that partial first line.
             const firstNewline = text.indexOf('\n');
