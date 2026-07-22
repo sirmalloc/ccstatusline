@@ -8,6 +8,7 @@ export {
     getWeeklyUsageWindowFromResetAt,
     makeUsageProgressBar,
     resolveUsageWindowWithFallback,
+    resolveWeeklyFableUsageWindow,
     resolveWeeklyOpusUsageWindow,
     resolveWeeklySonnetUsageWindow,
     resolveWeeklyUsageWindow

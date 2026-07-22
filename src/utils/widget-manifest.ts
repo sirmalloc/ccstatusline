@@ -89,6 +89,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'extra-usage-used', create: () => new widgets.ExtraUsageUsedWidget() },
     { type: 'weekly-sonnet-usage', create: () => new widgets.WeeklySonnetUsageWidget() },
     { type: 'weekly-opus-usage', create: () => new widgets.WeeklyOpusUsageWidget() },
+    { type: 'weekly-fable-usage', create: () => new widgets.WeeklyFableUsageWidget() },
     { type: 'reset-timer', create: () => new widgets.BlockResetTimerWidget() },
     { type: 'weekly-reset-timer', create: () => new widgets.WeeklyResetTimerWidget() },
     { type: 'context-bar', create: () => new widgets.ContextBarWidget() },
@@ -102,6 +103,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
     { type: 'worktree-original-branch', create: () => new widgets.GitWorktreeOriginalBranchWidget() },
     { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() },
+    { type: 'rclone-queue', create: () => new widgets.RCloneQueueWidget() },
     { type: 'cache-timer', create: () => new widgets.CacheTimerWidget() }
 ];
 

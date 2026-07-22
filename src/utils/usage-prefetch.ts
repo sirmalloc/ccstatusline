@@ -11,6 +11,7 @@ const USAGE_WIDGET_TYPES = new Set<string>([
     'weekly-usage',
     'weekly-sonnet-usage',
     'weekly-opus-usage',
+    'weekly-fable-usage',
     'block-timer',
     'reset-timer',
     'weekly-reset-timer',
@@ -28,6 +29,8 @@ const USAGE_DATA_FIELDS: UsageDataField[] = [
     'weeklySonnetResetAt',
     'weeklyOpusUsage',
     'weeklyOpusResetAt',
+    'weeklyFableUsage',
+    'weeklyFableResetAt',
     'extraUsageEnabled',
     'extraUsageLimit',
     'extraUsageUsed',
@@ -48,6 +51,7 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'weekly-usage': [{ field: 'weeklyUsage' }],
     'weekly-sonnet-usage': [{ field: 'weeklySonnetUsage' }],
     'weekly-opus-usage': [{ field: 'weeklyOpusUsage' }],
+    'weekly-fable-usage': [{ field: 'weeklyFableUsage' }],
     'block-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
     'reset-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
     'weekly-reset-timer': [{ field: 'weeklyResetAt', suppressFetchError: true }],
@@ -70,7 +74,8 @@ const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     'session-usage': { field: 'sessionResetAt' },
     'weekly-usage': { field: 'weeklyResetAt' },
     'weekly-sonnet-usage': { field: 'weeklySonnetResetAt', alternatives: ['weeklyResetAt'] },
-    'weekly-opus-usage': { field: 'weeklyOpusResetAt', alternatives: ['weeklyResetAt'] }
+    'weekly-opus-usage': { field: 'weeklyOpusResetAt', alternatives: ['weeklyResetAt'] },
+    'weekly-fable-usage': { field: 'weeklyFableResetAt', alternatives: ['weeklyResetAt'] }
 };
 
 export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
@@ -146,6 +151,8 @@ function pickDefinedUsageFields(data: UsageData | null | undefined): Partial<Usa
         ...(data?.weeklySonnetResetAt !== undefined ? { weeklySonnetResetAt: data.weeklySonnetResetAt } : {}),
         ...(data?.weeklyOpusUsage !== undefined ? { weeklyOpusUsage: data.weeklyOpusUsage } : {}),
         ...(data?.weeklyOpusResetAt !== undefined ? { weeklyOpusResetAt: data.weeklyOpusResetAt } : {}),
+        ...(data?.weeklyFableUsage !== undefined ? { weeklyFableUsage: data.weeklyFableUsage } : {}),
+        ...(data?.weeklyFableResetAt !== undefined ? { weeklyFableResetAt: data.weeklyFableResetAt } : {}),
         ...(data?.extraUsageEnabled !== undefined ? { extraUsageEnabled: data.extraUsageEnabled } : {}),
         ...(data?.extraUsageLimit !== undefined ? { extraUsageLimit: data.extraUsageLimit } : {}),
         ...(data?.extraUsageUsed !== undefined ? { extraUsageUsed: data.extraUsageUsed } : {}),
@@ -182,6 +189,8 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
     const weeklySonnetResetAt = epochSecondsToIsoString(rateLimits.seven_day_sonnet?.resets_at);
     const weeklyOpusUsage = rateLimits.seven_day_opus === null ? 0 : rateLimits.seven_day_opus?.used_percentage ?? undefined;
     const weeklyOpusResetAt = epochSecondsToIsoString(rateLimits.seven_day_opus?.resets_at);
+    const weeklyFableUsage = rateLimits.seven_day_fable === null ? 0 : rateLimits.seven_day_fable?.used_percentage ?? undefined;
+    const weeklyFableResetAt = epochSecondsToIsoString(rateLimits.seven_day_fable?.resets_at);
 
     // Note: rate_limits does not include extra_usage data (extraUsageEnabled, etc.).
     // Those fields are only available via the API fetch path.
@@ -193,7 +202,9 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
         weeklySonnetUsage,
         weeklySonnetResetAt,
         weeklyOpusUsage,
-        weeklyOpusResetAt
+        weeklyOpusResetAt,
+        weeklyFableUsage,
+        weeklyFableResetAt
     };
 
     return hasAnyUsageDataField(usageData) ? usageData : null;

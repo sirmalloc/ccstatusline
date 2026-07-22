@@ -42,7 +42,8 @@ const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataFiel
     sessionResetAt: 'sessionUsage',
     weeklyResetAt: 'weeklyUsage',
     weeklySonnetResetAt: 'weeklySonnetUsage',
-    weeklyOpusResetAt: 'weeklyOpusUsage'
+    weeklyOpusResetAt: 'weeklyOpusUsage',
+    weeklyFableResetAt: 'weeklyFableUsage'
 };
 
 const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
@@ -61,6 +62,8 @@ const CachedUsageDataSchema = z.object({
     weeklySonnetResetAt: z.string().nullable().optional(),
     weeklyOpusUsage: z.number().nullable().optional(),
     weeklyOpusResetAt: z.string().nullable().optional(),
+    weeklyFableUsage: z.number().nullable().optional(),
+    weeklyFableResetAt: z.string().nullable().optional(),
     extraUsageEnabled: z.boolean().nullable().optional(),
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
@@ -83,6 +86,7 @@ const UsageApiResponseSchema = z.looseObject({
     seven_day: UsageApiBucketSchema,
     seven_day_sonnet: UsageApiBucketSchema,
     seven_day_opus: UsageApiBucketSchema,
+    seven_day_fable: UsageApiBucketSchema,
     extra_usage: z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
@@ -127,6 +131,8 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         weeklySonnetResetAt: parsed.weeklySonnetResetAt ?? undefined,
         weeklyOpusUsage: parsed.weeklyOpusUsage ?? undefined,
         weeklyOpusResetAt: parsed.weeklyOpusResetAt ?? undefined,
+        weeklyFableUsage: parsed.weeklyFableUsage ?? undefined,
+        weeklyFableResetAt: parsed.weeklyFableResetAt ?? undefined,
         extraUsageEnabled: parsed.extraUsageEnabled ?? undefined,
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
@@ -172,6 +178,8 @@ function parseUsageApiResponse(rawJson: string): UsageData | null {
         weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
         weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
         weeklyOpusResetAt: parsed.seven_day_opus?.resets_at ?? undefined,
+        weeklyFableUsage: getUsageApiBucketUtilization(parsed.seven_day_fable),
+        weeklyFableResetAt: parsed.seven_day_fable?.resets_at ?? undefined,
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
