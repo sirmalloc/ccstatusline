@@ -30,7 +30,64 @@ interface QueueCacheEntry {
     createdAt: number;
 }
 
+const QUEUE_CACHE_SCHEMA_VERSION = 1 as const;
+
+interface PersistentQueueCache {
+    version: typeof QUEUE_CACHE_SCHEMA_VERSION;
+    entries: Record<string, QueueCacheEntry>;
+}
+
 const queueCache = new Map<string, QueueCacheEntry>();
+
+function getPersistentCachePath(): string {
+    return path.join(os.homedir(), '.cache', 'ccstatusline', 'rclone-queue-cache.json');
+}
+
+function isQueueCacheEntry(value: unknown): value is QueueCacheEntry {
+    if (typeof value !== 'object' || value === null) {
+        return false;
+    }
+
+    const entry = value as Record<string, unknown>;
+    return (typeof entry.value === 'number' || entry.value === null) && typeof entry.createdAt === 'number';
+}
+
+function readPersistentQueueCache(): PersistentQueueCache | null {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(getPersistentCachePath(), 'utf-8')) as unknown;
+        if (typeof parsed !== 'object' || parsed === null) {
+            return null;
+        }
+
+        const data = parsed as { version?: unknown; entries?: unknown };
+        if (data.version !== QUEUE_CACHE_SCHEMA_VERSION || typeof data.entries !== 'object' || data.entries === null) {
+            return null;
+        }
+
+        const entries: Record<string, QueueCacheEntry> = {};
+        for (const [key, value] of Object.entries(data.entries)) {
+            if (isQueueCacheEntry(value)) {
+                entries[key] = value;
+            }
+        }
+
+        return { version: QUEUE_CACHE_SCHEMA_VERSION, entries };
+    } catch {
+        return null;
+    }
+}
+
+function writePersistentQueueCache(cache: PersistentQueueCache): void {
+    try {
+        const cachePath = getPersistentCachePath();
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+        fs.writeFileSync(tempPath, JSON.stringify(cache), 'utf-8');
+        fs.renameSync(tempPath, cachePath);
+    } catch {
+        // Best-effort cache; statusline rendering should never fail because of it.
+    }
+}
 
 export function getRcloneLogPath(remoteName: string): string {
     return path.join(os.homedir(), '.cache', 'rclone', `${remoteName}.log`);
@@ -91,15 +148,37 @@ export function getQueueLength(remoteName: string, now: number = Date.now()): nu
         return cached.value;
     }
 
+    // ccstatusline's primary (piped) mode runs as a fresh process per statusline
+    // refresh, so the in-process cache above is empty on every invocation. Fall
+    // back to a persistent on-disk cache (same TTL) so the 64KB tail-read+regex
+    // work is actually skipped across refreshes, not just within one process.
+    const persistentCache = readPersistentQueueCache();
+    const persistentEntry = persistentCache?.entries[remoteName];
+    if (persistentEntry && now - persistentEntry.createdAt < CACHE_TTL_MS) {
+        queueCache.set(remoteName, persistentEntry);
+        return persistentEntry.value;
+    }
+
     const logPath = getRcloneLogPath(remoteName);
     const text = readLogTail(logPath);
     const value = text === null ? null : parseQueueLength(text);
-    queueCache.set(remoteName, { value, createdAt: now });
+    const entry: QueueCacheEntry = { value, createdAt: now };
+    queueCache.set(remoteName, entry);
+
+    const cache = persistentCache ?? { version: QUEUE_CACHE_SCHEMA_VERSION, entries: {} };
+    cache.entries[remoteName] = entry;
+    writePersistentQueueCache(cache);
+
     return value;
 }
 
 export function clearRCloneQueueCache(): void {
     queueCache.clear();
+    try {
+        fs.rmSync(getPersistentCachePath(), { force: true });
+    } catch {
+        // Best-effort cleanup; only used by tests to avoid cross-run pollution.
+    }
 }
 
 export function getRemoteName(item: WidgetItem): string {
