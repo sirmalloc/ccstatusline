@@ -226,6 +226,43 @@ export class RCloneQueueWidget implements Widget {
     }
 }
 
+// Grapheme-aware text editing (mirrors CustomText.tsx's editor), so a
+// remote name containing a multi-code-unit character (e.g. an emoji) can't
+// desync the cursor or split a surrogate pair on backspace/delete.
+function getGraphemes(str: string): string[] {
+    if ('Segmenter' in Intl) {
+        const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+        return Array.from(segmenter.segment(str), seg => seg.segment);
+    }
+    return Array.from(str);
+}
+
+function graphemeToStringIndex(str: string, graphemeIndex: number): number {
+    const graphemes = getGraphemes(str);
+    let stringIndex = 0;
+    for (let i = 0; i < Math.min(graphemeIndex, graphemes.length); i++) {
+        const grapheme = graphemes[i];
+        if (grapheme) {
+            stringIndex += grapheme.length;
+        }
+    }
+    return stringIndex;
+}
+
+function stringToGraphemeIndex(str: string, stringIndex: number): number {
+    const graphemes = getGraphemes(str);
+    let currentStringIndex = 0;
+    for (let i = 0; i < graphemes.length; i++) {
+        if (currentStringIndex >= stringIndex)
+            return i;
+        const grapheme = graphemes[i];
+        if (grapheme) {
+            currentStringIndex += grapheme.length;
+        }
+    }
+    return graphemes.length;
+}
+
 const RCloneRemoteEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
     const [text, setText] = useState(getRemoteName(widget));
     const [cursorPos, setCursorPos] = useState(text.length);
@@ -240,38 +277,48 @@ const RCloneRemoteEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, o
         } else if (key.escape) {
             onCancel();
         } else if (key.leftArrow) {
-            setCursorPos(pos => Math.max(0, pos - 1));
+            const currentGraphemeIndex = stringToGraphemeIndex(text, cursorPos);
+            if (currentGraphemeIndex > 0) {
+                setCursorPos(graphemeToStringIndex(text, currentGraphemeIndex - 1));
+            }
         } else if (key.rightArrow) {
-            setCursorPos(pos => Math.min(text.length, pos + 1));
+            const currentGraphemeIndex = stringToGraphemeIndex(text, cursorPos);
+            const graphemeCount = getGraphemes(text).length;
+            if (currentGraphemeIndex < graphemeCount) {
+                setCursorPos(graphemeToStringIndex(text, currentGraphemeIndex + 1));
+            }
         } else if (key.backspace) {
-            setCursorPos((pos) => {
-                if (pos > 0) {
-                    setText(t => t.slice(0, pos - 1) + t.slice(pos));
-                    return pos - 1;
-                }
-                return pos;
-            });
+            const currentGraphemeIndex = stringToGraphemeIndex(text, cursorPos);
+            if (currentGraphemeIndex > 0) {
+                const deleteFromIndex = graphemeToStringIndex(text, currentGraphemeIndex - 1);
+                const deleteToIndex = graphemeToStringIndex(text, currentGraphemeIndex);
+                setText(t => t.slice(0, deleteFromIndex) + t.slice(deleteToIndex));
+                setCursorPos(deleteFromIndex);
+            }
         } else if (key.delete) {
-            setText((t) => {
-                if (cursorPos < t.length) {
-                    return t.slice(0, cursorPos) + t.slice(cursorPos + 1);
-                }
-                return t;
-            });
+            const currentGraphemeIndex = stringToGraphemeIndex(text, cursorPos);
+            const graphemeCount = getGraphemes(text).length;
+            if (currentGraphemeIndex < graphemeCount) {
+                const deleteFromIndex = graphemeToStringIndex(text, currentGraphemeIndex);
+                const deleteToIndex = graphemeToStringIndex(text, currentGraphemeIndex + 1);
+                setText(t => t.slice(0, deleteFromIndex) + t.slice(deleteToIndex));
+            }
         } else if (shouldInsertInput(input, key)) {
             setText(t => t.slice(0, cursorPos) + input + t.slice(cursorPos));
             setCursorPos(pos => pos + input.length);
         }
     });
 
+    const graphemes = getGraphemes(text);
+    const cursorGraphemeIndex = stringToGraphemeIndex(text, cursorPos);
     let display = 'Enter rclone remote name: ';
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        if (char !== undefined) {
-            display += i === cursorPos ? `\x1b[7m${char}\x1b[0m` : char;
+    for (let i = 0; i < graphemes.length; i++) {
+        const grapheme = graphemes[i];
+        if (grapheme !== undefined) {
+            display += i === cursorGraphemeIndex ? `\x1b[7m${grapheme}\x1b[0m` : grapheme;
         }
     }
-    if (cursorPos >= text.length) {
+    if (cursorGraphemeIndex >= graphemes.length) {
         display += '\x1b[7m \x1b[0m';
     }
 

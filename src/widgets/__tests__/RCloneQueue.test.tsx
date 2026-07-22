@@ -502,4 +502,22 @@ describe('RCloneRemoteEditor', () => {
             cleanupEditor(rendered);
         }
     });
+
+    it('deletes a whole multi-code-unit emoji on a single backspace instead of splitting the surrogate pair', async () => {
+        // gdrive📁 has one BMP character worth of "emoji folder" appended;
+        // a naive text[i]/UTF-16-index editor would delete only half of it.
+        const rendered = renderRemoteEditor({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: 'gdrive📁' } });
+        try {
+            await flushInk();
+            rendered.stdin.write('\b');
+            await flushInk();
+            rendered.stdin.write('\r');
+            await flushInk();
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.remoteName).toBe('gdrive');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
 });
