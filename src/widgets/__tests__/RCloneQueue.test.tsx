@@ -174,6 +174,16 @@ describe('getQueueLength (cache)', () => {
     it('derives the log path from ~/.cache/rclone/<remoteName>.log', () => {
         expect(getRcloneLogPath('gdrive')).toBe(path.join(os.homedir(), '.cache', 'rclone', 'gdrive.log'));
     });
+
+    it('strips directory-traversal segments from remoteName instead of escaping the cache dir', () => {
+        const traversal = getRcloneLogPath('../../../etc/some-secrets');
+        expect(traversal).toBe(path.join(os.homedir(), '.cache', 'rclone', 'some-secrets.log'));
+    });
+
+    it('confines an absolute-path-like remoteName to the cache dir', () => {
+        const absolute = getRcloneLogPath('/etc/passwd');
+        expect(absolute).toBe(path.join(os.homedir(), '.cache', 'rclone', 'passwd.log'));
+    });
 });
 
 describe('getQueueLength (persistent cache)', () => {
