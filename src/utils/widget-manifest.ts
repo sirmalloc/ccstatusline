@@ -29,6 +29,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'git-clean-status', create: () => new widgets.GitCleanStatusWidget() },
     { type: 'git-root-dir', create: () => new widgets.GitRootDirWidget() },
     { type: 'git-review', create: () => new widgets.GitPrWidget() },
+    { type: 'git-ci-status', create: () => new widgets.GitCiStatusWidget() },
     { type: 'git-worktree', create: () => new widgets.GitWorktreeWidget() },
     { type: 'git-status', create: () => new widgets.GitStatusWidget() },
     { type: 'git-staged', create: () => new widgets.GitStagedWidget() },
@@ -78,6 +79,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'link', create: () => new widgets.LinkWidget() },
     { type: 'claude-session-id', create: () => new widgets.ClaudeSessionIdWidget() },
     { type: 'claude-account-email', create: () => new widgets.ClaudeAccountEmailWidget() },
+    { type: 'sandbox-status', create: () => new widgets.SandboxStatusWidget() },
     { type: 'session-name', create: () => new widgets.SessionNameWidget() },
     { type: 'free-memory', create: () => new widgets.FreeMemoryWidget() },
     { type: 'session-usage', create: () => new widgets.SessionUsageWidget() },
@@ -100,7 +102,8 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'worktree-name', create: () => new widgets.GitWorktreeNameWidget() },
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
     { type: 'worktree-original-branch', create: () => new widgets.GitWorktreeOriginalBranchWidget() },
-    { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() }
+    { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() },
+    { type: 'cache-timer', create: () => new widgets.CacheTimerWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
