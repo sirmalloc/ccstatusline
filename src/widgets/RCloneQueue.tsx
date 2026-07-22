@@ -182,7 +182,8 @@ export function clearRCloneQueueCache(): void {
 }
 
 export function getRemoteName(item: WidgetItem): string {
-    return item.metadata?.remoteName ?? DEFAULT_REMOTE_NAME;
+    const remoteName = item.metadata?.remoteName?.trim();
+    return remoteName && remoteName.length > 0 ? remoteName : DEFAULT_REMOTE_NAME;
 }
 
 export class RCloneQueueWidget implements Widget {

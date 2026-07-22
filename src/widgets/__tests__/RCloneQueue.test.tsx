@@ -332,6 +332,14 @@ describe('RCloneQueueWidget', () => {
         it('uses the configured remote name from metadata', () => {
             expect(getRemoteName({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: 'gdrive' } })).toBe('gdrive');
         });
+
+        it('falls back to the default remote name when metadata.remoteName is an empty string', () => {
+            expect(getRemoteName({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: '' } })).toBe('dropbox');
+        });
+
+        it('falls back to the default remote name when metadata.remoteName is whitespace only', () => {
+            expect(getRemoteName({ id: 'rc', type: 'rclone-queue', metadata: { remoteName: '   ' } })).toBe('dropbox');
+        });
     });
 });
 
