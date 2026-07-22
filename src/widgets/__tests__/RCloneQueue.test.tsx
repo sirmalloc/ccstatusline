@@ -176,6 +176,52 @@ describe('getQueueLength (cache)', () => {
     });
 });
 
+describe('getQueueLength (persistent cache)', () => {
+    let home: string;
+
+    beforeEach(() => {
+        home = fs.mkdtempSync(path.join(os.tmpdir(), 'rclone-queue-cache-home-'));
+        vi.spyOn(os, 'homedir').mockReturnValue(home);
+    });
+
+    afterEach(() => {
+        clearRCloneQueueCache();
+        vi.restoreAllMocks();
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    it('writes a persistent on-disk entry so a value can survive a fresh process', () => {
+        const remoteName = 'persisted-remote';
+        const logPath = getRcloneLogPath(remoteName);
+        fs.mkdirSync(path.dirname(logPath), { recursive: true });
+        fs.writeFileSync(logPath, 'INFO : vfs cache: cleaned: in use 10, to upload 11, uploading 1, total size 1Gi\n');
+
+        expect(getQueueLength(remoteName, 1000)).toBe(11);
+
+        const cachePath = path.join(home, '.cache', 'ccstatusline', 'rclone-queue-cache.json');
+        const persisted = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as { entries?: Record<string, unknown> };
+        expect(persisted.entries?.[remoteName]).toEqual({ value: 11, createdAt: 1000 });
+    });
+
+    it('serves a value from a pre-existing persistent cache entry without reading the log file', () => {
+        // ccstatusline's piped mode runs as a fresh process per statusline refresh, so
+        // the in-process Map cache above is always empty at this point; this reproduces
+        // that by never calling getQueueLength for this remote before seeding the
+        // on-disk cache directly.
+        const remoteName = 'preseeded-remote';
+        const cachePath = path.join(home, '.cache', 'ccstatusline', 'rclone-queue-cache.json');
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        fs.writeFileSync(cachePath, JSON.stringify({
+            version: 1,
+            entries: { [remoteName]: { value: 42, createdAt: 1000 } }
+        }));
+
+        // No log file exists for this remote at all: if the persistent cache weren't
+        // consulted, this would fall through to readLogTail and return null instead.
+        expect(getQueueLength(remoteName, 1000 + CACHE_TTL_MS - 1)).toBe(42);
+    });
+});
+
 describe('RCloneQueueWidget', () => {
     const remoteName = 'test-remote-widget';
     const logPath = getRcloneLogPath(remoteName);
