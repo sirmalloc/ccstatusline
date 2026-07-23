@@ -12,7 +12,7 @@ import {
     type ListEntry
 } from './List';
 
-type ConfigureStatusLineValue = 'refreshInterval' | 'gitCacheTtl';
+type ConfigureStatusLineValue = 'refreshInterval' | 'gitCacheTtl' | 'terminalWidthCacheTtl';
 
 function getRefreshInputValue(interval: number | null): string {
     return interval === null ? '' : String(interval);
@@ -36,10 +36,17 @@ function getGitCacheTtlSublabel(ttlSeconds: number): string {
         : `(${ttlSeconds}s)`;
 }
 
+function getTerminalWidthCacheTtlSublabel(ttlSeconds: number): string {
+    return ttlSeconds === 0
+        ? '(disabled)'
+        : `(${ttlSeconds}s)`;
+}
+
 export function buildConfigureStatusLineItems(
     refreshInterval: number | null,
     supportsRefreshInterval: boolean,
-    gitCacheTtlSeconds: number
+    gitCacheTtlSeconds: number,
+    terminalWidthCacheTtlSeconds: number
 ): ListEntry<ConfigureStatusLineValue>[] {
     return [
         {
@@ -56,6 +63,12 @@ export function buildConfigureStatusLineItems(
             sublabel: getGitCacheTtlSublabel(gitCacheTtlSeconds),
             value: 'gitCacheTtl',
             description: 'How long git widget subprocess output can be reused while .git/HEAD and .git/index are unchanged. Enter 0-60 seconds;\n0 disables age-based expiry, so cached output is reused until those git metadata mtimes change.'
+        },
+        {
+            label: '🖥️  Terminal Width Cache TTL',
+            sublabel: getTerminalWidthCacheTtlSublabel(terminalWidthCacheTtlSeconds),
+            value: 'terminalWidthCacheTtl',
+            description: 'How long a cached "no TTY detected" result is trusted before re-probing the terminal width. Enter 0-300 seconds;\n0 disables the cache (always re-probes). A detected width is never cached across renders, only this no-TTY result is.'
         }
     ];
 }
@@ -100,12 +113,32 @@ export function validateGitCacheTtlInput(value: string): string | null {
     return null;
 }
 
+export function validateTerminalWidthCacheTtlInput(value: string): string | null {
+    const parsed = parseInt(value, 10);
+
+    if (value === '' || isNaN(parsed)) {
+        return 'Please enter a valid number';
+    }
+
+    if (parsed < 0) {
+        return `Minimum Terminal Width cache TTL is 0s (you entered ${parsed}s)`;
+    }
+
+    if (parsed > 300) {
+        return `Maximum Terminal Width cache TTL is 300s (you entered ${parsed}s)`;
+    }
+
+    return null;
+}
+
 export interface RefreshIntervalMenuProps {
     currentInterval: number | null;
     supportsRefreshInterval: boolean;
     gitCacheTtlSeconds: number;
+    terminalWidthCacheTtlSeconds: number;
     onUpdate: (interval: number | null) => void;
     onGitCacheTtlUpdate: (ttlSeconds: number) => void;
+    onTerminalWidthCacheTtlUpdate: (ttlSeconds: number) => void;
     onBack: () => void;
 }
 
@@ -113,14 +146,18 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     currentInterval,
     supportsRefreshInterval,
     gitCacheTtlSeconds,
+    terminalWidthCacheTtlSeconds,
     onUpdate,
     onGitCacheTtlUpdate,
+    onTerminalWidthCacheTtlUpdate,
     onBack
 }) => {
     const [editingRefreshInterval, setEditingRefreshInterval] = useState(false);
     const [editingGitCacheTtl, setEditingGitCacheTtl] = useState(false);
+    const [editingTerminalWidthCacheTtl, setEditingTerminalWidthCacheTtl] = useState(false);
     const [refreshInput, setRefreshInput] = useState(() => getRefreshInputValue(currentInterval));
     const [gitCacheTtlInput, setGitCacheTtlInput] = useState(() => String(gitCacheTtlSeconds));
+    const [terminalWidthCacheTtlInput, setTerminalWidthCacheTtlInput] = useState(() => String(terminalWidthCacheTtlSeconds));
     const [validationError, setValidationError] = useState<string | null>(null);
 
     useInput((input, key) => {
@@ -193,6 +230,37 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
             return;
         }
 
+        if (editingTerminalWidthCacheTtl) {
+            if (key.return) {
+                const error = validateTerminalWidthCacheTtlInput(terminalWidthCacheTtlInput);
+
+                if (error) {
+                    setValidationError(error);
+                } else {
+                    const value = parseInt(terminalWidthCacheTtlInput, 10);
+                    onTerminalWidthCacheTtlUpdate(value);
+                    setEditingTerminalWidthCacheTtl(false);
+                    setValidationError(null);
+                }
+            } else if (key.escape) {
+                setTerminalWidthCacheTtlInput(String(terminalWidthCacheTtlSeconds));
+                setEditingTerminalWidthCacheTtl(false);
+                setValidationError(null);
+            } else if (key.backspace) {
+                setTerminalWidthCacheTtlInput(terminalWidthCacheTtlInput.slice(0, -1));
+                setValidationError(null);
+            } else if (key.delete) {
+                // No cursor position in simple input
+            } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
+                const newValue = terminalWidthCacheTtlInput + input;
+                if (newValue.length <= 3) {
+                    setTerminalWidthCacheTtlInput(newValue);
+                    setValidationError(null);
+                }
+            }
+            return;
+        }
+
         if (key.escape) {
             onBack();
         }
@@ -238,10 +306,31 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                     )}
                     <Text dimColor>Press Enter to confirm, ESC to cancel.</Text>
                 </Box>
+            ) : editingTerminalWidthCacheTtl ? (
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>
+                        Enter Terminal Width cache TTL in seconds (0-300):
+                        {' '}
+                        {terminalWidthCacheTtlInput}
+                        {terminalWidthCacheTtlInput.length > 0 ? 's' : ''}
+                    </Text>
+                    <Text> </Text>
+                    <Text dimColor wrap='wrap'>
+                        This affects how long a "no TTY detected" result is trusted before re-probing.
+                    </Text>
+                    {validationError ? (
+                        <Text color='red'>{validationError}</Text>
+                    ) : (
+                        <Text dimColor>
+                            0 disables the cache, always re-probing. A detected width is never cached across renders.
+                        </Text>
+                    )}
+                    <Text dimColor>Press Enter to confirm, ESC to cancel.</Text>
+                </Box>
             ) : (
                 <List
                     marginTop={1}
-                    items={buildConfigureStatusLineItems(currentInterval, supportsRefreshInterval, gitCacheTtlSeconds)}
+                    items={buildConfigureStatusLineItems(currentInterval, supportsRefreshInterval, gitCacheTtlSeconds, terminalWidthCacheTtlSeconds)}
                     onSelect={(value) => {
                         if (value === 'back') {
                             onBack();
@@ -254,8 +343,14 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                             return;
                         }
 
-                        setGitCacheTtlInput(String(gitCacheTtlSeconds));
-                        setEditingGitCacheTtl(true);
+                        if (value === 'gitCacheTtl') {
+                            setGitCacheTtlInput(String(gitCacheTtlSeconds));
+                            setEditingGitCacheTtl(true);
+                            return;
+                        }
+
+                        setTerminalWidthCacheTtlInput(String(terminalWidthCacheTtlSeconds));
+                        setEditingTerminalWidthCacheTtl(true);
                     }}
                     showBackButton={true}
                 />
