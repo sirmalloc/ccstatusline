@@ -1025,10 +1025,10 @@ export function renderStatusLine(
                     continue;
                 }
                 if (prevWidget.type === 'flex-separator')
-                    continue;
+                    break;
                 if (preRenderedWidgets[j]?.content) {
-                    // Preserve no-padding merges across widgets that render empty.
-                    if (prevWidget.merge !== 'no-padding')
+                    // Preserve merge ownership across widgets that render empty.
+                    if (!prevWidget.merge)
                         contentBeforeIndex = j;
                     break;
                 }

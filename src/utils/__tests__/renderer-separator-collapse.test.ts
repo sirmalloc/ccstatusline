@@ -170,4 +170,33 @@ describe('renderer separator collapse around empty widgets', () => {
         expect(stripped).toMatch(/A\s*C/);
         expect(stripped).not.toMatch(/A\s+\S+\s+C/);
     });
+
+    it('lets a merge:true widget own the boundary across an empty middle widget', () => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge: true },
+            { id: 'b', type: 'custom-text' },
+            SEP,
+            { id: 'c', type: 'custom-text' }
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 1: '', 3: 'C' }));
+
+        expect(out).not.toContain('|');
+        expect(out).toContain('A');
+        expect(out).toContain('C');
+    });
+
+    it('does not borrow visible content across a flex separator', () => {
+        const widgets: WidgetItem[] = [
+            T('left'),
+            { id: 'flex', type: 'flex-separator' },
+            T('hidden'),
+            SEP,
+            T('right')
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'L', 2: '', 4: 'R' }));
+
+        expect(out).not.toContain('|');
+        expect(out).toContain('L');
+        expect(out).toContain('R');
+    });
 });
