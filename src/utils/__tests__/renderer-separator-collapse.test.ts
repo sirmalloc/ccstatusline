@@ -10,6 +10,7 @@ import {
     type Settings
 } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { stripSgrCodes } from '../ansi';
 import { renderStatusLine } from '../renderer';
 
 interface PreRenderedWidget {
@@ -64,6 +65,28 @@ describe('renderer separator collapse around empty widgets', () => {
         expect((out.match(/\|/g) ?? []).length).toBe(1);
         expect(out).toContain('A');
         expect(out).toContain('C');
+    });
+
+    it('looks past an empty widget when no separator already owns the boundary', () => {
+        const widgets = [T('a'), T('b'), SEP, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 1: '', 3: 'C' }));
+        expect(out).toBe('A | C');
+    });
+
+    it('replaces spacing before an empty widget with its following separator', () => {
+        const space: WidgetItem = { id: 'space', type: 'separator', character: ' ' };
+        const pipe: WidgetItem = { id: 'pipe', type: 'separator', character: '|' };
+        const widgets = [T('a'), space, T('b'), pipe, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: '', 4: 'C' }));
+        expect(out).toBe('A | C');
+    });
+
+    it('keeps a visible separator as the boundary around an empty widget', () => {
+        const colon: WidgetItem = { id: 'colon', type: 'separator', character: ':' };
+        const pipe: WidgetItem = { id: 'pipe', type: 'separator', character: '|' };
+        const widgets = [T('a'), colon, T('b'), pipe, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: '', 4: 'C' }));
+        expect(out).toBe('A:C');
     });
 
     it('collapses multiple consecutive empty widgets into a single separator', () => {
