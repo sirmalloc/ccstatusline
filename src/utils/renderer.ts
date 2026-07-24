@@ -734,6 +734,11 @@ function formatSeparator(sep: string): string {
     return sep;
 }
 
+function isSpacingSeparator(widget: WidgetItem | undefined, defaultSeparator: string | undefined): boolean {
+    return widget?.type === 'separator'
+        && (widget.character ?? defaultSeparator ?? '|').trim().length === 0;
+}
+
 export interface RenderResult {
     line: string;
     wasTruncated: boolean;
@@ -1003,24 +1008,39 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
-            // Look backwards to the immediately-prior non-separator widget and
-            // emit this separator only if that widget actually rendered content.
-            // This collapses separators around hide-capable widgets that rendered
-            // empty (e.g., git-changes with no changes, conditional widgets with
-            // hide-when-zero semantics) and also suppresses a leading separator
-            // when no prior widget has rendered.
-            let hasContentBefore = false;
+            // Empty widgets do not break the relationship between a separator
+            // and the preceding visible content. A visible separator owns that
+            // boundary, while spacing-only separators can be replaced by a
+            // more meaningful separator that follows the empty widget.
+            let contentBeforeIndex: number | null = null;
+            let replacesSpacingSeparator = false;
             for (let j = i - 1; j >= 0; j--) {
                 const prevWidget = widgets[j];
                 if (!prevWidget)
                     continue;
-                if (prevWidget.type === 'separator' || prevWidget.type === 'flex-separator')
+                if (prevWidget.type === 'separator') {
+                    if (!isSpacingSeparator(prevWidget, settings.defaultSeparator))
+                        break;
+                    replacesSpacingSeparator = true;
                     continue;
-                hasContentBefore = Boolean(preRenderedWidgets[j]?.content);
-                break;
+                }
+                if (prevWidget.type === 'flex-separator')
+                    continue;
+                if (preRenderedWidgets[j]?.content) {
+                    // Preserve no-padding merges across widgets that render empty.
+                    if (prevWidget.merge !== 'no-padding')
+                        contentBeforeIndex = j;
+                    break;
+                }
             }
-            if (!hasContentBefore)
+            if (contentBeforeIndex === null)
                 continue;
+
+            if (replacesSpacingSeparator) {
+                while (isSpacingSeparator(elements[elements.length - 1]?.widget, settings.defaultSeparator)) {
+                    elements.pop();
+                }
+            }
 
             const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
             const formattedSep = formatSeparator(sepChar);
@@ -1031,10 +1051,10 @@ export function renderStatusLine(
             let separatorBold = widget.bold;
             let separatorDim = widget.dim;
 
-            if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
+            if (settings.inheritSeparatorColors && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
-                const prevWidget = widgets[i - 1];
-                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
+                const prevWidget = widgets[contentBeforeIndex];
+                if (prevWidget) {
                     // Get the previous widget's colors
                     let widgetColor = prevWidget.color;
                     if (!widgetColor) {
