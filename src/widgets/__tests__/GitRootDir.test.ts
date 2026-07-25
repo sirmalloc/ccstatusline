@@ -31,7 +31,7 @@ const mockExecFileSync = execFileSync as unknown as {
     mockReturnValueOnce: (value: string) => void;
 };
 
-function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolean } = {}) {
+function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolean; maxWidth?: number } = {}) {
     const widget = new GitRootDirWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
@@ -40,6 +40,7 @@ function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolea
     const item: WidgetItem = {
         id: 'git-root-dir',
         type: 'git-root-dir',
+        maxWidth: options.maxWidth,
         metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
     };
 
@@ -201,5 +202,56 @@ describe('GitRootDirWidget', () => {
         const widget = new GitRootDirWidget();
 
         expect(widget.supportsRawValue()).toBe(false);
+    });
+
+    describe('max width', () => {
+        const widget = new GitRootDirWidget();
+
+        it.each([
+            { name: 'should truncate the directory name to the configured width', maxWidth: 10, expected: 'my-very...' },
+            { name: 'should leave the directory name untouched when it fits', maxWidth: 100, expected: 'my-very-long-repo-name' }
+        ])('$name', ({ maxWidth, expected }) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce('/some/path/my-very-long-repo-name');
+
+            expect(render({ maxWidth })).toBe(expected);
+        });
+
+        it('should truncate the visible IDE link label but keep the full link target', () => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce('/some/path/my-very-long-repo-name');
+
+            expect(widget.render({
+                id: 'git-root-dir',
+                type: 'git-root-dir',
+                maxWidth: 10,
+                metadata: { linkToIDE: 'vscode' }
+            }, {}, DEFAULT_SETTINGS)).toBe(renderOsc8Link(
+                buildIdeFileUrl('/some/path/my-very-long-repo-name', 'vscode'),
+                'my-very...'
+            ));
+        });
+
+        it('should show the max-width modifier in the editor display', () => {
+            expect(widget.getEditorDisplay({ id: 'git-root-dir', type: 'git-root-dir', maxWidth: 12 }).modifierText)
+                .toBe('(max:12)');
+        });
+
+        it('should expose the width keybind', () => {
+            expect(widget.getCustomKeybinds()).toContainEqual({
+                key: 'w',
+                label: '(w)idth',
+                action: 'edit-max-width'
+            });
+        });
+
+        it('should open the width editor for the width action', () => {
+            expect(widget.renderEditor({
+                widget: { id: 'git-root-dir', type: 'git-root-dir' },
+                onComplete: vi.fn(),
+                onCancel: vi.fn(),
+                action: 'edit-max-width'
+            })).not.toBeNull();
+        });
     });
 });

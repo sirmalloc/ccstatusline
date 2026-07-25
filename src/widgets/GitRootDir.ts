@@ -4,6 +4,7 @@ import type {
     CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -24,6 +25,13 @@ import {
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import {
+    MAX_WIDTH_ACTION,
+    applyMaxWidth,
+    getMaxWidthKeybind,
+    getMaxWidthModifier,
+    renderMaxWidthEditor
+} from './shared/max-width';
 import { isMetadataFlagEnabled } from './shared/metadata';
 
 const IDE_LINK_KEY = 'linkToIDE';
@@ -47,6 +55,9 @@ export class GitRootDirWidget implements Widget {
             modifiers.push('hide \'no git\'');
         if (ideLinkMode)
             modifiers.push(IDE_LINK_LABELS[ideLinkMode]);
+        const maxWidthText = getMaxWidthModifier(item);
+        if (maxWidthText)
+            modifiers.push(maxWidthText);
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
@@ -78,7 +89,7 @@ export class GitRootDirWidget implements Widget {
             return hideNoGit ? null : 'no git';
         }
 
-        const name = this.getRootDirName(rootDir);
+        const name = applyMaxWidth(this.getRootDirName(rootDir), item.maxWidth);
 
         if (ideLinkMode) {
             return renderOsc8Link(buildIdeFileUrl(rootDir, ideLinkMode), name);
@@ -102,8 +113,16 @@ export class GitRootDirWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
-            { key: 'l', label: '(l)ink to IDE', action: TOGGLE_LINK_ACTION }
+            { key: 'l', label: '(l)ink to IDE', action: TOGGLE_LINK_ACTION },
+            getMaxWidthKeybind()
         ];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        if (props.action === MAX_WIDTH_ACTION) {
+            return renderMaxWidthEditor(props);
+        }
+        return null;
     }
 
     supportsRawValue(): boolean { return false; }

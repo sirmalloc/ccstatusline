@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
 import type { UsageWindowMetrics } from '../../utils/usage-types';
-import { WeeklyUsageWidget } from '../WeeklyUsage';
+import { FableWeeklyUsageWidget } from '../FableWeeklyUsage';
 
 import { runUsagePercentWidgetSuite } from './helpers/usage-widget-suites';
 
@@ -31,15 +31,14 @@ const halfElapsedWindow: UsageWindowMetrics = {
     remainingPercent: 50
 };
 
-function render(widget: WeeklyUsageWidget, item: WidgetItem, context: RenderContext = {}): string | null {
+function render(widget: FableWeeklyUsageWidget, item: WidgetItem, context: RenderContext = {}): string | null {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
-describe('WeeklyUsageWidget', () => {
+describe('FableWeeklyUsageWidget', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
-        // makeUsageProgressBar no longer used; WeeklyUsage uses makeTimerProgressBar directly
     });
 
     afterEach(() => {
@@ -47,58 +46,63 @@ describe('WeeklyUsageWidget', () => {
     });
 
     it('renders the time cursor in short bar modes', () => {
-        const widget = new WeeklyUsageWidget();
-        const context: RenderContext = { usageData: { weeklyUsage: 20 } };
+        const widget = new FableWeeklyUsageWidget();
+        const context: RenderContext = { usageData: { fableUsage: 20 } };
 
-        vi.spyOn(usage, 'resolveWeeklyUsageWindow').mockReturnValue(halfElapsedWindow);
+        vi.spyOn(usage, 'resolveFableUsageWindow').mockReturnValue(halfElapsedWindow);
 
         expect(render(widget, {
-            id: 'weekly',
-            type: 'weekly-usage',
+            id: 'fable-weekly',
+            type: 'fable-weekly-usage',
             metadata: { cursor: 'true', display: 'slider' }
-        }, context)).toBe('Weekly: ▓▓░░░│░░░░ 20.0%');
+        }, context)).toBe('Fable Weekly: ▓▓░░░│░░░░ 20.0%');
         expect(render(widget, {
-            id: 'weekly',
-            type: 'weekly-usage',
+            id: 'fable-weekly',
+            type: 'fable-weekly-usage',
             metadata: { cursor: 'true', display: 'slider-only' }
-        }, context)).toBe('Weekly: ▓▓░░░│░░░░');
+        }, context)).toBe('Fable Weekly: ▓▓░░░│░░░░');
+    });
+
+    it('returns null when the per-model usage is missing from the API response', () => {
+        const widget = new FableWeeklyUsageWidget();
+        expect(render(widget, { id: 'fable-weekly', type: 'fable-weekly-usage' }, { usageData: {} })).toBeNull();
     });
 
     runUsagePercentWidgetSuite({
-        baseItem: { id: 'weekly', type: 'weekly-usage' },
-        createWidget: () => new WeeklyUsageWidget(),
+        baseItem: { id: 'fable-weekly', type: 'fable-weekly-usage' },
+        createWidget: () => new FableWeeklyUsageWidget(),
         errorMessageMock: usageErrorMessageMock,
-        expectedInvertedTime: 'Weekly: 57.9%',
+        expectedInvertedTime: 'Fable Weekly: 57.9%',
         expectedModifierText: '(long bar, remaining)',
-        expectedPreviewInvertedTime: 'Weekly: 88.0%',
-        expectedProgress: 'Weekly: [███████████████████░░░░░░░░░░░░░] 57.9%',
+        expectedPreviewInvertedTime: 'Fable Weekly: 96.0%',
+        expectedProgress: 'Fable Weekly: [███████████████████░░░░░░░░░░░░░] 57.9%',
         expectedRawInvertedTime: '57.9%',
         expectedRawProgress: '[███████░░░░░░░░░] 42.1%',
         expectedRawTime: '42.1%',
-        expectedTime: 'Weekly: 42.1%',
+        expectedTime: 'Fable Weekly: 42.1%',
         modifierItem: {
-            id: 'weekly',
-            type: 'weekly-usage',
+            id: 'fable-weekly',
+            type: 'fable-weekly-usage',
             metadata: { display: 'progress', invert: 'true' }
         },
         progressItem: {
-            id: 'weekly',
-            type: 'weekly-usage',
+            id: 'fable-weekly',
+            type: 'fable-weekly-usage',
             metadata: { display: 'progress', invert: 'true' }
         },
         rawProgressItem: {
-            id: 'weekly',
-            type: 'weekly-usage',
+            id: 'fable-weekly',
+            type: 'fable-weekly-usage',
             rawValue: true,
             metadata: { display: 'progress-short' }
         },
         rawTimeItem: {
-            id: 'weekly',
-            type: 'weekly-usage',
+            id: 'fable-weekly',
+            type: 'fable-weekly-usage',
             rawValue: true
         },
         render,
-        usageField: 'weeklyUsage',
+        usageField: 'fableUsage',
         usageValue: 42.06
     });
 });

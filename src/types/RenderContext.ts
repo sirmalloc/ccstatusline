@@ -16,6 +16,8 @@ export interface RenderUsageData {
     weeklySonnetResetAt?: string;
     weeklyOpusUsage?: number;
     weeklyOpusResetAt?: string;
+    fableUsage?: number;
+    fableResetAt?: string;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;
     extraUsageUsed?: number;
@@ -44,6 +46,7 @@ export interface RenderContext {
     isPreview?: boolean;
     minimalist?: boolean;
     gitCacheTtlSeconds?: number;
+    gitReviewNeedsChecks?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
 

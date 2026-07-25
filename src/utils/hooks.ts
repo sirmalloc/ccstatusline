@@ -15,6 +15,13 @@ export interface WidgetHookDef {
 
 const HOOK_TAG = 'ccstatusline-managed';
 
+// Matches ccstatusline hook commands written by any install method
+// (global binary, `bunx ccstatusline@latest --hook`, `npx ccstatusline --hook`, …).
+// Used to heal legacy/untagged hooks that predate HOOK_TAG so they do not
+// accumulate alongside the managed set on every sync. The space before `--hook`
+// and trailing boundary avoid matching unrelated `--hook*` substrings.
+const CCSTATUSLINE_HOOK_PATTERN = /ccstatusline.* --hook(?:\s|$)/;
+
 interface HookEntry {
     _tag?: string;
     matcher?: string;
@@ -27,12 +34,45 @@ function hasWidgetHooks(widget: Widget | null): widget is WidgetWithHooks {
     return Boolean(widget && 'getHooks' in widget && typeof widget.getHooks === 'function');
 }
 
+function isCcstatuslineManagedEntry(entry: HookEntry): boolean {
+    return entry._tag === HOOK_TAG;
+}
+
+function isLegacyCcstatuslineHookCommand(hook: { type: string; command: string }): boolean {
+    return CCSTATUSLINE_HOOK_PATTERN.test(hook.command);
+}
+
+function stripManagedHookEntry(entry: HookEntry): HookEntry | null {
+    if (isCcstatuslineManagedEntry(entry)) {
+        return null;
+    }
+
+    if (!entry.hooks) {
+        return entry;
+    }
+
+    const remainingHooks = entry.hooks.filter(hook => !isLegacyCcstatuslineHookCommand(hook));
+    if (remainingHooks.length === entry.hooks.length) {
+        return entry;
+    }
+
+    if (remainingHooks.length === 0) {
+        return null;
+    }
+
+    return {
+        ...entry,
+        hooks: remainingHooks
+    };
+}
+
 function stripManagedHooks(hooks: Record<string, HookEntry[]>): void {
     for (const event of Object.keys(hooks)) {
-        hooks[event] = (hooks[event] ?? []).filter(entry => entry._tag !== HOOK_TAG);
+        hooks[event] = (hooks[event] ?? [])
+            .map(stripManagedHookEntry)
+            .filter((entry): entry is HookEntry => entry !== null);
         if (hooks[event].length === 0) {
-            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-            delete hooks[event];
+            Reflect.deleteProperty(hooks, event);
         }
     }
 }
@@ -63,7 +103,7 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     const claudeSettings = await loadClaudeSettings({ logErrors: false });
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
 
-    // Remove all ccstatusline-managed hooks
+    // Remove tagged entries and legacy untagged ccstatusline hook commands
     stripManagedHooks(hooks);
 
     const statusCommand = await getExistingStatusLine();
