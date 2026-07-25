@@ -281,6 +281,19 @@ export async function validateImportFile(filePath: string): Promise<ImportValida
         return { status: 'invalid', reason: 'File is not valid JSON' };
     }
 
+    if (
+        typeof parsed === 'object'
+        && parsed !== null
+        && 'version' in parsed
+        && typeof parsed.version === 'number'
+        && parsed.version > CURRENT_VERSION
+    ) {
+        return {
+            status: 'invalid',
+            reason: `Config version ${parsed.version} is newer than supported version ${CURRENT_VERSION}`
+        };
+    }
+
     if (needsMigration(parsed, CURRENT_VERSION)) {
         parsed = migrateConfig(parsed, CURRENT_VERSION);
     }

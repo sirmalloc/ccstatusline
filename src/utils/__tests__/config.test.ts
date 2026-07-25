@@ -156,6 +156,28 @@ describe('config utilities', () => {
         expect(merged.lines).toEqual(current.lines);
     });
 
+    it('rejects imports created by a newer schema version', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'future-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                version: CURRENT_VERSION + 1,
+                lines: [[], [], []],
+                futureSetting: 'unsupported'
+            }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation).toEqual({
+            status: 'invalid',
+            reason: `Config version ${CURRENT_VERSION + 1} is newer than supported version ${CURRENT_VERSION}`
+        });
+    });
+
     it('preserves local installation metadata during a replace import', () => {
         const installation: InstallationMetadata = {
             method: 'pinned',
