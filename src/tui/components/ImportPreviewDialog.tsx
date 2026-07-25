@@ -33,6 +33,14 @@ interface DiffEntry {
     imported: unknown;
 }
 
+export function getImportPreviewKeys(current: Settings, imported: Settings): (keyof Settings)[] {
+    const keys = new Set([
+        ...Object.keys(current),
+        ...Object.keys(imported)
+    ] as (keyof Settings)[]);
+    return [...keys].filter(key => !EXCLUDED_KEYS.has(key));
+}
+
 function formatScalar(value: unknown): string {
     if (value === null || value === undefined) {
         return 'none';
@@ -120,8 +128,7 @@ export function ImportPreviewDialog({
     onApply,
     onCancel
 }: ImportPreviewDialogProps): React.JSX.Element {
-    const topLevelKeys = (Object.keys(currentSettings) as (keyof Settings)[])
-        .filter(k => !EXCLUDED_KEYS.has(k));
+    const topLevelKeys = getImportPreviewKeys(currentSettings, validation.data);
 
     const items: ListEntry<ImportMode>[] = [
         { label: 'Replace All', value: 'replace', description: 'Overwrite all settings with the imported config' },
