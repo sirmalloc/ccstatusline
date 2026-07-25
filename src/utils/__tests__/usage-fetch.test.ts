@@ -264,6 +264,19 @@ describe('fetchUsageData error handling', () => {
             resets_at: '2030-01-07T00:00:00.000Z'
         }
     });
+    const placeholderFableResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        limits: [
+            { kind: 'weekly_scoped', percent: 0, resets_at: null, scope: { model: { display_name: 'Claude 3.5 Fable' } } }
+        ]
+    });
     const updatedSuccessResponseBody = JSON.stringify({
         five_hour: {
             utilization: 55,
@@ -681,6 +694,92 @@ describe('fetchUsageData error handling', () => {
             // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
             // render takes, rather than depending on a lingering lock to suppress
             // the refetch.
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats a missing fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('missing-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats a placeholder fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('placeholder-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: placeholderFableResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
             const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
@@ -1484,13 +1583,69 @@ describe('parseUsageApiResponse limits[] fallback (#503)', () => {
         expect(parseUsageApiResponse(placeholderLimitResponseBody)).toEqual({});
     });
 
-    it('ignores unknown limits[] kinds and weekly_scoped entries without error', () => {
+    it('ignores unknown limits[] kinds but consumes fable weekly_scoped entries', () => {
         expect(parseUsageApiResponse(unknownKindsAndScopedResponseBody)).toEqual({
             sessionUsage: 10,
             sessionResetAt: '2030-05-01T00:00:00.000Z',
             weeklyUsage: 20,
-            weeklyResetAt: '2030-05-07T00:00:00.000Z'
+            weeklyResetAt: '2030-05-07T00:00:00.000Z',
+            fableUsage: 71,
+            fableResetAt: '2030-05-07T00:00:00.000Z'
         });
+    });
+
+    it('derives fable usage/reset from a weekly_scoped entry with Fable case variants', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 22,
+                    resets_at: '2030-05-08T00:00:00.000Z',
+                    scope: { model: { display_name: 'claude 3.5 fAbLe' } }
+                }
+            ]
+        }))).toEqual({
+            fableUsage: 22,
+            fableResetAt: '2030-05-08T00:00:00.000Z'
+        });
+    });
+
+    it('ignores weekly_scoped entry with NON-fable display_name', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 99,
+                    resets_at: '2030-05-08T00:00:00.000Z',
+                    scope: { model: { display_name: 'Sonnet' } }
+                }
+            ]
+        }))).toEqual({});
+    });
+
+    it('absent when fable placeholder (percent 0, no resets_at)', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 0,
+                    resets_at: null,
+                    scope: { model: { display_name: 'Fable' } }
+                }
+            ]
+        }))).toEqual({});
+    });
+
+    it('ignores weekly_scoped when no scope -> no crash', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 10,
+                    resets_at: '2030-05-08T00:00:00.000Z'
+                }
+            ]
+        }))).toEqual({});
     });
 
     it('behaves identically to before when limits[] is absent', () => {
