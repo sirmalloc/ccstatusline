@@ -1014,6 +1014,7 @@ export function renderStatusLine(
             // more meaningful separator that follows the empty widget.
             let contentBeforeIndex: number | null = null;
             let replacesSpacingSeparator = false;
+            let crossedEmptyWidget = false;
             for (let j = i - 1; j >= 0; j--) {
                 const prevWidget = widgets[j];
                 if (!prevWidget)
@@ -1028,10 +1029,11 @@ export function renderStatusLine(
                     break;
                 if (preRenderedWidgets[j]?.content) {
                     // Preserve merge ownership across widgets that render empty.
-                    if (!prevWidget.merge)
+                    if (!prevWidget.merge || !crossedEmptyWidget)
                         contentBeforeIndex = j;
                     break;
                 }
+                crossedEmptyWidget = true;
             }
             if (contentBeforeIndex === null)
                 continue;

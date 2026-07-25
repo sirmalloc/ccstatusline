@@ -138,6 +138,20 @@ describe('renderer separator collapse around empty widgets', () => {
         expect(out).toContain('C');
     });
 
+    it.each([
+        { label: 'true', merge: true },
+        { label: 'no-padding', merge: 'no-padding' }
+    ] as const)('keeps an explicit separator directly after a merge:$label widget', ({ merge }) => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            SEP,
+            { id: 'b', type: 'custom-text' }
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: 'B' }));
+
+        expect(out).toBe('A | B');
+    });
+
     it('lets a merge:no-padding widget glue to the next visible widget across an empty middle widget', () => {
         // Layout: [A(merge:no-padding), B(empty), SEP, C].
         //
