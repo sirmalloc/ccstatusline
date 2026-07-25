@@ -47,10 +47,14 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.22 - v2.2.23 - Powerline flex mode, layout controls, composable metrics, and safer config
+### v2.2.22 - v2.2.24 - Powerline flex mode, cache/CI/sandbox visibility, layout controls, composable metrics, and safer config
 
 ![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
 
+- **⏳ Prompt cache timer** - Added a `Cache Timer` widget with live `HOT` state, TTL countdown, configurable 5-minute/1-hour windows, and customizable state glyphs.
+- **✅ GitHub CI status** - Added a `Git CI Status` widget that summarizes failing, pending, and successful checks for the current branch's pull request.
+- **🔒 Sandbox status** - Added a `Sandbox Status` widget with glyph, text, and Nerd Font formats that follows Claude Code's layered sandbox setting on each refresh.
+- **↔️ One-sided default padding** - Default widget padding can now apply to both sides, the left only, or the right only in standard and Powerline layouts.
 - **⚡ Powerline flex mode** - Flex separators now work in Powerline mode, letting Powerline status lines right-align content or absorb available width.
 - **🌗 Per-widget dim styling** - The color editor can dim an entire widget or only parenthesized text, with reset and clear-all actions covering dim state.
 - **🧯 Safer settings recovery** - Invalid `settings.json` files are left untouched, defaults render in memory, and the status line shows an invalid-config warning.

@@ -61,6 +61,12 @@ Settings saves are atomic and preserve symlinked `settings.json` files by writin
 
 Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
+## Widget Data Sources
+
+- **Cache Timer** reads the transcript tail directly on every render. It expands the read backward when a trailing JSONL record exceeds the initial window, ignores sidechain and synthetic API-error rows, and anchors the countdown only on assistant requests with cache activity. It does not create a separate cache file.
+- **Git CI Status** extends the cached Git PR lookup with GitHub's `statusCheckRollup`. If the authenticated `gh` token cannot read checks, the lookup retries with PR metadata only so the Git PR widget still works.
+- **Sandbox Status** reads `sandbox.enabled` from Claude Code's layered project-local, project, user-local, and user settings on every refresh. This reflects `/sandbox` file updates but remains a best-effort indicator when managed or CLI settings take precedence.
+
 ## Build Notes
 
 - Build target is Node.js 14+ (`dist/ccstatusline.js`)

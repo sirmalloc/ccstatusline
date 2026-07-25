@@ -71,6 +71,17 @@ The `bunx` and `npx` examples above follow `@latest`. If you choose **Pinned glo
 
 ## Windows-Specific Features
 
+### GitHub CI Status
+
+The **Git CI Status** widget requires the GitHub CLI to be installed and authenticated. It is GitHub-only and reads checks from the pull request associated with the current branch.
+
+```powershell
+winget install --id GitHub.cli --source winget
+gh auth login
+```
+
+The widget displays `-` when the branch has no pull request, the pull request has no checks, or the authenticated token cannot read the check rollup.
+
 ### Powerline Font Support
 
 For optimal Powerline rendering on Windows:
