@@ -156,6 +156,27 @@ describe('config utilities', () => {
         expect(merged.lines).toEqual(current.lines);
     });
 
+    it('preserves local installation metadata during a replace import', () => {
+        const installation: InstallationMetadata = {
+            method: 'pinned',
+            installedVersion: '2.2.26'
+        };
+        const current = { ...DEFAULT_SETTINGS, installation };
+        const imported: Settings = {
+            ...DEFAULT_SETTINGS,
+            globalBold: true,
+            installation: {
+                method: 'auto-update',
+                packageManager: 'npm'
+            }
+        };
+
+        const replaced = applyImport(current, imported, 'replace');
+
+        expect(replaced.globalBold).toBe(true);
+        expect(replaced.installation).toEqual(installation);
+    });
+
     it('uses defaults in memory and preserves invalid JSON without overwriting', async () => {
         const { settingsPath, backupPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });

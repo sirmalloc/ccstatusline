@@ -313,7 +313,10 @@ export function applyImport(
     ) as Partial<Settings>;
 
     if (mode === 'replace') {
-        return SettingsSchema.parse({ ...importedClean });
+        return SettingsSchema.parse({
+            ...importedClean,
+            installation: current.installation
+        });
     }
     return { ...current, ...importedClean };
 }
