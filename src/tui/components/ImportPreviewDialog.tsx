@@ -2,11 +2,14 @@ import {
     Box,
     Text
 } from 'ink';
-import React from 'react';
+import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import type { ImportValidationResult } from '../../utils/config';
+import {
+    applyImport,
+    type ImportValidationResult
+} from '../../utils/config';
 
 import {
     List,
@@ -38,6 +41,14 @@ export function getImportPreviewKeys(current: Settings, imported: Settings): (ke
         ...Object.keys(imported)
     ] as (keyof Settings)[]);
     return [...keys].filter(key => !EXCLUDED_KEYS.has(key));
+}
+
+export function getImportPreviewSettings(
+    current: Settings,
+    validation: ValidImportResult,
+    mode: Exclude<ImportMode, 'cancel'>
+): Settings {
+    return applyImport(current, validation.data, mode, validation.presentKeys);
 }
 
 function formatScalar(value: unknown): string {
@@ -127,7 +138,9 @@ export function ImportPreviewDialog({
     onApply,
     onCancel
 }: ImportPreviewDialogProps): React.JSX.Element {
-    const topLevelKeys = getImportPreviewKeys(currentSettings, validation.data);
+    const [previewMode, setPreviewMode] = useState<Exclude<ImportMode, 'cancel'>>('replace');
+    const previewSettings = getImportPreviewSettings(currentSettings, validation, previewMode);
+    const topLevelKeys = getImportPreviewKeys(currentSettings, previewSettings);
 
     const items: ListEntry<ImportMode>[] = [
         { label: 'Replace All', value: 'replace', description: 'Overwrite all settings with the imported config' },
@@ -144,11 +157,17 @@ export function ImportPreviewDialog({
         }
     }
 
+    function handleSelectionChange(value: ImportMode | 'back'): void {
+        if (value === 'replace' || value === 'merge') {
+            setPreviewMode(value);
+        }
+    }
+
     const diffRows: React.JSX.Element[] = [];
 
     for (const key of topLevelKeys) {
         const current = currentSettings[key];
-        const imported = validation.data[key];
+        const imported = previewSettings[key];
         const changed = JSON.stringify(current) !== JSON.stringify(imported);
 
         if (!changed) {
@@ -217,7 +236,11 @@ export function ImportPreviewDialog({
             <Box flexDirection='column'>
                 {diffRows}
             </Box>
-            <List items={items} onSelect={handleSelect} />
+            <List
+                items={items}
+                onSelect={handleSelect}
+                onSelectionChange={handleSelectionChange}
+            />
         </Box>
     );
 }
