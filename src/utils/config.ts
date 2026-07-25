@@ -248,7 +248,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
 }
 
 export type ImportValidationResult
-    = | { status: 'valid'; data: Settings }
+    = | { status: 'valid'; data: Settings; presentKeys: (keyof Settings)[] }
         | { status: 'invalid'; reason: string };
 
 function expandPath(filePath: string): string {
@@ -290,15 +290,26 @@ export async function validateImportFile(filePath: string): Promise<ImportValida
         return { status: 'invalid', reason: `Invalid config format: ${result.error.issues[0]?.message ?? 'unknown error'}` };
     }
 
-    return { status: 'valid', data: result.data };
+    const presentKeys = Object.keys(parsed as Record<string, unknown>)
+        .filter((key): key is keyof Settings => key in result.data);
+
+    return { status: 'valid', data: result.data, presentKeys };
 }
 
 const IMPORT_EXCLUDED_KEYS = ['installation', 'version', 'updatemessage', 'exportedBy'] as const;
 type ImportExcludedKey = typeof IMPORT_EXCLUDED_KEYS[number];
 
-export function applyImport(current: Settings, imported: Settings, mode: 'replace' | 'merge'): Settings {
+export function applyImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[] = Object.keys(imported) as (keyof Settings)[]
+): Settings {
+    const mergeKeys = new Set(presentKeys);
     const importedClean = Object.fromEntries(
-        Object.entries(imported).filter(([k]) => !IMPORT_EXCLUDED_KEYS.includes(k as ImportExcludedKey))
+        Object.entries(imported).filter(([k]) => !IMPORT_EXCLUDED_KEYS.includes(k as ImportExcludedKey)
+            && (mode === 'replace' || mergeKeys.has(k as keyof Settings))
+        )
     ) as Partial<Settings>;
 
     if (mode === 'replace') {

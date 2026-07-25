@@ -816,7 +816,7 @@ export const App: React.FC = () => {
             if (!prev) {
                 return prev;
             }
-            return applyImport(prev, importValidation.data, mode);
+            return applyImport(prev, importValidation.data, mode, importValidation.presentKeys);
         });
         setHasChanges(true);
         setImportValidation(null);

@@ -18,6 +18,7 @@ import {
     type InstallationMetadata,
     type Settings
 } from '../../types/Settings';
+import type { ImportValidationResult } from '../config';
 
 const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
@@ -25,6 +26,13 @@ const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
 let exportConfig: (settings: Settings, filePath: string) => Promise<void>;
+let validateImportFile: (filePath: string) => Promise<ImportValidationResult>;
+let applyImport: (
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys?: readonly (keyof Settings)[]
+) => Settings;
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
 let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
@@ -49,6 +57,8 @@ describe('config utilities', () => {
         loadSettings = configModule.loadSettings;
         saveSettings = configModule.saveSettings;
         exportConfig = configModule.exportConfig;
+        validateImportFile = configModule.validateImportFile;
+        applyImport = configModule.applyImport;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
         saveInstallationMetadata = configModule.saveInstallationMetadata;
@@ -115,6 +125,35 @@ describe('config utilities', () => {
         };
         expect(exported.globalBold).toBe(true);
         expect(exported.exportedBy).toBeTruthy();
+    });
+
+    it('preserves current settings omitted from a merge import', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'partial-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({ version: CURRENT_VERSION, globalBold: true }),
+            'utf-8'
+        );
+        const current: Settings = {
+            ...DEFAULT_SETTINGS,
+            flexMode: 'full',
+            compactThreshold: 75,
+            lines: [[{ id: 'custom', type: 'model' }]]
+        };
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
+        expect(merged.globalBold).toBe(true);
+        expect(merged.flexMode).toBe('full');
+        expect(merged.compactThreshold).toBe(75);
+        expect(merged.lines).toEqual(current.lines);
     });
 
     it('uses defaults in memory and preserves invalid JSON without overwriting', async () => {
