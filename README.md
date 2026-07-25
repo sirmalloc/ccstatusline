@@ -47,6 +47,14 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.25 - v2.2.26 - Fable usage, migrated usage API support, compaction accuracy, and rendering reliability
+
+- **🪄 Weekly Fable usage** - Added a `Weekly Fable Usage` widget with percentage, progress-bar, remaining-mode, and time-cursor controls.
+- **📊 Reshaped usage API support** - Session and all-model weekly usage can fall back to the newer `limits[]` response, while Sonnet, Opus, and Fable weekly widgets read authoritative `weekly_scoped` entries so migrated accounts do not show stale or frozen values.
+- **🧠 Correct post-compaction context** - Context length and percentage widgets reset immediately from `compact_boundary.postTokens` after `/compact`, then switch to the first new turn instead of retaining the pre-compaction size.
+- **🧹 Reliable hidden-widget separators** - Manual separators now look past widgets that render empty, preserve the intended visible boundary, and inherit colors from the actual preceding visible widget.
+- **⚡ Non-blocking Git PR/CI refreshes** - Git PR and CI widgets render from a versioned disk cache while stale data refreshes in the background, preventing slow `gh` calls from blocking the status line.
+
 ### v2.2.22 - v2.2.24 - Powerline flex mode, cache/CI/sandbox visibility, layout controls, composable metrics, and safer config
 
 ![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
@@ -258,7 +266,7 @@
 
 ## ✨ Features
 
-- **📊 Real-time Metrics** - Display model name, git branch, token usage, per-model weekly usage, extra usage limits, voice input state, session duration, compaction count, block timer, and more
+- **📊 Real-time Metrics** - Display model name, git branch, token usage, Sonnet/Opus/Fable weekly usage, extra usage limits, voice input state, session duration, compaction count, block timer, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure multiple independent status lines

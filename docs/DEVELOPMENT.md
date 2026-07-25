@@ -64,7 +64,9 @@ Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by settin
 ## Widget Data Sources
 
 - **Cache Timer** reads the transcript tail directly on every render. It expands the read backward when a trailing JSONL record exceeds the initial window, ignores sidechain and synthetic API-error rows, and anchors the countdown only on assistant requests with cache activity. It does not create a separate cache file.
-- **Git CI Status** extends the cached Git PR lookup with GitHub's `statusCheckRollup`. If the authenticated `gh` token cannot read checks, the lookup retries with PR metadata only so the Git PR widget still works.
+- **Git PR and Git CI Status** render from the versioned disk cache under `~/.cache/ccstatusline/git-review`. Missing or stale entries are refreshed in a detached helper so network-bound `gh` or `glab` calls do not block rendering. Git CI Status adds GitHub's `statusCheckRollup`; if the authenticated `gh` token cannot read checks, the refresh retries with PR metadata only so Git PR still works.
+- **Usage widgets** merge Claude Code's stdin `rate_limits` with `/api/oauth/usage` only for fields required by the active widgets. Session and aggregate weekly fields prefer the flat API buckets and fall back to `limits[]`; per-model weekly fields prefer `weekly_scoped` entries. `WEEKLY_MODEL_USAGE_BUCKETS` in `src/utils/usage-types.ts` is the shared registry for Sonnet, Opus, and Fable widget wiring, field requirements, reset fields, and scoped-limit matching.
+- **Context length transcript fallback** treats the latest `compact_boundary` as the start of the current context. It uses the first main-chain usage entry after that boundary, then `compactMetadata.postTokens`, then zero, while session token totals remain cumulative.
 - **Sandbox Status** reads `sandbox.enabled` from Claude Code's layered project-local, project, user-local, and user settings on every refresh. This reflects `/sandbox` file updates but remains a best-effort indicator when managed or CLI settings take precedence.
 
 ## Build Notes
