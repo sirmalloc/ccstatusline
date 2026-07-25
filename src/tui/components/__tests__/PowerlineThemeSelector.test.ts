@@ -50,6 +50,16 @@ function flushInk() {
     });
 }
 
+async function waitForInkCondition(condition: () => boolean) {
+    const timeoutAt = Date.now() + 1000;
+
+    while (!condition() && Date.now() < timeoutAt) {
+        await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+}
+
 describe('PowerlineThemeSelector helpers', () => {
     afterEach(() => {
         vi.restoreAllMocks();
@@ -139,6 +149,7 @@ describe('PowerlineThemeSelector helpers', () => {
             expect(onUpdate).not.toHaveBeenCalled();
 
             stdin.write('\u001B[B');
+            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
             await flushInk();
 
             expect(onUpdate).toHaveBeenCalledTimes(1);
