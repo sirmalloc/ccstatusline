@@ -78,11 +78,24 @@ const UsageApiBucketSchema = z.looseObject({
 
 type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
 
+// Newer accounts migrated off the flat five_hour/seven_day buckets report the
+// same windows inside a limits[] array instead (#503). Only the fields this
+// module reads are declared; loose-object passes everything else (scope,
+// is_active, group, etc.) through without failing validation.
+const UsageApiLimitSchema = z.looseObject({
+    kind: z.string().nullable().optional(),
+    percent: z.number().nullable().optional(),
+    resets_at: z.string().nullable().optional()
+});
+
+type UsageApiLimit = z.infer<typeof UsageApiLimitSchema>;
+
 const UsageApiResponseSchema = z.looseObject({
     five_hour: UsageApiBucketSchema,
     seven_day: UsageApiBucketSchema,
     seven_day_sonnet: UsageApiBucketSchema,
     seven_day_opus: UsageApiBucketSchema,
+    limits: z.array(UsageApiLimitSchema).nullable().optional(),
     extra_usage: z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
@@ -94,6 +107,25 @@ const UsageApiResponseSchema = z.looseObject({
 
 function getUsageApiBucketUtilization(bucket: UsageApiBucket): number | undefined {
     return bucket === null ? 0 : bucket?.utilization ?? undefined;
+}
+
+function findUsageApiLimit(limits: UsageApiLimit[] | null | undefined, kind: string): UsageApiLimit | undefined {
+    return limits?.find(limit => limit.kind === kind);
+}
+
+// Mirrors the null-bucket placeholder guard for #343 above: a limits[] entry
+// reporting 0% with no resets_at is not a real usage window, so the
+// limits[] fallback below must not resurrect it as a phantom 0% reading.
+function isPlaceholderUsageApiLimit(limit: UsageApiLimit): boolean {
+    return (limit.percent ?? 0) === 0 && (limit.resets_at ?? null) === null;
+}
+
+function getUsageApiLimitPercent(limit: UsageApiLimit | undefined): number | undefined {
+    return limit && !isPlaceholderUsageApiLimit(limit) ? limit.percent ?? undefined : undefined;
+}
+
+function getUsageApiLimitResetAt(limit: UsageApiLimit | undefined): string | undefined {
+    return limit && !isPlaceholderUsageApiLimit(limit) ? limit.resets_at ?? undefined : undefined;
 }
 
 function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
@@ -157,17 +189,24 @@ function tokenHashMatches(cachedHash: string | undefined, currentHash: string | 
     return cachedHash === currentHash;
 }
 
-function parseUsageApiResponse(rawJson: string): UsageData | null {
+export function parseUsageApiResponse(rawJson: string): UsageData | null {
     const parsed = parseJsonWithSchema(rawJson, UsageApiResponseSchema);
     if (!parsed) {
         return null;
     }
 
+    // Flat five_hour/seven_day buckets are the primary source. On accounts
+    // migrated to the limits[] shape those buckets may be missing/null, so
+    // each field falls back to the matching limits[] entry independently -
+    // the percentage and resets_at can each come from a different source (#503).
+    const sessionLimit = findUsageApiLimit(parsed.limits, 'session');
+    const weeklyLimit = findUsageApiLimit(parsed.limits, 'weekly_all');
+
     return {
-        sessionUsage: getUsageApiBucketUtilization(parsed.five_hour),
-        sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
-        weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day),
-        weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
+        sessionUsage: getUsageApiBucketUtilization(parsed.five_hour) ?? getUsageApiLimitPercent(sessionLimit),
+        sessionResetAt: parsed.five_hour?.resets_at ?? getUsageApiLimitResetAt(sessionLimit),
+        weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day) ?? getUsageApiLimitPercent(weeklyLimit),
+        weeklyResetAt: parsed.seven_day?.resets_at ?? getUsageApiLimitResetAt(weeklyLimit),
         weeklySonnetUsage: getUsageApiBucketUtilization(parsed.seven_day_sonnet),
         weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
         weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
