@@ -774,7 +774,10 @@ export const App: React.FC = () => {
 
     const handleExportConfig = useCallback(async (filePath: string) => {
         try {
-            await exportConfig(filePath);
+            if (!settings) {
+                return;
+            }
+            await exportConfig(settings, filePath);
             setFlashMessage({ text: `Config exported to ${filePath}`, color: 'green' });
         } catch (err) {
             setFlowNotice({
@@ -787,7 +790,7 @@ export const App: React.FC = () => {
             return;
         }
         setScreen('main');
-    }, []);
+    }, [settings]);
 
     const handleImportFileChosen = useCallback(async (filePath: string) => {
         const result = await validateImportFile(filePath);

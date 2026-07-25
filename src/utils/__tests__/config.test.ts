@@ -24,6 +24,7 @@ const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
+let exportConfig: (settings: Settings, filePath: string) => Promise<void>;
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
 let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
@@ -47,6 +48,7 @@ describe('config utilities', () => {
         const configModule = await import('../config');
         loadSettings = configModule.loadSettings;
         saveSettings = configModule.saveSettings;
+        exportConfig = configModule.exportConfig;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
         saveInstallationMetadata = configModule.saveInstallationMetadata;
@@ -93,6 +95,26 @@ describe('config utilities', () => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
             expect.stringContaining('Default settings written to')
         );
+    });
+
+    it('exports the provided in-memory settings instead of reloading stale settings from disk', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const exportPath = path.join(configDir, 'export.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({ ...DEFAULT_SETTINGS, globalBold: false }),
+            'utf-8'
+        );
+
+        await exportConfig({ ...DEFAULT_SETTINGS, globalBold: true }, exportPath);
+
+        const exported = JSON.parse(fs.readFileSync(exportPath, 'utf-8')) as {
+            globalBold?: boolean;
+            exportedBy?: string;
+        };
+        expect(exported.globalBold).toBe(true);
+        expect(exported.exportedBy).toBeTruthy();
     });
 
     it('uses defaults in memory and preserves invalid JSON without overwriting', async () => {

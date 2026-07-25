@@ -258,8 +258,7 @@ function expandPath(filePath: string): string {
     return filePath;
 }
 
-export async function exportConfig(filePath: string): Promise<void> {
-    const settings = await loadSettings();
+export async function exportConfig(settings: Settings, filePath: string): Promise<void> {
     const expanded = expandPath(filePath);
     const exportData = { ...settings, exportedBy: getPackageVersion() };
     await mkdir(path.dirname(expanded), { recursive: true });
