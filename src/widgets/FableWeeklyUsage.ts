@@ -33,7 +33,7 @@ const LABEL = 'Fable Weekly: ';
 export class FableWeeklyUsageWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
     getDescription(): string { return 'Shows Fable-only weekly usage percentage'; }
-    getDisplayName(): string { return 'Fable Weekly Usage'; }
+    getDisplayName(): string { return 'Weekly Fable Usage'; }
     getCategory(): string { return 'Usage'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
