@@ -1,6 +1,5 @@
 import {
     Box,
-    Static,
     Text
 } from 'ink';
 import React from 'react';
@@ -215,9 +214,9 @@ export function ImportPreviewDialog({
         <Box flexDirection='column'>
             <Text bold>Import Preview</Text>
             <Text dimColor>Changes that will be applied:</Text>
-            <Static items={diffRows}>
-                {(row, i) => <Box key={i}>{row}</Box>}
-            </Static>
+            <Box flexDirection='column'>
+                {diffRows}
+            </Box>
             <List items={items} onSelect={handleSelect} />
         </Box>
     );

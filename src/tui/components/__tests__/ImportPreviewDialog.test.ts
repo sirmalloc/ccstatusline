@@ -1,3 +1,5 @@
+import { Box } from 'ink';
+import React from 'react';
 import {
     describe,
     expect,
@@ -8,7 +10,10 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../../types/Settings';
-import { getImportPreviewKeys } from '../ImportPreviewDialog';
+import {
+    ImportPreviewDialog,
+    getImportPreviewKeys
+} from '../ImportPreviewDialog';
 
 describe('ImportPreviewDialog helpers', () => {
     it('includes optional settings that exist only in the imported config', () => {
@@ -24,5 +29,25 @@ describe('ImportPreviewDialog helpers', () => {
         expect(getImportPreviewKeys(current, imported)).toEqual(
             expect.arrayContaining(['defaultSeparator', 'overrideForegroundColor'])
         );
+    });
+
+    it('renders preview rows in the dynamic Ink region', () => {
+        const dialog = ImportPreviewDialog({
+            validation: {
+                status: 'valid',
+                data: { ...DEFAULT_SETTINGS, globalBold: true },
+                presentKeys: ['version', 'globalBold']
+            },
+            currentSettings: DEFAULT_SETTINGS,
+            onApply: () => undefined,
+            onCancel: () => undefined
+        }) as React.ReactElement<{ children: React.ReactNode }>;
+        const children = React.Children.toArray(dialog.props.children);
+        const previewRows = children[2];
+
+        expect(React.isValidElement(previewRows)).toBe(true);
+        if (React.isValidElement(previewRows)) {
+            expect(previewRows.type).toBe(Box);
+        }
     });
 });
