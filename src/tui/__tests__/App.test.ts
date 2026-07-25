@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import {
     describe,
     expect,
@@ -10,6 +11,7 @@ import {
     type InstallationMetadata
 } from '../../types/Settings';
 import {
+    applyTuiImport,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
     clearInstallMenuSelection,
@@ -61,6 +63,26 @@ describe('App confirm navigation helpers', () => {
         const menuSelections = { main: 5 };
 
         expect(clearInstallMenuSelection(menuSelections)).toBe(menuSelections);
+    });
+});
+
+describe('TUI config imports', () => {
+    it('synchronizes Chalk with the imported color level', () => {
+        const originalLevel = chalk.level;
+
+        try {
+            const imported = applyTuiImport(
+                { ...DEFAULT_SETTINGS, colorLevel: 2 },
+                { ...DEFAULT_SETTINGS, colorLevel: 0 },
+                'merge',
+                ['colorLevel']
+            );
+
+            expect(imported.colorLevel).toBe(0);
+            expect(chalk.level).toBe(0);
+        } finally {
+            chalk.level = originalLevel;
+        }
     });
 });
 

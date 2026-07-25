@@ -413,6 +413,17 @@ export function getConfirmCancelScreen(confirmDialog: ConfirmDialogState | null)
     return confirmDialog?.cancelScreen ?? 'main';
 }
 
+export function applyTuiImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[]
+): Settings {
+    const nextSettings = applyImport(current, imported, mode, presentKeys);
+    chalk.level = nextSettings.colorLevel;
+    return nextSettings;
+}
+
 export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
     if (menuSelections.install === undefined && menuSelections.installPackage === undefined) {
         return menuSelections;
@@ -809,20 +820,21 @@ export const App: React.FC = () => {
     }, []);
 
     const handleImportApply = useCallback((mode: 'replace' | 'merge') => {
-        if (importValidation?.status !== 'valid') {
+        if (!settings || importValidation?.status !== 'valid') {
             return;
         }
-        setSettings((prev) => {
-            if (!prev) {
-                return prev;
-            }
-            return applyImport(prev, importValidation.data, mode, importValidation.presentKeys);
-        });
+        const importedSettings = applyTuiImport(
+            settings,
+            importValidation.data,
+            mode,
+            importValidation.presentKeys
+        );
+        setSettings(importedSettings);
         setHasChanges(true);
         setImportValidation(null);
         setFlashMessage({ text: 'Config imported — review and save', color: 'green' });
         setScreen('main');
-    }, [importValidation]);
+    }, [importValidation, settings]);
 
     if (!settings || !hasLoadedClaudeStatus || !hasLoadedInstalledState) {
         return <Text>Loading settings...</Text>;
