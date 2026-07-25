@@ -150,6 +150,20 @@ Gradients self-degrade where they can't render: at Basic or No Color levels, gra
 
 When ccstatusline is installed in Claude Code, the main menu includes **Configure Status Line**. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty.
 
+## Configuration Import and Export
+
+The TUI main menu can move configurations between machines or preserve a backup:
+
+- **Export Config** writes the current in-memory configuration to a JSON file, including edits that have not been saved to `settings.json` yet. The default destination is `~/ccstatusline-config.json`; parent directories are created as needed, and the export records the ccstatusline version that created it.
+- **Import Config** reads a JSON file, validates it, migrates supported older formats, rejects files from newer schema versions, and shows the effective changes before anything is applied.
+
+The import preview follows the highlighted action:
+
+- **Replace All** replaces user-facing settings with the validated import and current defaults for omitted fields.
+- **Merge** overlays only fields explicitly present in the imported file, preserving current values for omitted settings.
+
+Both modes keep machine-local installation metadata and ignore schema/update metadata from the imported file. Applying an import updates only the TUI's working configuration; review the result, then choose **Save & Exit** or press `Ctrl+S` to persist it.
+
 ## Settings Recovery
 
 If `settings.json` is unreadable or invalid, ccstatusline leaves the file unchanged, renders with built-in defaults for that run, and prepends an invalid-config warning badge to the status line. The TUI shows the same warning and asks for confirmation before either **Save & Exit** or `Ctrl+S` replaces the invalid file. Fix the JSON to preserve its contents, or confirm the save to replace it with the configuration currently shown in the TUI.

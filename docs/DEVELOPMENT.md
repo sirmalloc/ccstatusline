@@ -59,6 +59,8 @@ If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatus
 
 Settings saves are atomic and preserve symlinked `settings.json` files by writing through the resolved target. Invalid or unreadable settings are never overwritten during load; `loadSettings()` returns in-memory defaults, records `getConfigLoadError()`, and renderer paths surface that state with an invalid-config warning badge. The TUI captures that load error, keeps a visible warning active, and guards both save paths with an overwrite confirmation until a valid configuration is saved.
 
+Configuration exports snapshot the live TUI settings and add an `exportedBy` package version. Imports reject newer schema versions before current-schema parsing, migrate supported older formats, and retain the source payload's present-key set so merge mode changes only explicitly supplied settings. `applyImport()` filters machine-local installation, schema-version, and update-message metadata; replace mode restores the current installation metadata, while merge mode preserves every omitted value.
+
 Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
 ## Widget Data Sources

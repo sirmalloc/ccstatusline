@@ -47,6 +47,10 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.27 - Portable configuration import and export
+
+- **📦 Config import/export** - Export the current TUI configuration to JSON, validate and preview imports, then replace all settings or merge only supplied fields while preserving local installation metadata and leaving the result unsaved for review.
+
 ### v2.2.25 - v2.2.26 - Fable usage, migrated usage API support, compaction accuracy, and rendering reliability
 
 - **🪄 Weekly Fable usage** - Added a `Weekly Fable Usage` widget with percentage, progress-bar, remaining-mode, and time-cursor controls.
@@ -273,6 +277,7 @@
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
 - **🔎 Fast Widget Picker** - Add/change widgets by category with search and ranked matching
 - **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, minimalist mode, and color overrides)
+- **📦 Portable Configurations** - Export settings to JSON and preview replace-or-merge imports for backups and sharing
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **🔧 Flexible Configuration** - Supports custom Claude Code config directory via `CLAUDE_CONFIG_DIR` environment variable
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
@@ -313,6 +318,7 @@ The interactive configuration tool provides a terminal UI where you can:
 - Configure flex separator behavior
 - Configure Claude Code status line refresh interval when supported
 - Edit custom text widgets
+- Export JSON backups and preview imported configs before replacing or merging settings
 - Install/uninstall to Claude Code settings
 - Preview your status line in real-time
 
