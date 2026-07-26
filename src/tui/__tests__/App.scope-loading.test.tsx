@@ -173,4 +173,62 @@ describe('App scope reload guard', () => {
             stderr.destroy();
         }
     });
+
+    it('does not switch scopes while a settings save is in flight', async () => {
+        const loadSettings = vi.spyOn(config, 'loadSettings').mockResolvedValue(DEFAULT_SETTINGS);
+        let resolveSave: (() => void) | undefined;
+        const pendingSave = new Promise<void>((resolve) => {
+            resolveSave = resolve;
+        });
+        const saveSettings = vi.spyOn(config, 'saveSettings').mockReturnValueOnce(pendingSave);
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(<App />, {
+            stdin,
+            stdout,
+            stderr,
+            debug: true,
+            exitOnCtrlC: false,
+            patchConsole: false
+        });
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Mode: Project');
+            });
+            await new Promise(resolve => setTimeout(resolve, 25));
+
+            stdin.write('\x13');
+            await waitFor(() => {
+                expect(saveSettings).toHaveBeenCalledOnce();
+            });
+
+            stdout.clearOutput();
+            stdin.write('\x10');
+            await new Promise(resolve => setTimeout(resolve, 25));
+
+            expect(getScope()).toEqual({ type: 'project', root: projectDir });
+            expect(loadSettings).toHaveBeenCalledOnce();
+            expect(stdout.getOutput()).toContain('Wait for the current save before switching modes');
+
+            resolveSave?.();
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Configuration saved');
+            });
+
+            stdin.write('\x10');
+            await waitFor(() => {
+                expect(getScope()).toEqual({ type: 'global' });
+                expect(loadSettings).toHaveBeenCalledTimes(2);
+            });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });

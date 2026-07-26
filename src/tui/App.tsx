@@ -548,6 +548,7 @@ export const App: React.FC = () => {
     const [scope, setScopeState] = useState<Scope>(() => getScope());
     const settingsRef = useRef(settings);
     const scopeReloadingRef = useRef(false);
+    const settingsSavesInFlightRef = useRef(0);
     const [isScopeReloading, setIsScopeReloading] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
 
@@ -591,7 +592,24 @@ export const App: React.FC = () => {
     const [scopeSwitchStage, setScopeSwitchStage] = useState<ScopeSwitchStage | null>(null);
     const [pendingScopeTarget, setPendingScopeTarget] = useState<SwitchableScope | null>(null);
 
+    const saveSettingsTracked = useCallback(async (nextSettings: Settings) => {
+        settingsSavesInFlightRef.current += 1;
+        try {
+            await saveSettings(nextSettings);
+        } finally {
+            settingsSavesInFlightRef.current -= 1;
+        }
+    }, []);
+
     const executeSwitch = useCallback((target: SwitchableScope, seed: 'none' | 'copy' | 'defaults') => {
+        if (settingsSavesInFlightRef.current > 0) {
+            setFlashMessage({
+                text: '⚠ Wait for the current save before switching modes',
+                color: 'yellow'
+            });
+            return;
+        }
+
         // Seed source must be the last on-disk global state, captured before the
         // scope flips: after the unsaved-changes menu, originalSettings is it.
         // A copy seed strips installation metadata: that block describes how the
@@ -654,6 +672,13 @@ export const App: React.FC = () => {
     }, [executeSwitch]);
 
     const requestScopeSwitch = useCallback(() => {
+        if (settingsSavesInFlightRef.current > 0) {
+            setFlashMessage({
+                text: '⚠ Wait for the current save before switching modes',
+                color: 'yellow'
+            });
+            return;
+        }
         if (!isScopeSwitchingAvailable()) {
             setFlashMessage({
                 text: '⚠ Mode switching is disabled when --config is passed',
@@ -699,7 +724,7 @@ export const App: React.FC = () => {
             const performSave = () => {
                 void (async () => {
                     try {
-                        await saveSettings(settings);
+                        await saveSettingsTracked(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
                         setConfigLoadError(null);
@@ -746,7 +771,7 @@ export const App: React.FC = () => {
         if (choice === 'copy' || choice === 'defaults') {
             executeSwitch(target, choice);
         }
-    }, [pendingScopeTarget, settings, configLoadError, continueScopeSwitch, executeSwitch]);
+    }, [pendingScopeTarget, settings, configLoadError, continueScopeSwitch, executeSwitch, saveSettingsTracked]);
 
     useEffect(() => {
         void reloadScopeData();
@@ -818,7 +843,7 @@ export const App: React.FC = () => {
             const performSave = () => {
                 void (async () => {
                     try {
-                        await saveSettings(settings);
+                        await saveSettingsTracked(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
                         // File is valid again after an explicit save → clear the banner + guard.
@@ -908,7 +933,7 @@ export const App: React.FC = () => {
                         // pointing at the project file; make sure it exists before
                         // the install references it.
                         if (getScope().type === 'project' && !fs.existsSync(getConfigPath()) && settingsRef.current) {
-                            await saveSettings(settingsRef.current);
+                            await saveSettingsTracked(settingsRef.current);
                             setOriginalSettings(cloneSettings(settingsRef.current));
                             setHasChanges(false);
                         }
@@ -969,7 +994,7 @@ export const App: React.FC = () => {
             });
             setScreen('confirm');
         });
-    }, [getGlobalResolutionWarning, supportsRefreshInterval]);
+    }, [getGlobalResolutionWarning, saveSettingsTracked, supportsRefreshInterval]);
 
     const handleInstallMenuCancel = useCallback(() => {
         setMenuSelections(clearInstallMenuSelection);
@@ -1309,7 +1334,7 @@ export const App: React.FC = () => {
             case 'save': {
                 const saveAndExit = async () => {
                     try {
-                        await saveSettings(settings);
+                        await saveSettingsTracked(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
                         exit();
