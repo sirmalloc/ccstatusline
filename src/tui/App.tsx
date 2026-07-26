@@ -548,6 +548,7 @@ export const App: React.FC = () => {
     const [scope, setScopeState] = useState<Scope>(() => getScope());
     const settingsRef = useRef(settings);
     const scopeReloadingRef = useRef(false);
+    const scopeReloadGenerationRef = useRef(0);
     const settingsSavesInFlightRef = useRef(0);
     const [isScopeReloading, setIsScopeReloading] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
@@ -556,36 +557,57 @@ export const App: React.FC = () => {
         settingsRef.current = settings;
     }, [settings]);
 
-    const reloadScopeData = useCallback(async (options: { skipSettings?: boolean } = {}) => {
+    const reloadScopeData = useCallback(async (options: {
+        skipSettings?: boolean;
+        generation?: number;
+    } = {}) => {
+        const generation = options.generation ?? scopeReloadGenerationRef.current;
+        const isCurrentReload = () => scopeReloadGenerationRef.current === generation;
+
         try {
             const statusLineState = await loadClaudeStatusLineState();
-            setExistingStatusLine(statusLineState.existingStatusLine);
-            setCurrentRefreshInterval(statusLineState.refreshInterval);
+            if (isCurrentReload()) {
+                setExistingStatusLine(statusLineState.existingStatusLine);
+                setCurrentRefreshInterval(statusLineState.refreshInterval);
+            }
         } catch {
-            setExistingStatusLine(null);
-            setCurrentRefreshInterval(null);
+            if (isCurrentReload()) {
+                setExistingStatusLine(null);
+                setCurrentRefreshInterval(null);
+            }
         } finally {
-            setHasLoadedClaudeStatus(true);
+            if (isCurrentReload()) {
+                setHasLoadedClaudeStatus(true);
+            }
         }
 
         if (!options.skipSettings) {
             const loadedSettings = await loadSettings();
-            // Set global chalk level based on settings (default to 256 colors for compatibility)
-            chalk.level = loadedSettings.colorLevel;
-            setSettings(loadedSettings);
-            setOriginalSettings(cloneSettings(loadedSettings));
-            // Capture why settings.json was rejected (if at all) so the TUI can warn and
-            // guard saves. Read it here, in the load callback: the module-scoped signal is
-            // reset by any later loadSettings/saveInstallationMetadata call.
-            setConfigLoadError(getConfigLoadError());
+            if (isCurrentReload()) {
+                // Set global chalk level based on settings (default to 256 colors for compatibility)
+                chalk.level = loadedSettings.colorLevel;
+                setSettings(loadedSettings);
+                setOriginalSettings(cloneSettings(loadedSettings));
+                // Capture why settings.json was rejected (if at all) so the TUI can warn and
+                // guard saves. Read it here, in the load callback: the module-scoped signal is
+                // reset by any later loadSettings/saveInstallationMetadata call.
+                setConfigLoadError(getConfigLoadError());
+            }
         }
 
         try {
-            setIsClaudeInstalled(await isInstalled());
+            const installed = await isInstalled();
+            if (isCurrentReload()) {
+                setIsClaudeInstalled(installed);
+            }
         } catch {
-            setIsClaudeInstalled(false);
+            if (isCurrentReload()) {
+                setIsClaudeInstalled(false);
+            }
         } finally {
-            setHasLoadedInstalledState(true);
+            if (isCurrentReload()) {
+                setHasLoadedInstalledState(true);
+            }
         }
     }, []);
 
@@ -598,6 +620,23 @@ export const App: React.FC = () => {
             await saveSettings(nextSettings);
         } finally {
             settingsSavesInFlightRef.current -= 1;
+        }
+    }, []);
+
+    const beginScopeReload = useCallback(() => {
+        const generation = scopeReloadGenerationRef.current + 1;
+        scopeReloadGenerationRef.current = generation;
+        scopeReloadingRef.current = true;
+        setIsScopeReloading(true);
+        setHasLoadedClaudeStatus(false);
+        setHasLoadedInstalledState(false);
+        return generation;
+    }, []);
+
+    const finishScopeReload = useCallback((generation: number) => {
+        if (scopeReloadGenerationRef.current === generation) {
+            scopeReloadingRef.current = false;
+            setIsScopeReloading(false);
         }
     }, []);
 
@@ -623,26 +662,22 @@ export const App: React.FC = () => {
         setPendingScopeTarget(null);
         setScreen('main');
 
+        const reloadGeneration = beginScopeReload();
+
         if (seed === 'none') {
             // Invalidate the source settings before changing the module-level
             // config path. The synchronous ref closes the gap before React
             // commits the loading render, so Ctrl+S cannot write stale source
             // settings through the target scope's path.
-            scopeReloadingRef.current = true;
             settingsRef.current = null;
-            setIsScopeReloading(true);
             setSettings(null);
             setOriginalSettings(null);
             setHasChanges(false);
-            setHasLoadedClaudeStatus(false);
-            setHasLoadedInstalledState(false);
 
             setScope(target);
             setScopeState(getScope());
-            void reloadScopeData().finally(() => {
-                scopeReloadingRef.current = false;
-                setIsScopeReloading(false);
-            });
+            void reloadScopeData({ generation: reloadGeneration })
+                .finally(() => { finishScopeReload(reloadGeneration); });
             return;
         }
 
@@ -659,8 +694,11 @@ export const App: React.FC = () => {
         // A seeded scope has no on-disk file yet, so it cannot have a load error;
         // clear any stale banner/guard carried over from the scope being left.
         setConfigLoadError(null);
-        void reloadScopeData({ skipSettings: true });
-    }, [originalSettings, reloadScopeData]);
+        void reloadScopeData({
+            skipSettings: true,
+            generation: reloadGeneration
+        }).finally(() => { finishScopeReload(reloadGeneration); });
+    }, [beginScopeReload, finishScopeReload, originalSettings, reloadScopeData]);
 
     const continueScopeSwitch = useCallback((target: SwitchableScope) => {
         if (target.type === 'project' && !fs.existsSync(getProjectConfigPath(target.root))) {

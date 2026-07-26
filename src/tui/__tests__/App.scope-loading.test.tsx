@@ -231,4 +231,78 @@ describe('App scope reload guard', () => {
             stderr.destroy();
         }
     });
+
+    it('keeps a seeded project non-interactive until its status data reloads', async () => {
+        setScope({ type: 'global' });
+        vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+        const loadSettings = vi.spyOn(config, 'loadSettings').mockResolvedValue(DEFAULT_SETTINGS);
+        let resolveProjectStatus: ((status: {
+            existingStatusLine: string | null;
+            refreshInterval: number | null;
+        }) => void) | undefined;
+        const projectStatus = new Promise<{
+            existingStatusLine: string | null;
+            refreshInterval: number | null;
+        }>((resolve) => {
+            resolveProjectStatus = resolve;
+        });
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState')
+            .mockResolvedValueOnce({
+                existingStatusLine: 'bunx -y ccstatusline@latest',
+                refreshInterval: 5
+            })
+            .mockReturnValueOnce(projectStatus);
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(<App />, {
+            stdin,
+            stdout,
+            stderr,
+            debug: true,
+            exitOnCtrlC: false,
+            patchConsole: false
+        });
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Mode: Global');
+            });
+            await new Promise(resolve => setTimeout(resolve, 25));
+
+            stdin.write('\x10');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('No project config found');
+            });
+
+            stdin.write('\u001B[B');
+            await new Promise(resolve => setTimeout(resolve, 25));
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(getScope()).toEqual({ type: 'project', root: projectDir });
+                expect(stdout.getOutput()).toContain('Loading settings...');
+            });
+
+            stdin.write('\x10');
+            await new Promise(resolve => setTimeout(resolve, 25));
+            expect(getScope()).toEqual({ type: 'project', root: projectDir });
+            expect(loadSettings).toHaveBeenCalledOnce();
+
+            stdout.clearOutput();
+            resolveProjectStatus?.({
+                existingStatusLine: null,
+                refreshInterval: null
+            });
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Mode: Project');
+            });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
