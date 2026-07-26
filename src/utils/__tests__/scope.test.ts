@@ -10,7 +10,11 @@ import {
     vi
 } from 'vitest';
 
-import { getConfigPath } from '../config';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
+import {
+    getConfigPath,
+    saveSettings
+} from '../config';
 import {
     getProjectConfigPath,
     getProjectInstallTargetPath,
@@ -46,6 +50,56 @@ describe('scope', () => {
         fs.writeFileSync(getProjectConfigPath(projectDir), '{}', 'utf-8');
 
         initScope({ explicitConfigPath: '/somewhere/custom.json', detectProject: true });
+
+        expect(getScope()).toEqual({ type: 'custom' });
+        expect(isScopeSwitchingAvailable()).toBe(false);
+        expect(getProjectInstallTargetPath()).toBeNull();
+    });
+
+    it('restores project scope from a project install config path for piped rendering', () => {
+        const projectConfigPath = getProjectConfigPath(projectDir);
+
+        initScope({
+            explicitConfigPath: projectConfigPath,
+            inferProjectFromExplicitConfig: true
+        });
+
+        expect(getScope()).toEqual({ type: 'project', root: projectDir });
+        expect(getConfigPath()).toBe(projectConfigPath);
+        expect(getProjectInstallTargetPath()).toBe(path.join(projectDir, '.claude', 'settings.local.json'));
+    });
+
+    it('routes render-time hook synchronization to the inferred project target', async () => {
+        const projectConfigPath = getProjectConfigPath(projectDir);
+        const projectSettingsPath = path.join(projectDir, '.claude', 'settings.local.json');
+        fs.mkdirSync(path.dirname(projectSettingsPath), { recursive: true });
+        fs.writeFileSync(projectSettingsPath, JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: `bunx -y ccstatusline@latest --config ${projectConfigPath}`,
+                padding: 0
+            }
+        }), 'utf-8');
+
+        initScope({
+            explicitConfigPath: projectConfigPath,
+            inferProjectFromExplicitConfig: true
+        });
+        await saveSettings({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        });
+
+        const projectSettings = JSON.parse(fs.readFileSync(projectSettingsPath, 'utf-8')) as { hooks?: Record<string, { hooks?: { command?: string }[] }[]> };
+        expect(projectSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command)
+            .toBe(`bunx -y ccstatusline@latest --config ${projectConfigPath} --hook`);
+    });
+
+    it('keeps arbitrary explicit config paths custom during piped rendering', () => {
+        initScope({
+            explicitConfigPath: path.join(projectDir, 'custom.json'),
+            inferProjectFromExplicitConfig: true
+        });
 
         expect(getScope()).toEqual({ type: 'custom' });
         expect(isScopeSwitchingAvailable()).toBe(false);

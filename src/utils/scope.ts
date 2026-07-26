@@ -27,12 +27,30 @@ export function getProjectConfigPath(root: string): string {
 }
 
 /**
- * Resolve the startup scope. Called once from main(): the TUI entry passes
- * detectProject so an existing <cwd>/.claude/ccstatusline.json selects project
- * mode; piped render and --hook paths never auto-detect.
+ * Resolve the startup scope. The TUI entry passes detectProject so an existing
+ * <cwd>/.claude/ccstatusline.json selects project mode. Piped rendering passes
+ * inferProjectFromExplicitConfig so the absolute --config written by a project
+ * install restores its project scope without cwd auto-detection. Hook mode does
+ * neither.
  */
-export function initScope(options: { explicitConfigPath?: string; detectProject?: boolean } = {}): void {
+export function initScope(options: {
+    explicitConfigPath?: string;
+    detectProject?: boolean;
+    inferProjectFromExplicitConfig?: boolean;
+} = {}): void {
     if (options.explicitConfigPath) {
+        if (options.inferProjectFromExplicitConfig) {
+            const resolvedConfigPath = path.resolve(options.explicitConfigPath);
+            const claudeDir = path.dirname(resolvedConfigPath);
+            if (
+                path.basename(resolvedConfigPath) === 'ccstatusline.json'
+                && path.basename(claudeDir) === '.claude'
+            ) {
+                setScope({ type: 'project', root: path.dirname(claudeDir) });
+                return;
+            }
+        }
+
         activeScope = { type: 'custom' };
         return;
     }

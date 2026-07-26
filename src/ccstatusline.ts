@@ -324,6 +324,13 @@ async function main() {
 
     // Check if we're in a piped/non-TTY environment first
     if (!process.stdin.isTTY) {
+        // Project installs use an absolute .claude/ccstatusline.json --config.
+        // Restore that scope before rendering so migration/update-message writes
+        // synchronize hooks with the project's settings.local.json.
+        initScope({
+            explicitConfigPath,
+            inferProjectFromExplicitConfig: true
+        });
         await ensureWindowsUtf8CodePage();
 
         // We're receiving piped input
