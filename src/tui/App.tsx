@@ -688,6 +688,7 @@ export const App: React.FC = () => {
         // created by an explicit save, never by the switch itself. originalSettings
         // stays null so the change detector leaves hasChanges alone.
         settingsRef.current = seedSource;
+        chalk.level = seedSource.colorLevel;
         setSettings(seedSource);
         setOriginalSettings(null);
         setHasChanges(true);

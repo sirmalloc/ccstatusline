@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import * as fs from 'fs';
 import { render } from 'ink';
 import * as os from 'os';
@@ -298,6 +299,58 @@ describe('App scope reload guard', () => {
                 expect(stdout.getOutput()).toContain('Mode: Project');
             });
         } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('applies the seeded settings color level when starting with defaults', async () => {
+        const previousChalkLevel = chalk.level;
+        setScope({ type: 'global' });
+        vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+        const globalSettings: Settings = {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 0
+        };
+        vi.spyOn(config, 'loadSettings').mockResolvedValue(globalSettings);
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(<App />, {
+            stdin,
+            stdout,
+            stderr,
+            debug: true,
+            exitOnCtrlC: false,
+            patchConsole: false
+        });
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Mode: Global');
+                expect(chalk.level).toBe(0);
+            });
+            await new Promise(resolve => setTimeout(resolve, 25));
+
+            stdin.write('\x10');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('No project config found');
+            });
+
+            stdin.write('\u001B[B');
+            await new Promise(resolve => setTimeout(resolve, 25));
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Mode: Project');
+            });
+
+            expect(chalk.level).toBe(DEFAULT_SETTINGS.colorLevel);
+        } finally {
+            chalk.level = previousChalkLevel;
             instance.unmount();
             instance.cleanup();
             stdin.destroy();
