@@ -547,6 +547,8 @@ export const App: React.FC = () => {
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
     const [scope, setScopeState] = useState<Scope>(() => getScope());
     const settingsRef = useRef(settings);
+    const scopeReloadingRef = useRef(false);
+    const [isScopeReloading, setIsScopeReloading] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
 
     useEffect(() => {
@@ -599,20 +601,40 @@ export const App: React.FC = () => {
             ? clearInstallationMetadata(cloneSettings(originalSettings)) ?? cloneSettings(DEFAULT_SETTINGS)
             : cloneSettings(DEFAULT_SETTINGS);
 
-        setScope(target);
-        setScopeState(getScope());
         setScopeSwitchStage(null);
         setPendingScopeTarget(null);
         setScreen('main');
 
         if (seed === 'none') {
-            void reloadScopeData();
+            // Invalidate the source settings before changing the module-level
+            // config path. The synchronous ref closes the gap before React
+            // commits the loading render, so Ctrl+S cannot write stale source
+            // settings through the target scope's path.
+            scopeReloadingRef.current = true;
+            settingsRef.current = null;
+            setIsScopeReloading(true);
+            setSettings(null);
+            setOriginalSettings(null);
+            setHasChanges(false);
+            setHasLoadedClaudeStatus(false);
+            setHasLoadedInstalledState(false);
+
+            setScope(target);
+            setScopeState(getScope());
+            void reloadScopeData().finally(() => {
+                scopeReloadingRef.current = false;
+                setIsScopeReloading(false);
+            });
             return;
         }
+
+        setScope(target);
+        setScopeState(getScope());
 
         // Seeded entry populates the editor in memory only; the project file is
         // created by an explicit save, never by the switch itself. originalSettings
         // stays null so the change detector leaves hasChanges alone.
+        settingsRef.current = seedSource;
         setSettings(seedSource);
         setOriginalSettings(null);
         setHasChanges(true);
@@ -782,6 +804,9 @@ export const App: React.FC = () => {
     useInput((input, key) => {
         if (key.ctrl && input === 'c') {
             exit();
+        }
+        if (scopeReloadingRef.current) {
+            return;
         }
         // Global save shortcut
         if (key.ctrl && input === 's' && settings && screen !== 'confirm') {
@@ -1077,7 +1102,7 @@ export const App: React.FC = () => {
         setScreen('main');
     }, [importValidation, settings]);
 
-    if (!settings || !hasLoadedClaudeStatus || !hasLoadedInstalledState) {
+    if (isScopeReloading || !settings || !hasLoadedClaudeStatus || !hasLoadedInstalledState) {
         return <Text>Loading settings...</Text>;
     }
 
