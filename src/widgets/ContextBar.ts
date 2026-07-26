@@ -14,7 +14,7 @@ import {
 import { formatTokens } from '../utils/renderer';
 import { makeUsageProgressBar } from '../utils/usage';
 
-import { makeSliderBar } from './shared/usage-display';
+import { getSliderBarChars, makeSliderBar } from './shared/usage-display';
 
 type DisplayMode = 'progress' | 'progress-short' | 'slider' | 'slider-only';
 
@@ -82,7 +82,7 @@ export class ContextBarWidget implements Widget {
 
         if (context.isPreview) {
             if (isBarSliderMode(displayMode)) {
-                const slider = makeSliderBar(25);
+                const slider = makeSliderBar(25, getSliderBarChars(item));
                 const sliderDisplay = displayMode === 'slider' ? `${slider} 50k/200k (25%)` : slider;
                 return item.rawValue ? sliderDisplay : `Context: ${sliderDisplay}`;
             }
@@ -115,7 +115,7 @@ export class ContextBarWidget implements Widget {
         const totalDisplay = formatTokens(total, 0);
 
         if (isBarSliderMode(displayMode)) {
-            const slider = makeSliderBar(clampedPercent);
+            const slider = makeSliderBar(clampedPercent, getSliderBarChars(item));
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${Math.round(clampedPercent)}%)` : slider;
             return item.rawValue ? sliderDisplay : `Context: ${sliderDisplay}`;
         }
