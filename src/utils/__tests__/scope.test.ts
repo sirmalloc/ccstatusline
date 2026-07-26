@@ -92,7 +92,7 @@ describe('scope', () => {
 
         const projectSettings = JSON.parse(fs.readFileSync(projectSettingsPath, 'utf-8')) as { hooks?: Record<string, { hooks?: { command?: string }[] }[]> };
         expect(projectSettings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command)
-            .toBe(`bunx -y ccstatusline@latest --config ${projectConfigPath} --hook`);
+            .toBe('bunx -y ccstatusline@latest --hook');
     });
 
     it('keeps arbitrary explicit config paths custom during piped rendering', () => {

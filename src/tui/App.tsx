@@ -24,6 +24,7 @@ import {
 } from '../types/Settings';
 import type { WidgetItem } from '../types/Widget';
 import {
+    buildHookCommand,
     buildStatusLineCommand,
     classifyInstallation,
     getExistingStatusLine,
@@ -937,7 +938,7 @@ export const App: React.FC = () => {
         void getExistingStatusLine().then((existing) => {
             const isAlreadyInstalled = isKnownCommand(existing ?? '');
             const finalCommand = buildStatusLineCommand(selection.commandMode);
-            const hookCommand = `${finalCommand} --hook`;
+            const hookCommand = buildHookCommand(finalCommand);
             const sideEffects = [
                 `Claude settings path: ${getInstallTargetPath()}`,
                 ...(getScope().type === 'project' && !fs.existsSync(getConfigPath())

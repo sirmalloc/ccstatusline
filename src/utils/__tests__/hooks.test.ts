@@ -324,4 +324,36 @@ describe('hooks target routing', () => {
 
         expect(fs.existsSync(targetPath)).toBe(false);
     });
+
+    it('keeps global and project hooks while normalizing their commands for Claude deduplication', async () => {
+        const globalPath = getClaudeSettingsPath();
+        const baseCommand = 'bunx -y ccstatusline@latest';
+        const projectConfigPath = path.join(targetDir, 'project config.json');
+        const globalStatusLine = {
+            type: 'command',
+            command: baseCommand,
+            padding: 0
+        };
+        const projectStatusLine = {
+            type: 'command',
+            command: `${baseCommand} --config '${projectConfigPath}'`,
+            padding: 0
+        };
+        fs.writeFileSync(globalPath, JSON.stringify({ statusLine: globalStatusLine }), 'utf-8');
+        fs.writeFileSync(targetPath, JSON.stringify({ statusLine: projectStatusLine }), 'utf-8');
+
+        const settings = SettingsSchema.parse({ lines: [[{ id: 'skills-1', type: 'skills' }]] });
+        await syncWidgetHooks(settings, { targetPath: globalPath });
+        await syncWidgetHooks(settings, { targetPath });
+
+        const readHookCommand = (settingsPath: string): string | undefined => {
+            const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { hooks?: Record<string, { hooks?: { command?: string }[] }[]> };
+            return saved.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command;
+        };
+        const globalHookCommand = readHookCommand(globalPath);
+        const projectHookCommand = readHookCommand(targetPath);
+
+        expect(globalHookCommand).toBe(`${baseCommand} --hook`);
+        expect(projectHookCommand).toBe(globalHookCommand);
+    });
 });

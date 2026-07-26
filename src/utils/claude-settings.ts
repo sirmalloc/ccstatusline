@@ -347,6 +347,20 @@ export function buildStatusLineCommand(commandMode: StatusLineCommandMode): stri
     return buildCommand(getBaseCommandForMode(commandMode));
 }
 
+/**
+ * Hook mode never loads the status-line config, so keep its command independent
+ * of --config. This also gives global and project settings the same command
+ * string when they use the same installation method, allowing Claude Code to
+ * deduplicate the merged hook.
+ */
+export function buildHookCommand(statusLineCommand: string): string {
+    const configArgumentIndex = statusLineCommand.indexOf(' --config ');
+    const baseCommand = configArgumentIndex === -1
+        ? statusLineCommand
+        : statusLineCommand.slice(0, configArgumentIndex);
+    return `${baseCommand.trimEnd()} --hook`;
+}
+
 function matchesCommandBase(command: string, baseCommand: string): boolean {
     return command === baseCommand || command.startsWith(`${baseCommand} --config `);
 }

@@ -4,6 +4,7 @@ import type { Settings } from '../types/Settings';
 import type { Widget } from '../types/Widget';
 
 import {
+    buildHookCommand,
     getExistingStatusLine,
     getInstallTargetPath,
     loadClaudeSettings,
@@ -132,7 +133,7 @@ export async function syncWidgetHooks(settings: Settings, options: SyncWidgetHoo
         await saveClaudeSettings(claudeSettings, targetPath);
         return;
     }
-    const hookCommand = `${statusCommand} --hook`;
+    const hookCommand = buildHookCommand(statusCommand);
 
     // Add needed hooks
     for (const def of needed) {

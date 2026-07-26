@@ -15,6 +15,7 @@ import {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
+    buildHookCommand,
     buildStatusLineCommand,
     classifyInstallation,
     getClaudeCodeVersion,
@@ -291,13 +292,13 @@ describe('buildCommand via installStatusLine', () => {
             {
                 _tag: 'ccstatusline-managed',
                 matcher: 'Skill',
-                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+                hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.NPM} --hook` }]
             }
         ]);
         expect(hooks.UserPromptSubmit).toEqual([
             {
                 _tag: 'ccstatusline-managed',
-                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+                hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.NPM} --hook` }]
             }
         ]);
     });
@@ -326,9 +327,26 @@ describe('buildCommand via installStatusLine', () => {
             {
                 _tag: 'ccstatusline-managed',
                 matcher: 'Skill',
-                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+                hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.GLOBAL} --hook` }]
             }
         ]);
+    });
+});
+
+describe('buildHookCommand', () => {
+    it('appends --hook to an unscoped status-line command', () => {
+        expect(buildHookCommand(CCSTATUSLINE_COMMANDS.NPM))
+            .toBe(`${CCSTATUSLINE_COMMANDS.NPM} --hook`);
+    });
+
+    it('removes an unquoted config argument from the hook command', () => {
+        expect(buildHookCommand(`${CCSTATUSLINE_COMMANDS.BUNX} --config /tmp/settings.json`))
+            .toBe(`${CCSTATUSLINE_COMMANDS.BUNX} --hook`);
+    });
+
+    it('removes a quoted config argument containing spaces from the hook command', () => {
+        expect(buildHookCommand(`${CCSTATUSLINE_COMMANDS.GLOBAL} --config '/my path/settings.json'`))
+            .toBe(`${CCSTATUSLINE_COMMANDS.GLOBAL} --hook`);
     });
 });
 
@@ -930,13 +948,13 @@ describe('claude-settings target routing', () => {
             {
                 _tag: 'ccstatusline-managed',
                 matcher: 'Skill',
-                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+                hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.BUNX} --hook` }]
             }
         ]);
         expect(hooks.UserPromptSubmit).toEqual([
             {
                 _tag: 'ccstatusline-managed',
-                hooks: [{ type: 'command', command: `${installedCommand} --hook` }]
+                hooks: [{ type: 'command', command: `${CCSTATUSLINE_COMMANDS.BUNX} --hook` }]
             }
         ]);
         expect(fs.existsSync(getClaudeSettingsPath())).toBe(false);
