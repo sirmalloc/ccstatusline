@@ -14,12 +14,28 @@ export const ZERO_COMPACTION_STATS: CompactionData = Object.freeze({
     tokensReclaimed: 0
 });
 
-function isCompactBoundary(record: unknown): boolean {
+export function isCompactBoundary(record: unknown): boolean {
     if (typeof record !== 'object' || record === null) {
         return false;
     }
     const r = record as { type?: unknown; subtype?: unknown; isSidechain?: unknown };
     return r.type === 'system' && r.subtype === 'compact_boundary' && r.isSidechain !== true;
+}
+
+/**
+ * Returns the post-compaction context size (`compactMetadata.postTokens`) for a
+ * compact_boundary record, or null when the record is not a boundary or omits a
+ * finite postTokens value (older Claude Code transcripts).
+ */
+export function getCompactBoundaryPostTokens(record: unknown): number | null {
+    if (!isCompactBoundary(record)) {
+        return null;
+    }
+    const meta = (record as { compactMetadata?: unknown }).compactMetadata;
+    const post = (typeof meta === 'object' && meta !== null)
+        ? (meta as Record<string, unknown>).postTokens
+        : undefined;
+    return typeof post === 'number' && Number.isFinite(post) ? Math.max(0, post) : null;
 }
 
 /**

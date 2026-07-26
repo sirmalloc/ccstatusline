@@ -27,31 +27,54 @@ function getFormat(item: WidgetItem): VoiceFormat {
     return (FORMATS as readonly string[]).includes(f ?? '') ? (f as VoiceFormat) : DEFAULT_FORMAT;
 }
 
+function canUseNerdFont(item: WidgetItem): boolean {
+    const format = getFormat(item);
+    return format === 'icon' || (format === 'icon-text' && !item.rawValue);
+}
+
+function removeNerdFont(item: WidgetItem): WidgetItem {
+    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
+    void removedNerdFont;
+
+    return {
+        ...item,
+        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
+    };
+}
+
 function setFormat(item: WidgetItem, format: VoiceFormat): WidgetItem {
+    let updatedItem: WidgetItem;
+
     if (format === DEFAULT_FORMAT) {
         const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
         void removedFormat;
 
-        return {
+        updatedItem = {
             ...item,
             metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
         };
+    } else {
+        updatedItem = {
+            ...item,
+            metadata: {
+                ...(item.metadata ?? {}),
+                format
+            }
+        };
     }
 
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            format
-        }
-    };
+    return canUseNerdFont(updatedItem) ? updatedItem : removeNerdFont(updatedItem);
 }
 
 function isNerdFontEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
+    return canUseNerdFont(item) && item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
 }
 
 function toggleNerdFont(item: WidgetItem): WidgetItem {
+    if (!canUseNerdFont(item)) {
+        return removeNerdFont(item);
+    }
+
     if (!isNerdFontEnabled(item)) {
         return {
             ...item,
@@ -62,16 +85,10 @@ function toggleNerdFont(item: WidgetItem): WidgetItem {
         };
     }
 
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
+    return removeNerdFont(item);
 }
 
-function formatStatus(enabled: boolean, format: VoiceFormat, nerdFont: boolean): string {
+function formatStatus(enabled: boolean, format: VoiceFormat, nerdFont: boolean, rawValue: boolean): string {
     const stateText = enabled ? 'on' : 'off';
     const stateDot = enabled ? STATE_DOT_ON : STATE_DOT_OFF;
     const icon = nerdFont
@@ -80,13 +97,13 @@ function formatStatus(enabled: boolean, format: VoiceFormat, nerdFont: boolean):
 
     switch (format) {
         case 'icon':
-            return nerdFont ? icon : `${icon} ${stateDot}`;
+            return nerdFont ? icon : (rawValue ? stateDot : `${icon} ${stateDot}`);
         case 'icon-text':
-            return `${icon} ${stateText}`;
+            return rawValue ? stateText : `${icon} ${stateText}`;
         case 'text':
             return stateText;
         case 'word':
-            return `voice ${stateText}`;
+            return rawValue ? stateText : `voice ${stateText}`;
     }
 }
 
@@ -138,10 +155,7 @@ export class VoiceStatusWidget implements Widget {
         const nerdFont = isNerdFontEnabled(item);
 
         if (context.isPreview) {
-            if (item.rawValue) {
-                return 'on';
-            }
-            return formatStatus(true, format, nerdFont);
+            return formatStatus(true, format, nerdFont, item.rawValue ?? false);
         }
 
         const config = getVoiceConfig(resolveVoiceConfigCwd(context));
@@ -149,18 +163,17 @@ export class VoiceStatusWidget implements Widget {
             return null;
         }
 
-        if (item.rawValue) {
-            return config.enabled ? 'on' : 'off';
-        }
-
-        return formatStatus(config.enabled, format, nerdFont);
+        return formatStatus(config.enabled, format, nerdFont, item.rawValue ?? false);
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION },
-            { key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION }
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+        const keybinds: CustomKeybind[] = [
+            { key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION }
         ];
+        if (item === undefined || canUseNerdFont(item)) {
+            keybinds.push({ key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION });
+        }
+        return keybinds;
     }
 
     supportsRawValue(): boolean { return true; }

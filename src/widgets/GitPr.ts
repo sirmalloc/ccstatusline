@@ -13,7 +13,7 @@ import {
 import { getRemoteInfo } from '../utils/git-remote';
 import type { GitReviewData } from '../utils/git-review-cache';
 import {
-    fetchGitReviewData,
+    getCachedGitReviewData,
     getGitReviewStatusLabel,
     truncateTitle
 } from '../utils/git-review-cache';
@@ -37,7 +37,7 @@ const TOGGLE_STATUS_ACTION = 'toggle-status';
 const TOGGLE_TITLE_ACTION = 'toggle-title';
 
 export interface GitPrWidgetDeps {
-    fetchGitReviewData: typeof fetchGitReviewData;
+    getCachedGitReviewData: typeof getCachedGitReviewData;
     getProcessCwd: typeof process.cwd;
     getRemoteInfo: typeof getRemoteInfo;
     isInsideGitWorkTree: typeof isInsideGitWorkTree;
@@ -45,7 +45,7 @@ export interface GitPrWidgetDeps {
 }
 
 const DEFAULT_GIT_PR_WIDGET_DEPS: GitPrWidgetDeps = {
-    fetchGitReviewData,
+    getCachedGitReviewData,
     getProcessCwd: () => process.cwd(),
     getRemoteInfo,
     isInsideGitWorkTree,
@@ -153,7 +153,7 @@ export class GitPrWidget implements Widget {
         }
 
         const cwd = this.deps.resolveGitCwd(context) ?? this.deps.getProcessCwd();
-        const prData = this.deps.fetchGitReviewData(cwd);
+        const prData = this.deps.getCachedGitReviewData(cwd, { includeChecks: context.gitReviewNeedsChecks ?? false });
         if (!prData) {
             return hideNoGit ? null : `(no ${resolvePrNoun(null, context, this.deps)})`;
         }
