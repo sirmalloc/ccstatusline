@@ -4,8 +4,10 @@ import {
     Text,
     useInput
 } from 'ink';
-import SelectInput from 'ink-select-input';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
 import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
@@ -21,6 +23,11 @@ import { getWidget } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
+    WidgetRow,
+    getWidgetRowLabel,
+    getWidgetRowTags
+} from './WidgetRow';
+import {
     clearAllWidgetStyling,
     cycleWidgetColor,
     cycleWidgetDim,
@@ -34,7 +41,7 @@ import {
 
 export interface ColorMenuProps {
     widgets: WidgetItem[];
-    lineIndex?: number;
+    lineIndex: number;
     settings: Settings;
     onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
@@ -58,16 +65,24 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
     const powerlineEnabled = settings.powerline.enabled;
 
-    const colorableWidgets = widgets.filter((widget) => {
-        // Include separators only if showSeparators is true
-        if (widget.type === 'separator') {
-            return showSeparators;
-        }
-        // Use the widget's supportsColors method
-        const widgetInstance = getWidget(widget.type);
-        // Include unknown widgets (they might support colors, we just don't know)
-        return widgetInstance ? widgetInstance.supportsColors(widget) : true;
-    });
+    // Rows keep their position in the full line so a widget carries the same number
+    // in both editor modes; filtered-out widgets simply leave a gap.
+    const colorableEntries = widgets
+        .map((widget, index) => ({
+            widget,
+            index
+        }))
+        .filter(({ widget }) => {
+            // Include separators only if showSeparators is true
+            if (widget.type === 'separator') {
+                return showSeparators;
+            }
+            // Use the widget's supportsColors method
+            const widgetInstance = getWidget(widget.type);
+            // Include unknown widgets (they might support colors, we just don't know)
+            return widgetInstance ? widgetInstance.supportsColors(widget) : true;
+        });
+    const colorableWidgets = colorableEntries.map(entry => entry.widget);
     const [highlightedItemId, setHighlightedItemId] = useState(() => {
         if (initialWidgetId) {
             const match = colorableWidgets.find(w => w.id === initialWidgetId);
@@ -78,6 +93,35 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         return colorableWidgets[0]?.id ?? null;
     });
     const [editingBackground, setEditingBackground] = useState(false);
+
+    // Keep the highlight on a row that still exists - toggling separators can remove it
+    useEffect(() => {
+        if (colorableWidgets.length === 0) {
+            return;
+        }
+
+        if (!colorableWidgets.some(widget => widget.id === highlightedItemId)) {
+            setHighlightedItemId(colorableWidgets[0]?.id ?? null);
+        }
+    }, [colorableWidgets, highlightedItemId]);
+
+    useEffect(() => {
+        onWidgetHighlight?.(highlightedItemId);
+    }, [highlightedItemId, onWidgetHighlight]);
+
+    const moveHighlight = (direction: 'up' | 'down') => {
+        if (colorableWidgets.length === 0) {
+            return;
+        }
+
+        const currentIndex = colorableWidgets.findIndex(widget => widget.id === highlightedItemId);
+        const fromIndex = currentIndex === -1 ? 0 : currentIndex;
+        const nextIndex = direction === 'down'
+            ? (fromIndex + 1) % colorableWidgets.length
+            : (fromIndex - 1 + colorableWidgets.length) % colorableWidgets.length;
+
+        setHighlightedItemId(colorableWidgets[nextIndex]?.id ?? null);
+    };
 
     // Handle keyboard input
     const hasNoItems = colorableWidgets.length === 0;
@@ -347,6 +391,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     }
                 }
             }
+        } else if (key.upArrow || key.downArrow) {
+            moveHighlight(key.downArrow ? 'down' : 'up');
         } else if (key.leftArrow || key.rightArrow) {
             // Cycle through colors with arrow keys
             if (highlightedItemId && highlightedItemId !== 'back') {
@@ -369,29 +415,21 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     if (hasNoItems) {
         return (
             <Box flexDirection='column'>
-                <Text bold>
-                    Configure Colors
-                    {lineIndex !== undefined ? ` - Line ${lineIndex + 1}` : ''}
-                </Text>
+                <Box>
+                    <Text bold>
+                        Edit Line
+                        {' '}
+                        {lineIndex + 1}
+                        {' '}
+                    </Text>
+                    <Text color='cyan'>[COLORS]</Text>
+                </Box>
                 <Box marginTop={1}><Text dimColor>No colorable widgets in the status line.</Text></Box>
                 <Text dimColor>Add a widget first to continue.</Text>
                 <Box marginTop={1}><Text>Press any key to go back...</Text></Box>
             </Box>
         );
     }
-
-    const getItemLabel = (widget: WidgetItem) => {
-        if (widget.type === 'separator') {
-            const char = widget.character ?? '|';
-            return `Separator: ${char === ' ' ? 'space' : char}`;
-        }
-        if (widget.type === 'flex-separator') {
-            return 'Flex Separator';
-        }
-
-        const widgetImpl = getWidget(widget.type);
-        return widgetImpl ? widgetImpl.getDisplayName() : `Unknown: ${widget.type}`;
-    };
 
     // Color list for cycling
     // Get available colors from colors.ts
@@ -402,10 +440,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const bgColorOptions = getAvailableBackgroundColorsForUI();
     const bgColors = bgColorOptions.map(c => c.value || '');
 
-    // Create menu items with colored labels
-    const menuItems = colorableWidgets.map((widget, index) => {
-        const label = `${index + 1}: ${getItemLabel(widget)}`;
-        // Apply both foreground and background colors
+    // Rows read like the widget editor's rows, tinted with the colour they carry
+    const menuRows = colorableEntries.map(({ widget, index }) => {
+        const { displayText, modifierText } = getWidgetRowLabel(widget);
         const level = getColorLevelString(settings.colorLevel);
         let defaultColor = 'white';
         if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
@@ -414,27 +451,15 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 defaultColor = widgetImpl.getDefaultColor();
             }
         }
-        const styledLabel = applyColors(label, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level, widget.dim);
+
         return {
-            label: styledLabel,
-            value: widget.id
+            id: widget.id,
+            number: index + 1,
+            label: applyColors(displayText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level, widget.dim),
+            modifierText,
+            tags: getWidgetRowTags(widgets, index, settings)
         };
     });
-    menuItems.push({ label: '← Back', value: 'back' });
-
-    const handleSelect = (selected: { value: string }) => {
-        if (selected.value === 'back') {
-            onBack();
-        }
-        // Enter no longer cycles colors - use left/right arrow keys instead
-    };
-
-    const handleHighlight = (item: { value: string }) => {
-        setHighlightedItemId(item.value);
-        if (onWidgetHighlight) {
-            onWidgetHighlight(item.value === 'back' ? null : item.value);
-        }
-    };
 
     // Get current color for highlighted item
     const selectedWidget = highlightedItemId && highlightedItemId !== 'back'
@@ -520,7 +545,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // Gradient selection mode takes over the whole view
     if (gradientMode) {
         const level = getColorLevelString(settings.colorLevel);
-        const widgetName = selectedWidget ? getItemLabel(selectedWidget) : '';
+        const widgetName = selectedWidget ? getWidgetRowLabel(selectedWidget).displayText : '';
 
         if (gradientCustomStep) {
             return (
@@ -620,10 +645,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         <Box flexDirection='column'>
             <Box>
                 <Text bold>
-                    Configure Colors
-                    {lineIndex !== undefined ? ` - Line ${lineIndex + 1}` : ''}
-                    {editingBackground && chalk.yellow(' [Background Mode]')}
+                    Edit Line
+                    {' '}
+                    {lineIndex + 1}
+                    {' '}
                 </Text>
+                <Text color='cyan'>[COLORS]</Text>
+                {editingBackground && <Text color='yellow'> [BACKGROUND]</Text>}
                 {globalOverrideMessage && (
                     <Text color='yellow' dimColor>
                         {'.  '}
@@ -664,16 +692,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {' '}
                         (r)eset, (c)lear all,
                         {themeActive ? ' (p)in/unpin,' : ''}
-                        {onTabSwap ? ' ⇥ edit items,' : ''}
+                        {!settings.powerline.enabled && !settings.defaultSeparator
+                            ? ` (s)how separators: ${showSeparators ? 'ON' : 'OFF'},`
+                            : ''}
+                        {onTabSwap ? ' ⇥ edit widgets,' : ''}
                         {' '}
                         ESC to go back
                     </Text>
-                    {!settings.powerline.enabled && !settings.defaultSeparator && (
-                        <Text dimColor>
-                            (s)how separators:
-                            {showSeparators ? chalk.green('ON') : chalk.gray('OFF')}
-                        </Text>
-                    )}
                     {selectedWidget ? (
                         <Box marginTop={1}>
                             <Text>
@@ -697,43 +722,21 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     )}
                 </>
             )}
-            <Box marginTop={1}>
-                {(hexInputMode || ansi256InputMode) ? (
-                    // Static list when in input mode - no keyboard interaction
-                    <Box flexDirection='column'>
-                        {menuItems.map(item => (
-                            <Text
-                                key={item.value}
-                                color={item.value === highlightedItemId ? 'cyan' : 'white'}
-                                bold={item.value === highlightedItemId}
-                            >
-                                {item.value === highlightedItemId ? '▶ ' : '  '}
-                                {item.label}
-                            </Text>
-                        ))}
-                    </Box>
-                ) : (
-                    // Interactive SelectInput when not in input mode
-                    <SelectInput
-                        key={`${showSeparators}-${highlightedItemId}`}
-                        items={menuItems}
-                        onSelect={handleSelect}
-                        onHighlight={handleHighlight}
-                        initialIndex={Math.max(0, menuItems.findIndex(item => item.value === highlightedItemId))}
-                        indicatorComponent={({ isSelected }) => (
-                            <Text>{isSelected ? '▶' : '  '}</Text>
-                        )}
-                        itemComponent={({ isSelected, label }) => (
-                            // The label already has ANSI codes applied via applyColors()
-                            // We need to pass it directly as a single Text child to preserve the codes
-                            <Text>{` ${label}`}</Text>
-                        )}
-                    />
-                )}
-            </Box>
             <Box marginTop={1} flexDirection='column'>
-                <Text color='yellow'>⚠ VSCode Users: </Text>
-                <Text dimColor wrap='wrap'>If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.</Text>
+                {menuRows.map(row => (
+                    <WidgetRow
+                        key={row.id}
+                        number={row.number}
+                        label={row.label}
+                        labelIsStyled={true}
+                        isSelected={row.id === highlightedItemId}
+                        modifierText={row.modifierText}
+                        tags={row.tags}
+                    />
+                ))}
+            </Box>
+            <Box marginTop={1}>
+                <Text dimColor wrap='wrap'>⚠ VSCode: if colors look wrong, set `terminal.integrated.minimumContrastRatio` to 1</Text>
             </Box>
         </Box>
     );

@@ -58,6 +58,13 @@ function flushInk() {
     });
 }
 
+const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/** Colour rows carry ANSI codes between the number and the label, so strip them to assert text. */
+function stripAnsi(value: string): string {
+    return value.replace(ANSI_PATTERN, '');
+}
+
 describe('ColorMenu', () => {
     it('keeps bold and dim indicators on the current-style row', async () => {
         const stdin = createMockStdin();
@@ -80,6 +87,7 @@ describe('ColorMenu', () => {
         const instance = render(
             React.createElement(ColorMenu, {
                 widgets,
+                lineIndex: 0,
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -106,7 +114,7 @@ describe('ColorMenu', () => {
             stdin.write('\x1B[B');
             await flushInk();
 
-            const latestFrame = stdout.getOutput().split('Configure Colors').at(-1) ?? '';
+            const latestFrame = stdout.getOutput().split('Edit Line 1').at(-1) ?? '';
             const currentStyleLine = latestFrame
                 .split('\n')
                 .find(line => line.includes('Current foreground')) ?? '';
@@ -129,6 +137,7 @@ describe('ColorMenu', () => {
         const instance = render(
             React.createElement(ColorMenu, {
                 widgets,
+                lineIndex: 0,
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -223,6 +232,7 @@ describe('ColorMenu', () => {
         const instance = render(
             React.createElement(ColorMenu, {
                 widgets,
+                lineIndex: 0,
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -245,7 +255,7 @@ describe('ColorMenu', () => {
             }
         );
         await flushInk();
-        const frame = stdout.getOutput().split('Configure Colors').at(-1) ?? '';
+        const frame = stdout.getOutput().split('Edit Line 1').at(-1) ?? '';
         const line = frame.split('\n').find(entry => entry.includes('Current foreground')) ?? '';
         return {
             line,
@@ -277,6 +287,102 @@ describe('ColorMenu', () => {
         try {
             expect(line).toContain('unpinned');
             expect(line).not.toContain('[PINNED]');
+        } finally {
+            teardown();
+        }
+    });
+
+    async function renderPlainOutput(widgets: WidgetItem[]): Promise<{ output: string; teardown: () => void }> {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets,
+                lineIndex: 0,
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true
+                    }
+                },
+                onUpdate: vi.fn(),
+                onBack: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+        await flushInk();
+
+        return {
+            output: stripAnsi(stdout.getOutput()),
+            teardown: () => {
+                instance.unmount();
+                instance.cleanup();
+                stdin.destroy();
+                stdout.destroy();
+                stderr.destroy();
+            }
+        };
+    }
+
+    it('names the line and the editing mode in the title', async () => {
+        const { output, teardown } = await renderPlainOutput([{ id: '1', type: 'model' }]);
+
+        try {
+            expect(output).toContain('Edit Line 1');
+            expect(output).toContain('[COLORS]');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('numbers rows by their position in the line, leaving gaps for skipped widgets', async () => {
+        const { output, teardown } = await renderPlainOutput([
+            { id: '1', type: 'model' },
+            { id: '2', type: 'separator', character: '|' },
+            { id: '3', type: 'git-branch' }
+        ]);
+
+        try {
+            expect(output).toContain('1. Model');
+            expect(output).toContain('3. Git Branch');
+            expect(output).not.toContain('2. Separator');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('keeps the widget editor structure markers on colour rows', async () => {
+        const { output, teardown } = await renderPlainOutput([
+            {
+                id: '1',
+                type: 'model',
+                merge: true
+            },
+            { id: '2', type: 'git-branch' }
+        ]);
+
+        try {
+            expect(output).toContain('(merged→)');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('has no back row, matching the widget editor list', async () => {
+        const { output, teardown } = await renderPlainOutput([{ id: '1', type: 'model' }]);
+
+        try {
+            expect(output).not.toContain('← Back');
         } finally {
             teardown();
         }
