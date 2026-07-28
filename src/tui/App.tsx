@@ -108,7 +108,6 @@ interface FlashMessage {
 type AppScreen = 'main'
     | 'lines'
     | 'items'
-    | 'colorLines'
     | 'colors'
     | 'colorsMoved'
     | 'terminalWidth'
@@ -1153,7 +1152,6 @@ export const App: React.FC = () => {
                         }}
                         initialSelection={menuSelections.lines}
                         title='Select Line to Edit Items'
-                        allowEditing={true}
                     />
                 )}
                 {screen === 'items' && (
@@ -1184,27 +1182,6 @@ export const App: React.FC = () => {
                             setMenuSelections(prev => ({ ...prev, main: 1 }));
                             setScreen('main');
                         }}
-                    />
-                )}
-                {screen === 'colorLines' && (
-                    <LineSelector
-                        lines={settings.lines}
-                        onLinesUpdate={updateLines}
-                        onSelect={(line) => {
-                            setMenuSelections(prev => ({ ...prev, lines: line }));
-                            setSelectedLine(line);
-                            setScreen('colors');
-                        }}
-                        onBack={() => {
-                            // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections(prev => ({ ...prev, main: 1 }));
-                            setScreen('main');
-                        }}
-                        initialSelection={menuSelections.lines}
-                        title='Select Line to Edit Colors'
-                        blockIfPowerlineActive={true}
-                        settings={settings}
-                        allowEditing={false}
                     />
                 )}
                 {screen === 'colors' && (
