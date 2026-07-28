@@ -118,6 +118,8 @@ Configure global formatting preferences that apply to all widgets:
 
 ## Widget Styling
 
+Color editing is a mode of the widget editor. Highlight a widget in the line editor and press `⇥` to switch to **Edit Line N [COLORS]**; press `⇥` again to go back to **[WIDGETS]**. Both modes list the same widgets in the same order, and rows are tinted with the color each widget actually renders in.
+
 The color editor can adjust foreground color, background color, bold, dim, and gradients per widget:
 
 - Use `←` / `→` to cycle the selected foreground or background color.
@@ -125,6 +127,18 @@ The color editor can adjust foreground color, background color, bold, dim, and g
 - Press `b` to toggle bold.
 - Press `d` to cycle dim styling: off → whole widget → parenthesized text only → off.
 - Press `r` to reset styling on the selected widget, or `c` to clear styling on every widget in the line.
+
+### Pinning Colors Over a Powerline Theme
+
+A Powerline theme normally drives every widget's foreground and background, so per-widget colors have no effect. **Pinning** a color lets one widget opt out and keep its own:
+
+- Press `p` to pin or unpin the channel you are editing (foreground or background). The two channels pin independently, so a widget can keep its own foreground while the theme still supplies its background.
+- Editing a color under an active theme pins that channel automatically, so the edit takes effect rather than being silently ignored.
+- The current-style row shows `[PINNED]` for a pinned channel, or `[unpinned - theme applies]` when the theme wins. An unpinned channel displays the theme's color as `(theme)`, so the editor shows what actually renders.
+- Unpinning keeps the stored color rather than discarding it, so re-pinning brings it back.
+- A color set before a theme was enabled stays dormant and unpinned: existing themed configurations render exactly as they did before.
+
+Pins only matter while a theme is active. With Powerline off, or on the `custom` theme, each widget's own colors already apply. Changing themes prompts to keep or remove existing pins.
 
 ## Gradient Colors
 
@@ -191,7 +205,8 @@ Common controls in the line editor:
 - `r` toggle raw value (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
-- `Esc` go back
+- `⇥` switch to color editing for the selected widget, and back again (see [Widget Styling](#widget-styling))
+- `Esc` go back to the line selector, from either mode
 
 Widget picker:
 - type to search categories and widgets
