@@ -40,14 +40,45 @@ function createMockStdin(): NodeJS.ReadStream {
     return new MockTtyStream() as unknown as NodeJS.ReadStream;
 }
 
-function createMockStdout(): NodeJS.WriteStream {
-    return new MockTtyStream() as unknown as NodeJS.WriteStream;
+interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+
+function createMockStdout(): CapturedWriteStream {
+    const stream = new MockTtyStream();
+    const chunks: string[] = [];
+
+    stream.on('data', (chunk: Buffer | string) => {
+        chunks.push(chunk.toString());
+    });
+
+    return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        getOutput() {
+            return chunks.join('');
+        }
+    });
 }
 
 function flushInk() {
     return new Promise((resolve) => {
         setTimeout(resolve, 25);
     });
+}
+
+/**
+ * Ink renders asynchronously, so a fixed sleep makes these tests fail whenever the
+ * machine is busy. Poll for the state the step is waiting on instead.
+ */
+async function waitFor(condition: () => boolean, label: string, timeoutMs = 2000): Promise<void> {
+    const startedAt = Date.now();
+
+    while (!condition()) {
+        if (Date.now() - startedAt > timeoutMs) {
+            throw new Error(`Timed out waiting for ${label}`);
+        }
+
+        await new Promise((resolve) => {
+            setTimeout(resolve, 5);
+        });
+    }
 }
 
 describe('PowerlineThemeSelector helpers', () => {
@@ -139,6 +170,8 @@ describe('PowerlineThemeSelector helpers', () => {
             expect(onUpdate).not.toHaveBeenCalled();
 
             stdin.write('\u001B[B');
+            await waitFor(() => onUpdate.mock.calls.length > 0, 'the theme preview update');
+            // Settle, so an extra (unwanted) preview update would still be caught below
             await flushInk();
 
             expect(onUpdate).toHaveBeenCalledTimes(1);
@@ -194,11 +227,14 @@ describe('PowerlineThemeSelector helpers', () => {
         try {
             await flushInk();
             stdin.write('[B'); // change the theme (live preview)
+            await waitFor(() => onUpdate.mock.calls.length > 0, 'the theme preview update');
+            // Ink writes the frame before the next screen's input handler attaches
             await flushInk();
             stdin.write('\r'); // Enter: commit -> keep/remove prompt (pins present, theme changed)
+            await waitFor(() => stdout.getOutput().includes('Remove them so the new theme fully applies?'), 'the remove-pins prompt');
             await flushInk();
             stdin.write('\r'); // Enter: choose "Yes" -> remove overrides
-            await flushInk();
+            await waitFor(() => onBack.mock.calls.length > 0, 'the selector to close');
 
             const lastSettings = onUpdate.mock.calls.at(-1)?.[0];
             expect(lastSettings?.lines[0]?.[0]?.pinColor).toBeUndefined();
