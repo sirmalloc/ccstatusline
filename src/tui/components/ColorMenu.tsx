@@ -17,6 +17,7 @@ import {
     getAvailableBackgroundColorsForUI,
     getAvailableColorsForUI
 } from '../../utils/colors';
+import { getEffectiveThemeColors } from '../../utils/effective-theme-colors';
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
@@ -64,6 +65,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const [gradientHexInput, setGradientHexInput] = useState('');
 
     const powerlineEnabled = settings.powerline.enabled;
+    // What each widget actually renders as under the active theme; empty without one
+    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings);
 
     // Rows keep their position in the full line so a widget carries the same number
     // in both editor modes; filtered-out widgets simply leave a gap.
@@ -440,7 +443,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const bgColorOptions = getAvailableBackgroundColorsForUI();
     const bgColors = bgColorOptions.map(c => c.value || '');
 
-    // Rows read like the widget editor's rows, tinted with the colour they carry
+    // Rows are tinted with what actually renders: an unpinned channel shows the theme's
+    // colour, not the widget's dormant stored one.
     const menuRows = colorableEntries.map(({ widget, index }) => {
         const { displayText, modifierText } = getWidgetRowLabel(widget);
         const level = getColorLevelString(settings.colorLevel);
@@ -452,10 +456,19 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             }
         }
 
+        const themeChannels = effectiveThemeColors.get(widget.id);
+
         return {
             id: widget.id,
             number: index + 1,
-            label: applyColors(displayText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, level, widget.dim),
+            label: applyColors(
+                displayText,
+                themeChannels?.fg ?? widget.color ?? defaultColor,
+                themeChannels?.bg ?? widget.backgroundColor,
+                widget.bold,
+                level,
+                widget.dim
+            ),
             modifierText,
             tags: getWidgetRowTags(widgets, index, settings)
         };
@@ -465,7 +478,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const selectedWidget = highlightedItemId && highlightedItemId !== 'back'
         ? colorableWidgets.find(widget => widget.id === highlightedItemId)
         : null;
-    const currentColor = editingBackground
+    const storedColor = editingBackground
         ? (selectedWidget?.backgroundColor ?? '')  // Empty string for 'none'
         : (selectedWidget ? (selectedWidget.color ?? (() => {
             if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
@@ -475,9 +488,18 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return 'white';
         })()) : 'white');
 
+    // Under a theme an unpinned channel renders the theme's colour, so show that rather
+    // than the dormant stored value the user would otherwise think was in effect.
+    const selectedThemeChannels = selectedWidget ? effectiveThemeColors.get(selectedWidget.id) : undefined;
+    const themeChannelColor = editingBackground ? selectedThemeChannels?.bg : selectedThemeChannels?.fg;
+    const themeDrivesChannel = themeChannelColor !== undefined;
+    const currentColor = themeChannelColor ?? storedColor;
+
     const colorList = editingBackground ? bgColors : colors;
     const colorIndex = colorList.indexOf(currentColor);
-    const colorNumber = colorIndex === -1 ? 'custom' : colorIndex + 1;
+    const colorNumber = themeDrivesChannel
+        ? 'theme'
+        : (colorIndex === -1 ? 'custom' : colorIndex + 1);
 
     let colorDisplay;
     if (editingBackground) {
@@ -707,7 +729,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 {editingBackground ? 'background' : 'foreground'}
                                 {' '}
                                 (
-                                {colorNumber === 'custom' ? 'custom' : `${colorNumber}/${colorList.length}`}
+                                {colorNumber === 'custom' || colorNumber === 'theme'
+                                    ? colorNumber
+                                    : `${colorNumber}/${colorList.length}`}
                                 ):
                                 {' '}
                                 {colorDisplay}

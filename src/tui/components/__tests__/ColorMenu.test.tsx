@@ -12,6 +12,10 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
+import {
+    applyColors,
+    getPowerlineTheme
+} from '../../../utils/colors';
 import { ColorMenu } from '../ColorMenu';
 
 class MockTtyStream extends PassThrough {
@@ -369,6 +373,103 @@ describe('ColorMenu', () => {
             expect(output).toContain('(merged→)');
         } finally {
             teardown();
+        }
+    });
+
+    function nordLevel3() {
+        const level = getPowerlineTheme('nord-aurora')?.['3'];
+        if (!level) {
+            throw new Error('nord-aurora has no truecolor level');
+        }
+
+        return level;
+    }
+
+    it('shows the theme colour on the current-style row when the channel is unpinned', async () => {
+        const themeFg = nordLevel3().fg[0] ?? '';
+        const { line, teardown } = await renderCurrentStyleLine([
+            { id: '1', type: 'model', color: 'hex:FF0000' }
+        ]);
+
+        try {
+            const plain = stripAnsi(line);
+            expect(plain).toContain('(theme)');
+            expect(plain).toContain(`#${themeFg.replace('hex:', '')}`);
+            expect(plain).not.toContain('#FF0000');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('keeps showing the widget colour on the current-style row when pinned', async () => {
+        const { line, teardown } = await renderCurrentStyleLine([
+            {
+                id: '1',
+                type: 'model',
+                color: 'hex:FF0000',
+                pinColor: true
+            }
+        ]);
+
+        try {
+            const plain = stripAnsi(line);
+            expect(plain).toContain('#FF0000');
+            expect(plain).not.toContain('(theme)');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('tints an unpinned row with the theme colour, not its dormant colour', async () => {
+        const level = nordLevel3();
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets: [{
+                    id: '1',
+                    type: 'model',
+                    color: 'hex:FF0000',
+                    backgroundColor: 'hex:00FF00'
+                }],
+                lineIndex: 0,
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        theme: 'nord-aurora'
+                    }
+                },
+                onUpdate: vi.fn(),
+                onBack: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            const output = stdout.getOutput();
+            const themed = applyColors('Model', level.fg[0], level.bg[0], undefined, 'truecolor', undefined);
+            const dormant = applyColors('Model', 'hex:FF0000', 'hex:00FF00', undefined, 'truecolor', undefined);
+
+            expect(output).toContain(themed);
+            expect(output).not.toContain(dormant);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
         }
     });
 
