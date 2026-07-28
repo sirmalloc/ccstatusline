@@ -28,6 +28,11 @@ import {
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
+    WidgetRow,
+    getWidgetRowLabel,
+    getWidgetRowTags
+} from './WidgetRow';
+import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
@@ -265,28 +270,6 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         });
     });
 
-    const getWidgetDisplay = (widget: WidgetItem) => {
-        // Special handling for separators (not widgets)
-        if (widget.type === 'separator') {
-            const char = widget.character ?? '|';
-            const charDisplay = char === ' ' ? '(space)' : char;
-            return `Separator ${charDisplay}`;
-        }
-        if (widget.type === 'flex-separator') {
-            return 'Flex Separator';
-        }
-
-        // Handle regular widgets - delegate to widget for display
-        const widgetImpl = getWidget(widget.type);
-        if (widgetImpl) {
-            const { displayText, modifierText } = widgetImpl.getEditorDisplay(widget);
-            // Return plain text without colors
-            return displayText + (modifierText ? ` ${modifierText}` : '');
-        }
-        // Unknown widget type
-        return `Unknown: ${widget.type}`;
-    };
-
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
     const pickerCategories = widgetPicker
@@ -394,8 +377,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {lineNumber}
                     {' '}
                 </Text>
-                {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
-                {widgetPicker && <Text color='cyan'>{`[${pickerActionLabel.toUpperCase()}]`}</Text>}
+                <Text color='cyan'>[WIDGETS]</Text>
+                {moveMode && <Text color='blue'> [MOVE MODE]</Text>}
+                {widgetPicker && <Text color='cyan'>{` [${pickerActionLabel.toUpperCase()}]`}</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
                         <Text color='yellow'>
@@ -567,31 +551,19 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                         <>
                             {widgets.map((widget, index) => {
                                 const isSelected = index === selectedIndex;
-                                const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
-                                const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
-                                const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const { displayText, modifierText } = getWidgetRowLabel(widget);
 
                                 return (
-                                    <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
-                                        <Box width={3}>
-                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                                {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                            </Text>
-                                        </Box>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                        </Text>
-                                        {modifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {modifierText}
-                                            </Text>
-                                        )}
-                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                        {widget.excludeFromAutoAlign && settings.powerline.enabled && settings.powerline.autoAlign && !isMergedIntoPreviousWidget(widgets, index) && <Text dimColor> (no-align)</Text>}
-                                    </Box>
+                                    <WidgetRow
+                                        key={widget.id}
+                                        number={index + 1}
+                                        label={displayText}
+                                        isSelected={isSelected}
+                                        indicator={moveMode ? '◆' : '▶'}
+                                        selectionColor={moveMode ? 'blue' : 'green'}
+                                        modifierText={modifierText}
+                                        tags={getWidgetRowTags(widgets, index, settings)}
+                                    />
                                 );
                             })}
                             {/* Display description for selected widget */}
