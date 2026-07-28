@@ -132,9 +132,9 @@ The color editor can adjust foreground color, background color, bold, dim, and g
 
 A Powerline theme normally drives every widget's foreground and background, so per-widget colors have no effect. **Pinning** a color lets one widget opt out and keep its own:
 
-- Press `p` to pin or unpin the channel you are editing (foreground or background). The two channels pin independently, so a widget can keep its own foreground while the theme still supplies its background.
+- Press `p` to pin or unpin the channel you are editing. The header shows which channel that is — `[FOREGROUND]` or `[BACKGROUND]`, toggled with `f`. The two channels pin independently, so a widget can keep its own foreground while the theme still supplies its background.
 - Editing a color under an active theme pins that channel automatically, so the edit takes effect rather than being silently ignored.
-- The current-style row shows `[PINNED]` for a pinned channel, or `[unpinned - theme applies]` when the theme wins. An unpinned channel displays the theme's color as `(theme)`, so the editor shows what actually renders.
+- Pinned widgets are marked on their own row — `(fg pinned)`, `(bg pinned)` or `(fg+bg pinned)` — in both editor modes, so you can see every override at a glance. An unpinned channel shows the theme's color as `(theme)` on the current-style row, so the editor displays what actually renders.
 - Unpinning keeps the stored color rather than discarding it, so re-pinning brings it back.
 - A color set before a theme was enabled stays dormant and unpinned: existing themed configurations render exactly as they did before.
 

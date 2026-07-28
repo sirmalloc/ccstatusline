@@ -38,6 +38,11 @@ export function getActiveThemeColors(settings: Settings): { fg: string[]; bg: st
     return theme[colorLevelKey];
 }
 
+/** Is a powerline theme currently driving widget colors? Pins only matter when it is. */
+export function isPowerlineThemeActive(settings: Settings): boolean {
+    return getActiveThemeColors(settings) !== undefined;
+}
+
 /** Does the theme leave this widget's foreground alone? */
 export function keepsOwnForeground(widget: WidgetItem): boolean {
     return Boolean(widget.pinColor) || (widget.type === 'custom-command' && Boolean(widget.preserveColors));

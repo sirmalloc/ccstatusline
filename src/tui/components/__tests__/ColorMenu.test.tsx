@@ -115,7 +115,7 @@ describe('ColorMenu', () => {
             const latestFrame = stdout.getOutput().split('Edit Line 1').at(-1) ?? '';
             const currentStyleLine = latestFrame
                 .split('\n')
-                .find(line => line.includes('Current foreground')) ?? '';
+                .find(line => line.includes('Current (')) ?? '';
 
             expect(currentStyleLine).toContain('[BOLD] [DIM ()]');
         } finally {
@@ -254,7 +254,7 @@ describe('ColorMenu', () => {
         );
         await flushInk();
         const frame = stdout.getOutput().split('Edit Line 1').at(-1) ?? '';
-        const line = frame.split('\n').find(entry => entry.includes('Current foreground')) ?? '';
+        const line = frame.split('\n').find(entry => entry.includes('Current (')) ?? '';
         return {
             line,
             teardown: () => {
@@ -267,24 +267,13 @@ describe('ColorMenu', () => {
         };
     }
 
-    it('marks the current channel [PINNED] when it is pinned under a theme', async () => {
+    it('keeps pin state off the current-style row', async () => {
         const { line, teardown } = await renderCurrentStyleLine([
             { id: '1', type: 'model', color: 'hex:FF0000', pinColor: true }
         ]);
         try {
-            expect(line).toContain('[PINNED]');
-        } finally {
-            teardown();
-        }
-    });
-
-    it('flags a dormant colour as unpinned under a theme', async () => {
-        const { line, teardown } = await renderCurrentStyleLine([
-            { id: '1', type: 'model', color: 'hex:FF0000' }
-        ]);
-        try {
-            expect(line).toContain('unpinned');
-            expect(line).not.toContain('[PINNED]');
+            expect(line).not.toContain('PINNED');
+            expect(line).not.toContain('unpinned');
         } finally {
             teardown();
         }

@@ -538,16 +538,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         selectedWidget?.dim === 'parens' ? '[DIM ()]' : null
     ].filter(indicator => indicator !== null).join(' ');
 
-    // Pins only matter under an active theme. When they do, show whether the current
-    // channel is pinned, and flag that an unpinned value is dormant (the theme renders,
-    // not the value shown above).
-    const currentChannelPinned = editingBackground
-        ? Boolean(selectedWidget?.pinBackgroundColor)
-        : Boolean(selectedWidget?.pinColor);
-    const pinIndicator = themeActive
-        ? (currentChannelPinned ? chalk.green('[PINNED]') : chalk.gray('[unpinned - theme applies]'))
-        : '';
-
     // Gradient selection mode takes over the whole view
     if (gradientMode) {
         const level = getColorLevelString(settings.colorLevel);
@@ -657,7 +647,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     {' '}
                 </Text>
                 <Text color='cyan'>[COLORS]</Text>
-                {editingBackground && <Text color='yellow'> [BACKGROUND]</Text>}
+                <Text color='yellow'>{editingBackground ? ' [BACKGROUND]' : ' [FOREGROUND]'}</Text>
                 {globalOverrideMessage && (
                     <Text color='yellow' dimColor>
                         {'  '}
@@ -689,10 +679,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             ) : (
                 <>
                     <Text dimColor>
-                        ↑↓ to select, ←→ to cycle
-                        {' '}
-                        {editingBackground ? 'background' : 'foreground'}
-                        , (f) to toggle bg/fg, (b)old, (d)im,
+                        ↑↓ to select, ←→ to cycle color, (f) to toggle bg/fg, (b)old, (d)im,
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {!editingBackground && settings.colorLevel >= 2 ? ' (g)radient,' : ''}
                         {' '}
@@ -708,11 +695,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     {selectedWidget ? (
                         <Box marginTop={1}>
                             <Text>
-                                Current
-                                {' '}
-                                {editingBackground ? 'background' : 'foreground'}
-                                {' '}
-                                (
+                                Current (
                                 {colorNumber === 'custom' || colorNumber === 'theme'
                                     ? colorNumber
                                     : `${colorNumber}/${colorList.length}`}
@@ -720,7 +703,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 {' '}
                                 {colorDisplay}
                                 {styleIndicators && ` ${styleIndicators}`}
-                                {pinIndicator && ` ${pinIndicator}`}
                             </Text>
                         </Box>
                     ) : (

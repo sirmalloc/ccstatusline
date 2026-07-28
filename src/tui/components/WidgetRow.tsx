@@ -11,7 +11,10 @@ import type {
     WidgetItem
 } from '../../types/Widget';
 import { applyColors } from '../../utils/colors';
-import type { ThemeChannelColors } from '../../utils/effective-theme-colors';
+import {
+    isPowerlineThemeActive,
+    type ThemeChannelColors
+} from '../../utils/effective-theme-colors';
 import { getWidget } from '../../utils/widgets';
 
 export interface WidgetRowProps {
@@ -88,6 +91,20 @@ export function getWidgetRowTags(widgets: WidgetItem[], index: number, settings:
         && settings.powerline.autoAlign
         && !isMergedIntoPreviousWidget(widgets, index)) {
         tags.push('(no-align)');
+    }
+
+    // Pin state is per widget and per channel, so it belongs on the row rather than in a
+    // status line that only ever describes the highlighted widget. Pins do nothing
+    // without a theme to override, so the tag only appears when one is active.
+    if (isPowerlineThemeActive(settings)) {
+        const pinnedChannels = [
+            widget.pinColor ? 'fg' : null,
+            widget.pinBackgroundColor ? 'bg' : null
+        ].filter(channel => channel !== null);
+
+        if (pinnedChannels.length > 0) {
+            tags.push(`(${pinnedChannels.join('+')} pinned)`);
+        }
     }
 
     return tags;

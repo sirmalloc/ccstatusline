@@ -75,6 +75,43 @@ describe('getWidgetRowTags', () => {
         expect(getWidgetRowTags(widgets, 1, DEFAULT_SETTINGS)).toEqual([]);
     });
 
+    it('names which channels are pinned under an active theme', () => {
+        const themed = {
+            ...DEFAULT_SETTINGS,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                theme: 'nord-aurora'
+            }
+        };
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'model', pinColor: true },
+            { id: '2', type: 'model', pinBackgroundColor: true },
+            {
+                id: '3',
+                type: 'model',
+                pinColor: true,
+                pinBackgroundColor: true
+            },
+            { id: '4', type: 'model' }
+        ];
+
+        expect(getWidgetRowTags(widgets, 0, themed)).toEqual(['(fg pinned)']);
+        expect(getWidgetRowTags(widgets, 1, themed)).toEqual(['(bg pinned)']);
+        expect(getWidgetRowTags(widgets, 2, themed)).toEqual(['(fg+bg pinned)']);
+        expect(getWidgetRowTags(widgets, 3, themed)).toEqual([]);
+    });
+
+    it('hides pin tags when no theme is driving the colors', () => {
+        const widgets: WidgetItem[] = [{
+            id: '1',
+            type: 'model',
+            pinColor: true
+        }];
+
+        expect(getWidgetRowTags(widgets, 0, DEFAULT_SETTINGS)).toEqual([]);
+    });
+
     it('drops the auto-align tag for a widget merged into the previous one', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'model', merge: true },
