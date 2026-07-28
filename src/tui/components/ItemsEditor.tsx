@@ -16,6 +16,7 @@ import type {
     WidgetItemType
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
+import { getEffectiveThemeColors } from '../../utils/effective-theme-colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
@@ -30,7 +31,8 @@ import { ConfirmDialog } from './ConfirmDialog';
 import {
     WidgetRow,
     getWidgetRowLabel,
-    getWidgetRowTags
+    getWidgetRowTags,
+    styleWidgetRowLabel
 } from './WidgetRow';
 import {
     handleMoveInputMode,
@@ -82,6 +84,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
     }, [selectedIndex, widgets, onWidgetHighlight]);
 
+    // Theme colours are positional, so show them here too - reordering or merging
+    // widgets is exactly what changes them
+    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings);
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
 
@@ -557,7 +562,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                     <WidgetRow
                                         key={widget.id}
                                         number={index + 1}
-                                        label={displayText}
+                                        label={moveMode
+                                            ? displayText
+                                            : styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id))}
+                                        labelIsStyled={!moveMode}
                                         isSelected={isSelected}
                                         indicator={moveMode ? '◆' : '▶'}
                                         selectionColor={moveMode ? 'blue' : 'green'}

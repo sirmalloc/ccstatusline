@@ -26,7 +26,8 @@ import { ConfirmDialog } from './ConfirmDialog';
 import {
     WidgetRow,
     getWidgetRowLabel,
-    getWidgetRowTags
+    getWidgetRowTags,
+    styleWidgetRowLabel
 } from './WidgetRow';
 import {
     clearAllWidgetStyling,
@@ -447,28 +448,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // colour, not the widget's dormant stored one.
     const menuRows = colorableEntries.map(({ widget, index }) => {
         const { displayText, modifierText } = getWidgetRowLabel(widget);
-        const level = getColorLevelString(settings.colorLevel);
-        let defaultColor = 'white';
-        if (widget.type !== 'separator' && widget.type !== 'flex-separator') {
-            const widgetImpl = getWidget(widget.type);
-            if (widgetImpl) {
-                defaultColor = widgetImpl.getDefaultColor();
-            }
-        }
-
-        const themeChannels = effectiveThemeColors.get(widget.id);
 
         return {
             id: widget.id,
             number: index + 1,
-            label: applyColors(
-                displayText,
-                themeChannels?.fg ?? widget.color ?? defaultColor,
-                themeChannels?.bg ?? widget.backgroundColor,
-                widget.bold,
-                level,
-                widget.dim
-            ),
+            label: styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id)),
             modifierText,
             tags: getWidgetRowTags(widgets, index, settings)
         };

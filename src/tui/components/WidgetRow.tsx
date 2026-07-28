@@ -4,11 +4,14 @@ import {
 } from 'ink';
 import React from 'react';
 
+import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
 import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../../types/Widget';
+import { applyColors } from '../../utils/colors';
+import type { ThemeChannelColors } from '../../utils/effective-theme-colors';
 import { getWidget } from '../../utils/widgets';
 
 export interface WidgetRowProps {
@@ -88,6 +91,35 @@ export function getWidgetRowTags(widgets: WidgetItem[], index: number, settings:
     }
 
     return tags;
+}
+
+/**
+ * Paint a row label with the colour that widget renders in, so both editor modes agree.
+ * themeChannels supplies the channels an active theme takes over; the widget's own colour
+ * (then the widget's default) fills the rest. A widget whose colours it does not control -
+ * a custom command preserving its command output's colours - is left untinted.
+ */
+export function styleWidgetRowLabel(
+    label: string,
+    widget: WidgetItem,
+    settings: Settings,
+    themeChannels?: ThemeChannelColors
+): string {
+    const isSeparator = widget.type === 'separator' || widget.type === 'flex-separator';
+    const widgetImpl = isSeparator ? null : getWidget(widget.type);
+
+    if (widgetImpl && !widgetImpl.supportsColors(widget)) {
+        return label;
+    }
+
+    return applyColors(
+        label,
+        themeChannels?.fg ?? widget.color ?? widgetImpl?.getDefaultColor() ?? 'white',
+        themeChannels?.bg ?? widget.backgroundColor,
+        widget.bold,
+        getColorLevelString(settings.colorLevel),
+        widget.dim
+    );
 }
 
 export const WidgetRow: React.FC<WidgetRowProps> = ({
