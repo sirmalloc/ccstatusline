@@ -431,6 +431,27 @@ export function getMainMenuScreenTarget(value: MainMenuOption): AppScreen | null
     }
 }
 
+/**
+ * Both widget editor modes back out one menu to the same line selector, so
+ * escape lands in the same place whichever mode you happened to be in.
+ */
+export function getEditorBackScreen(): AppScreen {
+    return 'lines';
+}
+
+/** Tab swaps between editing a line's widgets and editing their colors. */
+export function getTabSwapScreen(screen: AppScreen): AppScreen {
+    if (screen === 'items') {
+        return 'colors';
+    }
+
+    if (screen === 'colors') {
+        return 'items';
+    }
+
+    return screen;
+}
+
 export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
     if (menuSelections.install === undefined && menuSelections.installPackage === undefined) {
         return menuSelections;
@@ -722,7 +743,7 @@ export const App: React.FC = () => {
     }, []);
 
     const handleTabSwap = useCallback(() => {
-        setScreen(prev => (prev === 'items' ? 'colors' : 'items'));
+        setScreen(getTabSwapScreen);
     }, []);
 
     const handleUpdateCheck = useCallback(() => {
@@ -1142,7 +1163,7 @@ export const App: React.FC = () => {
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
                             setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
-                            setScreen('lines');
+                            setScreen(getEditorBackScreen());
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
@@ -1198,8 +1219,10 @@ export const App: React.FC = () => {
                             setSettings({ ...settings, lines: newLines });
                         }}
                         onBack={() => {
-                            // Go back to line selection for colors
-                            setScreen('colorLines');
+                            // Colors are a mode of the widget editor, so escape backs out
+                            // to the same line selector the items mode returns to
+                            setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
+                            setScreen(getEditorBackScreen());
                         }}
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}

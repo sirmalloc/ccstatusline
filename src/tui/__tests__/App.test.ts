@@ -15,9 +15,11 @@ import {
     clearInstallMenuSelection,
     getConfirmCancelScreen,
     getCurrentInstallation,
+    getEditorBackScreen,
     getMainMenuScreenTarget,
     getPathInferredInstallation,
-    getPinnedVersionMismatch
+    getPinnedVersionMismatch,
+    getTabSwapScreen
 } from '../App';
 import {
     buildMainMenuItems,
@@ -275,6 +277,22 @@ describe('Main menu routing', () => {
         expect(getMainMenuScreenTarget('starGithub')).toBeNull();
         expect(getMainMenuScreenTarget('save')).toBeNull();
         expect(getMainMenuScreenTarget('exit')).toBeNull();
+    });
+});
+
+describe('Widget editor mode navigation', () => {
+    it('backs out of the editor to the line selector for items', () => {
+        expect(getEditorBackScreen()).toBe('lines');
+    });
+
+    it('keeps Tab toggling between the items and colors modes', () => {
+        expect(getTabSwapScreen('items')).toBe('colors');
+        expect(getTabSwapScreen('colors')).toBe('items');
+    });
+
+    it('leaves other screens alone when Tab is pressed', () => {
+        expect(getTabSwapScreen('main')).toBe('main');
+        expect(getTabSwapScreen('lines')).toBe('lines');
     });
 });
 
