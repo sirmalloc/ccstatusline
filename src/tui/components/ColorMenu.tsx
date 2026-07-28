@@ -316,19 +316,19 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             }
         } else if (input === 'h' || input === 'H') {
             // Enter hex input mode (only in truecolor mode)
-            if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 3) {
+            if (highlightedItemId && settings.colorLevel === 3) {
                 setHexInputMode(true);
                 setHexInput('');
             }
         } else if (input === 'a' || input === 'A') {
             // Enter ansi256 input mode (only in 256 color mode)
-            if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 2) {
+            if (highlightedItemId && settings.colorLevel === 2) {
                 setAnsi256InputMode(true);
                 setAnsi256Input('');
             }
         } else if (input === 'g' || input === 'G') {
             // Enter gradient selection mode (foreground only, needs a real color palette)
-            if (highlightedItemId && highlightedItemId !== 'back' && !editingBackground && settings.colorLevel >= 2) {
+            if (highlightedItemId && !editingBackground && settings.colorLevel >= 2) {
                 setGradientMode(true);
                 setGradientIndex(0);
                 setGradientCustomStep(null);
@@ -347,7 +347,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 setEditingBackground(!editingBackground);
             }
         } else if (input === 'b' || input === 'B') {
-            if (highlightedItemId && highlightedItemId !== 'back') {
+            if (highlightedItemId) {
                 // Toggle bold for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
@@ -356,7 +356,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 }
             }
         } else if (input === 'd' || input === 'D') {
-            if (highlightedItemId && highlightedItemId !== 'back') {
+            if (highlightedItemId) {
                 // Cycle dim for the highlighted item: off -> whole -> parens -> off
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
@@ -365,7 +365,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 }
             }
         } else if (input === 'r' || input === 'R') {
-            if (highlightedItemId && highlightedItemId !== 'back') {
+            if (highlightedItemId) {
                 // Reset all styling (color, background, and bold) for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
@@ -380,7 +380,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             // Pin/unpin the highlighted widget's current channel so its colour
             // overrides (or yields back to) the active theme. Pinning surfaces the
             // widget's existing colour (seeding a default only when it has none).
-            if (highlightedItemId && highlightedItemId !== 'back') {
+            if (highlightedItemId) {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
                     const isPinned = editingBackground ? selectedWidget.pinBackgroundColor : selectedWidget.pinColor;
@@ -399,7 +399,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             moveHighlight(key.downArrow ? 'down' : 'up');
         } else if (key.leftArrow || key.rightArrow) {
             // Cycle through colors with arrow keys
-            if (highlightedItemId && highlightedItemId !== 'back') {
+            if (highlightedItemId) {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
                     const newItems = cycleWidgetColor({
@@ -459,7 +459,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     });
 
     // Get current color for highlighted item
-    const selectedWidget = highlightedItemId && highlightedItemId !== 'back'
+    const selectedWidget = highlightedItemId
         ? colorableWidgets.find(widget => widget.id === highlightedItemId)
         : null;
     const storedColor = editingBackground
