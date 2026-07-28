@@ -30,6 +30,60 @@ export function setWidgetColor(
     });
 }
 
+export function pinWidgetColor(
+    widgets: WidgetItem[],
+    widgetId: string,
+    isBackground: boolean,
+    seedColor: string
+): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        if (isBackground) {
+            return {
+                ...widget,
+                pinBackgroundColor: true,
+                backgroundColor: widget.backgroundColor ?? seedColor
+            };
+        }
+
+        return {
+            ...widget,
+            pinColor: true,
+            color: widget.color ?? seedColor
+        };
+    });
+}
+
+export function unpinWidgetColor(
+    widgets: WidgetItem[],
+    widgetId: string,
+    isBackground: boolean
+): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        if (isBackground) {
+            const { pinBackgroundColor, ...restWidget } = widget;
+            void pinBackgroundColor; // Intentionally unused
+            return restWidget;
+        }
+
+        const { pinColor, ...restWidget } = widget;
+        void pinColor; // Intentionally unused
+        return restWidget;
+    });
+}
+
+export function clearAllPins(widgets: WidgetItem[]): WidgetItem[] {
+    return widgets.map((widget) => {
+        const {
+            pinColor,
+            pinBackgroundColor,
+            ...restWidget
+        } = widget;
+        void pinColor; // Intentionally unused
+        void pinBackgroundColor; // Intentionally unused
+        return restWidget;
+    });
+}
+
 export function toggleWidgetBold(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, widget => ({
         ...widget,
