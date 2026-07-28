@@ -5,7 +5,8 @@ import {
     describe,
     expect,
     it,
-    vi
+    vi,
+    type Mock
 } from 'vitest';
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
@@ -111,6 +112,101 @@ describe('ColorMenu', () => {
                 .find(line => line.includes('Current foreground')) ?? '';
 
             expect(currentStyleLine).toContain('[BOLD] [DIM ()]');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    async function renderThemedColorMenu(onUpdate: Mock<(widgets: WidgetItem[]) => void>, themeActive: boolean) {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const widgets: WidgetItem[] = [{ id: '1', type: 'model' }];
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets,
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        theme: themeActive ? 'nord-aurora' : 'custom'
+                    }
+                },
+                onUpdate,
+                onBack: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+        await flushInk();
+        return {
+            instance,
+            stdin,
+            stdout,
+            stderr
+        };
+    }
+
+    function lastUpdated(onUpdate: Mock<(widgets: WidgetItem[]) => void>): WidgetItem[] | undefined {
+        return onUpdate.mock.calls.at(-1)?.[0];
+    }
+
+    it('auto-pins a widget colour when cycled under an active theme', async () => {
+        const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
+        const { instance, stdin, stdout, stderr } = await renderThemedColorMenu(onUpdate, true);
+        try {
+            stdin.write('\x1B[C'); // right arrow cycles the foreground colour
+            await flushInk();
+
+            expect(onUpdate).toHaveBeenCalled();
+            expect(lastUpdated(onUpdate)?.find(widget => widget.id === '1')?.pinColor).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('pins the highlighted widget when (p) is pressed under a theme', async () => {
+        const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
+        const { instance, stdin, stdout, stderr } = await renderThemedColorMenu(onUpdate, true);
+        try {
+            stdin.write('p');
+            await flushInk();
+
+            expect(onUpdate).toHaveBeenCalled();
+            expect(lastUpdated(onUpdate)?.find(widget => widget.id === '1')?.pinColor).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('does not pin a colour edit when no theme is active', async () => {
+        const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
+        const { instance, stdin, stdout, stderr } = await renderThemedColorMenu(onUpdate, false);
+        try {
+            stdin.write('\x1B[C');
+            await flushInk();
+
+            expect(lastUpdated(onUpdate)?.find(widget => widget.id === '1')?.pinColor).toBeUndefined();
         } finally {
             instance.unmount();
             instance.cleanup();
