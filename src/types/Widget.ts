@@ -18,6 +18,8 @@ export const WidgetItemSchema = z.object({
     commandPath: z.string().optional(),
     maxWidth: z.number().optional(),
     preserveColors: z.boolean().optional(),
+    pinColor: z.boolean().optional(),
+    pinBackgroundColor: z.boolean().optional(),
     timeout: z.number().optional(),
     merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
     hide: z.boolean().optional(),
