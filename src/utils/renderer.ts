@@ -283,13 +283,18 @@ function renderPowerlineStatusLine(
             const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
 
             if (themeColors) {
-                if (!skipFgTheme) {
+                // A pinned channel keeps the widget's own colour (it wins over the theme).
+                // preserveColors (custom-command) still takes precedence for the foreground.
+                if (!skipFgTheme && !widget.pinColor) {
                     fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length] ?? fgColor;
                 }
-                bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length] ?? bgColor;
+                if (!widget.pinBackgroundColor) {
+                    bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length] ?? bgColor;
+                }
 
-                // Only increment color index if this widget is not merged with the next one
-                // This ensures merged widgets share the same color
+                // Always advance the colour index (even for pinned widgets, which occupy
+                // their slot without using the colour) so other widgets' theme colours
+                // don't shift. Merged widgets share a colour, so don't advance for them.
                 if (!mergesWithNext) {
                     widgetColorIndex++;
                 }
