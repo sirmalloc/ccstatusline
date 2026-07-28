@@ -1,6 +1,7 @@
 import { render } from 'ink';
 import { PassThrough } from 'node:stream';
 import React from 'react';
+import stripAnsi from 'strip-ansi';
 import {
     describe,
     expect,
@@ -56,13 +57,6 @@ function flushInk() {
     return new Promise((resolve) => {
         setTimeout(resolve, 25);
     });
-}
-
-const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
-
-/** Colour rows carry ANSI codes between the number and the label, so strip them to assert text. */
-function stripAnsi(value: string): string {
-    return value.replace(ANSI_PATTERN, '');
 }
 
 describe('ColorMenu', () => {
