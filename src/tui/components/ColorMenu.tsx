@@ -507,6 +507,16 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         selectedWidget?.dim === 'parens' ? '[DIM ()]' : null
     ].filter(indicator => indicator !== null).join(' ');
 
+    // Pins only matter under an active theme. When they do, show whether the current
+    // channel is pinned, and flag that an unpinned value is dormant (the theme renders,
+    // not the value shown above).
+    const currentChannelPinned = editingBackground
+        ? Boolean(selectedWidget?.pinBackgroundColor)
+        : Boolean(selectedWidget?.pinColor);
+    const pinIndicator = themeActive
+        ? (currentChannelPinned ? chalk.green('[PINNED]') : chalk.gray('[unpinned - theme applies]'))
+        : '';
+
     // Gradient selection mode takes over the whole view
     if (gradientMode) {
         const level = getColorLevelString(settings.colorLevel);
@@ -677,6 +687,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 {' '}
                                 {colorDisplay}
                                 {styleIndicators && ` ${styleIndicators}`}
+                                {pinIndicator && ` ${pinIndicator}`}
                             </Text>
                         </Box>
                     ) : (

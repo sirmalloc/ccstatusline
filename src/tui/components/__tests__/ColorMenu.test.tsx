@@ -215,4 +215,70 @@ describe('ColorMenu', () => {
             stderr.destroy();
         }
     });
+
+    async function renderCurrentStyleLine(widgets: WidgetItem[]): Promise<{ line: string; teardown: () => void }> {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets,
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        theme: 'nord-aurora'
+                    }
+                },
+                onUpdate: vi.fn(),
+                onBack: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+        await flushInk();
+        const frame = stdout.getOutput().split('Configure Colors').at(-1) ?? '';
+        const line = frame.split('\n').find(entry => entry.includes('Current foreground')) ?? '';
+        return {
+            line,
+            teardown: () => {
+                instance.unmount();
+                instance.cleanup();
+                stdin.destroy();
+                stdout.destroy();
+                stderr.destroy();
+            }
+        };
+    }
+
+    it('marks the current channel [PINNED] when it is pinned under a theme', async () => {
+        const { line, teardown } = await renderCurrentStyleLine([
+            { id: '1', type: 'model', color: 'hex:FF0000', pinColor: true }
+        ]);
+        try {
+            expect(line).toContain('[PINNED]');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('flags a dormant colour as unpinned under a theme', async () => {
+        const { line, teardown } = await renderCurrentStyleLine([
+            { id: '1', type: 'model', color: 'hex:FF0000' }
+        ]);
+        try {
+            expect(line).toContain('unpinned');
+            expect(line).not.toContain('[PINNED]');
+        } finally {
+            teardown();
+        }
+    });
 });
