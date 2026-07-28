@@ -654,7 +654,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 {editingBackground && <Text color='yellow'> [BACKGROUND]</Text>}
                 {globalOverrideMessage && (
                     <Text color='yellow' dimColor>
-                        {'.  '}
+                        {'  '}
                         {globalOverrideMessage}
                     </Text>
                 )}
@@ -736,7 +736,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 ))}
             </Box>
             <Box marginTop={1}>
-                <Text dimColor wrap='wrap'>⚠ VSCode: if colors look wrong, set `terminal.integrated.minimumContrastRatio` to 1</Text>
+                <Text dimColor wrap='wrap'>VSCode: if colors look wrong, set `terminal.integrated.minimumContrastRatio` to 1</Text>
             </Box>
         </Box>
     );
