@@ -17,7 +17,10 @@ import {
     getAvailableBackgroundColorsForUI,
     getAvailableColorsForUI
 } from '../../utils/colors';
-import { getEffectiveThemeColors } from '../../utils/effective-theme-colors';
+import {
+    getEffectiveThemeColors,
+    isPowerlineThemeActive
+} from '../../utils/effective-theme-colors';
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
@@ -37,8 +40,7 @@ import {
     resetWidgetStyling,
     setWidgetColor,
     toggleWidgetBold,
-    unpinWidgetColor,
-    updateWidgetById
+    unpinWidgetColor
 } from './color-menu/mutations';
 
 export interface ColorMenuProps {
@@ -129,22 +131,28 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
     // Handle keyboard input
     const hasNoItems = colorableWidgets.length === 0;
-    const themeActive = settings.powerline.enabled
-        && !!settings.powerline.theme
-        && settings.powerline.theme !== 'custom';
+    const themeActive = isPowerlineThemeActive(settings);
 
-    // Editing a colour under an active theme pins that channel, so the edit
-    // actually overrides the theme instead of being silently ignored.
-    const commitColorEdit = (updated: WidgetItem[], widgetId: string, isBackground: boolean) => {
-        if (!themeActive) {
-            onUpdate(updated);
-            return;
+    const isChannelPinned = (widget: WidgetItem): boolean => (
+        editingBackground ? Boolean(widget.pinBackgroundColor) : Boolean(widget.pinColor)
+    );
+
+    /**
+     * Under a theme, a channel must be pinned before its colour can be edited. Editing an
+     * unpinned channel would overwrite a colour the theme is currently hiding - which is
+     * the very value the no-appearance-change guarantee promises to leave alone - and a
+     * stray arrow key sits one row from the navigation keys.
+     */
+    const canEditColor = (widget: WidgetItem): boolean => !themeActive || isChannelPinned(widget);
+
+    /** The widget a colour edit applies to, or null when the channel is not editable yet. */
+    const getEditableWidget = (): WidgetItem | null => {
+        if (!highlightedItemId) {
+            return null;
         }
-        onUpdate(updateWidgetById(updated, widgetId, widget => (
-            isBackground
-                ? { ...widget, pinBackgroundColor: true }
-                : { ...widget, pinColor: true }
-        )));
+
+        const widget = colorableWidgets.find(entry => entry.id === highlightedItemId);
+        return widget && canEditColor(widget) ? widget : null;
     };
 
     useInput((input, key) => {
@@ -175,7 +183,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                     if (selectedWidget) {
                         const newItems = setWidgetColor(widgets, selectedWidget.id, hexColor, editingBackground);
-                        commitColorEdit(newItems, selectedWidget.id, editingBackground);
+                        onUpdate(newItems);
                     }
                     setHexInputMode(false);
                     setHexInput('');
@@ -212,7 +220,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     if (selectedWidget) {
                         const newItems = setWidgetColor(widgets, selectedWidget.id, ansiColor, editingBackground);
 
-                        commitColorEdit(newItems, selectedWidget.id, editingBackground);
+                        onUpdate(newItems);
                         setAnsi256InputMode(false);
                         setAnsi256Input('');
                     }
@@ -245,7 +253,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             const applyGradientValue = (value: string) => {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    commitColorEdit(setWidgetColor(widgets, selectedWidget.id, value, false), selectedWidget.id, false);
+                    onUpdate(setWidgetColor(widgets, selectedWidget.id, value, false));
                 }
                 exitGradient();
             };
@@ -316,19 +324,19 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             }
         } else if (input === 'h' || input === 'H') {
             // Enter hex input mode (only in truecolor mode)
-            if (highlightedItemId && settings.colorLevel === 3) {
+            if (getEditableWidget() && settings.colorLevel === 3) {
                 setHexInputMode(true);
                 setHexInput('');
             }
         } else if (input === 'a' || input === 'A') {
             // Enter ansi256 input mode (only in 256 color mode)
-            if (highlightedItemId && settings.colorLevel === 2) {
+            if (getEditableWidget() && settings.colorLevel === 2) {
                 setAnsi256InputMode(true);
                 setAnsi256Input('');
             }
         } else if (input === 'g' || input === 'G') {
             // Enter gradient selection mode (foreground only, needs a real color palette)
-            if (highlightedItemId && !editingBackground && settings.colorLevel >= 2) {
+            if (getEditableWidget() && !editingBackground && settings.colorLevel >= 2) {
                 setGradientMode(true);
                 setGradientIndex(0);
                 setGradientCustomStep(null);
@@ -379,18 +387,19 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         } else if ((input === 'p' || input === 'P') && themeActive) {
             // Pin/unpin the highlighted widget's current channel so its colour
             // overrides (or yields back to) the active theme. Pinning surfaces the
-            // widget's existing colour (seeding a default only when it has none).
+            // widget's existing colour, falling back to the theme colour it is showing
+            // right now, so taking control never changes what is on screen.
             if (highlightedItemId) {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const isPinned = editingBackground ? selectedWidget.pinBackgroundColor : selectedWidget.pinColor;
-                    if (isPinned) {
+                    if (isChannelPinned(selectedWidget)) {
                         onUpdate(unpinWidgetColor(widgets, selectedWidget.id, editingBackground));
                     } else {
                         const widgetImpl = getWidget(selectedWidget.type);
+                        const themeChannels = effectiveThemeColors.get(selectedWidget.id);
                         const seedColor = editingBackground
-                            ? (selectedWidget.backgroundColor ?? bgColors.find(color => color !== '') ?? 'bgBlack')
-                            : (selectedWidget.color ?? widgetImpl?.getDefaultColor() ?? 'white');
+                            ? (selectedWidget.backgroundColor ?? themeChannels?.bg ?? bgColors.find(color => color !== '') ?? 'bgBlack')
+                            : (selectedWidget.color ?? themeChannels?.fg ?? widgetImpl?.getDefaultColor() ?? 'white');
                         onUpdate(pinWidgetColor(widgets, selectedWidget.id, editingBackground, seedColor));
                     }
                 }
@@ -399,19 +408,17 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             moveHighlight(key.downArrow ? 'down' : 'up');
         } else if (key.leftArrow || key.rightArrow) {
             // Cycle through colors with arrow keys
-            if (highlightedItemId) {
-                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
-                if (selectedWidget) {
-                    const newItems = cycleWidgetColor({
-                        widgets,
-                        widgetId: selectedWidget.id,
-                        direction: key.rightArrow ? 'right' : 'left',
-                        editingBackground,
-                        colors,
-                        backgroundColors: bgColors
-                    });
-                    commitColorEdit(newItems, selectedWidget.id, editingBackground);
-                }
+            const selectedWidget = getEditableWidget();
+            if (selectedWidget) {
+                const newItems = cycleWidgetColor({
+                    widgets,
+                    widgetId: selectedWidget.id,
+                    direction: key.rightArrow ? 'right' : 'left',
+                    editingBackground,
+                    colors,
+                    backgroundColors: bgColors
+                });
+                onUpdate(newItems);
             }
         }
     });
@@ -532,6 +539,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             colorDisplay = applyColors(displayName, currentColor, undefined, false, level);
         }
     }
+    // The theme owns this channel until the user takes it over, so say how rather than
+    // leaving the colour keys looking broken.
+    const overrideHint = selectedWidget && themeActive && !isChannelPinned(selectedWidget)
+        ? '- theme applies, press (p) to override'
+        : '';
     const styleIndicators = [
         selectedWidget?.bold ? '[BOLD]' : null,
         selectedWidget?.dim === true ? '[DIM]' : null,
@@ -703,6 +715,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                 {' '}
                                 {colorDisplay}
                                 {styleIndicators && ` ${styleIndicators}`}
+                                {overrideHint && chalk.gray(`  ${overrideHint}`)}
                             </Text>
                         </Box>
                     ) : (

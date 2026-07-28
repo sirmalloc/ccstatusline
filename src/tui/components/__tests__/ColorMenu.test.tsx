@@ -127,11 +127,14 @@ describe('ColorMenu', () => {
         }
     });
 
-    async function renderThemedColorMenu(onUpdate: Mock<(widgets: WidgetItem[]) => void>, themeActive: boolean) {
+    async function renderThemedColorMenu(
+        onUpdate: Mock<(widgets: WidgetItem[]) => void>,
+        themeActive: boolean,
+        widgets: WidgetItem[] = [{ id: '1', type: 'model' }]
+    ) {
         const stdin = createMockStdin();
         const stdout = createMockStdout();
         const stderr = createMockStdout();
-        const widgets: WidgetItem[] = [{ id: '1', type: 'model' }];
         const instance = render(
             React.createElement(ColorMenu, {
                 widgets,
@@ -170,15 +173,63 @@ describe('ColorMenu', () => {
         return onUpdate.mock.calls.at(-1)?.[0];
     }
 
-    it('auto-pins a widget colour when cycled under an active theme', async () => {
+    it('ignores colour cycling until the channel is pinned under a theme', async () => {
+        const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
+        const { instance, stdin, stdout, stderr } = await renderThemedColorMenu(onUpdate, true, [
+            { id: '1', type: 'model', color: 'hex:FF0000' }
+        ]);
+        try {
+            stdin.write('\x1B[C'); // right arrow would cycle the foreground colour
+            await flushInk();
+
+            // the dormant colour must survive a stray arrow key
+            expect(onUpdate).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('cycles the colour once the channel is pinned', async () => {
+        const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
+        const { instance, stdin, stdout, stderr } = await renderThemedColorMenu(onUpdate, true, [
+            {
+                id: '1',
+                type: 'model',
+                color: 'hex:FF0000',
+                pinColor: true
+            }
+        ]);
+        try {
+            stdin.write('\x1B[C');
+            await flushInk();
+
+            const updated = lastUpdated(onUpdate)?.find(widget => widget.id === '1');
+            expect(updated?.pinColor).toBe(true);
+            expect(updated?.color).not.toBe('hex:FF0000');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('seeds a pin with the theme colour the widget was showing', async () => {
+        const themeFg = nordLevel3().fg[0];
         const onUpdate = vi.fn<(widgets: WidgetItem[]) => void>();
         const { instance, stdin, stdout, stderr } = await renderThemedColorMenu(onUpdate, true);
         try {
-            stdin.write('\x1B[C'); // right arrow cycles the foreground colour
+            stdin.write('p');
             await flushInk();
 
-            expect(onUpdate).toHaveBeenCalled();
-            expect(lastUpdated(onUpdate)?.find(widget => widget.id === '1')?.pinColor).toBe(true);
+            const updated = lastUpdated(onUpdate)?.find(widget => widget.id === '1');
+            expect(updated?.pinColor).toBe(true);
+            expect(updated?.color).toBe(themeFg);
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -266,6 +317,33 @@ describe('ColorMenu', () => {
             }
         };
     }
+
+    it('tells the user how to take over an unpinned channel', async () => {
+        const { line, teardown } = await renderCurrentStyleLine([
+            { id: '1', type: 'model' }
+        ]);
+        try {
+            expect(stripAnsi(line)).toContain('press (p) to override');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('drops the override hint once the channel is pinned', async () => {
+        const { line, teardown } = await renderCurrentStyleLine([
+            {
+                id: '1',
+                type: 'model',
+                color: 'hex:FF0000',
+                pinColor: true
+            }
+        ]);
+        try {
+            expect(stripAnsi(line)).not.toContain('press (p) to override');
+        } finally {
+            teardown();
+        }
+    });
 
     it('keeps pin state off the current-style row', async () => {
         const { line, teardown } = await renderCurrentStyleLine([
