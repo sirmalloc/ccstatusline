@@ -34,12 +34,16 @@ import {
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
 import {
+    applyImport,
+    exportConfig,
     getConfigLoadError,
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
     saveInstallationMetadata,
-    saveSettings
+    saveSettings,
+    validateImportFile,
+    type ImportValidationResult
 } from '../utils/config';
 import {
     inspectGlobalCommandResolution,
@@ -74,7 +78,10 @@ import {
     ColorEditingMovedNotice,
     ColorMenu,
     ConfirmDialog,
+    ExportConfigDialog,
     GlobalOverridesMenu,
+    ImportConfigDialog,
+    ImportPreviewDialog,
     InstallMenu,
     ItemsEditor,
     LineSelector,
@@ -120,7 +127,10 @@ type AppScreen = 'main'
     | 'manageInstallation'
     | 'uninstallOptions'
     | 'updates'
-    | 'refreshInterval';
+    | 'refreshInterval'
+    | 'exportConfig'
+    | 'importConfig'
+    | 'importPreview';
 
 type PinnedVersionMismatchAction = 'update' | 'exit';
 
@@ -425,6 +435,10 @@ export function getMainMenuScreenTarget(value: MainMenuOption): AppScreen | null
             return 'manageInstallation';
         case 'configureStatusLine':
             return 'refreshInterval';
+        case 'exportConfig':
+            return 'exportConfig';
+        case 'importConfig':
+            return 'importConfig';
         default:
             return null;
     }
@@ -449,6 +463,17 @@ export function getTabSwapScreen(screen: AppScreen): AppScreen {
     }
 
     return screen;
+}
+
+export function applyTuiImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[]
+): Settings {
+    const nextSettings = applyImport(current, imported, mode, presentKeys);
+    chalk.level = nextSettings.colorLevel;
+    return nextSettings;
 }
 
 export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
@@ -516,6 +541,7 @@ export const App: React.FC = () => {
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
+    const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
 
     useEffect(() => {
         void loadClaudeStatusLineState()
@@ -817,6 +843,59 @@ export const App: React.FC = () => {
         });
         setScreen('confirm');
     }, [getGlobalResolutionWarning]);
+
+    const handleExportConfig = useCallback(async (filePath: string) => {
+        try {
+            if (!settings) {
+                return;
+            }
+            await exportConfig(settings, filePath);
+            setFlashMessage({ text: `Config exported to ${filePath}`, color: 'green' });
+        } catch (err) {
+            setFlowNotice({
+                title: 'Export Failed',
+                message: err instanceof Error ? err.message : String(err),
+                color: 'red',
+                continueScreen: 'main'
+            });
+            setScreen('flowNotice');
+            return;
+        }
+        setScreen('main');
+    }, [settings]);
+
+    const handleImportFileChosen = useCallback(async (filePath: string) => {
+        const result = await validateImportFile(filePath);
+        if (result.status === 'invalid') {
+            setFlowNotice({
+                title: 'Import Failed',
+                message: result.reason,
+                color: 'red',
+                continueScreen: 'main'
+            });
+            setScreen('flowNotice');
+        } else {
+            setImportValidation(result);
+            setScreen('importPreview');
+        }
+    }, []);
+
+    const handleImportApply = useCallback((mode: 'replace' | 'merge') => {
+        if (!settings || importValidation?.status !== 'valid') {
+            return;
+        }
+        const importedSettings = applyTuiImport(
+            settings,
+            importValidation.data,
+            mode,
+            importValidation.presentKeys
+        );
+        setSettings(importedSettings);
+        setHasChanges(true);
+        setImportValidation(null);
+        setFlashMessage({ text: 'Config imported — review and save', color: 'green' });
+        setScreen('main');
+    }, [importValidation, settings]);
 
     if (!settings || !hasLoadedClaudeStatus || !hasLoadedInstalledState) {
         return <Text>Loading settings...</Text>;
@@ -1385,6 +1464,32 @@ export const App: React.FC = () => {
                         installingFonts={installingFonts}
                         fontInstallMessage={fontInstallMessage}
                         onClearMessage={() => { setFontInstallMessage(null); }}
+                    />
+                )}
+
+                {screen === 'exportConfig' && (
+                    <ExportConfigDialog
+                        onExport={(filePath) => { void handleExportConfig(filePath); }}
+                        onCancel={() => { setScreen('main'); }}
+                    />
+                )}
+
+                {screen === 'importConfig' && (
+                    <ImportConfigDialog
+                        onFileChosen={(filePath) => { void handleImportFileChosen(filePath); }}
+                        onCancel={() => { setScreen('main'); }}
+                    />
+                )}
+
+                {screen === 'importPreview' && importValidation?.status === 'valid' && (
+                    <ImportPreviewDialog
+                        validation={importValidation}
+                        currentSettings={settings}
+                        onApply={(mode) => { handleImportApply(mode); }}
+                        onCancel={() => {
+                            setImportValidation(null);
+                            setScreen('main');
+                        }}
                     />
                 )}
             </Box>

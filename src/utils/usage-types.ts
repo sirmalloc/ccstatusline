@@ -15,6 +15,8 @@ export interface UsageData {
     weeklySonnetResetAt?: string; // seven_day_sonnet.resets_at
     weeklyOpusUsage?: number;     // seven_day_opus.utilization (percentage)
     weeklyOpusResetAt?: string;   // seven_day_opus.resets_at
+    fableUsage?: number;
+    fableResetAt?: string;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;      // in cents (divide by 100 for dollars)
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
@@ -30,3 +32,39 @@ export interface UsageWindowMetrics {
     elapsedPercent: number;
     remainingPercent: number;
 }
+
+export type UsageDataField = Exclude<keyof UsageData, 'error'>;
+
+// TypeScript can't narrow `target[field] = value` when `field` is a plain
+// UsageDataField union at the call site (it can't prove `value`'s type
+// matches whichever union member `field` happens to be), but it can when both
+// are tied to the same generic `K` here. Shared because both usage-fetch.ts
+// and usage-prefetch.ts need to assign UsageData fields by a dynamic key.
+export function setUsageField<K extends UsageDataField>(target: Partial<UsageData>, field: K, value: UsageData[K]): void {
+    target[field] = value;
+}
+
+// Single source of truth for per-model weekly usage buckets. Every place that
+// used to hand-list models (the widget registry, API/cache schemas, and
+// rate-limits extractor) now derives from this array, so adding or renaming a
+// model bucket can't desync one of those spots from the others.
+export interface WeeklyModelUsageBucket {
+    widgetType: string;
+    // As of 2026-07, /api/oauth/usage reports per-model weekly usage as an
+    // entry in its `limits` array (kind: "weekly_scoped", matched by
+    // scope.model.display_name), not as a flat bucket -- the older
+    // seven_day_sonnet/seven_day_opus-style flat keys were observed returning
+    // null even for models with real usage. modelDisplayName drives that
+    // limits[] lookup; apiBucketKey is present only for models that also have
+    // a legacy flat API/statusline bucket.
+    modelDisplayName: string; // e.g. "Sonnet", matched case-insensitively against limits[].scope.model.display_name
+    apiBucketKey?: string; // legacy flat key, e.g. "seven_day_sonnet"
+    usageField: UsageDataField;
+    resetField: UsageDataField;
+}
+
+export const WEEKLY_MODEL_USAGE_BUCKETS: readonly WeeklyModelUsageBucket[] = [
+    { widgetType: 'weekly-sonnet-usage', modelDisplayName: 'Sonnet', apiBucketKey: 'seven_day_sonnet', usageField: 'weeklySonnetUsage', resetField: 'weeklySonnetResetAt' },
+    { widgetType: 'weekly-opus-usage', modelDisplayName: 'Opus', apiBucketKey: 'seven_day_opus', usageField: 'weeklyOpusUsage', resetField: 'weeklyOpusResetAt' },
+    { widgetType: 'fable-weekly-usage', modelDisplayName: 'Fable', usageField: 'fableUsage', resetField: 'fableResetAt' }
+];

@@ -21,6 +21,8 @@ export type MainMenuOption = 'lines'
     | 'manageInstallation'
     | 'checkUpdates'
     | 'configureStatusLine'
+    | 'exportConfig'
+    | 'importConfig'
     | 'starGithub'
     | 'save'
     | 'exit';
@@ -119,6 +121,17 @@ export function buildMainMenuItems(
             disabled: !isClaudeInstalled,
             value: 'configureStatusLine',
             description: 'Configure Claude Code status line settings like refresh interval'
+        },
+        '-',
+        {
+            label: '📤 Export Config',
+            value: 'exportConfig',
+            description: 'Save your current configuration to a JSON file for backup or sharing'
+        },
+        {
+            label: '📥 Import Config',
+            value: 'importConfig',
+            description: 'Load configuration from a previously exported JSON file'
         },
         '-',
         getInstallationMenuItem(isClaudeInstalled, installation)

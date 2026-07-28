@@ -8,6 +8,10 @@ import { WidgetItemSchema } from './Widget';
 // Current version - bump this when making breaking changes to the schema
 export const CURRENT_VERSION = 3;
 
+// Which side(s) of a widget the default padding is applied to
+export const DefaultPaddingSideSchema = z.enum(['both', 'left', 'right']);
+export type DefaultPaddingSide = z.infer<typeof DefaultPaddingSideSchema>;
+
 export const InstallationMetadataSchema = z.discriminatedUnion('method', [
     z.object({
         method: z.literal('auto-update'),
@@ -64,6 +68,7 @@ export const SettingsSchema = z.object({
     colorLevel: ColorLevelSchema.default(2),
     defaultSeparator: z.string().optional(),
     defaultPadding: z.string().optional(),
+    defaultPaddingSide: DefaultPaddingSideSchema.default('both'),
     inheritSeparatorColors: z.boolean().default(false),
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
