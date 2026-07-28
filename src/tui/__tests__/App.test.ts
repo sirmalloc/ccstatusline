@@ -15,6 +15,7 @@ import {
     clearInstallMenuSelection,
     getConfirmCancelScreen,
     getCurrentInstallation,
+    getMainMenuScreenTarget,
     getPathInferredInstallation,
     getPinnedVersionMismatch
 } from '../App';
@@ -251,6 +252,29 @@ describe('Main menu structure', () => {
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
         )).toBe(6);
+    });
+});
+
+describe('Main menu routing', () => {
+    it('sends the legacy Edit Colors entry to the signpost instead of the color line selector', () => {
+        expect(getMainMenuScreenTarget('colors')).toBe('colorsMoved');
+    });
+
+    it('keeps the other direct navigation targets unchanged', () => {
+        expect(getMainMenuScreenTarget('lines')).toBe('lines');
+        expect(getMainMenuScreenTarget('powerline')).toBe('powerline');
+        expect(getMainMenuScreenTarget('terminalConfig')).toBe('terminalConfig');
+        expect(getMainMenuScreenTarget('globalOverrides')).toBe('globalOverrides');
+        expect(getMainMenuScreenTarget('manageInstallation')).toBe('manageInstallation');
+        expect(getMainMenuScreenTarget('configureStatusLine')).toBe('refreshInterval');
+    });
+
+    it('leaves options that need side effects to their own handlers', () => {
+        expect(getMainMenuScreenTarget('install')).toBeNull();
+        expect(getMainMenuScreenTarget('checkUpdates')).toBeNull();
+        expect(getMainMenuScreenTarget('starGithub')).toBeNull();
+        expect(getMainMenuScreenTarget('save')).toBeNull();
+        expect(getMainMenuScreenTarget('exit')).toBeNull();
     });
 });
 

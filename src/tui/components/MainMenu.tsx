@@ -93,7 +93,7 @@ export function buildMainMenuItems(
             label: '🎨 Edit Colors',
             value: 'colors',
             description:
-                'Customize colors for each widget including foreground, background, and bold styling'
+                'Color editing has moved into the Widget Editor - this shows you how to get there'
         },
         {
             label: '⚡ Powerline Setup',

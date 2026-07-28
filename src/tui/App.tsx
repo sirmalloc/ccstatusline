@@ -71,6 +71,7 @@ import {
 
 import { loadClaudeStatusLineState } from './claude-status';
 import {
+    ColorEditingMovedNotice,
     ColorMenu,
     ConfirmDialog,
     GlobalOverridesMenu,
@@ -109,6 +110,7 @@ type AppScreen = 'main'
     | 'items'
     | 'colorLines'
     | 'colors'
+    | 'colorsMoved'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -401,6 +403,32 @@ export function getPathInferredInstallation(
 
 export function getConfirmCancelScreen(confirmDialog: ConfirmDialogState | null): Exclude<AppScreen, 'confirm'> {
     return confirmDialog?.cancelScreen ?? 'main';
+}
+
+/**
+ * Screen a main menu option navigates to directly, or null when the option
+ * needs a handler of its own (dialogs, installs, exiting).
+ */
+export function getMainMenuScreenTarget(value: MainMenuOption): AppScreen | null {
+    switch (value) {
+        case 'lines':
+            return 'lines';
+        case 'colors':
+            // Color editing now lives in the widget editor; this entry only signposts it.
+            return 'colorsMoved';
+        case 'powerline':
+            return 'powerline';
+        case 'terminalConfig':
+            return 'terminalConfig';
+        case 'globalOverrides':
+            return 'globalOverrides';
+        case 'manageInstallation':
+            return 'manageInstallation';
+        case 'configureStatusLine':
+            return 'refreshInterval';
+        default:
+            return null;
+    }
 }
 
 export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
@@ -915,35 +943,21 @@ export const App: React.FC = () => {
     };
 
     const handleMainMenuSelect = async (value: MainMenuOption) => {
+        const screenTarget = getMainMenuScreenTarget(value);
+
+        if (screenTarget) {
+            setScreen(screenTarget);
+            return;
+        }
+
         switch (value) {
-            case 'lines':
-                setScreen('lines');
-                break;
-            case 'colors':
-                setScreen('colorLines');
-                break;
-            case 'terminalConfig':
-                setScreen('terminalConfig');
-                break;
-            case 'globalOverrides':
-                setScreen('globalOverrides');
-                break;
-            case 'powerline':
-                setScreen('powerline');
-                break;
             case 'install':
                 handleInstallUninstall();
-                break;
-            case 'manageInstallation':
-                setScreen('manageInstallation');
                 break;
             case 'checkUpdates':
                 setUpdatesReturnScreen('main');
                 setScreen('updates');
                 handleUpdateCheck();
-                break;
-            case 'configureStatusLine':
-                setScreen('refreshInterval');
                 break;
             case 'starGithub':
                 setConfirmDialog({
@@ -1135,6 +1149,20 @@ export const App: React.FC = () => {
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
+                    />
+                )}
+                {screen === 'colorsMoved' && (
+                    <ColorEditingMovedNotice
+                        onGoToWidgetEditor={() => {
+                            // Land on the same line selector the widget editor uses
+                            setMenuSelections(prev => ({ ...prev, main: 0 }));
+                            setScreen('lines');
+                        }}
+                        onBack={() => {
+                            // Save that we came from 'colors' menu (index 1)
+                            setMenuSelections(prev => ({ ...prev, main: 1 }));
+                            setScreen('main');
+                        }}
                     />
                 )}
                 {screen === 'colorLines' && (
