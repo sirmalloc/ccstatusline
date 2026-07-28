@@ -121,12 +121,16 @@ export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): Wid
             backgroundColor,
             bold,
             dim,
+            pinColor,
+            pinBackgroundColor,
             ...restWidget
         } = widget;
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
         void bold; // Intentionally unused
         void dim; // Intentionally unused
+        void pinColor; // Intentionally unused
+        void pinBackgroundColor; // Intentionally unused
         return restWidget;
     });
 }
@@ -138,12 +142,16 @@ export function clearAllWidgetStyling(widgets: WidgetItem[]): WidgetItem[] {
             backgroundColor,
             bold,
             dim,
+            pinColor,
+            pinBackgroundColor,
             ...restWidget
         } = widget;
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
         void bold; // Intentionally unused
         void dim; // Intentionally unused
+        void pinColor; // Intentionally unused
+        void pinBackgroundColor; // Intentionally unused
         return restWidget;
     });
 }

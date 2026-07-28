@@ -7,7 +7,9 @@ import {
 import type { WidgetItem } from '../../../../types/Widget';
 import {
     clearAllPins,
+    clearAllWidgetStyling,
     pinWidgetColor,
+    resetWidgetStyling,
     unpinWidgetColor
 } from '../mutations';
 
@@ -57,5 +59,31 @@ describe('pin / unpin widget colour mutations', () => {
         const w: WidgetItem[] = [{ id: 'w1', type: 'model', color: 'red' }];
         pinWidgetColor(w, 'w1', false, 'cyan');
         expect(w[0]?.pinColor).toBeUndefined();
+    });
+});
+
+describe('reset / clear-all also drop pins', () => {
+    it('resetWidgetStyling clears pins as well as colours', () => {
+        const w: WidgetItem[] = [{
+            id: 'w1', type: 'model', color: 'red', backgroundColor: 'blue',
+            pinColor: true, pinBackgroundColor: true, bold: true
+        }];
+        const out = resetWidgetStyling(w, 'w1');
+        expect(out[0]?.pinColor).toBeUndefined();
+        expect(out[0]?.pinBackgroundColor).toBeUndefined();
+        expect(out[0]?.color).toBeUndefined();
+        expect(out[0]?.backgroundColor).toBeUndefined();
+    });
+
+    it('clearAllWidgetStyling clears pins on every widget', () => {
+        const w: WidgetItem[] = [
+            { id: 'w1', type: 'model', color: 'red', pinColor: true },
+            { id: 'w2', type: 'git-branch', backgroundColor: 'blue', pinBackgroundColor: true }
+        ];
+        const out = clearAllWidgetStyling(w);
+        expect(out[0]?.pinColor).toBeUndefined();
+        expect(out[1]?.pinBackgroundColor).toBeUndefined();
+        expect(out[0]?.color).toBeUndefined();
+        expect(out[1]?.backgroundColor).toBeUndefined();
     });
 });
