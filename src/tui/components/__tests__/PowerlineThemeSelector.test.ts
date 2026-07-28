@@ -157,4 +157,58 @@ describe('PowerlineThemeSelector helpers', () => {
             stderr.destroy();
         }
     });
+
+    it('prompts to remove pinned overrides when the theme changes and clears them on confirm', async () => {
+        const themes = getPowerlineThemes();
+        expect(themes.length).toBeGreaterThan(1);
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineThemeSelector, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        theme: themes[0]
+                    },
+                    lines: [[{ id: '1', type: 'model', color: 'red', pinColor: true }]]
+                },
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('[B'); // change the theme (live preview)
+            await flushInk();
+            stdin.write('\r'); // Enter: commit -> keep/remove prompt (pins present, theme changed)
+            await flushInk();
+            stdin.write('\r'); // Enter: choose "Yes" -> remove overrides
+            await flushInk();
+
+            const lastSettings = onUpdate.mock.calls.at(-1)?.[0];
+            expect(lastSettings?.lines[0]?.[0]?.pinColor).toBeUndefined();
+            expect(onBack).toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
