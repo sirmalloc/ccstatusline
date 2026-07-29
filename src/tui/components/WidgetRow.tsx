@@ -7,6 +7,7 @@ import React from 'react';
 import { getColorLevelString } from '../../types/ColorLevel';
 import type { Settings } from '../../types/Settings';
 import type {
+    Rule,
     WidgetEditorDisplay,
     WidgetItem
 } from '../../types/Widget';
@@ -124,6 +125,17 @@ export function getWidgetRuleBadge(widget: WidgetItem): string | null {
     }
 
     return `[${count} ${count === 1 ? 'rule' : 'rules'}]`;
+}
+
+/**
+ * The widget a rule effectively renders as: the rule's overrides on top of the widget, the
+ * same merge the renderer performs. Lets a rule row be painted through styleWidgetRowLabel.
+ */
+export function getRuleEffectiveWidget(widget: WidgetItem, rule: Rule): WidgetItem {
+    return {
+        ...widget,
+        ...rule.apply
+    };
 }
 
 /**

@@ -51,17 +51,24 @@ export function formatApplyProperties(apply: RuleApply): string {
 export interface RuleRowProps {
     rule: Rule;
     isSelected: boolean;
+    /**
+     * The condition text already painted with the colour this rule renders in, so a rule row
+     * previews its own styling the way a widget row does. Selection stays on the marker.
+     */
+    styledCondition?: string;
 }
 
 /** One rule beneath its widget in the accordion, shown the same way in both editor modes. */
-export const RuleRow: React.FC<RuleRowProps> = ({ rule, isSelected }) => {
+export const RuleRow: React.FC<RuleRowProps> = ({ rule, isSelected, styledCondition }) => {
     const color = isSelected ? 'cyan' : 'gray';
     const applyText = formatApplyProperties(rule.apply);
 
     return (
         <Box paddingLeft={5} flexDirection='row' flexWrap='nowrap'>
             <Text color={color}>{isSelected ? '› ' : '  '}</Text>
-            <Text color={color}>{formatConditionText(rule.when)}</Text>
+            <Text color={styledCondition ? undefined : color}>
+                {styledCondition ?? formatConditionText(rule.when)}
+            </Text>
             {applyText && (
                 <Text color={color} dimColor={!isSelected}>
                     {` -> ${applyText}`}

@@ -1,6 +1,7 @@
 import { render } from 'ink';
 import { PassThrough } from 'node:stream';
 import React from 'react';
+import stripAnsi from 'strip-ansi';
 import {
     describe,
     expect,
@@ -318,7 +319,7 @@ describe('ItemsEditor', () => {
             stdin.write('[B'); // down arrow
             await flushInk();
 
-            expect(getOutput()).toContain('› when context-percentage greater than 90');
+            expect(stripAnsi(getOutput())).toContain('› when context-percentage greater than 90');
         } finally {
             teardown();
         }
@@ -403,7 +404,7 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            expect(output).toContain('› when context-percentage greater than 90');
+            expect(stripAnsi(output)).toContain('› when context-percentage greater than 90');
         } finally {
             teardown();
         }

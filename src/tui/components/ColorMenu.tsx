@@ -31,9 +31,13 @@ import {
 } from '../hooks/useRuleAccordion';
 
 import { ConfirmDialog } from './ConfirmDialog';
-import { RuleRow } from './RuleRow';
+import {
+    RuleRow,
+    formatConditionText
+} from './RuleRow';
 import {
     WidgetRow,
+    getRuleEffectiveWidget,
     getWidgetRowLabel,
     getWidgetRowTags,
     getWidgetRuleBadge,
@@ -516,6 +520,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             modifierText,
             tags: getWidgetRowTags(widgets, index, settings),
             badge: getWidgetRuleBadge(widget),
+            widget,
             rules: widget.rules ?? [],
             expanded: accordion.isExpanded(widget.id)
         };
@@ -528,11 +533,21 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const selectedWidget = highlightedItemId
         ? colorableWidgets.find(widget => widget.id === highlightedItemId)
         : null;
+    // The colour keys follow the accordion, so the current-style row has to describe the same
+    // target: the selected rule's overrides over the widget, or the widget on its own.
+    const selectedRuleIndex = selectedWidget ? getTargetRuleIndex(selectedWidget.id) : undefined;
+    const selectedRule = selectedRuleIndex !== undefined
+        ? selectedWidget?.rules?.[selectedRuleIndex]
+        : undefined;
+    const styleSource = selectedWidget && selectedRule
+        ? getRuleEffectiveWidget(selectedWidget, selectedRule)
+        : selectedWidget;
+
     const storedColor = editingBackground
-        ? (selectedWidget?.backgroundColor ?? '')  // Empty string for 'none'
-        : (selectedWidget ? (selectedWidget.color ?? (() => {
-            if (selectedWidget.type !== 'separator' && selectedWidget.type !== 'flex-separator') {
-                const widgetImpl = getWidget(selectedWidget.type);
+        ? (styleSource?.backgroundColor ?? '')  // Empty string for 'none'
+        : (styleSource ? (styleSource.color ?? (() => {
+            if (styleSource.type !== 'separator' && styleSource.type !== 'flex-separator') {
+                const widgetImpl = getWidget(styleSource.type);
                 return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
             }
             return 'white';
@@ -604,9 +619,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         ? '- theme applies, press (p) to override'
         : '';
     const styleIndicators = [
-        selectedWidget?.bold ? '[BOLD]' : null,
-        selectedWidget?.dim === true ? '[DIM]' : null,
-        selectedWidget?.dim === 'parens' ? '[DIM ()]' : null
+        styleSource?.bold ? '[BOLD]' : null,
+        styleSource?.dim === true ? '[DIM]' : null,
+        styleSource?.dim === 'parens' ? '[DIM ()]' : null
     ].filter(indicator => indicator !== null).join(' ');
 
     // Gradient selection mode takes over the whole view
@@ -804,6 +819,12 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                                         key={ruleIndex}
                                         rule={rule}
                                         isSelected={ruleIndex === accordion.selectedRuleIndex}
+                                        styledCondition={styleWidgetRowLabel(
+                                            formatConditionText(rule.when),
+                                            getRuleEffectiveWidget(row.widget, rule),
+                                            settings,
+                                            effectiveThemeColors.get(row.id)
+                                        )}
                                     />
                                 ))}
                             </Box>

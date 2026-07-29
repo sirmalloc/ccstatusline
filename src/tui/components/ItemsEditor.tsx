@@ -34,9 +34,13 @@ import {
 
 import { ConditionEditor } from './ConditionEditor';
 import { ConfirmDialog } from './ConfirmDialog';
-import { RuleRow } from './RuleRow';
+import {
+    RuleRow,
+    formatConditionText
+} from './RuleRow';
 import {
     WidgetRow,
+    getRuleEffectiveWidget,
     getWidgetRowLabel,
     getWidgetRowTags,
     getWidgetRuleBadge,
@@ -673,6 +677,14 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                                             key={ruleIndex}
                                                             rule={rule}
                                                             isSelected={ruleIndex === accordion.selectedRuleIndex}
+                                                            styledCondition={moveMode
+                                                                ? undefined
+                                                                : styleWidgetRowLabel(
+                                                                    formatConditionText(rule.when),
+                                                                    getRuleEffectiveWidget(widget, rule),
+                                                                    settings,
+                                                                    effectiveThemeColors.get(widget.id)
+                                                                )}
                                                         />
                                                     ))
                                                 )}

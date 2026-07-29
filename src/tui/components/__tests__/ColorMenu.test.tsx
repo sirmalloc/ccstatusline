@@ -167,7 +167,7 @@ describe('ColorMenu rules accordion', () => {
             stdin.write('\x1B[B');
             await settleInputHandler();
 
-            expect(getOutput()).toContain('› when context-percentage greater than 90');
+            expect(stripAnsi(getOutput())).toContain('› when context-percentage greater than 90');
         } finally {
             teardown();
         }
@@ -301,6 +301,58 @@ describe('ColorMenu rules accordion', () => {
         }
     });
 
+    // Named colours come back unstyled under vitest because chalk sees no colour support,
+    // so this asserts on a hex colour, whose ANSI is built directly.
+    it('tints a rule row with the colour that rule renders in', async () => {
+        const widgets: WidgetItem[] = [{
+            id: '1',
+            type: 'model',
+            color: 'hex:0000FF',
+            rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'hex:FF0000' } }]
+        }];
+        const { stdin, getOutput, teardown } = await renderColorMenu(widgets, {
+            settings: {
+                ...DEFAULT_SETTINGS,
+                colorLevel: 3
+            }
+        });
+
+        try {
+            stdin.write('+');
+            await settleInputHandler();
+
+            expect(getOutput()).toContain(
+                applyColors('when context-percentage greater than 80', 'hex:FF0000', undefined, undefined, 'truecolor', undefined)
+            );
+        } finally {
+            teardown();
+        }
+    });
+
+    it('describes the selected rule, not the widget, in the current-style row', async () => {
+        const widgets: WidgetItem[] = [{
+            id: '1',
+            type: 'model',
+            color: 'blue',
+            rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red', bold: true } }]
+        }];
+        const { stdin, getOutput, teardown } = await renderColorMenu(widgets);
+
+        try {
+            stdin.write('+');
+            await settleInputHandler();
+
+            const frame = getOutput().split('Edit Line 1').at(-1) ?? '';
+            const currentStyleLine = frame.split('\n').find(line => line.includes('Current (')) ?? '';
+
+            expect(stripAnsi(currentStyleLine)).toContain('Red');
+            expect(stripAnsi(currentStyleLine)).not.toContain('Blue');
+            expect(currentStyleLine).toContain('[BOLD]');
+        } finally {
+            teardown();
+        }
+    });
+
     it('carries the accordion in from the widget editor', async () => {
         const { getOutput, teardown } = await renderColorMenu(
             RULED_WIDGETS,
@@ -308,7 +360,7 @@ describe('ColorMenu rules accordion', () => {
         );
 
         try {
-            expect(getOutput()).toContain('› when context-percentage greater than 90');
+            expect(stripAnsi(getOutput())).toContain('› when context-percentage greater than 90');
         } finally {
             teardown();
         }
