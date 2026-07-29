@@ -439,7 +439,7 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            expect(getOutput()).toContain('(E) rules');
+            expect(getOutput()).toContain('⇧E rules');
 
             stdin.write('E');
             await settleInputHandler();

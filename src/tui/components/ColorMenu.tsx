@@ -759,7 +759,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {!settings.powerline.enabled && !settings.defaultSeparator
                             ? ` (s)how separators: ${showSeparators ? 'ON' : 'OFF'},`
                             : ''}
-                        {highlightedHasRules ? ' (E) rules,' : ''}
+                        {highlightedHasRules ? ' ⇧E rules,' : ''}
                         {onTabSwap ? ' ⇥ edit widgets,' : ''}
                         {' '}
                         {accordion.expandedWidgetId !== null ? 'ESC to collapse' : 'ESC to go back'}
