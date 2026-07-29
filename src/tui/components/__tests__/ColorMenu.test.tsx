@@ -63,6 +63,164 @@ function flushInk() {
     });
 }
 
+/**
+ * Ink re-registers its input handler from a passive effect, so a key sent right after a key
+ * that changed the menu's mode is still handled by the previous render's closure. Sequences
+ * that press a mode key and then act inside that mode have to let the effect flush first.
+ */
+async function settleInputHandler() {
+    for (let i = 0; i < 10; i++) {
+        await flushInk();
+    }
+}
+
+const RULED_WIDGETS: WidgetItem[] = [
+    {
+        id: '1',
+        type: 'model',
+        rules: [
+            { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+            { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+        ]
+    },
+    { id: '2', type: 'git-branch' }
+];
+
+async function renderColorMenu(
+    widgets: WidgetItem[] = RULED_WIDGETS,
+    extraProps: Record<string, unknown> = {}
+) {
+    const stdin = createMockStdin();
+    const stdout = createMockStdout();
+    const stderr = createMockStdout();
+    const onUpdate = vi.fn();
+    const onBack = vi.fn();
+    const instance = render(
+        React.createElement(ColorMenu, {
+            widgets,
+            lineIndex: 0,
+            settings: DEFAULT_SETTINGS,
+            onUpdate,
+            onBack,
+            ...extraProps
+        }),
+        {
+            stdin,
+            stdout,
+            stderr,
+            debug: true,
+            exitOnCtrlC: false,
+            patchConsole: false
+        }
+    );
+
+    await flushInk();
+
+    return {
+        stdin,
+        onUpdate,
+        onBack,
+        getOutput: () => stdout.getOutput(),
+        teardown: () => {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    };
+}
+
+describe('ColorMenu rules accordion', () => {
+    it('badges a row with how many rules the widget carries', async () => {
+        const { getOutput, teardown } = await renderColorMenu();
+
+        try {
+            expect(getOutput()).toContain('[2 rules]');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('expands the highlighted widget to show its rules', async () => {
+        const { stdin, getOutput, teardown } = await renderColorMenu();
+
+        try {
+            expect(getOutput()).not.toContain('when context-percentage greater than 80');
+
+            stdin.write('E');
+            await settleInputHandler();
+
+            expect(getOutput()).toContain('when context-percentage greater than 80');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('moves the rule selection with the arrows while expanded', async () => {
+        const { stdin, getOutput, teardown } = await renderColorMenu();
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            stdin.write('\x1B[B');
+            await settleInputHandler();
+
+            expect(getOutput()).toContain('› when context-percentage greater than 90');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('collapses on escape instead of leaving the colour editor', async () => {
+        const { stdin, onBack, teardown } = await renderColorMenu();
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            stdin.write('\x1B');
+            await settleInputHandler();
+
+            expect(onBack).not.toHaveBeenCalled();
+        } finally {
+            teardown();
+        }
+    });
+
+    // Rules cannot be created here, so opening a widget with none would be a dead end.
+    it('does not expand a widget that has no rules', async () => {
+        const onAccordionChange = vi.fn();
+        const { stdin, teardown } = await renderColorMenu(
+            [{ id: '1', type: 'model' }],
+            { onAccordionChange }
+        );
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            expect(onAccordionChange).not.toHaveBeenCalled();
+        } finally {
+            teardown();
+        }
+    });
+
+    it('carries the accordion in from the widget editor', async () => {
+        const { getOutput, teardown } = await renderColorMenu(
+            RULED_WIDGETS,
+            { accordionState: { expandedWidgetId: '1', selectedRuleIndex: 1 } }
+        );
+
+        try {
+            expect(getOutput()).toContain('› when context-percentage greater than 90');
+        } finally {
+            teardown();
+        }
+    });
+});
+
 describe('ColorMenu', () => {
     it('keeps bold and dim indicators on the current-style row', async () => {
         const stdin = createMockStdin();

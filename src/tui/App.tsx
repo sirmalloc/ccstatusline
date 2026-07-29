@@ -1293,6 +1293,8 @@ export const App: React.FC = () => {
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'terminalConfig' && (

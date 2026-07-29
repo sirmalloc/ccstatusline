@@ -502,7 +502,7 @@ export function handleNormalInputMode({
         openWidgetPicker('change');
     } else if (key.return && widgets.length > 0) {
         setMoveMode(true);
-    } else if (input === 'R' && onToggleAccordion && widgets.length > 0) {
+    } else if (input === 'E' && onToggleAccordion && widgets.length > 0) {
         const widget = widgets[selectedIndex];
         if (widget) {
             onToggleAccordion(widget.id);

@@ -24,12 +24,19 @@ import {
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
 import { getWidget } from '../../utils/widgets';
+import {
+    getRuleCount,
+    useRuleAccordion,
+    type AccordionState
+} from '../hooks/useRuleAccordion';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import { RuleRow } from './RuleRow';
 import {
     WidgetRow,
     getWidgetRowLabel,
     getWidgetRowTags,
+    getWidgetRuleBadge,
     styleWidgetRowLabel
 } from './WidgetRow';
 import {
@@ -52,9 +59,17 @@ export interface ColorMenuProps {
     onTabSwap?: () => void;
     onWidgetHighlight?: (widgetId: string | null) => void;
     initialWidgetId?: string | null;
+    accordionState?: AccordionState;
+    onAccordionChange?: (state: AccordionState) => void;
 }
 
-export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId, accordionState, onAccordionChange }) => {
+    const accordion = useRuleAccordion({
+        widgets,
+        initialExpandedWidgetId: accordionState?.expandedWidgetId ?? null,
+        initialSelectedRuleIndex: accordionState?.selectedRuleIndex ?? 0,
+        onChange: onAccordionChange
+    });
     const [showSeparators, setShowSeparators] = useState(false);
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
@@ -315,6 +330,35 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return;
         }
 
+        const highlightedWidget = highlightedItemId
+            ? colorableWidgets.find(entry => entry.id === highlightedItemId)
+            : undefined;
+
+        // Rules are authored in the widget editor, so this only opens widgets that have some
+        if (input === 'E') {
+            if (highlightedWidget && getRuleCount(highlightedWidget) > 0) {
+                accordion.toggleExpand(highlightedWidget.id);
+            }
+            return;
+        }
+
+        // While the accordion is open the rule list takes the arrows and escape; the colour
+        // keys stay live so they can be aimed at the selected rule.
+        if (accordion.expandedWidgetId !== null) {
+            if (key.escape) {
+                accordion.collapse();
+                return;
+            }
+            if (key.upArrow) {
+                accordion.selectPrevRule();
+                return;
+            }
+            if (key.downArrow) {
+                accordion.selectNextRule();
+                return;
+            }
+        }
+
         // Normal keyboard handling when there are items
         if (key.escape) {
             if (editingBackground) {
@@ -461,9 +505,15 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             number: index + 1,
             label: styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id)),
             modifierText,
-            tags: getWidgetRowTags(widgets, index, settings)
+            tags: getWidgetRowTags(widgets, index, settings),
+            badge: getWidgetRuleBadge(widget),
+            rules: widget.rules ?? [],
+            expanded: accordion.isExpanded(widget.id)
         };
     });
+
+    // The rules key only means something on a widget that has rules to open
+    const highlightedHasRules = menuRows.some(row => row.id === highlightedItemId && row.rules.length > 0);
 
     // Get current color for highlighted item
     const selectedWidget = highlightedItemId
@@ -700,9 +750,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {!settings.powerline.enabled && !settings.defaultSeparator
                             ? ` (s)how separators: ${showSeparators ? 'ON' : 'OFF'},`
                             : ''}
+                        {highlightedHasRules ? ' (E) rules,' : ''}
                         {onTabSwap ? ' ⇥ edit widgets,' : ''}
                         {' '}
-                        ESC to go back
+                        {accordion.expandedWidgetId !== null ? 'ESC to collapse' : 'ESC to go back'}
                     </Text>
                     {selectedWidget ? (
                         <Box marginTop={1}>
@@ -727,15 +778,28 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             )}
             <Box marginTop={1} flexDirection='column'>
                 {menuRows.map(row => (
-                    <WidgetRow
-                        key={row.id}
-                        number={row.number}
-                        label={row.label}
-                        labelIsStyled={true}
-                        isSelected={row.id === highlightedItemId}
-                        modifierText={row.modifierText}
-                        tags={row.tags}
-                    />
+                    <React.Fragment key={row.id}>
+                        <WidgetRow
+                            number={row.number}
+                            label={row.label}
+                            labelIsStyled={true}
+                            isSelected={row.id === highlightedItemId}
+                            modifierText={row.modifierText}
+                            tags={row.tags}
+                            badge={row.badge}
+                        />
+                        {row.expanded && (
+                            <Box flexDirection='column'>
+                                {row.rules.map((rule, ruleIndex) => (
+                                    <RuleRow
+                                        key={ruleIndex}
+                                        rule={rule}
+                                        isSelected={ruleIndex === accordion.selectedRuleIndex}
+                                    />
+                                ))}
+                            </Box>
+                        )}
+                    </React.Fragment>
                 ))}
             </Box>
             <Box marginTop={1}>

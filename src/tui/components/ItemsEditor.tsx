@@ -376,7 +376,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             helpText += ', ⇥ edit colors';
         }
         if (hasWidgets) {
-            helpText += ', (R)ules';
+            helpText += ', (E) rules';
         }
         helpText += ', ESC back';
     }
