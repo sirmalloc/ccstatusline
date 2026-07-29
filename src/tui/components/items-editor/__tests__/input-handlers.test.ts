@@ -1134,10 +1134,10 @@ describe('rules accordion shortcut', () => {
         };
     }
 
-    it('opens the accordion on E', () => {
+    it('opens the accordion on +', () => {
         const onToggleAccordion = vi.fn();
 
-        handleNormalInputMode(normalModeArgs({ input: 'E', onToggleAccordion }));
+        handleNormalInputMode(normalModeArgs({ input: '+', onToggleAccordion }));
 
         expect(onToggleAccordion).toHaveBeenCalledWith('1');
     });

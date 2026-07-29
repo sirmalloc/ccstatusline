@@ -148,7 +148,7 @@ describe('ColorMenu rules accordion', () => {
         try {
             expect(getOutput()).not.toContain('when context-percentage greater than 80');
 
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             expect(getOutput()).toContain('when context-percentage greater than 80');
@@ -161,7 +161,7 @@ describe('ColorMenu rules accordion', () => {
         const { stdin, getOutput, teardown } = await renderColorMenu();
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('\x1B[B');
@@ -177,7 +177,7 @@ describe('ColorMenu rules accordion', () => {
         const { stdin, onBack, teardown } = await renderColorMenu();
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('\x1B');
@@ -198,7 +198,7 @@ describe('ColorMenu rules accordion', () => {
         );
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             expect(onAccordionChange).not.toHaveBeenCalled();
@@ -211,7 +211,7 @@ describe('ColorMenu rules accordion', () => {
         const { stdin, onUpdate, teardown } = await renderColorMenu();
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('\x1B[C'); // right arrow cycles colour
@@ -230,7 +230,7 @@ describe('ColorMenu rules accordion', () => {
         const { stdin, onUpdate, teardown } = await renderColorMenu();
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('b');
@@ -258,7 +258,7 @@ describe('ColorMenu rules accordion', () => {
         const { stdin, onUpdate, teardown } = await renderColorMenu(RULED_WIDGETS, { settings: themed });
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('\x1B[C');
@@ -288,7 +288,7 @@ describe('ColorMenu rules accordion', () => {
         const { stdin, onUpdate, teardown } = await renderColorMenu(pinned, { settings: themed });
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('\x1B[C');

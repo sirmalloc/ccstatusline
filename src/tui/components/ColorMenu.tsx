@@ -343,7 +343,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             : undefined;
 
         // Rules are authored in the widget editor, so this only opens widgets that have some
-        if (input === 'E') {
+        if (input === '+') {
             if (highlightedWidget && getRuleCount(highlightedWidget) > 0) {
                 accordion.toggleExpand(highlightedWidget.id);
             }
@@ -759,7 +759,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {!settings.powerline.enabled && !settings.defaultSeparator
                             ? ` (s)how separators: ${showSeparators ? 'ON' : 'OFF'},`
                             : ''}
-                        {highlightedHasRules ? ' ⇧E rules,' : ''}
+                        {highlightedHasRules ? ' (+) rules,' : ''}
                         {onTabSwap ? ' ⇥ edit widgets,' : ''}
                         {' '}
                         {accordion.expandedWidgetId !== null ? 'ESC to collapse' : 'ESC to go back'}

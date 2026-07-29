@@ -278,7 +278,7 @@ describe('ItemsEditor', () => {
         try {
             expect(getOutput()).not.toContain('when context-percentage greater than 80');
 
-            stdin.write('E');
+            stdin.write('+');
             await flushInk();
 
             expect(getOutput()).toContain('when context-percentage greater than 80');
@@ -291,7 +291,7 @@ describe('ItemsEditor', () => {
         const { stdin, getOutput, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await flushInk();
 
             expect(getOutput()).toContain('No rules');
@@ -313,7 +313,7 @@ describe('ItemsEditor', () => {
         ]);
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
             stdin.write('[B'); // down arrow
             await flushInk();
@@ -334,7 +334,7 @@ describe('ItemsEditor', () => {
         ]);
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('\x1B'); // escape
@@ -351,7 +351,7 @@ describe('ItemsEditor', () => {
         const { stdin, onUpdate, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('a');
@@ -374,7 +374,7 @@ describe('ItemsEditor', () => {
         ]);
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             stdin.write('e');
@@ -422,7 +422,7 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             expect(onAccordionChange).toHaveBeenCalledWith({ expandedWidgetId: '1', selectedRuleIndex: 0 });
@@ -439,9 +439,9 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            expect(getOutput()).toContain('⇧E rules');
+            expect(getOutput()).toContain('(+) rules');
 
-            stdin.write('E');
+            stdin.write('+');
             await settleInputHandler();
 
             expect(getOutput()).toContain('ESC collapse');
