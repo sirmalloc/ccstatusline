@@ -161,6 +161,65 @@ Gradients apply at **two scopes**:
 
 Gradients self-degrade where they can't render: at Basic or No Color levels, gradient settings are preserved but render as plain text. In Powerline mode, global foreground gradients color widget text while separators and caps keep Powerline's normal foreground/background contrast rules; per-widget gradients collapse to their first stop when using 256-color or truecolor output.
 
+## Widget Rules
+
+A widget can carry **rules** that override its own settings when a condition holds — turn a context percentage red once it climbs past 80%, hide a widget while its value is zero, or swap the text it shows. Rules are evaluated top to bottom on every render and later matches win, so put general rules first and specific ones last. A rule marked **stop** ends evaluation for that widget when it matches.
+
+Press `+` on a widget in either editor mode to open its rules. Rows carrying rules are badged, and each rule appears as an indented sub-row showing its condition, what it overrides, and whether it stops:
+
+```
+▶  1. Context %  [2 rules]
+     › when context-percentage greater than 80 -> color: red
+       when context-percentage greater than 90 -> color: red, bold: true [STOP]
+```
+
+Each rule row is painted in the color that rule renders in, so the list previews what it will do.
+
+### Authoring Rules
+
+Rules are created in the widget editor (`[WIDGETS]`). With a widget expanded:
+
+- `↑/↓` select a rule
+- `a` add a rule below the selected one
+- `d` delete the selected rule
+- `s` toggle the rule's stop flag
+- `e` or `Enter` edit the condition
+- `j` / `k` reorder the selected rule (order is evaluation order)
+- `⇥` switch to color editing with the same rule still selected
+- `Esc` collapse
+
+Deleting the last rule leaves the accordion open on an empty list, so `a` can start again without reopening it.
+
+A condition names a widget to evaluate, an operator, and a value — the condition editor picks the widget from the same catalog the type picker uses, then offers only the operators that suit that widget's value type:
+
+- **Numeric** — `equals`, `greater than`, `greater than or equal`, `less than`, `less than or equal`
+- **String** — `equals`, `contains`, `starts with`, `ends with`
+- **Boolean** — `equals`
+- **Existence** — `is null`, `is not null`
+
+Any condition can be negated. A rule can override `color`, `backgroundColor`, `bold`, `rawValue`, `customText` and `hide`.
+
+Rules are stored on the widget in `settings.json`:
+
+```json
+{
+  "id": "…",
+  "type": "context-percentage",
+  "rules": [
+    { "when": { "widget": "context-percentage", "greaterThan": 80 }, "apply": { "color": "red" } },
+    { "when": { "widget": "context-percentage", "greaterThan": 90 }, "apply": { "bold": true }, "stop": true }
+  ]
+}
+```
+
+### Styling a Rule
+
+In the color editor, expanding a widget and selecting a rule aims the color keys at that rule: `←`/`→`, `f`, `b`, `h`, `a` and `r` write to the rule instead of the widget. The current-style row describes the selected rule, so `Current (…)` and `[BOLD]` reflect the rule rather than its widget.
+
+Rules cannot be created or deleted here — `a`, `d` and `s` keep their color-editor meanings — so `+` only opens widgets that already have rules. Dim has no rule equivalent, so `d` always edits the widget's dim.
+
+Under a Powerline theme, rule colors follow the same pin rule as widget colors (see [Pinning Colors Over a Powerline Theme](#pinning-colors-over-a-powerline-theme)): while the theme owns a channel, a rule color would never be visible, so the color keys do nothing until that channel is pinned. Pinning makes the widget override the theme, which is what lets its rules override it further. An unpinned rule row shows the theme's color, which is what it would actually render as. Bold is not theme-driven and stays available.
+
 ## Claude Code Status Line Settings
 
 When ccstatusline is installed in Claude Code, the main menu includes **Configure Status Line**. Claude Code versions >=2.1.97 support `statusLine.refreshInterval`; ccstatusline can set it to `1-60` seconds, defaults fresh supported installs to `10` seconds, and removes the setting when the input is left empty.
@@ -225,8 +284,11 @@ Common controls in the line editor:
 - `r` toggle raw value (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
+- `+` open the selected widget's rules (see [Widget Rules](#widget-rules))
 - `⇥` switch to color editing for the selected widget, and back again (see [Widget Styling](#widget-styling))
 - `Esc` go back to the line selector, from either mode
+
+With a widget's rules open, the rule list takes over the keyboard and the footer switches to its own shortcuts — `↑/↓` select, `a` add, `d` delete, `s` stop, `e`/`Enter` edit condition, `j`/`k` reorder, `Esc` collapse. `⇥` still swaps editor modes and carries the open rule with it.
 
 Widget picker:
 - type to search categories and widgets
