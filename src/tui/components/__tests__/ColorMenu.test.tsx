@@ -207,6 +207,100 @@ describe('ColorMenu rules accordion', () => {
         }
     });
 
+    it('aims colour cycling at the selected rule while expanded', async () => {
+        const { stdin, onUpdate, teardown } = await renderColorMenu();
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            stdin.write('\x1B[C'); // right arrow cycles colour
+            await settleInputHandler();
+
+            const updated = onUpdate.mock.calls.at(-1)?.[0] as WidgetItem[] | undefined;
+            expect(updated?.[0]?.color).toBeUndefined();
+            expect(updated?.[0]?.rules?.[0]?.apply.color).toBeDefined();
+            expect(updated?.[0]?.rules?.[0]?.apply.color).not.toBe('red');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('toggles bold on the selected rule while expanded', async () => {
+        const { stdin, onUpdate, teardown } = await renderColorMenu();
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            stdin.write('b');
+            await settleInputHandler();
+
+            const updated = onUpdate.mock.calls.at(-1)?.[0] as WidgetItem[] | undefined;
+            expect(updated?.[0]?.bold).toBeUndefined();
+            expect(updated?.[0]?.rules?.[0]?.apply.bold).toBe(true);
+        } finally {
+            teardown();
+        }
+    });
+
+    // Under a theme the theme owns the channel, so a rule colour would be invisible until the
+    // channel is pinned. Rule edits sit behind the same gate as the widget's own colour.
+    it('ignores rule colour edits until the channel is pinned under a theme', async () => {
+        const themed = {
+            ...DEFAULT_SETTINGS,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                theme: 'nord-aurora'
+            }
+        };
+        const { stdin, onUpdate, teardown } = await renderColorMenu(RULED_WIDGETS, { settings: themed });
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            stdin.write('\x1B[C');
+            await settleInputHandler();
+
+            expect(onUpdate).not.toHaveBeenCalled();
+        } finally {
+            teardown();
+        }
+    });
+
+    it('edits the rule colour once the channel is pinned', async () => {
+        const themed = {
+            ...DEFAULT_SETTINGS,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                theme: 'nord-aurora'
+            }
+        };
+        const pinned: WidgetItem[] = [{
+            ...RULED_WIDGETS[0],
+            id: '1',
+            type: 'model',
+            pinColor: true
+        }];
+        const { stdin, onUpdate, teardown } = await renderColorMenu(pinned, { settings: themed });
+
+        try {
+            stdin.write('E');
+            await settleInputHandler();
+
+            stdin.write('\x1B[C');
+            await settleInputHandler();
+
+            const updated = onUpdate.mock.calls.at(-1)?.[0] as WidgetItem[] | undefined;
+            expect(updated?.[0]?.rules?.[0]?.apply.color).toBeDefined();
+        } finally {
+            teardown();
+        }
+    });
+
     it('carries the accordion in from the widget editor', async () => {
         const { getOutput, teardown } = await renderColorMenu(
             RULED_WIDGETS,

@@ -351,6 +351,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         if (ruleCount > 1) {
             ruleHelpParts.push('(j)/(k) reorder');
         }
+        if (onTabSwap) {
+            ruleHelpParts.push('⇥ edit colors');
+        }
         ruleHelpParts.push('ESC collapse');
         helpText = ruleHelpParts.join(', ');
     } else {

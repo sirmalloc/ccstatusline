@@ -160,6 +160,14 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
      */
     const canEditColor = (widget: WidgetItem): boolean => !themeActive || isChannelPinned(widget);
 
+    /**
+     * The rule a colour edit lands on, or undefined to edit the widget itself. Only the
+     * expanded widget's rules are targets, so highlighting a different row edits that widget.
+     */
+    const getTargetRuleIndex = (widgetId: string): number | undefined => (
+        accordion.expandedWidgetId === widgetId ? accordion.selectedRuleIndex : undefined
+    );
+
     /** The widget a colour edit applies to, or null when the channel is not editable yet. */
     const getEditableWidget = (): WidgetItem | null => {
         if (!highlightedItemId) {
@@ -197,7 +205,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const hexColor = `hex:${hexInput}`;
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                     if (selectedWidget) {
-                        const newItems = setWidgetColor(widgets, selectedWidget.id, hexColor, editingBackground);
+                        const newItems = setWidgetColor(widgets, selectedWidget.id, hexColor, editingBackground, getTargetRuleIndex(selectedWidget.id));
                         onUpdate(newItems);
                     }
                     setHexInputMode(false);
@@ -233,7 +241,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
 
                     if (selectedWidget) {
-                        const newItems = setWidgetColor(widgets, selectedWidget.id, ansiColor, editingBackground);
+                        const newItems = setWidgetColor(widgets, selectedWidget.id, ansiColor, editingBackground, getTargetRuleIndex(selectedWidget.id));
 
                         onUpdate(newItems);
                         setAnsi256InputMode(false);
@@ -268,7 +276,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             const applyGradientValue = (value: string) => {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    onUpdate(setWidgetColor(widgets, selectedWidget.id, value, false));
+                    onUpdate(setWidgetColor(widgets, selectedWidget.id, value, false, getTargetRuleIndex(selectedWidget.id)));
                 }
                 exitGradient();
             };
@@ -403,7 +411,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Toggle bold for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = toggleWidgetBold(widgets, selectedWidget.id);
+                    const newItems = toggleWidgetBold(widgets, selectedWidget.id, getTargetRuleIndex(selectedWidget.id));
                     onUpdate(newItems);
                 }
             }
@@ -421,7 +429,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Reset all styling (color, background, and bold) for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = resetWidgetStyling(widgets, selectedWidget.id);
+                    const newItems = resetWidgetStyling(widgets, selectedWidget.id, getTargetRuleIndex(selectedWidget.id));
                     onUpdate(newItems);
                 }
             }
@@ -460,7 +468,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     direction: key.rightArrow ? 'right' : 'left',
                     editingBackground,
                     colors,
-                    backgroundColors: bgColors
+                    backgroundColors: bgColors,
+                    ruleIndex: getTargetRuleIndex(selectedWidget.id)
                 });
                 onUpdate(newItems);
             }

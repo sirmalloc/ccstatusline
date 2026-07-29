@@ -1,4 +1,7 @@
-import type { WidgetItem } from '../../../types/Widget';
+import type {
+    RuleApply,
+    WidgetItem
+} from '../../../types/Widget';
 import { getWidget } from '../../../utils/widgets';
 
 export function updateWidgetById(
@@ -9,13 +12,43 @@ export function updateWidgetById(
     return widgets.map(widget => widget.id === widgetId ? updater(widget) : widget);
 }
 
+/**
+ * Applies an update to one of a widget's rules. Rule edits target rule.apply so the widget's
+ * own styling stays as the unconditional base the rules override. Out-of-range indexes leave
+ * the widget untouched rather than growing the list.
+ */
+function updateRuleApply(
+    widget: WidgetItem,
+    ruleIndex: number,
+    applyUpdater: (apply: RuleApply) => RuleApply
+): WidgetItem {
+    const rules = widget.rules;
+    if (!rules || ruleIndex < 0 || ruleIndex >= rules.length) {
+        return widget;
+    }
+
+    return {
+        ...widget,
+        rules: rules.map((rule, index) => index === ruleIndex
+            ? { ...rule, apply: applyUpdater(rule.apply) }
+            : rule)
+    };
+}
+
 export function setWidgetColor(
     widgets: WidgetItem[],
     widgetId: string,
     color: string,
-    editingBackground: boolean
+    editingBackground: boolean,
+    ruleIndex?: number
 ): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, apply => (editingBackground
+                ? { ...apply, backgroundColor: color }
+                : { ...apply, color }));
+        }
+
         if (editingBackground) {
             return {
                 ...widget,
@@ -84,11 +117,17 @@ export function clearAllPins(widgets: WidgetItem[]): WidgetItem[] {
     });
 }
 
-export function toggleWidgetBold(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
-    return updateWidgetById(widgets, widgetId, widget => ({
-        ...widget,
-        bold: !widget.bold
-    }));
+export function toggleWidgetBold(widgets: WidgetItem[], widgetId: string, ruleIndex?: number): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, apply => ({ ...apply, bold: !apply.bold }));
+        }
+
+        return {
+            ...widget,
+            bold: !widget.bold
+        };
+    });
 }
 
 export function cycleWidgetDim(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
@@ -114,8 +153,12 @@ export function cycleWidgetDim(widgets: WidgetItem[], widgetId: string): WidgetI
     });
 }
 
-export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
+export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string, ruleIndex?: number): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            return updateRuleApply(widget, ruleIndex, () => ({}));
+        }
+
         const {
             color,
             backgroundColor,
@@ -180,6 +223,8 @@ export interface CycleWidgetColorOptions {
     editingBackground: boolean;
     colors: string[];
     backgroundColors: string[];
+    /** Aims the edit at one of the widget's rules instead of the widget itself. */
+    ruleIndex?: number;
 }
 
 export function cycleWidgetColor({
@@ -188,9 +233,28 @@ export function cycleWidgetColor({
     direction,
     editingBackground,
     colors,
-    backgroundColors
+    backgroundColors,
+    ruleIndex
 }: CycleWidgetColorOptions): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
+        if (ruleIndex !== undefined) {
+            const palette = editingBackground ? backgroundColors : colors;
+            if (palette.length === 0) {
+                return widget;
+            }
+
+            return updateRuleApply(widget, ruleIndex, (apply) => {
+                const current = (editingBackground ? apply.backgroundColor : apply.color) ?? '';
+                const currentIndex = palette.indexOf(current);
+                const next = palette[getNextIndex(currentIndex === -1 ? 0 : currentIndex, palette.length, direction)];
+                const value = next === '' ? undefined : next;
+
+                return editingBackground
+                    ? { ...apply, backgroundColor: value }
+                    : { ...apply, color: value };
+            });
+        }
+
         if (editingBackground) {
             if (backgroundColors.length === 0) {
                 return widget;

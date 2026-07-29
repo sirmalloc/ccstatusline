@@ -432,7 +432,11 @@ describe('ItemsEditor', () => {
     });
 
     it('advertises the rules key, and the rule keys once expanded', async () => {
-        const { stdin, getOutput, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
+        const { stdin, getOutput, teardown } = await renderItemsEditor(
+            [{ id: '1', type: 'model' }],
+            DEFAULT_SETTINGS,
+            { onTabSwap: vi.fn() }
+        );
 
         try {
             expect(getOutput()).toContain('(E) rules');
@@ -441,6 +445,7 @@ describe('ItemsEditor', () => {
             await settleInputHandler();
 
             expect(getOutput()).toContain('ESC collapse');
+            expect(getOutput()).toContain('⇥ edit colors');
         } finally {
             teardown();
         }
