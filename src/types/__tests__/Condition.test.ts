@@ -195,8 +195,8 @@ describe('Operator type guards', () => {
     });
 
     it('isNumericOperator rejects non-numeric operators', () => {
-        expect(isNumericOperator('contains' as Operator)).toBe(false);
-        expect(isNumericOperator('isNull' as Operator)).toBe(false);
+        expect(isNumericOperator('contains')).toBe(false);
+        expect(isNumericOperator('isNull')).toBe(false);
     });
 
     it('isStringOperator identifies string operators', () => {
@@ -207,8 +207,8 @@ describe('Operator type guards', () => {
     });
 
     it('isStringOperator rejects non-string operators', () => {
-        expect(isStringOperator('greaterThan' as Operator)).toBe(false);
-        expect(isStringOperator('isNotNull' as Operator)).toBe(false);
+        expect(isStringOperator('greaterThan')).toBe(false);
+        expect(isStringOperator('isNotNull')).toBe(false);
     });
 
     it('isBooleanOperator identifies boolean operators', () => {
@@ -216,8 +216,8 @@ describe('Operator type guards', () => {
     });
 
     it('isBooleanOperator rejects non-boolean operators', () => {
-        expect(isBooleanOperator('contains' as Operator)).toBe(false);
-        expect(isBooleanOperator('isNull' as Operator)).toBe(false);
+        expect(isBooleanOperator('contains')).toBe(false);
+        expect(isBooleanOperator('isNull')).toBe(false);
     });
 
     it('isExistenceOperator identifies existence operators', () => {
@@ -226,8 +226,8 @@ describe('Operator type guards', () => {
     });
 
     it('isExistenceOperator rejects non-existence operators', () => {
-        expect(isExistenceOperator('equals' as Operator)).toBe(false);
-        expect(isExistenceOperator('contains' as Operator)).toBe(false);
+        expect(isExistenceOperator('equals')).toBe(false);
+        expect(isExistenceOperator('contains')).toBe(false);
     });
 
     it('equals is classified as numeric, string, and boolean', () => {
