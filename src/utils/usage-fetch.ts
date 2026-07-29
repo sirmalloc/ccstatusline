@@ -339,11 +339,14 @@ export function parseMacKeychainCredentialCandidates(rawDump: string, servicePre
         .map(candidate => candidate.service);
 }
 
-function readMacKeychainSecret(service: string): string | null {
+function readMacKeychainSecret(service: string, account?: string): string | null {
     try {
+        const args = account
+            ? ['find-generic-password', '-s', service, '-a', account, '-w']
+            : ['find-generic-password', '-s', service, '-w'];
         return execFileSync(
             'security',
-            ['find-generic-password', '-s', service, '-w'],
+            args,
             { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
         ).trim();
     } catch {
@@ -351,9 +354,26 @@ function readMacKeychainSecret(service: string): string | null {
     }
 }
 
-function readUsageTokenFromMacKeychainService(service: string): string | null {
-    const secret = readMacKeychainSecret(service);
+function readUsageTokenFromMacKeychainService(service: string, account?: string): string | null {
+    const secret = readMacKeychainSecret(service, account);
     return secret ? parseUsageAccessToken(secret) : null;
+}
+
+function getOsUsername(): string | null {
+    try {
+        return os.userInfo().username;
+    } catch {
+        return null;
+    }
+}
+
+// The login keychain can hold several items under one service, differing only by
+// account; a service-only lookup returns whichever matches first, which may be an
+// entry lacking `claudeAiOauth`. Claude Code reads/writes with an explicit account
+// (the OS username), so mirror that.
+function readUsageTokenFromMacKeychainUserAccount(service: string): string | null {
+    const osUsername = getOsUsername();
+    return osUsername ? readUsageTokenFromMacKeychainService(service, osUsername) : null;
 }
 
 function listMacKeychainCredentialCandidates(): string[] {
@@ -403,6 +423,7 @@ export function getUsageToken(): string | null {
     }
 
     return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageTokenFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE)
         ?? readUsageTokenFromMacKeychainCandidates()
         ?? readUsageTokenFromCredentialsFile();
 }
