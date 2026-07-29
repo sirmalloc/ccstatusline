@@ -26,18 +26,22 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
+import { useRuleAccordion } from '../hooks/useRuleAccordion';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import { RuleRow } from './RuleRow';
 import {
     WidgetRow,
     getWidgetRowLabel,
     getWidgetRowTags,
+    getWidgetRuleBadge,
     styleWidgetRowLabel
 } from './WidgetRow';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
+    handleRuleInputMode,
     normalizePickerState,
     type CustomEditorWidgetState,
     type WidgetPickerAction,
@@ -75,6 +79,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const accordion = useRuleAccordion({ widgets });
     const separatorChars = ['|', '-', ',', ' '];
 
     useEffect(() => {
@@ -255,6 +260,16 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
+        if (accordion.expandedWidgetId !== null
+            && handleRuleInputMode({
+                key,
+                onPrevRule: accordion.selectPrevRule,
+                onNextRule: accordion.selectNextRule,
+                onCollapse: accordion.collapse
+            })) {
+            return;
+        }
+
         handleNormalInputMode({
             input,
             key,
@@ -271,7 +286,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
             getUniqueBackgroundColor,
-            onTabSwap
+            onTabSwap,
+            onToggleAccordion: accordion.toggleExpand
         });
     });
 
@@ -320,7 +336,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     if (isColorable && onTabSwap) {
         helpText += ', ⇥ edit colors';
     }
-    helpText += ', ESC back';
+    if (hasWidgets) {
+        helpText += ', (R)ules';
+    }
+    helpText += accordion.expandedWidgetId !== null ? ', ESC collapse' : ', ESC back';
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
@@ -557,21 +576,41 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                             {widgets.map((widget, index) => {
                                 const isSelected = index === selectedIndex;
                                 const { displayText, modifierText } = getWidgetRowLabel(widget);
+                                const expanded = accordion.isExpanded(widget.id);
 
                                 return (
-                                    <WidgetRow
-                                        key={widget.id}
-                                        number={index + 1}
-                                        label={moveMode
-                                            ? displayText
-                                            : styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id))}
-                                        labelIsStyled={!moveMode}
-                                        isSelected={isSelected}
-                                        indicator={moveMode ? '◆' : '▶'}
-                                        selectionColor={moveMode ? 'blue' : 'green'}
-                                        modifierText={modifierText}
-                                        tags={getWidgetRowTags(widgets, index, settings)}
-                                    />
+                                    <React.Fragment key={widget.id}>
+                                        <WidgetRow
+                                            number={index + 1}
+                                            label={moveMode
+                                                ? displayText
+                                                : styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id))}
+                                            labelIsStyled={!moveMode}
+                                            isSelected={isSelected}
+                                            indicator={moveMode ? '◆' : '▶'}
+                                            selectionColor={moveMode ? 'blue' : 'green'}
+                                            modifierText={modifierText}
+                                            tags={getWidgetRowTags(widgets, index, settings)}
+                                            badge={getWidgetRuleBadge(widget)}
+                                        />
+                                        {expanded && (
+                                            <Box flexDirection='column'>
+                                                {(widget.rules ?? []).length === 0 ? (
+                                                    <Box paddingLeft={5}>
+                                                        <Text dimColor>No rules</Text>
+                                                    </Box>
+                                                ) : (
+                                                    widget.rules?.map((rule, ruleIndex) => (
+                                                        <RuleRow
+                                                            key={ruleIndex}
+                                                            rule={rule}
+                                                            isSelected={ruleIndex === accordion.selectedRuleIndex}
+                                                        />
+                                                    ))
+                                                )}
+                                            </Box>
+                                        )}
+                                    </React.Fragment>
                                 );
                             })}
                             {/* Display description for selected widget */}

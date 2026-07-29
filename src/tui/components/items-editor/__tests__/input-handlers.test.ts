@@ -11,6 +11,7 @@ import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
+    handleRuleInputMode,
     normalizePickerState,
     type WidgetPickerState
 } from '../input-handlers';
@@ -1109,5 +1110,85 @@ describe('items-editor input handlers', () => {
             expect(onUpdate).not.toHaveBeenCalled();
             expect(setSelectedIndex).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('rules accordion shortcut', () => {
+    function normalModeArgs(overrides: Partial<Parameters<typeof handleNormalInputMode>[0]>) {
+        return {
+            input: '',
+            key: {},
+            widgets: [{ id: '1', type: 'tokens-input' }] as WidgetItem[],
+            selectedIndex: 0,
+            canExcludeAlign: true,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: () => [],
+            setCustomEditorWidget: vi.fn(),
+            ...overrides
+        };
+    }
+
+    it('opens the accordion on R', () => {
+        const onToggleAccordion = vi.fn();
+
+        handleNormalInputMode(normalModeArgs({ input: 'R', onToggleAccordion }));
+
+        expect(onToggleAccordion).toHaveBeenCalledWith('1');
+    });
+
+    // The accordion shortcut has to stay clear of (x), which already toggles auto-align
+    // exclusion. The editor always supplies onToggleAccordion, so a clash here would only
+    // show up in the running app.
+    it('leaves x toggling auto-align exclusion while the accordion is wired up', () => {
+        const onUpdate = vi.fn();
+        const onToggleAccordion = vi.fn();
+
+        handleNormalInputMode(normalModeArgs({ input: 'x', onUpdate, onToggleAccordion }));
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.excludeFromAutoAlign).toBe(true);
+        expect(onToggleAccordion).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleRuleInputMode', () => {
+    function createRuleHandlers() {
+        return {
+            onPrevRule: vi.fn(),
+            onNextRule: vi.fn(),
+            onCollapse: vi.fn()
+        };
+    }
+
+    it('moves the rule selection on the arrows and reports the key consumed', () => {
+        const handlers = createRuleHandlers();
+
+        expect(handleRuleInputMode({ key: { downArrow: true }, ...handlers })).toBe(true);
+        expect(handlers.onNextRule).toHaveBeenCalledTimes(1);
+
+        expect(handleRuleInputMode({ key: { upArrow: true }, ...handlers })).toBe(true);
+        expect(handlers.onPrevRule).toHaveBeenCalledTimes(1);
+    });
+
+    it('collapses the accordion on escape rather than leaving the editor', () => {
+        const handlers = createRuleHandlers();
+
+        expect(handleRuleInputMode({ key: { escape: true }, ...handlers })).toBe(true);
+        expect(handlers.onCollapse).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves other keys to the widget-level handler', () => {
+        const handlers = createRuleHandlers();
+
+        expect(handleRuleInputMode({ key: { return: true }, ...handlers })).toBe(false);
+        expect(handlers.onPrevRule).not.toHaveBeenCalled();
+        expect(handlers.onNextRule).not.toHaveBeenCalled();
+        expect(handlers.onCollapse).not.toHaveBeenCalled();
     });
 });

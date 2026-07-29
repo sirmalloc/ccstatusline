@@ -8,7 +8,8 @@ import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
 import {
     getWidgetRowLabel,
-    getWidgetRowTags
+    getWidgetRowTags,
+    getWidgetRuleBadge
 } from '../WidgetRow';
 
 const AUTO_ALIGN_SETTINGS = {
@@ -119,5 +120,35 @@ describe('getWidgetRowTags', () => {
         ];
 
         expect(getWidgetRowTags(widgets, 1, AUTO_ALIGN_SETTINGS)).toEqual([]);
+    });
+});
+
+describe('getWidgetRuleBadge', () => {
+    it('has no badge for a widget without rules', () => {
+        expect(getWidgetRuleBadge({ id: '1', type: 'model' })).toBeNull();
+        expect(getWidgetRuleBadge({ id: '1', type: 'model', rules: [] })).toBeNull();
+    });
+
+    it('counts a single rule in the singular', () => {
+        const widget: WidgetItem = {
+            id: '1',
+            type: 'model',
+            rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } }]
+        };
+
+        expect(getWidgetRuleBadge(widget)).toBe('[1 rule]');
+    });
+
+    it('counts multiple rules in the plural', () => {
+        const widget: WidgetItem = {
+            id: '1',
+            type: 'model',
+            rules: [
+                { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+                { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+            ]
+        };
+
+        expect(getWidgetRuleBadge(widget)).toBe('[2 rules]');
     });
 });

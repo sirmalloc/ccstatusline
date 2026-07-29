@@ -333,6 +333,42 @@ export function handleMoveInputMode({
     }
 }
 
+export interface HandleRuleInputModeArgs {
+    key: InputKey;
+    onPrevRule: () => void;
+    onNextRule: () => void;
+    onCollapse: () => void;
+}
+
+/**
+ * Input for a widget whose rules accordion is open. The rule list takes over the arrows
+ * while it is expanded, so this reports whether it consumed the key and the caller skips
+ * the widget-level handler when it did.
+ */
+export function handleRuleInputMode({
+    key,
+    onPrevRule,
+    onNextRule,
+    onCollapse
+}: HandleRuleInputModeArgs): boolean {
+    if (key.escape) {
+        onCollapse();
+        return true;
+    }
+
+    if (key.upArrow) {
+        onPrevRule();
+        return true;
+    }
+
+    if (key.downArrow) {
+        onNextRule();
+        return true;
+    }
+
+    return false;
+}
+
 export interface HandleNormalInputModeArgs {
     input: string;
     key: InputKey;
@@ -350,6 +386,7 @@ export interface HandleNormalInputModeArgs {
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
     getUniqueBackgroundColor?: (insertIndex: number) => string | undefined;
     onTabSwap?: () => void;
+    onToggleAccordion?: (widgetId: string) => void;
 }
 
 export function handleNormalInputMode({
@@ -368,7 +405,8 @@ export function handleNormalInputMode({
     getCustomKeybindsForWidget,
     setCustomEditorWidget,
     getUniqueBackgroundColor,
-    onTabSwap
+    onTabSwap,
+    onToggleAccordion
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1);
@@ -380,6 +418,11 @@ export function handleNormalInputMode({
         openWidgetPicker('change');
     } else if (key.return && widgets.length > 0) {
         setMoveMode(true);
+    } else if (input === 'R' && onToggleAccordion && widgets.length > 0) {
+        const widget = widgets[selectedIndex];
+        if (widget) {
+            onToggleAccordion(widget.id);
+        }
     } else if (input === 'a') {
         openWidgetPicker('add');
     } else if (input === 'i') {

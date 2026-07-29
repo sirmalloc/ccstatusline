@@ -64,6 +64,17 @@ function flushInk() {
     });
 }
 
+/**
+ * Ink re-registers its input handler from a passive effect, so a key sent right after a key
+ * that changed the editor's mode is still handled by the previous render's closure. Sequences
+ * that press a mode key and then act inside that mode have to let the effect flush first.
+ */
+async function settleInputHandler() {
+    for (let i = 0; i < 10; i++) {
+        await flushInk();
+    }
+}
+
 const THEMED_SETTINGS = {
     ...DEFAULT_SETTINGS,
     colorLevel: 3 as const,
@@ -78,11 +89,13 @@ async function renderItemsEditor(widgets: WidgetItem[], settings: Settings = DEF
     const stdin = createMockStdin();
     const stdout = createMockStdout();
     const stderr = createMockStdout();
+    const onUpdate = vi.fn();
+    const onBack = vi.fn();
     const instance = render(
         React.createElement(ItemsEditor, {
             widgets,
-            onUpdate: vi.fn(),
-            onBack: vi.fn(),
+            onUpdate,
+            onBack,
             lineNumber: 1,
             settings
         }),
@@ -100,6 +113,8 @@ async function renderItemsEditor(widgets: WidgetItem[], settings: Settings = DEF
 
     return {
         stdin,
+        onUpdate,
+        onBack,
         getOutput: () => stdout.getOutput(),
         output: stdout.getOutput(),
         teardown: () => {
@@ -221,6 +236,122 @@ describe('ItemsEditor', () => {
             expect(output).toContain('(merged→)');
             expect(output).toContain('2. Separator |');
             expect(output).toContain('3. Git Branch');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('badges a row with how many rules the widget carries', async () => {
+        const { output, teardown } = await renderItemsEditor([
+            {
+                id: '1',
+                type: 'model',
+                rules: [
+                    { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+                    { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+                ]
+            },
+            { id: '2', type: 'git-branch' }
+        ]);
+
+        try {
+            expect(output).toContain('[2 rules]');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('expands the selected widget to show its rules', async () => {
+        const { stdin, getOutput, teardown } = await renderItemsEditor([
+            {
+                id: '1',
+                type: 'model',
+                rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } }]
+            }
+        ]);
+
+        try {
+            expect(getOutput()).not.toContain('when context-percentage greater than 80');
+
+            stdin.write('R');
+            await flushInk();
+
+            expect(getOutput()).toContain('when context-percentage greater than 80');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('says so when an expanded widget has no rules yet', async () => {
+        const { stdin, getOutput, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
+
+        try {
+            stdin.write('R');
+            await flushInk();
+
+            expect(getOutput()).toContain('No rules');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('moves the rule selection with the arrows while expanded', async () => {
+        const { stdin, getOutput, teardown } = await renderItemsEditor([
+            {
+                id: '1',
+                type: 'model',
+                rules: [
+                    { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+                    { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+                ]
+            }
+        ]);
+
+        try {
+            stdin.write('R');
+            await settleInputHandler();
+            stdin.write('[B'); // down arrow
+            await flushInk();
+
+            expect(getOutput()).toContain('› when context-percentage greater than 90');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('collapses on escape instead of leaving the editor', async () => {
+        const { stdin, getOutput, onBack, teardown } = await renderItemsEditor([
+            {
+                id: '1',
+                type: 'model',
+                rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } }]
+            }
+        ]);
+
+        try {
+            stdin.write('R');
+            await settleInputHandler();
+
+            stdin.write('\x1B'); // escape
+            await settleInputHandler();
+
+            expect(onBack).not.toHaveBeenCalled();
+            expect(getOutput().split('1. Model').at(-1)).not.toContain('when context-percentage greater than 80');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('advertises the rules key, and the rule keys once expanded', async () => {
+        const { stdin, getOutput, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
+
+        try {
+            expect(getOutput()).toContain('(R)ules');
+
+            stdin.write('R');
+            await settleInputHandler();
+
+            expect(getOutput()).toContain('ESC collapse');
         } finally {
             teardown();
         }

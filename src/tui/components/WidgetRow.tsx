@@ -29,6 +29,8 @@ export interface WidgetRowProps {
     selectionColor?: string;
     modifierText?: string;
     tags?: string[];
+    /** Feature marker shown after the tags, e.g. the rule count. */
+    badge?: string | null;
 }
 
 function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
@@ -111,6 +113,20 @@ export function getWidgetRowTags(widgets: WidgetItem[], index: number, settings:
 }
 
 /**
+ * The rule-count badge shown after a row label in both editor modes. Rules are a feature
+ * a widget carries rather than a structural marker, so this reads separately from the dim
+ * tags and renders in its own colour. Null when the widget has no rules.
+ */
+export function getWidgetRuleBadge(widget: WidgetItem): string | null {
+    const count = widget.rules?.length ?? 0;
+    if (count === 0) {
+        return null;
+    }
+
+    return `[${count} ${count === 1 ? 'rule' : 'rules'}]`;
+}
+
+/**
  * Paint a row label with the colour that widget renders in, so both editor modes agree.
  * themeChannels supplies the channels an active theme takes over; the widget's own colour
  * (then the widget's default) fills the rest. A widget whose colours it does not control -
@@ -147,7 +163,8 @@ export const WidgetRow: React.FC<WidgetRowProps> = ({
     indicator = '▶',
     selectionColor = 'green',
     modifierText,
-    tags = []
+    tags = [],
+    badge
 }) => {
     const highlightColor = isSelected ? selectionColor : undefined;
 
@@ -170,6 +187,12 @@ export const WidgetRow: React.FC<WidgetRowProps> = ({
                     {tag}
                 </Text>
             ))}
+            {badge && (
+                <Text color='yellow'>
+                    {' '}
+                    {badge}
+                </Text>
+            )}
         </Box>
     );
 };
