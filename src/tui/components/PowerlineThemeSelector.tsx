@@ -22,6 +22,7 @@ import {
     List,
     type ListEntry
 } from './List';
+import { clearAllPins } from './color-menu/mutations';
 
 export function buildPowerlineThemeItems(
     themes: string[],
@@ -102,6 +103,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     const currentTheme = settings.powerline.theme ?? 'custom';
     const [selectedIndex, setSelectedIndex] = useState(Math.max(0, themes.indexOf(currentTheme)));
     const [showCustomizeConfirm, setShowCustomizeConfirm] = useState(false);
+    const [showRemovePinsConfirm, setShowRemovePinsConfirm] = useState(false);
     const originalThemeRef = useRef(currentTheme);
     const originalSettingsRef = useRef(settings);
     const latestSettingsRef = useRef(settings);
@@ -135,7 +137,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     }, [selectedIndex, themes]);
 
     useInput((input, key) => {
-        if (showCustomizeConfirm) {
+        if (showCustomizeConfirm || showRemovePinsConfirm) {
             return;
         }
 
@@ -190,6 +192,36 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
         );
     }
 
+    if (showRemovePinsConfirm) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold color='yellow'>⚠ Custom Color Overrides</Text>
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Some widgets have pinned colors that override the theme.</Text>
+                    <Text>Remove them so the new theme fully applies?</Text>
+                    <Text dimColor>Yes removes the overrides; No keeps them.</Text>
+                </Box>
+                <Box marginTop={1}>
+                    <ConfirmDialog
+                        inline={true}
+                        onConfirm={() => {
+                            onUpdate({
+                                ...settings,
+                                lines: settings.lines.map(line => clearAllPins(line))
+                            });
+                            setShowRemovePinsConfirm(false);
+                            onBack();
+                        }}
+                        onCancel={() => {
+                            setShowRemovePinsConfirm(false);
+                            onBack();
+                        }}
+                    />
+                </Box>
+            </Box>
+        );
+    }
+
     return (
         <Box flexDirection='column'>
             <Text bold>
@@ -208,6 +240,14 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 marginTop={1}
                 items={themeItems}
                 onSelect={() => {
+                    const themeChanged = (themes[selectedIndex] ?? 'custom') !== originalThemeRef.current;
+                    const hasPins = settings.lines.some(line => line.some(
+                        widget => Boolean(widget.pinColor) || Boolean(widget.pinBackgroundColor)
+                    ));
+                    if (themeChanged && hasPins) {
+                        setShowRemovePinsConfirm(true);
+                        return;
+                    }
                     onBack();
                 }}
                 onSelectionChange={(themeName, index) => {

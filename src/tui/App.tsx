@@ -75,6 +75,7 @@ import {
 
 import { loadClaudeStatusLineState } from './claude-status';
 import {
+    ColorEditingMovedNotice,
     ColorMenu,
     ConfirmDialog,
     ExportConfigDialog,
@@ -103,6 +104,7 @@ import {
     List,
     type ListEntry
 } from './components/List';
+import type { AccordionState } from './hooks/useRuleAccordion';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -114,8 +116,8 @@ interface FlashMessage {
 type AppScreen = 'main'
     | 'lines'
     | 'items'
-    | 'colorLines'
     | 'colors'
+    | 'colorsMoved'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -413,6 +415,57 @@ export function getConfirmCancelScreen(confirmDialog: ConfirmDialogState | null)
     return confirmDialog?.cancelScreen ?? 'main';
 }
 
+/**
+ * Screen a main menu option navigates to directly, or null when the option
+ * needs a handler of its own (dialogs, installs, exiting).
+ */
+export function getMainMenuScreenTarget(value: MainMenuOption): AppScreen | null {
+    switch (value) {
+        case 'lines':
+            return 'lines';
+        case 'colors':
+            // Color editing now lives in the widget editor; this entry only signposts it.
+            return 'colorsMoved';
+        case 'powerline':
+            return 'powerline';
+        case 'terminalConfig':
+            return 'terminalConfig';
+        case 'globalOverrides':
+            return 'globalOverrides';
+        case 'manageInstallation':
+            return 'manageInstallation';
+        case 'configureStatusLine':
+            return 'refreshInterval';
+        case 'exportConfig':
+            return 'exportConfig';
+        case 'importConfig':
+            return 'importConfig';
+        default:
+            return null;
+    }
+}
+
+/**
+ * Both widget editor modes back out one menu to the same line selector, so
+ * escape lands in the same place whichever mode you happened to be in.
+ */
+export function getEditorBackScreen(): AppScreen {
+    return 'lines';
+}
+
+/** Tab swaps between editing a line's widgets and editing their colors. */
+export function getTabSwapScreen(screen: AppScreen): AppScreen {
+    if (screen === 'items') {
+        return 'colors';
+    }
+
+    if (screen === 'colors') {
+        return 'items';
+    }
+
+    return screen;
+}
+
 export function applyTuiImport(
     current: Settings,
     imported: Settings,
@@ -470,6 +523,8 @@ export const App: React.FC = () => {
     const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
+    const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
+    const [accordionState, setAccordionState] = useState<AccordionState>({ expandedWidgetId: null, selectedRuleIndex: 0 });
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -708,6 +763,20 @@ export const App: React.FC = () => {
     const handleInstallMenuCancel = useCallback(() => {
         setMenuSelections(clearInstallMenuSelection);
         setScreen('main');
+    }, []);
+
+    const handleWidgetHighlight = useCallback((widgetId: string | null) => {
+        setActiveWidgetId(widgetId);
+    }, []);
+
+    const handleTabSwap = useCallback(() => {
+        setScreen(getTabSwapScreen);
+    }, []);
+
+    // The two editing modes unmount each other on a Tab swap, so the accordion is held here
+    // and handed back, keeping the open widget and selected rule across the swap.
+    const handleAccordionChange = useCallback((state: AccordionState) => {
+        setAccordionState(state);
     }, []);
 
     const handleUpdateCheck = useCallback(() => {
@@ -981,41 +1050,21 @@ export const App: React.FC = () => {
     };
 
     const handleMainMenuSelect = async (value: MainMenuOption) => {
+        const screenTarget = getMainMenuScreenTarget(value);
+
+        if (screenTarget) {
+            setScreen(screenTarget);
+            return;
+        }
+
         switch (value) {
-            case 'lines':
-                setScreen('lines');
-                break;
-            case 'colors':
-                setScreen('colorLines');
-                break;
-            case 'terminalConfig':
-                setScreen('terminalConfig');
-                break;
-            case 'globalOverrides':
-                setScreen('globalOverrides');
-                break;
-            case 'powerline':
-                setScreen('powerline');
-                break;
             case 'install':
                 handleInstallUninstall();
-                break;
-            case 'manageInstallation':
-                setScreen('manageInstallation');
                 break;
             case 'checkUpdates':
                 setUpdatesReturnScreen('main');
                 setScreen('updates');
                 handleUpdateCheck();
-                break;
-            case 'configureStatusLine':
-                setScreen('refreshInterval');
-                break;
-            case 'exportConfig':
-                setScreen('exportConfig');
-                break;
-            case 'importConfig':
-                setScreen('importConfig');
                 break;
             case 'starGithub':
                 setConfirmDialog({
@@ -1190,7 +1239,6 @@ export const App: React.FC = () => {
                         }}
                         initialSelection={menuSelections.lines}
                         title='Select Line to Edit Items'
-                        allowEditing={true}
                     />
                 )}
                 {screen === 'items' && (
@@ -1200,31 +1248,29 @@ export const App: React.FC = () => {
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
                             setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
-                            setScreen('lines');
+                            setScreen(getEditorBackScreen());
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
+                        onTabSwap={handleTabSwap}
+                        onWidgetHighlight={handleWidgetHighlight}
+                        initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
-                {screen === 'colorLines' && (
-                    <LineSelector
-                        lines={settings.lines}
-                        onLinesUpdate={updateLines}
-                        onSelect={(line) => {
-                            setMenuSelections(prev => ({ ...prev, lines: line }));
-                            setSelectedLine(line);
-                            setScreen('colors');
+                {screen === 'colorsMoved' && (
+                    <ColorEditingMovedNotice
+                        onGoToWidgetEditor={() => {
+                            // Land on the same line selector the widget editor uses
+                            setMenuSelections(prev => ({ ...prev, main: 0 }));
+                            setScreen('lines');
                         }}
                         onBack={() => {
                             // Save that we came from 'colors' menu (index 1)
                             setMenuSelections(prev => ({ ...prev, main: 1 }));
                             setScreen('main');
                         }}
-                        initialSelection={menuSelections.lines}
-                        title='Select Line to Edit Colors'
-                        blockIfPowerlineActive={true}
-                        settings={settings}
-                        allowEditing={false}
                     />
                 )}
                 {screen === 'colors' && (
@@ -1239,9 +1285,16 @@ export const App: React.FC = () => {
                             setSettings({ ...settings, lines: newLines });
                         }}
                         onBack={() => {
-                            // Go back to line selection for colors
-                            setScreen('colorLines');
+                            // Colors are a mode of the widget editor, so escape backs out
+                            // to the same line selector the items mode returns to
+                            setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
+                            setScreen(getEditorBackScreen());
                         }}
+                        onTabSwap={handleTabSwap}
+                        onWidgetHighlight={handleWidgetHighlight}
+                        initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'terminalConfig' && (

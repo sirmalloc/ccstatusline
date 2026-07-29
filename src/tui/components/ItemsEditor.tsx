@@ -3,7 +3,10 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
@@ -13,6 +16,7 @@ import type {
     WidgetItemType
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
+import { getEffectiveThemeColors } from '../../utils/effective-theme-colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
@@ -22,12 +26,31 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
+import {
+    getRuleCount,
+    useRuleAccordion,
+    type AccordionState
+} from '../hooks/useRuleAccordion';
 
+import { ConditionEditor } from './ConditionEditor';
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    RuleRow,
+    formatConditionText
+} from './RuleRow';
+import {
+    WidgetRow,
+    getRuleEffectiveWidget,
+    getWidgetRowLabel,
+    getWidgetRowTags,
+    getWidgetRuleBadge,
+    styleWidgetRowLabel
+} from './WidgetRow';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
+    handleRuleInputMode,
     normalizePickerState,
     type CustomEditorWidgetState,
     type WidgetPickerAction,
@@ -40,6 +63,11 @@ export interface ItemsEditorProps {
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
+    onTabSwap?: () => void;
+    onWidgetHighlight?: (widgetId: string | null) => void;
+    initialWidgetId?: string | null;
+    accordionState?: AccordionState;
+    onAccordionChange?: (state: AccordionState) => void;
 }
 
 function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
@@ -50,14 +78,37 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
     return Boolean(widgets[index - 1]?.merge);
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId, accordionState, onAccordionChange }) => {
+    const [selectedIndex, setSelectedIndex] = useState(() => {
+        if (initialWidgetId) {
+            const index = widgets.findIndex(w => w.id === initialWidgetId);
+            return index >= 0 ? index : 0;
+        }
+        return 0;
+    });
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const accordion = useRuleAccordion({
+        widgets,
+        initialExpandedWidgetId: accordionState?.expandedWidgetId ?? null,
+        initialSelectedRuleIndex: accordionState?.selectedRuleIndex ?? 0,
+        onChange: onAccordionChange
+    });
+    const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 
+    useEffect(() => {
+        if (onWidgetHighlight) {
+            const currentWidget = widgets[selectedIndex];
+            onWidgetHighlight(currentWidget?.id ?? null);
+        }
+    }, [selectedIndex, widgets, onWidgetHighlight]);
+
+    // Theme colours are positional, so show them here too - reordering or merging
+    // widgets is exactly what changes them
+    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings);
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
 
@@ -182,11 +233,22 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const canExcludeAlign = Boolean(currentWidget) && !isSeparator && !isFlexSeparator
         && settings.powerline.enabled && settings.powerline.autoAlign
         && !isMergedIntoPreviousWidget(widgets, selectedIndex);
+    const isColorable = Boolean(
+        currentWidget
+        && !isSeparator
+        && !isFlexSeparator
+        && getWidget(currentWidget.type)?.supportsColors(currentWidget)
+    );
     const hasWidgets = widgets.length > 0;
 
     useInput((input, key) => {
         // Skip input if custom editor is active
         if (customEditorWidget) {
+            return;
+        }
+
+        // Skip input handling while a rule condition is being edited - ConditionEditor owns it
+        if (editingRuleIndex !== null) {
             return;
         }
 
@@ -220,6 +282,23 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
+        if (accordion.expandedWidgetId !== null
+            && handleRuleInputMode({
+                input,
+                key,
+                widgets,
+                selectedIndex,
+                selectedRuleIndex: accordion.selectedRuleIndex,
+                onPrevRule: accordion.selectPrevRule,
+                onNextRule: accordion.selectNextRule,
+                onCollapse: accordion.collapse,
+                onUpdate,
+                onSelectRule: accordion.selectRule,
+                onEditCondition: setEditingRuleIndex
+            })) {
+            return;
+        }
+
         handleNormalInputMode({
             input,
             key,
@@ -235,31 +314,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            onTabSwap,
+            onToggleAccordion: accordion.toggleExpand
         });
     });
-
-    const getWidgetDisplay = (widget: WidgetItem) => {
-        // Special handling for separators (not widgets)
-        if (widget.type === 'separator') {
-            const char = widget.character ?? '|';
-            const charDisplay = char === ' ' ? '(space)' : char;
-            return `Separator ${charDisplay}`;
-        }
-        if (widget.type === 'flex-separator') {
-            return 'Flex Separator';
-        }
-
-        // Handle regular widgets - delegate to widget for display
-        const widgetImpl = getWidget(widget.type);
-        if (widgetImpl) {
-            const { displayText, modifierText } = widgetImpl.getEditorDisplay(widget);
-            // Return plain text without colors
-            return displayText + (modifierText ? ` ${modifierText}` : '');
-        }
-        // Unknown widget type
-        return `Unknown: ${widget.type}`;
-    };
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
@@ -284,26 +343,50 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         ? (pickerEntries.find(entry => entry.type === widgetPicker.selectedType) ?? pickerEntries[0])
         : null;
 
-    // Build main help text (without custom keybinds)
-    let helpText = hasWidgets
-        ? '↑↓ select, ←→ open type picker'
-        : '(a)dd via picker, (i)nsert via picker';
-    if (isSeparator) {
-        helpText += ', Space edit separator';
+    // Build main help text (without custom keybinds). While the accordion is open the rule
+    // list owns the keyboard, so it describes its own keys rather than the widget-level ones.
+    let helpText: string;
+    if (accordion.expandedWidgetId !== null) {
+        const ruleCount = currentWidget ? getRuleCount(currentWidget) : 0;
+        const ruleHelpParts = ['↑↓ select rule', '(a)dd'];
+        if (ruleCount > 0) {
+            ruleHelpParts.push('(d)elete', '(s)top', '(e)dit/Enter condition');
+        }
+        if (ruleCount > 1) {
+            ruleHelpParts.push('(j)/(k) reorder');
+        }
+        if (onTabSwap) {
+            ruleHelpParts.push('⇥ edit colors');
+        }
+        ruleHelpParts.push('ESC collapse');
+        helpText = ruleHelpParts.join(', ');
+    } else {
+        helpText = hasWidgets
+            ? '↑↓ select, ←→ open type picker'
+            : '(a)dd via picker, (i)nsert via picker';
+        if (isSeparator) {
+            helpText += ', Space edit separator';
+        }
+        if (hasWidgets) {
+            helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
+        }
+        if (canToggleRaw) {
+            helpText += ', (r)aw value';
+        }
+        if (canMerge) {
+            helpText += ', (m)erge';
+        }
+        if (canExcludeAlign) {
+            helpText += ', e(x)clude align';
+        }
+        if (isColorable && onTabSwap) {
+            helpText += ', ⇥ edit colors';
+        }
+        if (hasWidgets) {
+            helpText += ', (+) rules';
+        }
+        helpText += ', ESC back';
     }
-    if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
-    }
-    if (canToggleRaw) {
-        helpText += ', (r)aw value';
-    }
-    if (canMerge) {
-        helpText += ', (m)erge';
-    }
-    if (canExcludeAlign) {
-        helpText += ', e(x)clude align';
-    }
-    helpText += ', ESC back';
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
@@ -312,6 +395,31 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         : widgetPicker?.action === 'insert'
             ? 'Insert Widget'
             : 'Change Widget Type';
+
+    // A rule condition is edited in its own overlay, the same way a custom widget editor is
+    if (editingRuleIndex !== null && currentWidget) {
+        const rule = currentWidget.rules?.[editingRuleIndex];
+        if (rule) {
+            return (
+                <ConditionEditor
+                    widgetType={currentWidget.type}
+                    condition={rule.when}
+                    settings={settings}
+                    onSave={(condition) => {
+                        const newRules = [...(currentWidget.rules ?? [])];
+                        newRules[editingRuleIndex] = { ...rule, when: condition };
+                        const newWidgets = [...widgets];
+                        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+                        onUpdate(newWidgets);
+                        setEditingRuleIndex(null);
+                    }}
+                    onCancel={() => {
+                        setEditingRuleIndex(null);
+                    }}
+                />
+            );
+        }
+    }
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
@@ -365,8 +473,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {lineNumber}
                     {' '}
                 </Text>
-                {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
-                {widgetPicker && <Text color='cyan'>{`[${pickerActionLabel.toUpperCase()}]`}</Text>}
+                <Text color='cyan'>[WIDGETS]</Text>
+                {moveMode && <Text color='blue'> [MOVE MODE]</Text>}
+                {widgetPicker && <Text color='cyan'>{` [${pickerActionLabel.toUpperCase()}]`}</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
                         <Text color='yellow'>
@@ -538,31 +647,50 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                         <>
                             {widgets.map((widget, index) => {
                                 const isSelected = index === selectedIndex;
-                                const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
-                                const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
-                                const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const { displayText, modifierText } = getWidgetRowLabel(widget);
+                                const expanded = accordion.isExpanded(widget.id);
 
                                 return (
-                                    <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
-                                        <Box width={3}>
-                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                                {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                            </Text>
-                                        </Box>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                        </Text>
-                                        {modifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {modifierText}
-                                            </Text>
+                                    <React.Fragment key={widget.id}>
+                                        <WidgetRow
+                                            number={index + 1}
+                                            label={moveMode
+                                                ? displayText
+                                                : styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id))}
+                                            labelIsStyled={!moveMode}
+                                            isSelected={isSelected}
+                                            indicator={moveMode ? '◆' : '▶'}
+                                            selectionColor={moveMode ? 'blue' : 'green'}
+                                            modifierText={modifierText}
+                                            tags={getWidgetRowTags(widgets, index, settings)}
+                                            badge={getWidgetRuleBadge(widget)}
+                                        />
+                                        {expanded && (
+                                            <Box flexDirection='column'>
+                                                {(widget.rules ?? []).length === 0 ? (
+                                                    <Box paddingLeft={5}>
+                                                        <Text dimColor>No rules</Text>
+                                                    </Box>
+                                                ) : (
+                                                    widget.rules?.map((rule, ruleIndex) => (
+                                                        <RuleRow
+                                                            key={ruleIndex}
+                                                            rule={rule}
+                                                            isSelected={ruleIndex === accordion.selectedRuleIndex}
+                                                            styledCondition={moveMode
+                                                                ? undefined
+                                                                : styleWidgetRowLabel(
+                                                                    formatConditionText(rule.when),
+                                                                    getRuleEffectiveWidget(widget, rule),
+                                                                    settings,
+                                                                    effectiveThemeColors.get(widget.id)
+                                                                )}
+                                                        />
+                                                    ))
+                                                )}
+                                            </Box>
                                         )}
-                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                        {widget.excludeFromAutoAlign && settings.powerline.enabled && settings.powerline.autoAlign && !isMergedIntoPreviousWidget(widgets, index) && <Text dimColor> (no-align)</Text>}
-                                    </Box>
+                                    </React.Fragment>
                                 );
                             })}
                             {/* Display description for selected widget */}

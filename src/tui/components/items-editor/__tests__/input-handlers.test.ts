@@ -11,6 +11,7 @@ import {
     handleMoveInputMode,
     handleNormalInputMode,
     handlePickerInputMode,
+    handleRuleInputMode,
     normalizePickerState,
     type WidgetPickerState
 } from '../input-handlers';
@@ -808,6 +809,113 @@ describe('items-editor input handlers', () => {
         expect(customEditorState?.widget?.type).toBe('skills');
     });
 
+    describe('Tab shortcut - tab swap', () => {
+        it('calls onTabSwap when current widget is a colorable type', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'model' }
+            ];
+            const onTabSwap = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate: vi.fn(),
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn(),
+                onTabSwap
+            });
+
+            expect(onTabSwap).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not call onTabSwap when current widget is a separator', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'separator', character: '|' }
+            ];
+            const onTabSwap = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate: vi.fn(),
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn(),
+                onTabSwap
+            });
+
+            expect(onTabSwap).not.toHaveBeenCalled();
+        });
+
+        it('does not call onTabSwap when current widget is a flex-separator', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'flex-separator' }
+            ];
+            const onTabSwap = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate: vi.fn(),
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn(),
+                onTabSwap
+            });
+
+            expect(onTabSwap).not.toHaveBeenCalled();
+        });
+
+        it('does nothing when onTabSwap is not provided', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'model' }
+            ];
+            const onUpdate = vi.fn();
+            const setSelectedIndex = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn()
+            });
+
+            expect(onUpdate).not.toHaveBeenCalled();
+            expect(setSelectedIndex).not.toHaveBeenCalled();
+        });
+    });
+
     describe('k shortcut - clone widget', () => {
         it('inserts clone after source and moves selection to clone', () => {
             const widgets: WidgetItem[] = [
@@ -1002,5 +1110,204 @@ describe('items-editor input handlers', () => {
             expect(onUpdate).not.toHaveBeenCalled();
             expect(setSelectedIndex).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('rules accordion shortcut', () => {
+    function normalModeArgs(overrides: Partial<Parameters<typeof handleNormalInputMode>[0]>) {
+        return {
+            input: '',
+            key: {},
+            widgets: [{ id: '1', type: 'tokens-input' }] as WidgetItem[],
+            selectedIndex: 0,
+            canExcludeAlign: true,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: () => [],
+            setCustomEditorWidget: vi.fn(),
+            ...overrides
+        };
+    }
+
+    it('opens the accordion on +', () => {
+        const onToggleAccordion = vi.fn();
+
+        handleNormalInputMode(normalModeArgs({ input: '+', onToggleAccordion }));
+
+        expect(onToggleAccordion).toHaveBeenCalledWith('1');
+    });
+
+    // The accordion shortcut has to stay clear of (x), which already toggles auto-align
+    // exclusion. The editor always supplies onToggleAccordion, so a clash here would only
+    // show up in the running app.
+    it('leaves x toggling auto-align exclusion while the accordion is wired up', () => {
+        const onUpdate = vi.fn();
+        const onToggleAccordion = vi.fn();
+
+        handleNormalInputMode(normalModeArgs({ input: 'x', onUpdate, onToggleAccordion }));
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.excludeFromAutoAlign).toBe(true);
+        expect(onToggleAccordion).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleRuleInputMode', () => {
+    function createRuleHandlers() {
+        return {
+            onPrevRule: vi.fn(),
+            onNextRule: vi.fn(),
+            onCollapse: vi.fn(),
+            onUpdate: vi.fn(),
+            onSelectRule: vi.fn(),
+            onEditCondition: vi.fn()
+        };
+    }
+
+    function ruleArgs(overrides: Record<string, unknown> = {}) {
+        return {
+            input: '',
+            key: {},
+            widgets: [{
+                id: '1',
+                type: 'model',
+                rules: [
+                    { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+                    { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+                ]
+            }] as WidgetItem[],
+            selectedIndex: 0,
+            selectedRuleIndex: 0,
+            ...createRuleHandlers(),
+            ...overrides
+        };
+    }
+
+    function updatedRules(onUpdate: ReturnType<typeof vi.fn>): WidgetItem['rules'] {
+        const widgets = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        return widgets?.[0]?.rules;
+    }
+
+    it('adds a rule after the selected one and moves onto it', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({ input: 'a', ...handlers });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(3);
+        expect(updatedRules(handlers.onUpdate)?.[1]).toEqual({ when: {}, apply: {} });
+        expect(handlers.onSelectRule).toHaveBeenCalledWith(1);
+    });
+
+    it('adds the first rule to a widget that has none', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({
+            input: 'a',
+            widgets: [{ id: '1', type: 'model' }] as WidgetItem[],
+            ...handlers
+        });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(1);
+        expect(handlers.onSelectRule).toHaveBeenCalledWith(0);
+    });
+
+    it('deletes the selected rule and clamps the selection', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({ input: 'd', selectedRuleIndex: 1, ...handlers });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(1);
+        expect(updatedRules(handlers.onUpdate)?.[0]?.apply).toEqual({ color: 'red' });
+        expect(handlers.onSelectRule).toHaveBeenCalledWith(0);
+    });
+
+    it('stays expanded when the last rule is deleted', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({
+            input: 'd',
+            widgets: [{
+                id: '1',
+                type: 'model',
+                rules: [{ when: {}, apply: {} }]
+            }] as WidgetItem[],
+            ...handlers
+        });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(0);
+        expect(handlers.onCollapse).not.toHaveBeenCalled();
+    });
+
+    it('toggles the stop flag on and back off', () => {
+        const on = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 's', ...on }))).toBe(true);
+        expect(updatedRules(on.onUpdate)?.[0]?.stop).toBe(true);
+
+        const off = createRuleHandlers();
+        handleRuleInputMode(ruleArgs({
+            input: 's',
+            widgets: [{
+                id: '1',
+                type: 'model',
+                rules: [{ when: {}, apply: {}, stop: true }]
+            }] as WidgetItem[],
+            ...off
+        }));
+        expect(updatedRules(off.onUpdate)?.[0]?.stop).toBeUndefined();
+    });
+
+    it('opens the condition editor on (e) and on Enter', () => {
+        const viaKey = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 'e', selectedRuleIndex: 1, ...viaKey }))).toBe(true);
+        expect(viaKey.onEditCondition).toHaveBeenCalledWith(1);
+
+        const viaEnter = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ key: { return: true }, selectedRuleIndex: 1, ...viaEnter }))).toBe(true);
+        expect(viaEnter.onEditCondition).toHaveBeenCalledWith(1);
+    });
+
+    it('reorders rules with (j) and (k), following the moved rule', () => {
+        const down = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 'j', ...down }))).toBe(true);
+        expect(updatedRules(down.onUpdate)?.[0]?.apply).toEqual({ bold: true });
+        expect(down.onSelectRule).toHaveBeenCalledWith(1);
+
+        const up = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 'k', selectedRuleIndex: 1, ...up }))).toBe(true);
+        expect(updatedRules(up.onUpdate)?.[0]?.apply).toEqual({ bold: true });
+        expect(up.onSelectRule).toHaveBeenCalledWith(0);
+    });
+
+    it('moves the rule selection on the arrows and reports the key consumed', () => {
+        const handlers = createRuleHandlers();
+
+        expect(handleRuleInputMode(ruleArgs({ key: { downArrow: true }, ...handlers }))).toBe(true);
+        expect(handlers.onNextRule).toHaveBeenCalledTimes(1);
+
+        expect(handleRuleInputMode(ruleArgs({ key: { upArrow: true }, ...handlers }))).toBe(true);
+        expect(handlers.onPrevRule).toHaveBeenCalledTimes(1);
+    });
+
+    it('collapses the accordion on escape rather than leaving the editor', () => {
+        const handlers = createRuleHandlers();
+
+        expect(handleRuleInputMode(ruleArgs({ key: { escape: true }, ...handlers }))).toBe(true);
+        expect(handlers.onCollapse).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves other keys to the widget-level handler', () => {
+        const handlers = createRuleHandlers();
+
+        expect(handleRuleInputMode(ruleArgs({ input: 'q', ...handlers }))).toBe(false);
+        expect(handlers.onPrevRule).not.toHaveBeenCalled();
+        expect(handlers.onNextRule).not.toHaveBeenCalled();
+        expect(handlers.onCollapse).not.toHaveBeenCalled();
     });
 });

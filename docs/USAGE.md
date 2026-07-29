@@ -123,6 +123,8 @@ Configure global formatting preferences that apply to all widgets:
 
 ## Widget Styling
 
+Color editing is a mode of the widget editor. Highlight a widget in the line editor and press `⇥` to switch to **Edit Line N [COLORS]**; press `⇥` again to go back to **[WIDGETS]**. Both modes list the same widgets in the same order, and rows are tinted with the color each widget actually renders in.
+
 The color editor can adjust foreground color, background color, bold, dim, and gradients per widget:
 
 - Use `←` / `→` to cycle the selected foreground or background color.
@@ -130,6 +132,19 @@ The color editor can adjust foreground color, background color, bold, dim, and g
 - Press `b` to toggle bold.
 - Press `d` to cycle dim styling: off → whole widget → parenthesized text only → off.
 - Press `r` to reset styling on the selected widget, or `c` to clear styling on every widget in the line.
+
+### Pinning Colors Over a Powerline Theme
+
+A Powerline theme normally drives every widget's foreground and background, so per-widget colors have no effect. **Pinning** a color lets one widget opt out and keep its own:
+
+- Press `p` to pin or unpin the channel you are editing. The header shows which channel that is — `[FOREGROUND]` or `[BACKGROUND]`, toggled with `f`. The two channels pin independently, so a widget can keep its own foreground while the theme still supplies its background.
+- **A channel must be pinned before its color can be changed.** While the theme owns a channel, the color keys (`←`/`→`, `h`, `a`, `g`) do nothing and the current-style row says so. This keeps a stray arrow key from overwriting a color the theme is currently hiding. Bold, dim, reset and clear-all are not theme-driven and stay available.
+- Pinning takes over the color you are looking at: your own color if the widget has one, otherwise the theme color it is currently rendering. Taking control never changes the appearance by itself.
+- Pinned widgets are marked on their own row — `(fg pinned)`, `(bg pinned)` or `(fg+bg pinned)` — in both editor modes, so you can see every override at a glance. An unpinned channel shows the theme's color as `(theme)` on the current-style row, so the editor displays what actually renders.
+- Unpinning keeps the stored color rather than discarding it, so re-pinning brings it back.
+- A color set before a theme was enabled stays dormant and unpinned: existing themed configurations render exactly as they did before.
+
+Pins only matter while a theme is active. With Powerline off, or on the `custom` theme, each widget's own colors already apply. Changing themes prompts to keep or remove existing pins.
 
 ## Gradient Colors
 
@@ -145,6 +160,65 @@ Gradients apply at **two scopes**:
 - **Whole line** — set `overrideForegroundColor` to a gradient spec to paint the entire status line with one continuous sweep, each character colored by its column position. In the Global Overrides menu, press **(g)** on Override FG Color to open the same gradient picker, or author the value directly in `settings.json`.
 
 Gradients self-degrade where they can't render: at Basic or No Color levels, gradient settings are preserved but render as plain text. In Powerline mode, global foreground gradients color widget text while separators and caps keep Powerline's normal foreground/background contrast rules; per-widget gradients collapse to their first stop when using 256-color or truecolor output.
+
+## Widget Rules
+
+A widget can carry **rules** that override its own settings when a condition holds — turn a context percentage red once it climbs past 80%, hide a widget while its value is zero, or swap the text it shows. Rules are evaluated top to bottom on every render and later matches win, so put general rules first and specific ones last. A rule marked **stop** ends evaluation for that widget when it matches.
+
+Press `+` on a widget in either editor mode to open its rules. Rows carrying rules are badged, and each rule appears as an indented sub-row showing its condition, what it overrides, and whether it stops:
+
+```
+▶  1. Context %  [2 rules]
+     › when context-percentage greater than 80 -> color: red
+       when context-percentage greater than 90 -> color: red, bold: true [STOP]
+```
+
+Each rule row is painted in the color that rule renders in, so the list previews what it will do.
+
+### Authoring Rules
+
+Rules are created in the widget editor (`[WIDGETS]`). With a widget expanded:
+
+- `↑/↓` select a rule
+- `a` add a rule below the selected one
+- `d` delete the selected rule
+- `s` toggle the rule's stop flag
+- `e` or `Enter` edit the condition
+- `j` / `k` reorder the selected rule (order is evaluation order)
+- `⇥` switch to color editing with the same rule still selected
+- `Esc` collapse
+
+Deleting the last rule leaves the accordion open on an empty list, so `a` can start again without reopening it.
+
+A condition names a widget to evaluate, an operator, and a value — the condition editor picks the widget from the same catalog the type picker uses, then offers only the operators that suit that widget's value type:
+
+- **Numeric** — `equals`, `greater than`, `greater than or equal`, `less than`, `less than or equal`
+- **String** — `equals`, `contains`, `starts with`, `ends with`
+- **Boolean** — `equals`
+- **Existence** — `is null`, `is not null`
+
+Any condition can be negated. A rule can override `color`, `backgroundColor`, `bold`, `rawValue`, `customText` and `hide`.
+
+Rules are stored on the widget in `settings.json`:
+
+```json
+{
+  "id": "…",
+  "type": "context-percentage",
+  "rules": [
+    { "when": { "widget": "context-percentage", "greaterThan": 80 }, "apply": { "color": "red" } },
+    { "when": { "widget": "context-percentage", "greaterThan": 90 }, "apply": { "bold": true }, "stop": true }
+  ]
+}
+```
+
+### Styling a Rule
+
+In the color editor, expanding a widget and selecting a rule aims the color keys at that rule: `←`/`→`, `f`, `b`, `h`, `a` and `r` write to the rule instead of the widget. The current-style row describes the selected rule, so `Current (…)` and `[BOLD]` reflect the rule rather than its widget.
+
+Rules cannot be created or deleted here — `a`, `d` and `s` keep their color-editor meanings — so `+` only opens widgets that already have rules. Dim has no rule equivalent, so `d` always edits the widget's dim.
+
+Under a Powerline theme, rule colors follow the same pin rule as widget colors (see [Pinning Colors Over a Powerline Theme](#pinning-colors-over-a-powerline-theme)): while the theme owns a channel, a rule color would never be visible, so the color keys do nothing until that channel is pinned. Pinning makes the widget override the theme, which is what lets its rules override it further. An unpinned rule row shows the theme's color, which is what it would actually render as. Bold is not theme-driven and stays available.
 
 ## Claude Code Status Line Settings
 
@@ -210,7 +284,11 @@ Common controls in the line editor:
 - `r` toggle raw value (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
-- `Esc` go back
+- `+` open the selected widget's rules (see [Widget Rules](#widget-rules))
+- `⇥` switch to color editing for the selected widget, and back again (see [Widget Styling](#widget-styling))
+- `Esc` go back to the line selector, from either mode
+
+With a widget's rules open, the rule list takes over the keyboard and the footer switches to its own shortcuts — `↑/↓` select, `a` add, `d` delete, `s` stop, `e`/`Enter` edit condition, `j`/`k` reorder, `Esc` collapse. `⇥` still swaps editor modes and carries the open rule with it.
 
 Widget picker:
 - type to search categories and widgets
