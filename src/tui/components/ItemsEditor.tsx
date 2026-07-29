@@ -28,7 +28,8 @@ import {
 } from '../../utils/widgets';
 import {
     getRuleCount,
-    useRuleAccordion
+    useRuleAccordion,
+    type AccordionState
 } from '../hooks/useRuleAccordion';
 
 import { ConditionEditor } from './ConditionEditor';
@@ -61,6 +62,8 @@ export interface ItemsEditorProps {
     onTabSwap?: () => void;
     onWidgetHighlight?: (widgetId: string | null) => void;
     initialWidgetId?: string | null;
+    accordionState?: AccordionState;
+    onAccordionChange?: (state: AccordionState) => void;
 }
 
 function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
@@ -71,7 +74,7 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
     return Boolean(widgets[index - 1]?.merge);
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId, accordionState, onAccordionChange }) => {
     const [selectedIndex, setSelectedIndex] = useState(() => {
         if (initialWidgetId) {
             const index = widgets.findIndex(w => w.id === initialWidgetId);
@@ -83,7 +86,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
-    const accordion = useRuleAccordion({ widgets });
+    const accordion = useRuleAccordion({
+        widgets,
+        initialExpandedWidgetId: accordionState?.expandedWidgetId ?? null,
+        initialSelectedRuleIndex: accordionState?.selectedRuleIndex ?? 0,
+        onChange: onAccordionChange
+    });
     const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 

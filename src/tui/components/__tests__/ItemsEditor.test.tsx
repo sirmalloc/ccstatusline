@@ -85,7 +85,11 @@ const THEMED_SETTINGS = {
     }
 };
 
-async function renderItemsEditor(widgets: WidgetItem[], settings: Settings = DEFAULT_SETTINGS) {
+async function renderItemsEditor(
+    widgets: WidgetItem[],
+    settings: Settings = DEFAULT_SETTINGS,
+    extraProps: Record<string, unknown> = {}
+) {
     const stdin = createMockStdin();
     const stdout = createMockStdout();
     const stderr = createMockStdout();
@@ -97,7 +101,8 @@ async function renderItemsEditor(widgets: WidgetItem[], settings: Settings = DEF
             onUpdate,
             onBack,
             lineNumber: 1,
-            settings
+            settings,
+            ...extraProps
         }),
         {
             stdin,
@@ -376,6 +381,51 @@ describe('ItemsEditor', () => {
             await settleInputHandler();
 
             expect(getOutput()).toContain('Edit Condition');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('opens already expanded when handed accordion state', async () => {
+        const { output, teardown } = await renderItemsEditor(
+            [
+                {
+                    id: '1',
+                    type: 'model',
+                    rules: [
+                        { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+                        { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+                    ]
+                }
+            ],
+            DEFAULT_SETTINGS,
+            { accordionState: { expandedWidgetId: '1', selectedRuleIndex: 1 } }
+        );
+
+        try {
+            expect(output).toContain('› when context-percentage greater than 90');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('reports accordion changes so the other editor mode can pick them up', async () => {
+        const onAccordionChange = vi.fn();
+        const { stdin, teardown } = await renderItemsEditor(
+            [{
+                id: '1',
+                type: 'model',
+                rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } }]
+            }],
+            DEFAULT_SETTINGS,
+            { onAccordionChange }
+        );
+
+        try {
+            stdin.write('R');
+            await settleInputHandler();
+
+            expect(onAccordionChange).toHaveBeenCalledWith({ expandedWidgetId: '1', selectedRuleIndex: 0 });
         } finally {
             teardown();
         }

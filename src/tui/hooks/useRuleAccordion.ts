@@ -1,6 +1,7 @@
 import {
     useCallback,
     useEffect,
+    useRef,
     useState
 } from 'react';
 
@@ -138,6 +139,11 @@ export interface UseRuleAccordionOptions {
     widgets: WidgetItem[];
     initialExpandedWidgetId?: string | null;
     initialSelectedRuleIndex?: number;
+    /**
+     * Reports every state change so an owner above the editor can hold the accordion
+     * across a swap between the widget and colour editing modes, which unmount each other.
+     */
+    onChange?: (state: AccordionState) => void;
 }
 
 export interface UseRuleAccordionReturn {
@@ -158,41 +164,58 @@ export interface UseRuleAccordionReturn {
 export function useRuleAccordion({
     widgets,
     initialExpandedWidgetId = null,
-    initialSelectedRuleIndex = 0
+    initialSelectedRuleIndex = 0,
+    onChange
 }: UseRuleAccordionOptions): UseRuleAccordionReturn {
     const [state, setState] = useState<AccordionState>({
         expandedWidgetId: initialExpandedWidgetId,
         selectedRuleIndex: initialSelectedRuleIndex
     });
 
+    // Keep the reporting callback in a ref so a caller passing an inline function does not
+    // rebuild every transition, which would defeat their useCallback identities.
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
+
+    const applyTransition = useCallback((transition: (prev: AccordionState) => AccordionState) => {
+        setState((prev) => {
+            const next = transition(prev);
+            if (next.expandedWidgetId !== prev.expandedWidgetId
+                || next.selectedRuleIndex !== prev.selectedRuleIndex) {
+                onChangeRef.current?.(next);
+            }
+            return next;
+        });
+    }, []);
+
     // Reconcile state when the widgets array changes externally
     useEffect(() => {
-        setState(prev => reconcile(prev, widgets));
-    }, [widgets]);
+        applyTransition(prev => reconcile(prev, widgets));
+    }, [widgets, applyTransition]);
 
     const expandCb = useCallback((widgetId: string) => {
-        setState(expand(widgetId));
-    }, []);
+        applyTransition(() => expand(widgetId));
+    }, [applyTransition]);
 
     const collapseCb = useCallback(() => {
-        setState(collapse());
-    }, []);
+        applyTransition(() => collapse());
+    }, [applyTransition]);
 
     const toggleExpandCb = useCallback((widgetId: string) => {
-        setState(prev => toggleExpand(prev, widgetId));
-    }, []);
+        applyTransition(prev => toggleExpand(prev, widgetId));
+    }, [applyTransition]);
 
     const selectRuleCb = useCallback((index: number) => {
-        setState(prev => selectRule(prev, index));
-    }, []);
+        applyTransition(prev => selectRule(prev, index));
+    }, [applyTransition]);
 
     const selectPrevRuleCb = useCallback(() => {
-        setState(prev => selectPrevRule(prev, widgets));
-    }, [widgets]);
+        applyTransition(prev => selectPrevRule(prev, widgets));
+    }, [widgets, applyTransition]);
 
     const selectNextRuleCb = useCallback(() => {
-        setState(prev => selectNextRule(prev, widgets));
-    }, [widgets]);
+        applyTransition(prev => selectNextRule(prev, widgets));
+    }, [widgets, applyTransition]);
 
     const isExpandedCb = useCallback((widgetId: string) => {
         return isExpanded(state, widgetId);

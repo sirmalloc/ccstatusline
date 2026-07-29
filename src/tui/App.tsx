@@ -104,6 +104,7 @@ import {
     List,
     type ListEntry
 } from './components/List';
+import type { AccordionState } from './hooks/useRuleAccordion';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -523,6 +524,7 @@ export const App: React.FC = () => {
     const [selectedLine, setSelectedLine] = useState(0);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
     const [activeWidgetId, setActiveWidgetId] = useState<string | null>(null);
+    const [accordionState, setAccordionState] = useState<AccordionState>({ expandedWidgetId: null, selectedRuleIndex: 0 });
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -769,6 +771,12 @@ export const App: React.FC = () => {
 
     const handleTabSwap = useCallback(() => {
         setScreen(getTabSwapScreen);
+    }, []);
+
+    // The two editing modes unmount each other on a Tab swap, so the accordion is held here
+    // and handed back, keeping the open widget and selected rule across the swap.
+    const handleAccordionChange = useCallback((state: AccordionState) => {
+        setAccordionState(state);
     }, []);
 
     const handleUpdateCheck = useCallback(() => {
@@ -1247,6 +1255,8 @@ export const App: React.FC = () => {
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
+                        accordionState={accordionState}
+                        onAccordionChange={handleAccordionChange}
                     />
                 )}
                 {screen === 'colorsMoved' && (
