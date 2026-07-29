@@ -16,7 +16,16 @@ import {
     applyColors,
     getPowerlineTheme
 } from '../../../utils/colors';
+import type { ThemeSlotContext } from '../../../utils/effective-theme-colors';
 import { ColorMenu } from '../ColorMenu';
+
+/** Slot context for a line where every widget produces output. */
+function allRendered(widgets: WidgetItem[]): ThemeSlotContext {
+    return {
+        contents: widgets.map(() => 'x'),
+        startIndex: 0
+    };
+}
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -86,6 +95,7 @@ describe('ColorMenu', () => {
             React.createElement(ColorMenu, {
                 widgets,
                 lineIndex: 0,
+                themeSlotContext: allRendered(widgets),
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -139,6 +149,7 @@ describe('ColorMenu', () => {
             React.createElement(ColorMenu, {
                 widgets,
                 lineIndex: 0,
+                themeSlotContext: allRendered(widgets),
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -184,6 +195,56 @@ describe('ColorMenu', () => {
 
             // the dormant colour must survive a stray arrow key
             expect(onUpdate).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('keeps a preserve-colors custom command out of the colour list entirely', async () => {
+        const onBack = vi.fn();
+        const widgets: WidgetItem[] = [{
+            id: '1',
+            type: 'custom-command',
+            preserveColors: true
+        }];
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets,
+                lineIndex: 0,
+                themeSlotContext: allRendered(widgets),
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        theme: 'nord-aurora'
+                    }
+                },
+                onUpdate: vi.fn(),
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+        await flushInk();
+        try {
+            // supportsColors is false while preserveColors is set, so there is no row to
+            // guard - which is why the theme-ownership gate never sees such a widget.
+            expect(stripAnsi(stdout.getOutput())).toContain('No colorable widgets');
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -264,6 +325,9 @@ describe('ColorMenu', () => {
             stdin.write('\x1B[C');
             await flushInk();
 
+            // Without this the assertion below passes when nothing happened at all, which
+            // is exactly how colour editing could break for every non-themed user unnoticed.
+            expect(onUpdate).toHaveBeenCalled();
             expect(lastUpdated(onUpdate)?.find(widget => widget.id === '1')?.pinColor).toBeUndefined();
         } finally {
             instance.unmount();
@@ -282,6 +346,7 @@ describe('ColorMenu', () => {
             React.createElement(ColorMenu, {
                 widgets,
                 lineIndex: 0,
+                themeSlotContext: allRendered(widgets),
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -365,6 +430,7 @@ describe('ColorMenu', () => {
             React.createElement(ColorMenu, {
                 widgets,
                 lineIndex: 0,
+                themeSlotContext: allRendered(widgets),
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,
@@ -492,15 +558,17 @@ describe('ColorMenu', () => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();
         const stderr = createMockStdout();
+        const widgets: WidgetItem[] = [{
+            id: '1',
+            type: 'model',
+            color: 'hex:FF0000',
+            backgroundColor: 'hex:00FF00'
+        }];
         const instance = render(
             React.createElement(ColorMenu, {
-                widgets: [{
-                    id: '1',
-                    type: 'model',
-                    color: 'hex:FF0000',
-                    backgroundColor: 'hex:00FF00'
-                }],
+                widgets,
                 lineIndex: 0,
+                themeSlotContext: allRendered(widgets),
                 settings: {
                     ...DEFAULT_SETTINGS,
                     colorLevel: 3,

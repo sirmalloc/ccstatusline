@@ -10,6 +10,7 @@ import Gradient from 'ink-gradient';
 import React, {
     useCallback,
     useEffect,
+    useMemo,
     useState
 } from 'react';
 
@@ -46,6 +47,10 @@ import {
     type ImportValidationResult
 } from '../utils/config';
 import {
+    EMPTY_THEME_SLOT_CONTEXT,
+    buildThemeSlotContexts
+} from '../utils/effective-theme-colors';
+import {
     inspectGlobalCommandResolution,
     isPathInsideDir
 } from '../utils/global-command-resolution';
@@ -64,6 +69,7 @@ import {
     installPowerlineFonts,
     type PowerlineFontStatus
 } from '../utils/powerline';
+import { preRenderAllWidgets } from '../utils/renderer';
 import { getPackageVersion } from '../utils/terminal';
 import {
     checkForUpdates,
@@ -542,6 +548,31 @@ export const App: React.FC = () => {
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
+
+    // Pre-render every line once per settings change. The preview needs the output, and so
+    // do the editors: which theme color a widget wears depends on which widgets before it
+    // actually render, so an editor guessing at that would preview colors the status line
+    // never uses. Pre-rendering runs custom commands, so it must happen exactly once.
+    const preRenderedLines = useMemo(() => {
+        if (!settings) {
+            return [];
+        }
+
+        return preRenderAllWidgets(settings.lines, settings, {
+            terminalWidth,
+            isPreview: true,
+            minimalist: settings.minimalistMode,
+            gitCacheTtlSeconds: settings.gitCacheTtlSeconds
+        });
+    }, [settings, terminalWidth]);
+
+    const themeSlotContexts = useMemo(
+        () => buildThemeSlotContexts(
+            preRenderedLines,
+            Boolean(settings?.powerline.enabled && settings.powerline.continueThemeAcrossLines)
+        ),
+        [preRenderedLines, settings]
+    );
 
     useEffect(() => {
         void loadClaudeStatusLineState()
@@ -1192,6 +1223,7 @@ export const App: React.FC = () => {
                 lines={settings.lines}
                 terminalWidth={terminalWidth}
                 settings={settings}
+                preRenderedLines={preRenderedLines}
                 onTruncationChange={setPreviewIsTruncated}
             />
 
@@ -1244,6 +1276,7 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
+                        themeSlotContext={themeSlotContexts[selectedLine] ?? EMPTY_THEME_SLOT_CONTEXT}
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}
                         initialWidgetId={activeWidgetId}
@@ -1268,6 +1301,7 @@ export const App: React.FC = () => {
                         widgets={settings.lines[selectedLine] ?? []}
                         lineIndex={selectedLine}
                         settings={settings}
+                        themeSlotContext={themeSlotContexts[selectedLine] ?? EMPTY_THEME_SLOT_CONTEXT}
                         onUpdate={(updatedWidgets) => {
                             // Update only the selected line
                             const newLines = [...settings.lines];

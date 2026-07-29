@@ -114,46 +114,49 @@ export function cycleWidgetDim(widgets: WidgetItem[], widgetId: string): WidgetI
     });
 }
 
-export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): WidgetItem[] {
-    return updateWidgetById(widgets, widgetId, (widget) => {
-        const {
-            color,
-            backgroundColor,
-            bold,
-            dim,
-            pinColor,
-            pinBackgroundColor,
-            ...restWidget
-        } = widget;
+/**
+ * Strip a widget's styling. While a theme is active only pinned channels are cleared,
+ * for the same reason the editor refuses to cycle an unpinned channel: the stored color
+ * of an unpinned channel is invisible under the theme, so wiping it would destroy a value
+ * the user cannot see and would not miss until the theme was turned off. Bold and dim are
+ * never theme-driven, so they always clear.
+ */
+function stripWidgetStyling(widget: WidgetItem, themeActive: boolean): WidgetItem {
+    const {
+        color,
+        backgroundColor,
+        bold,
+        dim,
+        pinColor,
+        pinBackgroundColor,
+        ...restWidget
+    } = widget;
+    void bold; // Intentionally unused
+    void dim; // Intentionally unused
+
+    if (!themeActive) {
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
-        void bold; // Intentionally unused
-        void dim; // Intentionally unused
         void pinColor; // Intentionally unused
         void pinBackgroundColor; // Intentionally unused
         return restWidget;
-    });
+    }
+
+    // A pinned channel is the one the user can see and edit, so it clears along with its
+    // pin. An unpinned channel's color is hidden by the theme - keep it.
+    return {
+        ...restWidget,
+        ...(!pinColor && color !== undefined && { color }),
+        ...(!pinBackgroundColor && backgroundColor !== undefined && { backgroundColor })
+    };
 }
 
-export function clearAllWidgetStyling(widgets: WidgetItem[]): WidgetItem[] {
-    return widgets.map((widget) => {
-        const {
-            color,
-            backgroundColor,
-            bold,
-            dim,
-            pinColor,
-            pinBackgroundColor,
-            ...restWidget
-        } = widget;
-        void color; // Intentionally unused
-        void backgroundColor; // Intentionally unused
-        void bold; // Intentionally unused
-        void dim; // Intentionally unused
-        void pinColor; // Intentionally unused
-        void pinBackgroundColor; // Intentionally unused
-        return restWidget;
-    });
+export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string, themeActive: boolean): WidgetItem[] {
+    return updateWidgetById(widgets, widgetId, widget => stripWidgetStyling(widget, themeActive));
+}
+
+export function clearAllWidgetStyling(widgets: WidgetItem[], themeActive: boolean): WidgetItem[] {
+    return widgets.map(widget => stripWidgetStyling(widget, themeActive));
 }
 
 function getDefaultForegroundColor(widget: WidgetItem): string {
@@ -163,6 +166,16 @@ function getDefaultForegroundColor(widget: WidgetItem): string {
 
     const widgetImpl = getWidget(widget.type);
     return widgetImpl ? widgetImpl.getDefaultColor() : 'white';
+}
+
+/**
+ * A pinned channel must always name a color. The pin suppresses the theme, so landing on
+ * the palette's "Default" entry - the empty value - would leave the widget with nothing to
+ * render at all: no theme color, and no color of its own. That entry is therefore not
+ * offered while the channel is pinned; unpinning is how a channel goes back to the theme.
+ */
+function paletteForChannel(palette: string[], isPinned: boolean): string[] {
+    return isPinned ? palette.filter(color => color !== '') : palette;
 }
 
 function getNextIndex(currentIndex: number, length: number, direction: 'left' | 'right'): number {
@@ -192,18 +205,19 @@ export function cycleWidgetColor({
 }: CycleWidgetColorOptions): WidgetItem[] {
     return updateWidgetById(widgets, widgetId, (widget) => {
         if (editingBackground) {
-            if (backgroundColors.length === 0) {
+            const bgPalette = paletteForChannel(backgroundColors, Boolean(widget.pinBackgroundColor));
+            if (bgPalette.length === 0) {
                 return widget;
             }
 
             const currentBgColor = widget.backgroundColor ?? '';
-            let currentBgColorIndex = backgroundColors.indexOf(currentBgColor);
+            let currentBgColorIndex = bgPalette.indexOf(currentBgColor);
             if (currentBgColorIndex === -1) {
                 currentBgColorIndex = 0;
             }
 
-            const nextBgColorIndex = getNextIndex(currentBgColorIndex, backgroundColors.length, direction);
-            const nextBgColor = backgroundColors[nextBgColorIndex];
+            const nextBgColorIndex = getNextIndex(currentBgColorIndex, bgPalette.length, direction);
+            const nextBgColor = bgPalette[nextBgColorIndex];
 
             return {
                 ...widget,
@@ -211,7 +225,8 @@ export function cycleWidgetColor({
             };
         }
 
-        if (colors.length === 0) {
+        const fgPalette = paletteForChannel(colors, Boolean(widget.pinColor));
+        if (fgPalette.length === 0) {
             return widget;
         }
 
@@ -221,13 +236,13 @@ export function cycleWidgetColor({
             currentColor = defaultColor;
         }
 
-        let currentColorIndex = colors.indexOf(currentColor);
+        let currentColorIndex = fgPalette.indexOf(currentColor);
         if (currentColorIndex === -1) {
             currentColorIndex = 0;
         }
 
-        const nextColorIndex = getNextIndex(currentColorIndex, colors.length, direction);
-        const nextColor = colors[nextColorIndex];
+        const nextColorIndex = getNextIndex(currentColorIndex, fgPalette.length, direction);
+        const nextColor = fgPalette[nextColorIndex];
 
         return {
             ...widget,

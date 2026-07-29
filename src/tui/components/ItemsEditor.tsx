@@ -16,7 +16,11 @@ import type {
     WidgetItemType
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
-import { getEffectiveThemeColors } from '../../utils/effective-theme-colors';
+import {
+    getEffectiveThemeColors,
+    isPowerlineThemeActive,
+    type ThemeSlotContext
+} from '../../utils/effective-theme-colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
@@ -50,6 +54,8 @@ export interface ItemsEditorProps {
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
+    /** This line's rendered content and theme-slot offset, so previewed colors match. */
+    themeSlotContext: ThemeSlotContext;
     onTabSwap?: () => void;
     onWidgetHighlight?: (widgetId: string | null) => void;
     initialWidgetId?: string | null;
@@ -63,7 +69,7 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
     return Boolean(widgets[index - 1]?.merge);
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, themeSlotContext, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
     const [selectedIndex, setSelectedIndex] = useState(() => {
         if (initialWidgetId) {
             const index = widgets.findIndex(w => w.id === initialWidgetId);
@@ -86,14 +92,18 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Theme colours are positional, so show them here too - reordering or merging
     // widgets is exactly what changes them
-    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings);
+    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings, themeSlotContext);
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
 
     // Get a unique background color for powerline mode
     const getUniqueBackgroundColor = (insertIndex: number): string | undefined => {
-        // Only apply background colors if powerline is enabled and NOT using custom theme
-        if (!settings.powerline.enabled || settings.powerline.theme === 'custom') {
+        // Powerline needs distinct segment backgrounds, but only when the widget's own
+        // background is what renders. Under a theme the theme supplies every background,
+        // so a color picked here would be invisible - and being invisible is what makes it
+        // dangerous: pinning seeds from the widget's stored color, so a random value nobody
+        // chose and nobody has seen would become the color the widget takes on.
+        if (!settings.powerline.enabled || isPowerlineThemeActive(settings)) {
             return undefined;
         }
 

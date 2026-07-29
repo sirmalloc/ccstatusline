@@ -28,7 +28,10 @@ import {
     getColorAnsiCode
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
-import { getActiveThemeColors } from './effective-theme-colors';
+import {
+    getActiveThemeColors,
+    keepsOwnForeground
+} from './effective-theme-colors';
 import {
     isGradientSpec,
     parseGradientSpec
@@ -295,18 +298,16 @@ function renderPowerlineStatusLine(
             let bgColor = widget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
-            // For custom commands with preserveColors, only skip foreground theme colors
-            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
-
             const themeColorSlot = actualPreRenderedIndex !== undefined
                 ? themeColorSlots[actualPreRenderedIndex] ?? NO_THEME_SLOT
                 : NO_THEME_SLOT;
 
             if (themeColors && themeColorSlot !== NO_THEME_SLOT) {
-                // A pinned channel keeps the widget's own colour (it wins over the theme).
-                // preserveColors (custom-command) still takes precedence for the foreground.
-                // Pinned widgets still occupy their slot, so siblings' colours don't shift.
-                if (!skipFgTheme && !widget.pinColor) {
+                // A channel the widget keeps for itself - a pinned colour, or a custom
+                // command preserving its own output colours - wins over the theme. The rule
+                // lives in keepsOwnForeground so the colour editor cannot disagree about it.
+                // Such widgets still occupy their slot, so siblings' colours don't shift.
+                if (!keepsOwnForeground(widget)) {
                     fgColor = themeColors.fg[themeColorSlot % themeColors.fg.length] ?? fgColor;
                 }
                 if (!widget.pinBackgroundColor) {

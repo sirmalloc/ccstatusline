@@ -19,7 +19,9 @@ import {
 } from '../../utils/colors';
 import {
     getEffectiveThemeColors,
-    isPowerlineThemeActive
+    isPowerlineThemeActive,
+    keepsOwnForeground,
+    type ThemeSlotContext
 } from '../../utils/effective-theme-colors';
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
@@ -47,6 +49,8 @@ export interface ColorMenuProps {
     widgets: WidgetItem[];
     lineIndex: number;
     settings: Settings;
+    /** This line's rendered content and theme-slot offset, so previewed colors match. */
+    themeSlotContext: ThemeSlotContext;
     onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
     onTabSwap?: () => void;
@@ -54,7 +58,7 @@ export interface ColorMenuProps {
     initialWidgetId?: string | null;
 }
 
-export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, themeSlotContext, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
     const [showSeparators, setShowSeparators] = useState(false);
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
@@ -69,7 +73,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
 
     const powerlineEnabled = settings.powerline.enabled;
     // What each widget actually renders as under the active theme; empty without one
-    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings);
+    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings, themeSlotContext);
 
     // Rows keep their position in the full line so a widget carries the same number
     // in both editor modes; filtered-out widgets simply leave a gap.
@@ -138,12 +142,28 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     );
 
     /**
+     * Is the theme the thing painting this channel right now? Pinning is not the only way a
+     * widget keeps a channel for itself, so this defers to keepsOwnForeground rather than
+     * reading the pin flag directly - the renderer decides the same way, from the same
+     * predicate. The other case it covers, a custom command with preserveColors, cannot
+     * reach this list today because supportsColors is false while that option is set; the
+     * rule is stated once anyway so the two sides cannot drift apart if that changes.
+     */
+    const isChannelThemeDriven = (widget: WidgetItem): boolean => {
+        if (!themeActive) {
+            return false;
+        }
+
+        return editingBackground ? !widget.pinBackgroundColor : !keepsOwnForeground(widget);
+    };
+
+    /**
      * Under a theme, a channel must be pinned before its colour can be edited. Editing an
      * unpinned channel would overwrite a colour the theme is currently hiding - which is
      * the very value the no-appearance-change guarantee promises to leave alone - and a
      * stray arrow key sits one row from the navigation keys.
      */
-    const canEditColor = (widget: WidgetItem): boolean => !themeActive || isChannelPinned(widget);
+    const canEditColor = (widget: WidgetItem): boolean => !isChannelThemeDriven(widget);
 
     /** The widget a colour edit applies to, or null when the channel is not editable yet. */
     const getEditableWidget = (): WidgetItem | null => {
@@ -377,7 +397,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Reset all styling (color, background, and bold) for the highlighted item
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
-                    const newItems = resetWidgetStyling(widgets, selectedWidget.id);
+                    const newItems = resetWidgetStyling(widgets, selectedWidget.id, themeActive);
                     onUpdate(newItems);
                 }
             }
@@ -541,7 +561,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     }
     // The theme owns this channel until the user takes it over, so say how rather than
     // leaving the colour keys looking broken.
-    const overrideHint = selectedWidget && themeActive && !isChannelPinned(selectedWidget)
+    const overrideHint = selectedWidget && isChannelThemeDriven(selectedWidget)
         ? '- theme applies, press (p) to override'
         : '';
     const styleIndicators = [
@@ -613,7 +633,11 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             <Box flexDirection='column'>
                 <Text bold color='yellow'>⚠ Confirm Clear All Colors</Text>
                 <Box marginTop={1} flexDirection='column'>
-                    <Text>This will reset all colors for all widgets to their defaults.</Text>
+                    {themeActive ? (
+                        <Text>This will clear bold, dim and every pinned color on this line. Colors the theme is hiding are left alone.</Text>
+                    ) : (
+                        <Text>This will reset all colors for all widgets to their defaults.</Text>
+                    )}
                     <Text color='red'>This action cannot be undone!</Text>
                 </Box>
                 <Box marginTop={2}>
@@ -623,7 +647,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     <ConfirmDialog
                         inline={true}
                         onConfirm={() => {
-                            const newItems = clearAllWidgetStyling(widgets);
+                            const newItems = clearAllWidgetStyling(widgets, themeActive);
                             onUpdate(newItems);
                             setShowClearConfirm(false);
                         }}

@@ -17,7 +17,16 @@ import {
     applyColors,
     getPowerlineTheme
 } from '../../../utils/colors';
+import type { ThemeSlotContext } from '../../../utils/effective-theme-colors';
 import { ItemsEditor } from '../ItemsEditor';
+
+/** Slot context for a line where every widget produces output. */
+function allRendered(widgets: WidgetItem[]): ThemeSlotContext {
+    return {
+        contents: widgets.map(() => 'x'),
+        startIndex: 0
+    };
+}
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -84,6 +93,7 @@ async function renderItemsEditor(widgets: WidgetItem[], settings: Settings = DEF
             onUpdate: vi.fn(),
             onBack: vi.fn(),
             lineNumber: 1,
+            themeSlotContext: allRendered(widgets),
             settings
         }),
         {

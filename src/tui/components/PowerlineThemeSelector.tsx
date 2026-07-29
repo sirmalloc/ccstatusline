@@ -16,6 +16,11 @@ import {
     getPowerlineTheme,
     getPowerlineThemes
 } from '../../utils/colors';
+import {
+    NO_THEME_SLOT,
+    assignPowerlineThemeSlots,
+    computeLineThemeStartIndices
+} from '../../utils/powerline-theme-index';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -58,22 +63,36 @@ export function applyCustomPowerlineTheme(
         return null;
     }
 
-    const lines = settings.lines.map((line) => {
-        let widgetColorIndex = 0;
+    // Bake in the slots the shared helper assigns, so what gets written matches the theme
+    // the user was just looking at - merged widgets share a color, separators break a run.
+    // Content is a placeholder for every widget because these colors are written to config
+    // for good: a widget that happens to render nothing right now still needs its color for
+    // the renders where it does have output.
+    const placeholderContentLines = settings.lines.map(line => line.map(widget => ({
+        widget,
+        content: 'x'
+    })));
+    const lineStartIndices = computeLineThemeStartIndices(
+        placeholderContentLines,
+        settings.powerline.continueThemeAcrossLines
+    );
 
-        return line.map((widget) => {
-            if (widget.type === 'separator' || widget.type === 'flex-separator') {
+    const lines = settings.lines.map((line, lineIndex) => {
+        const slots = assignPowerlineThemeSlots(
+            placeholderContentLines[lineIndex] ?? [],
+            lineStartIndices[lineIndex] ?? 0
+        );
+
+        return line.map((widget, widgetIndex) => {
+            const slot = slots[widgetIndex];
+            if (slot === undefined || slot === NO_THEME_SLOT) {
                 return widget;
             }
 
-            const fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length];
-            const bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length];
-            widgetColorIndex++;
-
             return {
                 ...widget,
-                color: fgColor,
-                backgroundColor: bgColor
+                color: themeColors.fg[slot % themeColors.fg.length],
+                backgroundColor: themeColors.bg[slot % themeColors.bg.length]
             };
         });
     });

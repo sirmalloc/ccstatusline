@@ -138,11 +138,14 @@ The color editor can adjust foreground color, background color, bold, dim, and g
 A Powerline theme normally drives every widget's foreground and background, so per-widget colors have no effect. **Pinning** a color lets one widget opt out and keep its own:
 
 - Press `p` to pin or unpin the channel you are editing. The header shows which channel that is — `[FOREGROUND]` or `[BACKGROUND]`, toggled with `f`. The two channels pin independently, so a widget can keep its own foreground while the theme still supplies its background.
-- **A channel must be pinned before its color can be changed.** While the theme owns a channel, the color keys (`←`/`→`, `h`, `a`, `g`) do nothing and the current-style row says so. This keeps a stray arrow key from overwriting a color the theme is currently hiding. Bold, dim, reset and clear-all are not theme-driven and stay available.
-- Pinning takes over the color you are looking at: your own color if the widget has one, otherwise the theme color it is currently rendering. Taking control never changes the appearance by itself.
+- **A channel must be pinned before its color can be changed.** While the theme owns a channel, the color keys (`←`/`→`, `h`, `a`, `g`) do nothing and the current-style row says so. This keeps a stray arrow key from overwriting a color the theme is currently hiding. Bold and dim are not theme-driven and stay available.
+- Pinning takes over the color you are looking at: your own color if the widget has one, otherwise the theme color it is currently rendering. When the widget has a dormant color of its own — one set before the theme was enabled — pinning brings that color back, so the widget does change appearance. The row tag and the current-style row tell you which case you are in before you press `p`.
 - Pinned widgets are marked on their own row — `(fg pinned)`, `(bg pinned)` or `(fg+bg pinned)` — in both editor modes, so you can see every override at a glance. An unpinned channel shows the theme's color as `(theme)` on the current-style row, so the editor displays what actually renders.
-- Unpinning keeps the stored color rather than discarding it, so re-pinning brings it back.
+- Unpinning keeps the stored color rather than discarding it, so re-pinning brings it back. A pinned channel always holds a color: the palette's `Default` entry is not offered while pinned, because a pin suppresses the theme and would otherwise leave the widget with nothing to render.
 - A color set before a theme was enabled stays dormant and unpinned: existing themed configurations render exactly as they did before.
+- `r` and `c` clear only what the theme is not hiding. Under a theme they drop bold, dim and any pinned colors, and leave unpinned colors alone — the same reason the color keys are gated. With Powerline off they reset everything, as before.
+
+Under a theme a widget's color follows its position among the widgets that **actually render**, so a widget that is currently hidden — a Git widget outside a repository, a hide-when-empty counter sitting at zero — shifts the colors of everything after it. The editor previews the same rendered output the status line uses, so what you see is what renders right now; pinning captures that color as it stands at that moment.
 
 Pins only matter while a theme is active. With Powerline off, or on the `custom` theme, each widget's own colors already apply. Changing themes prompts to keep or remove existing pins.
 

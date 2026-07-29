@@ -140,6 +140,9 @@ export default ts.config([
         ignores: [
             '**/dist/',
             '**/node_modules/',
+            // Agent scratch space, including nested git worktrees whose sources are not in
+            // this project's tsconfig - linting them fails on parserOptions.project
+            '**/.claude/',
             '**/*.js',
             '!eslint.config.js'
         ]

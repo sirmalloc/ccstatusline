@@ -11,8 +11,17 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
+import type { ThemeSlotContext } from '../../../utils/effective-theme-colors';
 import { ColorMenu } from '../ColorMenu';
 import { ItemsEditor } from '../ItemsEditor';
+
+/** Slot context for a line where every widget produces output. */
+function allRendered(widgets: WidgetItem[]): ThemeSlotContext {
+    return {
+        contents: widgets.map(() => 'x'),
+        startIndex: 0
+    };
+}
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -101,12 +110,14 @@ describe('editor row parity', () => {
             onBack: vi.fn(),
             lineNumber: 1,
             settings: THEMED_SETTINGS,
+            themeSlotContext: allRendered(WIDGETS),
             onTabSwap: vi.fn()
         }));
         const colorRows = await renderRows(React.createElement(ColorMenu, {
             widgets: WIDGETS,
             lineIndex: 0,
             settings: THEMED_SETTINGS,
+            themeSlotContext: allRendered(WIDGETS),
             onUpdate: vi.fn(),
             onBack: vi.fn(),
             onTabSwap: vi.fn()

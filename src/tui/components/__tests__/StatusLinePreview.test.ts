@@ -14,6 +14,7 @@ import {
 import type { WidgetItem } from '../../../types/Widget';
 import { getVisibleWidth } from '../../../utils/ansi';
 import { renderOsc8Link } from '../../../utils/hyperlink';
+import { preRenderAllWidgets } from '../../../utils/renderer';
 import {
     StatusLinePreview,
     preparePreviewLineForTerminal
@@ -123,7 +124,11 @@ describe('StatusLinePreview helpers', () => {
             React.createElement(StatusLinePreview, {
                 lines,
                 terminalWidth: 160,
-                settings
+                settings,
+                preRenderedLines: preRenderAllWidgets(lines, settings, {
+                    terminalWidth: 160,
+                    isPreview: true
+                })
             }),
             {
                 stdin,

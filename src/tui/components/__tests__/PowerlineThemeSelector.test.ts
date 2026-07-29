@@ -131,6 +131,66 @@ describe('PowerlineThemeSelector helpers', () => {
         });
     });
 
+    it('gives merged widgets one shared color, like the theme it is copying', () => {
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 2 as const,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                theme: 'gruvbox'
+            },
+            lines: [[
+                {
+                    id: '1',
+                    type: 'model',
+                    merge: true
+                },
+                { id: '2', type: 'context-length' },
+                { id: '3', type: 'git-branch' }
+            ]]
+        };
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'gruvbox');
+        const [first, second, third] = updatedSettings?.lines[0] ?? [];
+
+        // The theme paints a merged run as one segment, so copying it must too.
+        expect(second?.color).toBe(first?.color);
+        expect(second?.backgroundColor).toBe(first?.backgroundColor);
+        expect(third?.color).not.toBe(first?.color);
+    });
+
+    it('leaves separators uncolored without consuming a theme slot', () => {
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 2 as const,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                theme: 'gruvbox'
+            },
+            lines: [[
+                { id: '1', type: 'model' },
+                {
+                    id: '2',
+                    type: 'separator',
+                    character: '|'
+                },
+                { id: '3', type: 'git-branch' }
+            ]]
+        };
+
+        const withSeparator = applyCustomPowerlineTheme(settings, 'gruvbox');
+        const withoutSeparator = applyCustomPowerlineTheme({
+            ...settings,
+            lines: [[
+                { id: '1', type: 'model' },
+                { id: '3', type: 'git-branch' }
+            ]]
+        }, 'gruvbox');
+
+        expect(withSeparator?.lines[0]?.[1]).toEqual(settings.lines[0]?.[1]);
+        expect(withSeparator?.lines[0]?.[2]?.color).toBe(withoutSeparator?.lines[0]?.[1]?.color);
+    });
+
     it('returns null when the requested theme cannot be customized', () => {
         expect(applyCustomPowerlineTheme(DEFAULT_SETTINGS, 'custom')).toBeNull();
         expect(applyCustomPowerlineTheme(DEFAULT_SETTINGS, 'missing-theme')).toBeNull();
