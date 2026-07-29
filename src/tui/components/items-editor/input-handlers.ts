@@ -1,5 +1,6 @@
 import type {
     CustomKeybind,
+    Rule,
     Widget,
     WidgetItem,
     WidgetItemType
@@ -334,10 +335,17 @@ export function handleMoveInputMode({
 }
 
 export interface HandleRuleInputModeArgs {
+    input: string;
     key: InputKey;
+    widgets: WidgetItem[];
+    selectedIndex: number;
+    selectedRuleIndex: number;
     onPrevRule: () => void;
     onNextRule: () => void;
     onCollapse: () => void;
+    onUpdate: (widgets: WidgetItem[]) => void;
+    onSelectRule: (index: number) => void;
+    onEditCondition: (ruleIndex: number) => void;
 }
 
 /**
@@ -346,11 +354,32 @@ export interface HandleRuleInputModeArgs {
  * the widget-level handler when it did.
  */
 export function handleRuleInputMode({
+    input,
     key,
+    widgets,
+    selectedIndex,
+    selectedRuleIndex,
     onPrevRule,
     onNextRule,
-    onCollapse
+    onCollapse,
+    onUpdate,
+    onSelectRule,
+    onEditCondition
 }: HandleRuleInputModeArgs): boolean {
+    const currentWidget = widgets[selectedIndex];
+    if (!currentWidget) {
+        return false;
+    }
+
+    const rules = currentWidget.rules ?? [];
+    const ruleCount = rules.length;
+
+    const commitRules = (newRules: Rule[]) => {
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+        onUpdate(newWidgets);
+    };
+
     if (key.escape) {
         onCollapse();
         return true;
@@ -363,6 +392,61 @@ export function handleRuleInputMode({
 
     if (key.downArrow) {
         onNextRule();
+        return true;
+    }
+
+    if (input === 'a') {
+        const insertIndex = ruleCount > 0 ? selectedRuleIndex + 1 : 0;
+        const newRules = [...rules];
+        newRules.splice(insertIndex, 0, { when: {}, apply: {} });
+        commitRules(newRules);
+        onSelectRule(insertIndex);
+        return true;
+    }
+
+    if (input === 'd' && ruleCount > 0) {
+        const newRules = rules.filter((_, i) => i !== selectedRuleIndex);
+        commitRules(newRules);
+        // Deliberately stays expanded on the empty list rather than collapsing, so the
+        // widget can be given a fresh rule without reopening the accordion.
+        onSelectRule(Math.max(0, Math.min(selectedRuleIndex, newRules.length - 1)));
+        return true;
+    }
+
+    if (input === 's' && ruleCount > 0) {
+        const rule = rules[selectedRuleIndex];
+        if (rule) {
+            const newRules = [...rules];
+            if (rule.stop) {
+                const { stop, ...rest } = rule;
+                void stop; // Intentionally unused
+                newRules[selectedRuleIndex] = rest;
+            } else {
+                newRules[selectedRuleIndex] = { ...rule, stop: true };
+            }
+            commitRules(newRules);
+        }
+        return true;
+    }
+
+    if ((input === 'e' || key.return) && ruleCount > 0) {
+        onEditCondition(selectedRuleIndex);
+        return true;
+    }
+
+    if ((input === 'j' || input === 'k') && ruleCount > 1) {
+        const targetIndex = input === 'j'
+            ? (selectedRuleIndex + 1 >= ruleCount ? 0 : selectedRuleIndex + 1)
+            : (selectedRuleIndex - 1 < 0 ? ruleCount - 1 : selectedRuleIndex - 1);
+        const newRules = [...rules];
+        const moved = newRules[selectedRuleIndex];
+        const target = newRules[targetIndex];
+        if (moved && target) {
+            newRules[selectedRuleIndex] = target;
+            newRules[targetIndex] = moved;
+            commitRules(newRules);
+            onSelectRule(targetIndex);
+        }
         return true;
     }
 

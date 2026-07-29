@@ -26,8 +26,12 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
-import { useRuleAccordion } from '../hooks/useRuleAccordion';
+import {
+    getRuleCount,
+    useRuleAccordion
+} from '../hooks/useRuleAccordion';
 
+import { ConditionEditor } from './ConditionEditor';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RuleRow } from './RuleRow';
 import {
@@ -80,6 +84,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const accordion = useRuleAccordion({ widgets });
+    const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
     const separatorChars = ['|', '-', ',', ' '];
 
     useEffect(() => {
@@ -230,6 +235,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             return;
         }
 
+        // Skip input handling while a rule condition is being edited - ConditionEditor owns it
+        if (editingRuleIndex !== null) {
+            return;
+        }
+
         // Skip input handling when clear confirmation is active - let ConfirmDialog handle it
         if (showClearConfirm) {
             return;
@@ -262,10 +272,17 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
         if (accordion.expandedWidgetId !== null
             && handleRuleInputMode({
+                input,
                 key,
+                widgets,
+                selectedIndex,
+                selectedRuleIndex: accordion.selectedRuleIndex,
                 onPrevRule: accordion.selectPrevRule,
                 onNextRule: accordion.selectNextRule,
-                onCollapse: accordion.collapse
+                onCollapse: accordion.collapse,
+                onUpdate,
+                onSelectRule: accordion.selectRule,
+                onEditCondition: setEditingRuleIndex
             })) {
             return;
         }
@@ -314,32 +331,47 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         ? (pickerEntries.find(entry => entry.type === widgetPicker.selectedType) ?? pickerEntries[0])
         : null;
 
-    // Build main help text (without custom keybinds)
-    let helpText = hasWidgets
-        ? '↑↓ select, ←→ open type picker'
-        : '(a)dd via picker, (i)nsert via picker';
-    if (isSeparator) {
-        helpText += ', Space edit separator';
+    // Build main help text (without custom keybinds). While the accordion is open the rule
+    // list owns the keyboard, so it describes its own keys rather than the widget-level ones.
+    let helpText: string;
+    if (accordion.expandedWidgetId !== null) {
+        const ruleCount = currentWidget ? getRuleCount(currentWidget) : 0;
+        const ruleHelpParts = ['↑↓ select rule', '(a)dd'];
+        if (ruleCount > 0) {
+            ruleHelpParts.push('(d)elete', '(s)top', '(e)dit/Enter condition');
+        }
+        if (ruleCount > 1) {
+            ruleHelpParts.push('(j)/(k) reorder');
+        }
+        ruleHelpParts.push('ESC collapse');
+        helpText = ruleHelpParts.join(', ');
+    } else {
+        helpText = hasWidgets
+            ? '↑↓ select, ←→ open type picker'
+            : '(a)dd via picker, (i)nsert via picker';
+        if (isSeparator) {
+            helpText += ', Space edit separator';
+        }
+        if (hasWidgets) {
+            helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
+        }
+        if (canToggleRaw) {
+            helpText += ', (r)aw value';
+        }
+        if (canMerge) {
+            helpText += ', (m)erge';
+        }
+        if (canExcludeAlign) {
+            helpText += ', e(x)clude align';
+        }
+        if (isColorable && onTabSwap) {
+            helpText += ', ⇥ edit colors';
+        }
+        if (hasWidgets) {
+            helpText += ', (R)ules';
+        }
+        helpText += ', ESC back';
     }
-    if (hasWidgets) {
-        helpText += ', Enter to move, (a)dd via picker, (i)nsert via picker, (k) clone, (d)elete, (c)lear line';
-    }
-    if (canToggleRaw) {
-        helpText += ', (r)aw value';
-    }
-    if (canMerge) {
-        helpText += ', (m)erge';
-    }
-    if (canExcludeAlign) {
-        helpText += ', e(x)clude align';
-    }
-    if (isColorable && onTabSwap) {
-        helpText += ', ⇥ edit colors';
-    }
-    if (hasWidgets) {
-        helpText += ', (R)ules';
-    }
-    helpText += accordion.expandedWidgetId !== null ? ', ESC collapse' : ', ESC back';
 
     // Build custom keybinds text
     const customKeybindsText = customKeybinds.map(kb => kb.label).join(', ');
@@ -348,6 +380,31 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         : widgetPicker?.action === 'insert'
             ? 'Insert Widget'
             : 'Change Widget Type';
+
+    // A rule condition is edited in its own overlay, the same way a custom widget editor is
+    if (editingRuleIndex !== null && currentWidget) {
+        const rule = currentWidget.rules?.[editingRuleIndex];
+        if (rule) {
+            return (
+                <ConditionEditor
+                    widgetType={currentWidget.type}
+                    condition={rule.when}
+                    settings={settings}
+                    onSave={(condition) => {
+                        const newRules = [...(currentWidget.rules ?? [])];
+                        newRules[editingRuleIndex] = { ...rule, when: condition };
+                        const newWidgets = [...widgets];
+                        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+                        onUpdate(newWidgets);
+                        setEditingRuleIndex(null);
+                    }}
+                    onCancel={() => {
+                        setEditingRuleIndex(null);
+                    }}
+                />
+            );
+        }
+    }
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {

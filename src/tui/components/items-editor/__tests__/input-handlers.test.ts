@@ -1162,31 +1162,150 @@ describe('handleRuleInputMode', () => {
         return {
             onPrevRule: vi.fn(),
             onNextRule: vi.fn(),
-            onCollapse: vi.fn()
+            onCollapse: vi.fn(),
+            onUpdate: vi.fn(),
+            onSelectRule: vi.fn(),
+            onEditCondition: vi.fn()
         };
     }
+
+    function ruleArgs(overrides: Record<string, unknown> = {}) {
+        return {
+            input: '',
+            key: {},
+            widgets: [{
+                id: '1',
+                type: 'model',
+                rules: [
+                    { when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } },
+                    { when: { widget: 'context-percentage', greaterThan: 90 }, apply: { bold: true } }
+                ]
+            }] as WidgetItem[],
+            selectedIndex: 0,
+            selectedRuleIndex: 0,
+            ...createRuleHandlers(),
+            ...overrides
+        };
+    }
+
+    function updatedRules(onUpdate: ReturnType<typeof vi.fn>): WidgetItem['rules'] {
+        const widgets = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        return widgets?.[0]?.rules;
+    }
+
+    it('adds a rule after the selected one and moves onto it', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({ input: 'a', ...handlers });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(3);
+        expect(updatedRules(handlers.onUpdate)?.[1]).toEqual({ when: {}, apply: {} });
+        expect(handlers.onSelectRule).toHaveBeenCalledWith(1);
+    });
+
+    it('adds the first rule to a widget that has none', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({
+            input: 'a',
+            widgets: [{ id: '1', type: 'model' }] as WidgetItem[],
+            ...handlers
+        });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(1);
+        expect(handlers.onSelectRule).toHaveBeenCalledWith(0);
+    });
+
+    it('deletes the selected rule and clamps the selection', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({ input: 'd', selectedRuleIndex: 1, ...handlers });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(1);
+        expect(updatedRules(handlers.onUpdate)?.[0]?.apply).toEqual({ color: 'red' });
+        expect(handlers.onSelectRule).toHaveBeenCalledWith(0);
+    });
+
+    it('stays expanded when the last rule is deleted', () => {
+        const handlers = createRuleHandlers();
+        const args = ruleArgs({
+            input: 'd',
+            widgets: [{
+                id: '1',
+                type: 'model',
+                rules: [{ when: {}, apply: {} }]
+            }] as WidgetItem[],
+            ...handlers
+        });
+
+        expect(handleRuleInputMode(args)).toBe(true);
+        expect(updatedRules(handlers.onUpdate)).toHaveLength(0);
+        expect(handlers.onCollapse).not.toHaveBeenCalled();
+    });
+
+    it('toggles the stop flag on and back off', () => {
+        const on = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 's', ...on }))).toBe(true);
+        expect(updatedRules(on.onUpdate)?.[0]?.stop).toBe(true);
+
+        const off = createRuleHandlers();
+        handleRuleInputMode(ruleArgs({
+            input: 's',
+            widgets: [{
+                id: '1',
+                type: 'model',
+                rules: [{ when: {}, apply: {}, stop: true }]
+            }] as WidgetItem[],
+            ...off
+        }));
+        expect(updatedRules(off.onUpdate)?.[0]?.stop).toBeUndefined();
+    });
+
+    it('opens the condition editor on (e) and on Enter', () => {
+        const viaKey = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 'e', selectedRuleIndex: 1, ...viaKey }))).toBe(true);
+        expect(viaKey.onEditCondition).toHaveBeenCalledWith(1);
+
+        const viaEnter = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ key: { return: true }, selectedRuleIndex: 1, ...viaEnter }))).toBe(true);
+        expect(viaEnter.onEditCondition).toHaveBeenCalledWith(1);
+    });
+
+    it('reorders rules with (j) and (k), following the moved rule', () => {
+        const down = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 'j', ...down }))).toBe(true);
+        expect(updatedRules(down.onUpdate)?.[0]?.apply).toEqual({ bold: true });
+        expect(down.onSelectRule).toHaveBeenCalledWith(1);
+
+        const up = createRuleHandlers();
+        expect(handleRuleInputMode(ruleArgs({ input: 'k', selectedRuleIndex: 1, ...up }))).toBe(true);
+        expect(updatedRules(up.onUpdate)?.[0]?.apply).toEqual({ bold: true });
+        expect(up.onSelectRule).toHaveBeenCalledWith(0);
+    });
 
     it('moves the rule selection on the arrows and reports the key consumed', () => {
         const handlers = createRuleHandlers();
 
-        expect(handleRuleInputMode({ key: { downArrow: true }, ...handlers })).toBe(true);
+        expect(handleRuleInputMode(ruleArgs({ key: { downArrow: true }, ...handlers }))).toBe(true);
         expect(handlers.onNextRule).toHaveBeenCalledTimes(1);
 
-        expect(handleRuleInputMode({ key: { upArrow: true }, ...handlers })).toBe(true);
+        expect(handleRuleInputMode(ruleArgs({ key: { upArrow: true }, ...handlers }))).toBe(true);
         expect(handlers.onPrevRule).toHaveBeenCalledTimes(1);
     });
 
     it('collapses the accordion on escape rather than leaving the editor', () => {
         const handlers = createRuleHandlers();
 
-        expect(handleRuleInputMode({ key: { escape: true }, ...handlers })).toBe(true);
+        expect(handleRuleInputMode(ruleArgs({ key: { escape: true }, ...handlers }))).toBe(true);
         expect(handlers.onCollapse).toHaveBeenCalledTimes(1);
     });
 
     it('leaves other keys to the widget-level handler', () => {
         const handlers = createRuleHandlers();
 
-        expect(handleRuleInputMode({ key: { return: true }, ...handlers })).toBe(false);
+        expect(handleRuleInputMode(ruleArgs({ input: 'q', ...handlers }))).toBe(false);
         expect(handlers.onPrevRule).not.toHaveBeenCalled();
         expect(handlers.onNextRule).not.toHaveBeenCalled();
         expect(handlers.onCollapse).not.toHaveBeenCalled();

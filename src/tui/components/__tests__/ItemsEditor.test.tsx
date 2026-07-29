@@ -342,6 +342,45 @@ describe('ItemsEditor', () => {
         }
     });
 
+    it('adds a rule to the selected widget from the accordion', async () => {
+        const { stdin, onUpdate, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
+
+        try {
+            stdin.write('R');
+            await settleInputHandler();
+
+            stdin.write('a');
+            await settleInputHandler();
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+            expect(updated?.[0]?.rules).toEqual([{ when: {}, apply: {} }]);
+        } finally {
+            teardown();
+        }
+    });
+
+    it('opens the condition editor for the selected rule', async () => {
+        const { stdin, getOutput, teardown } = await renderItemsEditor([
+            {
+                id: '1',
+                type: 'model',
+                rules: [{ when: { widget: 'context-percentage', greaterThan: 80 }, apply: { color: 'red' } }]
+            }
+        ]);
+
+        try {
+            stdin.write('R');
+            await settleInputHandler();
+
+            stdin.write('e');
+            await settleInputHandler();
+
+            expect(getOutput()).toContain('Edit Condition');
+        } finally {
+            teardown();
+        }
+    });
+
     it('advertises the rules key, and the rule keys once expanded', async () => {
         const { stdin, getOutput, teardown } = await renderItemsEditor([{ id: '1', type: 'model' }]);
 
