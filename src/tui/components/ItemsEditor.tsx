@@ -5,6 +5,7 @@ import {
 } from 'ink';
 import React, {
     useEffect,
+    useMemo,
     useState
 } from 'react';
 
@@ -36,6 +37,7 @@ import {
     WidgetRow,
     getWidgetRowLabel,
     getWidgetRowTags,
+    isMergedIntoPreviousWidget,
     styleWidgetRowLabel
 } from './WidgetRow';
 import {
@@ -61,14 +63,6 @@ export interface ItemsEditorProps {
     initialWidgetId?: string | null;
 }
 
-function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
-    if (index <= 0) {
-        return false;
-    }
-
-    return Boolean(widgets[index - 1]?.merge);
-}
-
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, themeSlotContext, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
     const [selectedIndex, setSelectedIndex] = useState(() => {
         if (initialWidgetId) {
@@ -92,7 +86,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // Theme colours are positional, so show them here too - reordering or merging
     // widgets is exactly what changes them
-    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings, themeSlotContext);
+    const effectiveThemeColors = useMemo(
+        () => getEffectiveThemeColors(widgets, settings, themeSlotContext),
+        [widgets, settings, themeSlotContext]
+    );
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
 

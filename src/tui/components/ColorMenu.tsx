@@ -6,6 +6,7 @@ import {
 } from 'ink';
 import React, {
     useEffect,
+    useMemo,
     useState
 } from 'react';
 
@@ -51,6 +52,16 @@ export interface ColorMenuProps {
     settings: Settings;
     /** This line's rendered content and theme-slot offset, so previewed colors match. */
     themeSlotContext: ThemeSlotContext;
+    /**
+     * Which channel is being edited, and whether separator rows are listed. Both are owned by
+     * the caller because Tab swaps editors by changing screen, which unmounts this component -
+     * as local state they silently reset, so the header could read [FOREGROUND] while the user
+     * believed they were still editing a background.
+     */
+    editingBackground: boolean;
+    onEditingBackgroundChange: (editingBackground: boolean) => void;
+    showSeparators: boolean;
+    onShowSeparatorsChange: (showSeparators: boolean) => void;
     onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
     onTabSwap?: () => void;
@@ -58,8 +69,7 @@ export interface ColorMenuProps {
     initialWidgetId?: string | null;
 }
 
-export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, themeSlotContext, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
-    const [showSeparators, setShowSeparators] = useState(false);
+export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, themeSlotContext, editingBackground, onEditingBackgroundChange, showSeparators, onShowSeparatorsChange, onUpdate, onBack, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
     const [ansi256InputMode, setAnsi256InputMode] = useState(false);
@@ -72,12 +82,17 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const [gradientHexInput, setGradientHexInput] = useState('');
 
     const powerlineEnabled = settings.powerline.enabled;
-    // What each widget actually renders as under the active theme; empty without one
-    const effectiveThemeColors = getEffectiveThemeColors(widgets, settings, themeSlotContext);
+    // What each widget actually renders as under the active theme; empty without one.
+    // Memoised because it runs on every keystroke otherwise, and because the derived row
+    // lists below feed effect dependencies - a fresh array each render re-runs them for nothing.
+    const effectiveThemeColors = useMemo(
+        () => getEffectiveThemeColors(widgets, settings, themeSlotContext),
+        [widgets, settings, themeSlotContext]
+    );
 
     // Rows keep their position in the full line so a widget carries the same number
     // in both editor modes; filtered-out widgets simply leave a gap.
-    const colorableEntries = widgets
+    const colorableEntries = useMemo(() => widgets
         .map((widget, index) => ({
             widget,
             index
@@ -87,12 +102,18 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             if (widget.type === 'separator') {
                 return showSeparators;
             }
+            // A flex separator is pure spacing - it renders no text of its own and takes no
+            // theme slot, so there is nothing to colour. getWidget returns null for it, which
+            // would otherwise land it in the unknown-widget branch below.
+            if (widget.type === 'flex-separator') {
+                return false;
+            }
             // Use the widget's supportsColors method
             const widgetInstance = getWidget(widget.type);
             // Include unknown widgets (they might support colors, we just don't know)
             return widgetInstance ? widgetInstance.supportsColors(widget) : true;
-        });
-    const colorableWidgets = colorableEntries.map(entry => entry.widget);
+        }), [widgets, showSeparators]);
+    const colorableWidgets = useMemo(() => colorableEntries.map(entry => entry.widget), [colorableEntries]);
     const [highlightedItemId, setHighlightedItemId] = useState(() => {
         if (initialWidgetId) {
             const match = colorableWidgets.find(w => w.id === initialWidgetId);
@@ -102,7 +123,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         }
         return colorableWidgets[0]?.id ?? null;
     });
-    const [editingBackground, setEditingBackground] = useState(false);
 
     // Keep the highlight on a row that still exists - toggling separators can remove it
     useEffect(() => {
@@ -136,6 +156,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     // Handle keyboard input
     const hasNoItems = colorableWidgets.length === 0;
     const themeActive = isPowerlineThemeActive(settings);
+    // Stale pins survive a theme being turned off, so the unpin hint has to survive with them
+    const hasAnyPins = widgets.some(widget => Boolean(widget.pinColor) || Boolean(widget.pinBackgroundColor));
 
     const isChannelPinned = (widget: WidgetItem): boolean => (
         editingBackground ? Boolean(widget.pinBackgroundColor) : Boolean(widget.pinColor)
@@ -176,7 +198,16 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     };
 
     useInput((input, key) => {
-        // If no items, any key goes back
+        // Tab is checked before the empty-state bail: with nothing colourable on the line, the
+        // widget editor is where you go to add something, and it is the screen this Tab reaches.
+        // Swallowing Tab here sent the user to the line selector instead, contradicting the
+        // "Add a widget first to continue" message on screen.
+        if (key.tab && onTabSwap) {
+            onTabSwap();
+            return;
+        }
+
+        // If no items, any other key goes back
         if (hasNoItems) {
             onBack();
             return;
@@ -324,21 +355,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return;
         }
 
-        // Ignore number keys to prevent SelectInput numerical navigation
-        if (input && /^[0-9]$/.test(input)) {
-            return;
-        }
-
-        // Tab to swap to ItemsEditor (always available since all items are colorable)
-        if (key.tab && onTabSwap) {
-            onTabSwap();
-            return;
-        }
-
         // Normal keyboard handling when there are items
         if (key.escape) {
             if (editingBackground) {
-                setEditingBackground(false);
+                onEditingBackgroundChange(false);
             } else {
                 onBack();
             }
@@ -366,13 +386,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         } else if ((input === 's' || input === 'S') && !key.ctrl) {
             // Toggle show separators (only if not in powerline mode and no default separator)
             if (!settings.powerline.enabled && !settings.defaultSeparator) {
-                setShowSeparators(!showSeparators);
-                // The highlighted item ID will be maintained, and we'll recalculate
-                // the initial index when rendering the SelectInput
+                // The highlight is keyed by widget id, so it survives rows appearing and
+                // disappearing; the effect below repairs it if the highlighted row goes away.
+                onShowSeparatorsChange(!showSeparators);
             }
         } else if (input === 'f' || input === 'F') {
             if (colorableWidgets.length > 0) {
-                setEditingBackground(!editingBackground);
+                onEditingBackgroundChange(!editingBackground);
             }
         } else if (input === 'b' || input === 'B') {
             if (highlightedItemId) {
@@ -404,17 +424,22 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         } else if (input === 'c' || input === 'C') {
             // Show clear all confirmation
             setShowClearConfirm(true);
-        } else if ((input === 'p' || input === 'P') && themeActive) {
+        } else if (input === 'p' || input === 'P') {
             // Pin/unpin the highlighted widget's current channel so its colour
             // overrides (or yields back to) the active theme. Pinning surfaces the
             // widget's existing colour, falling back to the theme colour it is showing
-            // right now, so taking control never changes what is on screen.
+            // right now.
+            //
+            // Unpinning works with no theme active, even though pinning does not: a pin left
+            // behind by a theme that has since been turned off still renders that theme's
+            // colour and comes back to life the moment any theme is enabled, so there has to
+            // be a way to clear it without hand-editing settings.json.
             if (highlightedItemId) {
                 const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
                 if (selectedWidget) {
                     if (isChannelPinned(selectedWidget)) {
                         onUpdate(unpinWidgetColor(widgets, selectedWidget.id, editingBackground));
-                    } else {
+                    } else if (themeActive) {
                         const widgetImpl = getWidget(selectedWidget.type);
                         const themeChannels = effectiveThemeColors.get(selectedWidget.id);
                         const seedColor = editingBackground
@@ -720,7 +745,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {!editingBackground && settings.colorLevel >= 2 ? ' (g)radient,' : ''}
                         {' '}
                         (r)eset, (c)lear all,
-                        {themeActive ? ' (p)in/unpin,' : ''}
+                        {themeActive ? ' (p)in/unpin,' : (hasAnyPins ? ' (p) unpin,' : '')}
                         {!settings.powerline.enabled && !settings.defaultSeparator
                             ? ` (s)how separators: ${showSeparators ? 'ON' : 'OFF'},`
                             : ''}

@@ -11,13 +11,13 @@ import {
     type InstallationMetadata
 } from '../../types/Settings';
 import {
+    EDITOR_BACK_SCREEN,
     applyTuiImport,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
     clearInstallMenuSelection,
     getConfirmCancelScreen,
     getCurrentInstallation,
-    getEditorBackScreen,
     getMainMenuScreenTarget,
     getPathInferredInstallation,
     getPinnedVersionMismatch,
@@ -315,7 +315,7 @@ describe('Main menu routing', () => {
 
 describe('Widget editor mode navigation', () => {
     it('backs out of the editor to the line selector for items', () => {
-        expect(getEditorBackScreen()).toBe('lines');
+        expect(EDITOR_BACK_SCREEN).toBe('lines');
     });
 
     it('keeps Tab toggling between the items and colors modes', () => {

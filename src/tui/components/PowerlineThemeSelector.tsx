@@ -89,8 +89,19 @@ export function applyCustomPowerlineTheme(
                 return widget;
             }
 
+            // Every widget ends up carrying its own explicit colour, which is exactly what a
+            // pin asks for - so the pins are now redundant. Leaving them set would hide them
+            // (the row tag needs a real theme) and revive them on the next theme change.
+            const {
+                pinColor,
+                pinBackgroundColor,
+                ...restWidget
+            } = widget;
+            void pinColor; // Intentionally unused
+            void pinBackgroundColor; // Intentionally unused
+
             return {
-                ...widget,
+                ...restWidget,
                 color: themeColors.fg[slot % themeColors.fg.length],
                 backgroundColor: themeColors.bg[slot % themeColors.bg.length]
             };
@@ -129,6 +140,10 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     const latestOnUpdateRef = useRef(onUpdate);
     const didHandleInitialSelectionRef = useRef(false);
 
+    // The live-preview effect below runs on selectedIndex alone, so it would close over a
+    // stale settings/onUpdate pair; these refs keep it reading the current ones. Everything
+    // driven directly by a keypress - the confirm handlers, onSelect - renders first and can
+    // read the `settings` prop, which is why the two do not use the same source.
     useEffect(() => {
         latestSettingsRef.current = settings;
         latestOnUpdateRef.current = onUpdate;
@@ -218,11 +233,14 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 <Box marginTop={1} flexDirection='column'>
                     <Text>Some widgets have pinned colors that override the theme.</Text>
                     <Text>Remove them so the new theme fully applies?</Text>
-                    <Text dimColor>Yes removes the overrides; No keeps them.</Text>
+                    <Text dimColor>Yes removes the overrides; No keeps them; ESC cancels the theme change.</Text>
                 </Box>
                 <Box marginTop={1}>
                     <ConfirmDialog
                         inline={true}
+                        // Reached by pressing Enter on the theme list, so a second Enter must
+                        // not be what wipes every pin.
+                        defaultChoice='no'
                         onConfirm={() => {
                             onUpdate({
                                 ...settings,
@@ -233,6 +251,14 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                         }}
                         onCancel={() => {
                             setShowRemovePinsConfirm(false);
+                            onBack();
+                        }}
+                        // Yes and No both apply the theme, so without this ESC would commit a
+                        // theme the user was only previewing - the opposite of what the
+                        // screen's own "ESC cancel" hint promises.
+                        onEscape={() => {
+                            setShowRemovePinsConfirm(false);
+                            onUpdate(originalSettingsRef.current);
                             onBack();
                         }}
                     />
@@ -259,11 +285,15 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 marginTop={1}
                 items={themeItems}
                 onSelect={() => {
-                    const themeChanged = (themes[selectedIndex] ?? 'custom') !== originalThemeRef.current;
+                    const chosenTheme = themes[selectedIndex] ?? 'custom';
+                    const themeChanged = chosenTheme !== originalThemeRef.current;
                     const hasPins = settings.lines.some(line => line.some(
                         widget => Boolean(widget.pinColor) || Boolean(widget.pinBackgroundColor)
                     ));
-                    if (themeChanged && hasPins) {
+                    // On 'custom' every widget's own colour already applies, so a pin
+                    // overrides nothing - offering to destroy them would be pure loss. Any
+                    // later switch to a real theme prompts again.
+                    if (themeChanged && hasPins && chosenTheme !== 'custom') {
                         setShowRemovePinsConfirm(true);
                         return;
                     }

@@ -191,6 +191,33 @@ describe('PowerlineThemeSelector helpers', () => {
         expect(withSeparator?.lines[0]?.[2]?.color).toBe(withoutSeparator?.lines[0]?.[1]?.color);
     });
 
+    it('drops pins it has made redundant', () => {
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 2 as const,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                theme: 'gruvbox'
+            },
+            lines: [[{
+                id: '1',
+                type: 'model',
+                color: 'red',
+                pinColor: true,
+                pinBackgroundColor: true
+            }]]
+        };
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'gruvbox');
+        const widget = updatedSettings?.lines[0]?.[0];
+
+        // Every widget now carries its own explicit colour, which is what a pin asked for.
+        // Left set, the pins would be invisible on 'custom' and revive on the next theme.
+        expect(widget?.pinColor).toBeUndefined();
+        expect(widget?.pinBackgroundColor).toBeUndefined();
+        expect(widget?.color).toBeDefined();
+    });
+
     it('returns null when the requested theme cannot be customized', () => {
         expect(applyCustomPowerlineTheme(DEFAULT_SETTINGS, 'custom')).toBeNull();
         expect(applyCustomPowerlineTheme(DEFAULT_SETTINGS, 'missing-theme')).toBeNull();
@@ -256,6 +283,70 @@ describe('PowerlineThemeSelector helpers', () => {
         }
     });
 
+    it('restores the original theme when the pins prompt is escaped', async () => {
+        const themes = getPowerlineThemes();
+        expect(themes.length).toBeGreaterThan(1);
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const originalSettings = {
+            ...DEFAULT_SETTINGS,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                theme: themes[0]
+            },
+            lines: [[{
+                id: '1',
+                type: 'model',
+                color: 'red',
+                pinColor: true
+            }]]
+        };
+        const instance = render(
+            React.createElement(PowerlineThemeSelector, {
+                settings: originalSettings,
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('\x1B[B'); // change the theme (live preview)
+            await waitForInkCondition(() => onUpdate.mock.calls.length > 0, 'the theme preview update');
+            await flushInk();
+            stdin.write('\r'); // Enter: commit -> keep/remove prompt
+            await waitForInkCondition(() => stdout.getOutput().includes('Remove them so the new theme fully applies?'), 'the remove-pins prompt');
+            await flushInk();
+            stdin.write('\x1B'); // ESC: the screen promises this cancels
+            await waitForInkCondition(() => onBack.mock.calls.length > 0, 'the selector to close');
+
+            // Both Yes and No commit the theme, so ESC is the only abort - it must undo the
+            // live preview rather than leaving the previewed theme applied.
+            const lastSettings = onUpdate.mock.calls.at(-1)?.[0];
+            expect(lastSettings?.powerline.theme).toBe(themes[0]);
+            expect(lastSettings?.lines[0]?.[0]?.pinColor).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
     it('prompts to remove pinned overrides when the theme changes and clears them on confirm', async () => {
         const themes = getPowerlineThemes();
         expect(themes.length).toBeGreaterThan(1);
@@ -297,6 +388,10 @@ describe('PowerlineThemeSelector helpers', () => {
             await flushInk();
             stdin.write('\r'); // Enter: commit -> keep/remove prompt (pins present, theme changed)
             await waitForInkCondition(() => stdout.getOutput().includes('Remove them so the new theme fully applies?'), 'the remove-pins prompt');
+            await flushInk();
+            // The prompt starts on "No", so removing the pins takes a deliberate move up
+            // first - the same Enter that opened it must not be able to destroy them.
+            stdin.write('\x1B[B');
             await flushInk();
             stdin.write('\r'); // Enter: choose "Yes" -> remove overrides
             await waitForInkCondition(() => onBack.mock.calls.length > 0, 'the selector to close');

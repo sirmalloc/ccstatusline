@@ -835,7 +835,9 @@ describe('items-editor input handlers', () => {
             expect(onTabSwap).toHaveBeenCalledTimes(1);
         });
 
-        it('does not call onTabSwap when current widget is a separator', () => {
+        // Tab is a mode switch, so it must work from any row. Refusing it on rows the colour
+        // editor can still highlight made Tab a one-way door out of the widget editor.
+        it('calls onTabSwap when current widget is a separator', () => {
             const widgets: WidgetItem[] = [
                 { id: '1', type: 'separator', character: '|' }
             ];
@@ -858,10 +860,10 @@ describe('items-editor input handlers', () => {
                 onTabSwap
             });
 
-            expect(onTabSwap).not.toHaveBeenCalled();
+            expect(onTabSwap).toHaveBeenCalled();
         });
 
-        it('does not call onTabSwap when current widget is a flex-separator', () => {
+        it('calls onTabSwap when current widget is a flex-separator', () => {
             const widgets: WidgetItem[] = [
                 { id: '1', type: 'flex-separator' }
             ];
@@ -884,7 +886,7 @@ describe('items-editor input handlers', () => {
                 onTabSwap
             });
 
-            expect(onTabSwap).not.toHaveBeenCalled();
+            expect(onTabSwap).toHaveBeenCalled();
         });
 
         it('does nothing when onTabSwap is not provided', () => {

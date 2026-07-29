@@ -473,15 +473,11 @@ export function handleNormalInputMode({
             onUpdate(newWidgets);
         }
     } else if (key.tab && onTabSwap && widgets.length > 0) {
-        const currentWidget = widgets[selectedIndex];
-        if (currentWidget
-            && currentWidget.type !== 'separator'
-            && currentWidget.type !== 'flex-separator') {
-            const widgetImpl = getWidget(currentWidget.type);
-            if (widgetImpl?.supportsColors(currentWidget)) {
-                onTabSwap();
-            }
-        }
+        // Tab is a mode switch, not a per-widget action, so it is never refused. Gating it on
+        // the highlighted widget being colourable made Tab a one-way door: the colour editor
+        // lets you highlight rows this check rejects, and you could not get back. The colour
+        // editor falls back to its first colourable row when the highlighted widget has none.
+        onTabSwap();
     } else if (key.escape) {
         onBack();
     } else if (widgets.length > 0) {

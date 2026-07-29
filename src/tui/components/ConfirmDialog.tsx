@@ -14,6 +14,16 @@ export interface ConfirmDialogProps {
     message?: string;
     onConfirm: () => void;
     onCancel: () => void;
+    /**
+     * ESC handler, when backing out differs from answering "No". Defaults to onCancel.
+     * A dialog whose "No" still commits something needs this to offer a real way out.
+     */
+    onEscape?: () => void;
+    /**
+     * Which option starts highlighted. Defaults to 'yes'; use 'no' when the dialog is
+     * reached by the same key that confirms it, so a repeated press cannot destroy data.
+     */
+    defaultChoice?: 'yes' | 'no';
     inline?: boolean;
 }
 
@@ -28,25 +38,29 @@ const CONFIRM_OPTIONS: ListEntry<boolean>[] = [
     }
 ];
 
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCancel, inline = false }) => {
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCancel, onEscape, defaultChoice = 'yes', inline = false }) => {
     useInput((_, key) => {
         if (key.escape) {
-            onCancel();
+            (onEscape ?? onCancel)();
         }
     });
+
+    const handleSelect = (confirmed: boolean | 'back') => {
+        if (confirmed === true) {
+            onConfirm();
+            return;
+        }
+
+        onCancel();
+    };
+    const initialSelection = defaultChoice === 'no' ? 1 : 0;
 
     if (inline) {
         return (
             <List
                 items={CONFIRM_OPTIONS}
-                onSelect={(confirmed) => {
-                    if (confirmed) {
-                        onConfirm();
-                        return;
-                    }
-
-                    onCancel();
-                }}
+                onSelect={handleSelect}
+                initialSelection={initialSelection}
                 color='cyan'
             />
         );
@@ -58,14 +72,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm
             <Box marginTop={1}>
                 <List
                     items={CONFIRM_OPTIONS}
-                    onSelect={(confirmed) => {
-                        if (confirmed) {
-                            onConfirm();
-                            return;
-                        }
-
-                        onCancel();
-                    }}
+                    onSelect={handleSelect}
+                    initialSelection={initialSelection}
                     color='cyan'
                 />
             </Box>

@@ -57,7 +57,9 @@ export function assignPowerlineThemeSlots(entries: PowerlineThemeSlotEntry[], st
 
 export function countPowerlineThemeSlots(entries: PowerlineThemeSlotEntry[]): number {
     const assigned = assignPowerlineThemeSlots(entries).filter(slot => slot !== NO_THEME_SLOT);
-    const lastSlot = assigned.at(-1);
+    // Index access rather than at(-1): package.json declares engines.node >=14 and the build
+    // targets Node 14, which lowers syntax but does not polyfill prototype methods.
+    const lastSlot = assigned[assigned.length - 1];
 
     return lastSlot === undefined ? 0 : lastSlot + 1;
 }

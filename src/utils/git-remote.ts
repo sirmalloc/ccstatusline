@@ -43,7 +43,7 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
         : null;
     if (sshMatch?.[1] && sshMatch[2]) {
         const pathSegments = sshMatch[2].split('/').filter(Boolean);
-        const repo = pathSegments.at(-1);
+        const repo = pathSegments[pathSegments.length - 1];
         const owner = pathSegments.slice(0, -1).join('/');
 
         if (!owner || !repo) {
@@ -70,7 +70,7 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
         const pathname = parsedUrl.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
         const segments = pathname.split('/').filter(Boolean);
 
-        const repo = segments.at(-1);
+        const repo = segments[segments.length - 1];
         const owner = segments.slice(0, -1).join('/');
 
         if (!owner || !repo) {

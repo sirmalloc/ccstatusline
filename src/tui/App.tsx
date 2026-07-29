@@ -445,8 +445,19 @@ export function getMainMenuScreenTarget(value: MainMenuOption): AppScreen | null
             return 'exportConfig';
         case 'importConfig':
             return 'importConfig';
-        default:
+        // These run an action rather than opening a screen, so the caller handles them.
+        case 'install':
+        case 'checkUpdates':
+        case 'starGithub':
+        case 'save':
+        case 'exit':
             return null;
+        default: {
+            // A new MainMenuOption must be classified here rather than silently doing nothing.
+            const exhaustive: never = value;
+            void exhaustive;
+            return null;
+        }
     }
 }
 
@@ -454,9 +465,7 @@ export function getMainMenuScreenTarget(value: MainMenuOption): AppScreen | null
  * Both widget editor modes back out one menu to the same line selector, so
  * escape lands in the same place whichever mode you happened to be in.
  */
-export function getEditorBackScreen(): AppScreen {
-    return 'lines';
-}
+export const EDITOR_BACK_SCREEN: AppScreen = 'lines';
 
 /** Tab swaps between editing a line's widgets and editing their colors. */
 export function getTabSwapScreen(screen: AppScreen): AppScreen {
@@ -548,6 +557,10 @@ export const App: React.FC = () => {
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
+    // Colour-editor mode lives here so it survives the Tab swap, which changes screen and
+    // therefore unmounts the editor.
+    const [colorEditingBackground, setColorEditingBackground] = useState(false);
+    const [colorShowSeparators, setColorShowSeparators] = useState(false);
 
     // Pre-render every line once per settings change. The preview needs the output, and so
     // do the editors: which theme color a widget wears depends on which widgets before it
@@ -1272,7 +1285,7 @@ export const App: React.FC = () => {
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
                             setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
-                            setScreen(getEditorBackScreen());
+                            setScreen(EDITOR_BACK_SCREEN);
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
@@ -1302,6 +1315,10 @@ export const App: React.FC = () => {
                         lineIndex={selectedLine}
                         settings={settings}
                         themeSlotContext={themeSlotContexts[selectedLine] ?? EMPTY_THEME_SLOT_CONTEXT}
+                        editingBackground={colorEditingBackground}
+                        onEditingBackgroundChange={setColorEditingBackground}
+                        showSeparators={colorShowSeparators}
+                        onShowSeparatorsChange={setColorShowSeparators}
                         onUpdate={(updatedWidgets) => {
                             // Update only the selected line
                             const newLines = [...settings.lines];
@@ -1312,7 +1329,7 @@ export const App: React.FC = () => {
                             // Colors are a mode of the widget editor, so escape backs out
                             // to the same line selector the items mode returns to
                             setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
-                            setScreen(getEditorBackScreen());
+                            setScreen(EDITOR_BACK_SCREEN);
                         }}
                         onTabSwap={handleTabSwap}
                         onWidgetHighlight={handleWidgetHighlight}

@@ -123,7 +123,9 @@ Configure global formatting preferences that apply to all widgets:
 
 ## Widget Styling
 
-Color editing is a mode of the widget editor. Highlight a widget in the line editor and press `⇥` to switch to **Edit Line N [COLORS]**; press `⇥` again to go back to **[WIDGETS]**. Both modes list the same widgets in the same order, and rows are tinted with the color each widget actually renders in.
+Color editing is a mode of the widget editor. Highlight a widget in the line editor and press `⇥` to switch to **Edit Line N [COLORS]**; press `⇥` again to go back to **[WIDGETS]**. `⇥` works from any row, so you can always get back.
+
+A widget keeps the same number in both modes, and rows are tinted with the color each widget actually renders in. The color mode lists fewer rows: it omits flex separators, plain separators (until you press `s`), and widgets with no color of their own, such as a custom command set to preserve its command's own colors. Those rows simply leave a gap in the numbering rather than renumbering everything after them.
 
 The color editor can adjust foreground color, background color, bold, dim, and gradients per widget:
 

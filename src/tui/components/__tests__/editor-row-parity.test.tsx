@@ -118,6 +118,10 @@ describe('editor row parity', () => {
             lineIndex: 0,
             settings: THEMED_SETTINGS,
             themeSlotContext: allRendered(WIDGETS),
+            editingBackground: false,
+            onEditingBackgroundChange: vi.fn(),
+            showSeparators: false,
+            onShowSeparatorsChange: vi.fn(),
             onUpdate: vi.fn(),
             onBack: vi.fn(),
             onTabSwap: vi.fn()
@@ -125,5 +129,57 @@ describe('editor row parity', () => {
 
         expect(itemRows).toHaveLength(WIDGETS.length);
         expect(colorRows).toEqual(itemRows);
+    });
+
+    // The fixture above is all-colourable, so it cannot catch the case where the lists
+    // legitimately differ. This one covers it: the colour mode drops rows it cannot colour,
+    // and the rows it keeps must still carry their original numbers.
+    it('keeps widget numbering aligned when the colour mode drops rows', async () => {
+        const mixedWidgets: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: '2', type: 'flex-separator' },
+            {
+                id: '3',
+                type: 'separator',
+                character: '|'
+            },
+            {
+                id: '4',
+                type: 'custom-command',
+                preserveColors: true
+            },
+            { id: '5', type: 'git-branch' }
+        ];
+
+        const itemRows = await renderRows(React.createElement(ItemsEditor, {
+            widgets: mixedWidgets,
+            onUpdate: vi.fn(),
+            onBack: vi.fn(),
+            lineNumber: 1,
+            settings: THEMED_SETTINGS,
+            themeSlotContext: allRendered(mixedWidgets),
+            onTabSwap: vi.fn()
+        }));
+        const colorRows = await renderRows(React.createElement(ColorMenu, {
+            widgets: mixedWidgets,
+            lineIndex: 0,
+            settings: THEMED_SETTINGS,
+            themeSlotContext: allRendered(mixedWidgets),
+            editingBackground: false,
+            onEditingBackgroundChange: vi.fn(),
+            showSeparators: false,
+            onShowSeparatorsChange: vi.fn(),
+            onUpdate: vi.fn(),
+            onBack: vi.fn(),
+            onTabSwap: vi.fn()
+        }));
+
+        const rowNumber = (row: string) => stripAnsi(row).trim().replace(/^▶\s+/, '').split('.')[0];
+
+        // The widget editor lists everything
+        expect(itemRows.map(rowNumber)).toEqual(['1', '2', '3', '4', '5']);
+        // The colour editor drops the flex separator, the separator and the preserve-colors
+        // command, and leaves gaps rather than renumbering
+        expect(colorRows.map(rowNumber)).toEqual(['1', '5']);
     });
 });

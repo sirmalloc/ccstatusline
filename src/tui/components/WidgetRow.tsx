@@ -15,6 +15,10 @@ import {
     isPowerlineThemeActive,
     type ThemeChannelColors
 } from '../../utils/effective-theme-colors';
+import {
+    isGradientSpec,
+    parseGradientSpec
+} from '../../utils/gradient';
 import { getWidget } from '../../utils/widgets';
 
 export interface WidgetRowProps {
@@ -31,7 +35,8 @@ export interface WidgetRowProps {
     tags?: string[];
 }
 
-function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
+/** Does this widget render as part of the previous widget's segment? */
+export function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
     if (index <= 0) {
         return false;
     }
@@ -94,20 +99,39 @@ export function getWidgetRowTags(widgets: WidgetItem[], index: number, settings:
     }
 
     // Pin state is per widget and per channel, so it belongs on the row rather than in a
-    // status line that only ever describes the highlighted widget. Pins do nothing
-    // without a theme to override, so the tag only appears when one is active.
-    if (isPowerlineThemeActive(settings)) {
-        const pinnedChannels = [
-            widget.pinColor ? 'fg' : null,
-            widget.pinBackgroundColor ? 'bg' : null
-        ].filter(channel => channel !== null);
+    // status line that only ever describes the highlighted widget. The tag shows whenever a
+    // pin is set, including with no theme active: a pin that overrides nothing right now is
+    // exactly the one worth surfacing, since it revives the moment a theme is turned on.
+    const pinnedChannels = [
+        widget.pinColor ? 'fg' : null,
+        widget.pinBackgroundColor ? 'bg' : null
+    ].filter(channel => channel !== null);
 
-        if (pinnedChannels.length > 0) {
-            tags.push(`(${pinnedChannels.join('+')} pinned)`);
-        }
+    if (pinnedChannels.length > 0) {
+        tags.push(isPowerlineThemeActive(settings)
+            ? `(${pinnedChannels.join('+')} pinned)`
+            : `(${pinnedChannels.join('+')} pinned, inactive)`);
     }
 
     return tags;
+}
+
+function isOverrideSet(override: string | undefined): override is string {
+    return Boolean(override) && override !== 'none';
+}
+
+/** A gradient collapsed to its first stop, the way a single ANSI code has to represent it. */
+function gradientFirstStop(value: string): string | undefined {
+    const stops = parseGradientSpec(value);
+    const first = stops?.[0];
+    if (!first) {
+        return undefined;
+    }
+
+    const hex = [first.r, first.g, first.b]
+        .map(channel => channel.toString(16).padStart(2, '0'))
+        .join('');
+    return `hex:${hex}`;
 }
 
 /**
@@ -115,6 +139,11 @@ export function getWidgetRowTags(widgets: WidgetItem[], index: number, settings:
  * themeChannels supplies the channels an active theme takes over; the widget's own colour
  * (then the widget's default) fills the rest. A widget whose colours it does not control -
  * a custom command preserving its command output's colours - is left untinted.
+ *
+ * The renderer's precedence is reproduced in full, because a row that ignores part of it
+ * shows a colour the status line will not use: global overrides beat both the theme and the
+ * widget, globalBold ORs with the widget's own bold, and under powerline a gradient collapses
+ * to its first stop, since one segment carries one colour.
  */
 export function styleWidgetRowLabel(
     label: string,
@@ -129,12 +158,28 @@ export function styleWidgetRowLabel(
         return label;
     }
 
+    const colorLevel = getColorLevelString(settings.colorLevel);
+    let fgColor: string | undefined = themeChannels?.fg ?? widget.color ?? widgetImpl?.getDefaultColor() ?? 'white';
+    let bgColor = themeChannels?.bg ?? widget.backgroundColor;
+
+    if (isOverrideSet(settings.overrideForegroundColor)) {
+        fgColor = settings.overrideForegroundColor;
+    }
+
+    if (isOverrideSet(settings.overrideBackgroundColor)) {
+        bgColor = settings.overrideBackgroundColor;
+    }
+
+    if (settings.powerline.enabled && fgColor && isGradientSpec(fgColor)) {
+        fgColor = gradientFirstStop(fgColor) ?? fgColor;
+    }
+
     return applyColors(
         label,
-        themeChannels?.fg ?? widget.color ?? widgetImpl?.getDefaultColor() ?? 'white',
-        themeChannels?.bg ?? widget.backgroundColor,
-        widget.bold,
-        getColorLevelString(settings.colorLevel),
+        fgColor,
+        bgColor,
+        settings.globalBold || widget.bold,
+        colorLevel,
         widget.dim
     );
 }
@@ -157,7 +202,12 @@ export const WidgetRow: React.FC<WidgetRowProps> = ({
                 <Text color={highlightColor}>{isSelected ? `${indicator} ` : '  '}</Text>
             </Box>
             <Text color={highlightColor}>{`${number}. `}</Text>
-            <Text color={labelIsStyled ? undefined : highlightColor}>{label}</Text>
+            {/*
+              * A styled label carries its own colours, so the selection colour cannot be
+              * applied to it. Underline instead - otherwise a tinted row's only selection cue
+              * is the indicator and the row number, which is easy to lose on a coloured band.
+              */}
+            <Text color={labelIsStyled ? undefined : highlightColor} underline={labelIsStyled && isSelected}>{label}</Text>
             {modifierText && (
                 <Text dimColor>
                     {' '}
