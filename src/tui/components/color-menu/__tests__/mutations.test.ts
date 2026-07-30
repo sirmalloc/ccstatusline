@@ -71,7 +71,7 @@ describe('color-menu mutations', () => {
             { id: '2', type: 'tokens-output', color: 'white', bold: true }
         ];
 
-        const updated = resetWidgetStyling(widgets, '1');
+        const updated = resetWidgetStyling(widgets, '1', false);
 
         expect(updated[0]).toEqual({ id: '1', type: 'tokens-input' });
         expect(updated[1]).toEqual({ id: '2', type: 'tokens-output', color: 'white', bold: true });
@@ -90,7 +90,7 @@ describe('color-menu mutations', () => {
             { id: '2', type: 'tokens-output', color: 'white', bold: true, dim: 'parens' }
         ];
 
-        const updated = clearAllWidgetStyling(widgets);
+        const updated = clearAllWidgetStyling(widgets, false);
 
         expect(updated).toEqual([
             { id: '1', type: 'tokens-input' },

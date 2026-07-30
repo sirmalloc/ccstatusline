@@ -3,7 +3,11 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useMemo,
+    useState
+} from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
@@ -13,6 +17,11 @@ import type {
     WidgetItemType
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
+import {
+    getEffectiveThemeColors,
+    isPowerlineThemeActive,
+    type ThemeSlotContext
+} from '../../utils/effective-theme-colors';
 import { generateGuid } from '../../utils/guid';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
@@ -24,6 +33,13 @@ import {
 } from '../../utils/widgets';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+    WidgetRow,
+    getWidgetRowLabel,
+    getWidgetRowTags,
+    isMergedIntoPreviousWidget,
+    styleWidgetRowLabel
+} from './WidgetRow';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -40,31 +56,51 @@ export interface ItemsEditorProps {
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
+    /** This line's rendered content and theme-slot offset, so previewed colors match. */
+    themeSlotContext: ThemeSlotContext;
+    onTabSwap?: () => void;
+    onWidgetHighlight?: (widgetId: string | null) => void;
+    initialWidgetId?: string | null;
 }
 
-function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
-    if (index <= 0) {
-        return false;
-    }
-
-    return Boolean(widgets[index - 1]?.merge);
-}
-
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, themeSlotContext, onTabSwap, onWidgetHighlight, initialWidgetId }) => {
+    const [selectedIndex, setSelectedIndex] = useState(() => {
+        if (initialWidgetId) {
+            const index = widgets.findIndex(w => w.id === initialWidgetId);
+            return index >= 0 ? index : 0;
+        }
+        return 0;
+    });
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const separatorChars = ['|', '-', ',', ' '];
 
+    useEffect(() => {
+        if (onWidgetHighlight) {
+            const currentWidget = widgets[selectedIndex];
+            onWidgetHighlight(currentWidget?.id ?? null);
+        }
+    }, [selectedIndex, widgets, onWidgetHighlight]);
+
+    // Theme colours are positional, so show them here too - reordering or merging
+    // widgets is exactly what changes them
+    const effectiveThemeColors = useMemo(
+        () => getEffectiveThemeColors(widgets, settings, themeSlotContext),
+        [widgets, settings, themeSlotContext]
+    );
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
 
     // Get a unique background color for powerline mode
     const getUniqueBackgroundColor = (insertIndex: number): string | undefined => {
-        // Only apply background colors if powerline is enabled and NOT using custom theme
-        if (!settings.powerline.enabled || settings.powerline.theme === 'custom') {
+        // Powerline needs distinct segment backgrounds, but only when the widget's own
+        // background is what renders. Under a theme the theme supplies every background,
+        // so a color picked here would be invisible - and being invisible is what makes it
+        // dangerous: pinning seeds from the widget's stored color, so a random value nobody
+        // chose and nobody has seen would become the color the widget takes on.
+        if (!settings.powerline.enabled || isPowerlineThemeActive(settings)) {
             return undefined;
         }
 
@@ -182,6 +218,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const canExcludeAlign = Boolean(currentWidget) && !isSeparator && !isFlexSeparator
         && settings.powerline.enabled && settings.powerline.autoAlign
         && !isMergedIntoPreviousWidget(widgets, selectedIndex);
+    const isColorable = Boolean(
+        currentWidget
+        && !isSeparator
+        && !isFlexSeparator
+        && getWidget(currentWidget.type)?.supportsColors(currentWidget)
+    );
     const hasWidgets = widgets.length > 0;
 
     useInput((input, key) => {
@@ -235,31 +277,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            onTabSwap
         });
     });
-
-    const getWidgetDisplay = (widget: WidgetItem) => {
-        // Special handling for separators (not widgets)
-        if (widget.type === 'separator') {
-            const char = widget.character ?? '|';
-            const charDisplay = char === ' ' ? '(space)' : char;
-            return `Separator ${charDisplay}`;
-        }
-        if (widget.type === 'flex-separator') {
-            return 'Flex Separator';
-        }
-
-        // Handle regular widgets - delegate to widget for display
-        const widgetImpl = getWidget(widget.type);
-        if (widgetImpl) {
-            const { displayText, modifierText } = widgetImpl.getEditorDisplay(widget);
-            // Return plain text without colors
-            return displayText + (modifierText ? ` ${modifierText}` : '');
-        }
-        // Unknown widget type
-        return `Unknown: ${widget.type}`;
-    };
 
     const hasFlexSeparator = widgets.some(widget => widget.type === 'flex-separator');
     const widthDetectionAvailable = canDetectTerminalWidth();
@@ -302,6 +323,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
     if (canExcludeAlign) {
         helpText += ', e(x)clude align';
+    }
+    if (isColorable && onTabSwap) {
+        helpText += ', ⇥ edit colors';
     }
     helpText += ', ESC back';
 
@@ -365,8 +389,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                     {lineNumber}
                     {' '}
                 </Text>
-                {moveMode && <Text color='blue'>[MOVE MODE]</Text>}
-                {widgetPicker && <Text color='cyan'>{`[${pickerActionLabel.toUpperCase()}]`}</Text>}
+                <Text color='cyan'>[WIDGETS]</Text>
+                {moveMode && <Text color='blue'> [MOVE MODE]</Text>}
+                {widgetPicker && <Text color='cyan'>{` [${pickerActionLabel.toUpperCase()}]`}</Text>}
                 {(settings.powerline.enabled || Boolean(settings.defaultSeparator)) && (
                     <Box marginLeft={2}>
                         <Text color='yellow'>
@@ -538,31 +563,22 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                         <>
                             {widgets.map((widget, index) => {
                                 const isSelected = index === selectedIndex;
-                                const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
-                                const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
-                                const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const { displayText, modifierText } = getWidgetRowLabel(widget);
 
                                 return (
-                                    <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
-                                        <Box width={3}>
-                                            <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                                {isSelected ? (moveMode ? '◆ ' : '▶ ') : '  '}
-                                            </Text>
-                                        </Box>
-                                        <Text color={isSelected ? (moveMode ? 'blue' : 'green') : undefined}>
-                                            {`${index + 1}. ${displayText || getWidgetDisplay(widget)}`}
-                                        </Text>
-                                        {modifierText && (
-                                            <Text dimColor>
-                                                {' '}
-                                                {modifierText}
-                                            </Text>
-                                        )}
-                                        {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}
-                                        {widget.merge === true && <Text dimColor> (merged→)</Text>}
-                                        {widget.merge === 'no-padding' && <Text dimColor> (merged-no-pad→)</Text>}
-                                        {widget.excludeFromAutoAlign && settings.powerline.enabled && settings.powerline.autoAlign && !isMergedIntoPreviousWidget(widgets, index) && <Text dimColor> (no-align)</Text>}
-                                    </Box>
+                                    <WidgetRow
+                                        key={widget.id}
+                                        number={index + 1}
+                                        label={moveMode
+                                            ? displayText
+                                            : styleWidgetRowLabel(displayText, widget, settings, effectiveThemeColors.get(widget.id))}
+                                        labelIsStyled={!moveMode}
+                                        isSelected={isSelected}
+                                        indicator={moveMode ? '◆' : '▶'}
+                                        selectionColor={moveMode ? 'blue' : 'green'}
+                                        modifierText={modifierText}
+                                        tags={getWidgetRowTags(widgets, index, settings)}
+                                    />
                                 );
                             })}
                             {/* Display description for selected widget */}

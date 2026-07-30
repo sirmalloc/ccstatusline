@@ -38,6 +38,29 @@ describe('applyColors with a per-widget gradient foreground', () => {
         expect(countMatches(out, ANSI256_CODE)).toBe(0);
     });
 
+    describe('collapsed to a single color', () => {
+        // A powerline segment carries one foreground code for its whole text, so the powerline
+        // renderer asks getColorAnsiCode for a gradient rather than painting per character.
+        // collapseGradient lets a caller reproduce that without re-deriving the first stop, which
+        // is where a hand-rolled hex: conversion drifts: it emits truecolor at every color level.
+        it('emits one truecolor code for the first stop', () => {
+            const out = applyColors('abcd', gradient, undefined, false, 'truecolor', undefined, true);
+            expect(countMatches(out, TRUECOLOR_CODE)).toBe(1);
+            expect(out).toContain('\x1b[38;2;255;0;0m');
+        });
+
+        it('emits a 256-color escape at ansi256, not truecolor', () => {
+            const out = applyColors('abc', gradient, undefined, false, 'ansi256', undefined, true);
+            expect(countMatches(out, ANSI256_CODE)).toBe(1);
+            expect(countMatches(out, TRUECOLOR_CODE)).toBe(0);
+        });
+
+        it('emits no color at ansi16, where a gradient is a no-op', () => {
+            const out = applyColors('abcd', gradient, undefined, false, 'ansi16', undefined, true);
+            expect(out).toBe('abcd');
+        });
+    });
+
     it('preserves a resolvable named preset', () => {
         const out = applyColors('hello', 'gradient:atlas', undefined, false, 'truecolor');
         expect(countMatches(out, TRUECOLOR_CODE)).toBe(5);

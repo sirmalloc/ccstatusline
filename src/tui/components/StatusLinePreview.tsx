@@ -17,7 +17,6 @@ import { advanceGlobalPowerlineThemeIndex } from '../../utils/powerline-theme-in
 import {
     calculateMaxWidthsFromPreRendered,
     countPowerlineStartCapSlots,
-    preRenderAllWidgets,
     renderStatusLineWithInfo,
     type PreRenderedWidget,
     type RenderResult
@@ -28,6 +27,12 @@ export interface StatusLinePreviewProps {
     lines: WidgetItem[][];
     terminalWidth: number;
     settings?: Settings;
+    /**
+     * Pre-rendered widget output per line. Owned by the caller because the color editors
+     * need the same output to name the same theme slots, and pre-rendering runs custom
+     * commands - doing it here as well would run them twice per keystroke.
+     */
+    preRenderedLines: PreRenderedWidget[][];
     onTruncationChange?: (isTruncated: boolean) => void;
 }
 
@@ -65,20 +70,13 @@ export function preparePreviewLineForTerminal(line: string, terminalWidth: numbe
     return truncateStyledText(printableLine, availableWidth, { ellipsis: true });
 }
 
-export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings, onTruncationChange }) => {
+export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings, preRenderedLines, onTruncationChange }) => {
     // Render each configured line
     // Pass the full terminal width - the renderer will handle preview adjustments
     const { renderedLines, anyTruncated } = React.useMemo(() => {
         if (!settings)
             return { renderedLines: [], anyTruncated: false };
 
-        // Always pre-render all widgets once (for efficiency)
-        const preRenderedLines = preRenderAllWidgets(lines, settings, {
-            terminalWidth,
-            isPreview: true,
-            minimalist: settings.minimalistMode,
-            gitCacheTtlSeconds: settings.gitCacheTtlSeconds
-        });
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 
         let globalSeparatorIndex = 0;
@@ -118,7 +116,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
         }
 
         return { renderedLines: result, anyTruncated: truncated };
-    }, [lines, terminalWidth, settings]);
+    }, [lines, terminalWidth, settings, preRenderedLines]);
 
     // Notify parent when truncation status changes
     React.useEffect(() => {

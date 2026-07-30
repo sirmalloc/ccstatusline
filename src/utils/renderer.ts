@@ -25,14 +25,21 @@ import {
     applyColors,
     applyParensDim,
     bgToFg,
-    getColorAnsiCode,
-    getPowerlineTheme
+    getColorAnsiCode
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import {
+    getActiveThemeColors,
+    keepsOwnForeground
+} from './effective-theme-colors';
 import {
     isGradientSpec,
     parseGradientSpec
 } from './gradient';
+import {
+    NO_THEME_SLOT,
+    assignPowerlineThemeSlots
+} from './powerline-theme-index';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -141,17 +148,7 @@ function renderPowerlineStatusLine(
     );
 
     // Get theme colors if a theme is set and not 'custom'
-    const themeName = config.theme as string | undefined;
-    let themeColors: { fg: string[]; bg: string[] } | undefined;
-
-    if (themeName && themeName !== 'custom') {
-        const theme = getPowerlineTheme(themeName);
-        if (theme) {
-            const colorLevel = getColorLevelString(settings.colorLevel);
-            const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
-            themeColors = theme[colorLevelKey];
-        }
-    }
+    const themeColors = getActiveThemeColors(settings);
 
     // Get color level from settings
     const colorLevel = getColorLevelString(settings.colorLevel);
@@ -186,7 +183,15 @@ function renderPowerlineStatusLine(
         originalIndex: number;
         widget: WidgetItem;
     }[] = [];
-    let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
+    // Theme color slot per widget, assigned by the shared helper the color editor also
+    // uses, so what the editor previews cannot drift from what renders here.
+    const themeColorSlots = assignPowerlineThemeSlots(
+        widgets.map((widget, index) => ({
+            widget,
+            content: preRenderedWidgets[index]?.content ?? ''
+        })),
+        continueThemeAcrossLines ? globalThemeColorOffset : 0
+    );
 
     const hasNextRenderedWidgetBeforeSeparator = (originalIndex: number): boolean => {
         for (let j = originalIndex + 1; j < widgets.length; j++) {
@@ -293,19 +298,20 @@ function renderPowerlineStatusLine(
             let bgColor = widget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
-            // For custom commands with preserveColors, only skip foreground theme colors
-            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
+            const themeColorSlot = actualPreRenderedIndex !== undefined
+                ? themeColorSlots[actualPreRenderedIndex] ?? NO_THEME_SLOT
+                : NO_THEME_SLOT;
 
-            if (themeColors) {
-                if (!skipFgTheme) {
-                    fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length] ?? fgColor;
+            if (themeColors && themeColorSlot !== NO_THEME_SLOT) {
+                // A channel the widget keeps for itself - a pinned colour, or a custom
+                // command preserving its own output colours - wins over the theme. The rule
+                // lives in keepsOwnForeground so the colour editor cannot disagree about it.
+                // Such widgets still occupy their slot, so siblings' colours don't shift.
+                if (!keepsOwnForeground(widget)) {
+                    fgColor = themeColors.fg[themeColorSlot % themeColors.fg.length] ?? fgColor;
                 }
-                bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length] ?? bgColor;
-
-                // Only increment color index if this widget is not merged with the next one
-                // This ensures merged widgets share the same color
-                if (!mergesWithNext) {
-                    widgetColorIndex++;
+                if (!widget.pinBackgroundColor) {
+                    bgColor = themeColors.bg[themeColorSlot % themeColors.bg.length] ?? bgColor;
                 }
             }
 

@@ -808,6 +808,115 @@ describe('items-editor input handlers', () => {
         expect(customEditorState?.widget?.type).toBe('skills');
     });
 
+    describe('Tab shortcut - tab swap', () => {
+        it('calls onTabSwap when current widget is a colorable type', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'model' }
+            ];
+            const onTabSwap = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate: vi.fn(),
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn(),
+                onTabSwap
+            });
+
+            expect(onTabSwap).toHaveBeenCalledTimes(1);
+        });
+
+        // Tab is a mode switch, so it must work from any row. Refusing it on rows the colour
+        // editor can still highlight made Tab a one-way door out of the widget editor.
+        it('calls onTabSwap when current widget is a separator', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'separator', character: '|' }
+            ];
+            const onTabSwap = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate: vi.fn(),
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn(),
+                onTabSwap
+            });
+
+            expect(onTabSwap).toHaveBeenCalled();
+        });
+
+        it('calls onTabSwap when current widget is a flex-separator', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'flex-separator' }
+            ];
+            const onTabSwap = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate: vi.fn(),
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn(),
+                onTabSwap
+            });
+
+            expect(onTabSwap).toHaveBeenCalled();
+        });
+
+        it('does nothing when onTabSwap is not provided', () => {
+            const widgets: WidgetItem[] = [
+                { id: '1', type: 'model' }
+            ];
+            const onUpdate = vi.fn();
+            const setSelectedIndex = vi.fn();
+
+            handleNormalInputMode({
+                input: '',
+                key: { tab: true },
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn()
+            });
+
+            expect(onUpdate).not.toHaveBeenCalled();
+            expect(setSelectedIndex).not.toHaveBeenCalled();
+        });
+    });
+
     describe('k shortcut - clone widget', () => {
         it('inserts clone after source and moves selection to clone', () => {
             const widgets: WidgetItem[] = [

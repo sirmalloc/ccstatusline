@@ -198,7 +198,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
             }
             if (data?.message?.usage) {
                 parsedEntries.push({ data, lineIndex });
-                if (Object.hasOwn(data.message, 'stop_reason')) {
+                if (Object.prototype.hasOwnProperty.call(data.message, 'stop_reason')) {
                     hasStopReasonField = true;
                 }
             }

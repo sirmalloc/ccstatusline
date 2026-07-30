@@ -10,7 +10,6 @@ import React, {
     useState
 } from 'react';
 
-import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -23,9 +22,6 @@ interface LineSelectorProps {
     onLinesUpdate: (lines: WidgetItem[][]) => void;
     initialSelection?: number;
     title?: string;
-    blockIfPowerlineActive?: boolean;
-    settings?: Settings;
-    allowEditing?: boolean;
 }
 
 const LineSelector: React.FC<LineSelectorProps> = ({
@@ -34,10 +30,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     onBack,
     onLinesUpdate,
     initialSelection = 0,
-    title,
-    blockIfPowerlineActive = false,
-    settings,
-    allowEditing = false
+    title
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -75,24 +68,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         onLinesUpdate(newLines);
     };
 
-    // Check if powerline theme is managing colors
-    const powerlineEnabled = settings ? settings.powerline.enabled : false;
-    const powerlineTheme = settings ? settings.powerline.theme : undefined;
-    const isThemeManaged
-        = blockIfPowerlineActive
-            && powerlineEnabled
-            && powerlineTheme
-            && powerlineTheme !== 'custom';
-
     // Handle keyboard input
     useInput((input, key) => {
         if (showDeleteDialog) {
-            return;
-        }
-
-        // If theme-managed and blocking is enabled, any key goes back
-        if (isThemeManaged) {
-            onBack();
             return;
         }
 
@@ -127,17 +105,15 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
         switch (input) {
             case 'a':
-                if (allowEditing) {
-                    appendLine();
-                }
+                appendLine();
                 return;
             case 'd':
-                if (allowEditing && localLines.length > 1 && selectedIndex < localLines.length) {
+                if (localLines.length > 1 && selectedIndex < localLines.length) {
                     setShowDeleteDialog(true);
                 }
                 return;
             case 'm':
-                if (allowEditing && localLines.length > 1 && selectedIndex < localLines.length) {
+                if (localLines.length > 1 && selectedIndex < localLines.length) {
                     setMoveMode(true);
                 }
                 return;
@@ -147,39 +123,6 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             onBack();
         }
     });
-
-    // Show powerline theme warning if applicable
-    if (isThemeManaged) {
-        return (
-            <Box flexDirection='column'>
-                <Text bold>{title ?? 'Select Line'}</Text>
-                <Box marginTop={1}>
-                    <Text color='yellow'>
-                        ⚠ Colors are currently managed by the Powerline theme:
-                        {' '
-                            + powerlineTheme.charAt(0).toUpperCase()
-                            + powerlineTheme.slice(1)}
-                    </Text>
-                </Box>
-                <Box marginTop={1}>
-                    <Text dimColor>To customize colors, either:</Text>
-                </Box>
-                <Box marginLeft={2}>
-                    <Text dimColor>
-                        • Change to 'Custom' theme in Powerline Configuration → Themes
-                    </Text>
-                </Box>
-                <Box marginLeft={2}>
-                    <Text dimColor>
-                        • Disable Powerline mode in Powerline Configuration
-                    </Text>
-                </Box>
-                <Box marginTop={2}>
-                    <Text>Press any key to go back...</Text>
-                </Box>
-            </Box>
-        );
-    }
 
     if (showDeleteDialog && selectedLine) {
         const suffix
@@ -247,11 +190,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     <Text dimColor>↑↓ to move line, ESC or Enter to exit move mode</Text>
                 ) : (
                     <Text dimColor>
-                        {allowEditing ? (
-                            localLines.length > 1
-                                ? '(a) to append new line, (d) to delete line, (m) to move line, ESC to go back'
-                                : '(a) to append new line, ESC to go back'
-                        ) : 'ESC to go back'}
+                        {localLines.length > 1
+                            ? '(a) to append new line, (d) to delete line, (m) to move line, ESC to go back'
+                            : '(a) to append new line, ESC to go back'}
                     </Text>
                 )}
 

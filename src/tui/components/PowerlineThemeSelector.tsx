@@ -16,12 +16,18 @@ import {
     getPowerlineTheme,
     getPowerlineThemes
 } from '../../utils/colors';
+import {
+    NO_THEME_SLOT,
+    assignPowerlineThemeSlots,
+    computeLineThemeStartIndices
+} from '../../utils/powerline-theme-index';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import {
     List,
     type ListEntry
 } from './List';
+import { clearAllPins } from './color-menu/mutations';
 
 export function buildPowerlineThemeItems(
     themes: string[],
@@ -57,22 +63,47 @@ export function applyCustomPowerlineTheme(
         return null;
     }
 
-    const lines = settings.lines.map((line) => {
-        let widgetColorIndex = 0;
+    // Bake in the slots the shared helper assigns, so what gets written matches the theme
+    // the user was just looking at - merged widgets share a color, separators break a run.
+    // Content is a placeholder for every widget because these colors are written to config
+    // for good: a widget that happens to render nothing right now still needs its color for
+    // the renders where it does have output.
+    const placeholderContentLines = settings.lines.map(line => line.map(widget => ({
+        widget,
+        content: 'x'
+    })));
+    const lineStartIndices = computeLineThemeStartIndices(
+        placeholderContentLines,
+        settings.powerline.continueThemeAcrossLines
+    );
 
-        return line.map((widget) => {
-            if (widget.type === 'separator' || widget.type === 'flex-separator') {
+    const lines = settings.lines.map((line, lineIndex) => {
+        const slots = assignPowerlineThemeSlots(
+            placeholderContentLines[lineIndex] ?? [],
+            lineStartIndices[lineIndex] ?? 0
+        );
+
+        return line.map((widget, widgetIndex) => {
+            const slot = slots[widgetIndex];
+            if (slot === undefined || slot === NO_THEME_SLOT) {
                 return widget;
             }
 
-            const fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length];
-            const bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length];
-            widgetColorIndex++;
+            // Every widget ends up carrying its own explicit colour, which is exactly what a
+            // pin asks for - so the pins are now redundant. Leaving them set would hide them
+            // (the row tag needs a real theme) and revive them on the next theme change.
+            const {
+                pinColor,
+                pinBackgroundColor,
+                ...restWidget
+            } = widget;
+            void pinColor; // Intentionally unused
+            void pinBackgroundColor; // Intentionally unused
 
             return {
-                ...widget,
-                color: fgColor,
-                backgroundColor: bgColor
+                ...restWidget,
+                color: themeColors.fg[slot % themeColors.fg.length],
+                backgroundColor: themeColors.bg[slot % themeColors.bg.length]
             };
         });
     });
@@ -102,12 +133,17 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     const currentTheme = settings.powerline.theme ?? 'custom';
     const [selectedIndex, setSelectedIndex] = useState(Math.max(0, themes.indexOf(currentTheme)));
     const [showCustomizeConfirm, setShowCustomizeConfirm] = useState(false);
+    const [showRemovePinsConfirm, setShowRemovePinsConfirm] = useState(false);
     const originalThemeRef = useRef(currentTheme);
     const originalSettingsRef = useRef(settings);
     const latestSettingsRef = useRef(settings);
     const latestOnUpdateRef = useRef(onUpdate);
     const didHandleInitialSelectionRef = useRef(false);
 
+    // The live-preview effect below runs on selectedIndex alone, so it would close over a
+    // stale settings/onUpdate pair; these refs keep it reading the current ones. Everything
+    // driven directly by a keypress - the confirm handlers, onSelect - renders first and can
+    // read the `settings` prop, which is why the two do not use the same source.
     useEffect(() => {
         latestSettingsRef.current = settings;
         latestOnUpdateRef.current = onUpdate;
@@ -135,7 +171,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     }, [selectedIndex, themes]);
 
     useInput((input, key) => {
-        if (showCustomizeConfirm) {
+        if (showCustomizeConfirm || showRemovePinsConfirm) {
             return;
         }
 
@@ -190,6 +226,47 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
         );
     }
 
+    if (showRemovePinsConfirm) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold color='yellow'>⚠ Custom Color Overrides</Text>
+                <Box marginTop={1} flexDirection='column'>
+                    <Text>Some widgets have pinned colors that override the theme.</Text>
+                    <Text>Remove them so the new theme fully applies?</Text>
+                    <Text dimColor>Yes removes the overrides; No keeps them; ESC cancels the theme change.</Text>
+                </Box>
+                <Box marginTop={1}>
+                    <ConfirmDialog
+                        inline={true}
+                        // Reached by pressing Enter on the theme list, so a second Enter must
+                        // not be what wipes every pin.
+                        defaultChoice='no'
+                        onConfirm={() => {
+                            onUpdate({
+                                ...settings,
+                                lines: settings.lines.map(line => clearAllPins(line))
+                            });
+                            setShowRemovePinsConfirm(false);
+                            onBack();
+                        }}
+                        onCancel={() => {
+                            setShowRemovePinsConfirm(false);
+                            onBack();
+                        }}
+                        // Yes and No both apply the theme, so without this ESC would commit a
+                        // theme the user was only previewing - the opposite of what the
+                        // screen's own "ESC cancel" hint promises.
+                        onEscape={() => {
+                            setShowRemovePinsConfirm(false);
+                            onUpdate(originalSettingsRef.current);
+                            onBack();
+                        }}
+                    />
+                </Box>
+            </Box>
+        );
+    }
+
     return (
         <Box flexDirection='column'>
             <Text bold>
@@ -208,6 +285,18 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 marginTop={1}
                 items={themeItems}
                 onSelect={() => {
+                    const chosenTheme = themes[selectedIndex] ?? 'custom';
+                    const themeChanged = chosenTheme !== originalThemeRef.current;
+                    const hasPins = settings.lines.some(line => line.some(
+                        widget => Boolean(widget.pinColor) || Boolean(widget.pinBackgroundColor)
+                    ));
+                    // On 'custom' every widget's own colour already applies, so a pin
+                    // overrides nothing - offering to destroy them would be pure loss. Any
+                    // later switch to a real theme prompts again.
+                    if (themeChanged && hasPins && chosenTheme !== 'custom') {
+                        setShowRemovePinsConfirm(true);
+                        return;
+                    }
                     onBack();
                 }}
                 onSelectionChange={(themeName, index) => {
