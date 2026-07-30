@@ -276,6 +276,44 @@ describe('styleWidgetRowLabel', () => {
         expect(withOverride).toContain('38;2;204;0;0');
     });
 
+    it('ignores a gradient override the renderer cannot parse', () => {
+        const widget: WidgetItem = {
+            id: '1',
+            type: 'model',
+            color: 'hex:CC0000'
+        };
+
+        // "gradient:" is only a prefix - a spec with too few resolvable stops parses to null, and
+        // both render paths then fall back to the widget's own colour. Keying off the prefix
+        // alone hands applyColors a spec it cannot turn into a code, so the label loses its
+        // foreground entirely.
+        const styled = styleWidgetRowLabel('Model', widget, {
+            ...THEMED_SETTINGS,
+            overrideForegroundColor: 'gradient:FF0000'
+        });
+
+        expect(styled).toContain('38;2;204;0;0');
+    });
+
+    it('drops the foreground for an unparseable gradient override off powerline, as the renderer does', () => {
+        const widget: WidgetItem = {
+            id: '1',
+            type: 'model',
+            color: 'hex:CC0000'
+        };
+
+        // The standard path clears the widget foreground for any gradient override above ansi16,
+        // then paints nothing when the spec will not parse. The row shows that, rather than a
+        // colour the status line has already thrown away.
+        const styled = styleWidgetRowLabel('Model', widget, {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 3 as const,
+            overrideForegroundColor: 'gradient:FF0000'
+        });
+
+        expect(styled).toBe('Model');
+    });
+
     it('paints a gradient override across the label rather than as a solid colour', () => {
         const styled = styleWidgetRowLabel('Model', WIDGET, {
             ...THEMED_SETTINGS,

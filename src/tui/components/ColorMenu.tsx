@@ -91,12 +91,16 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         [widgets, settings, themeSlotContext]
     );
 
-    // Separator widgets are only worth listing when they are what renders: powerline draws its
-    // own dividers and a default separator replaces them, which is why the (s) toggle is refused
-    // in both states. The filter has to agree - the flag is owned by the caller now, so it no
-    // longer resets on entry, and rows turned on beforehand would be stranded visible with a
-    // dead toggle.
-    const canShowSeparators = !settings.powerline.enabled && !settings.defaultSeparator;
+    // Separator widgets are worth listing exactly when they render, and powerline is the only
+    // thing that stops them: it filters them out and draws its own dividers. A default separator
+    // does not - it only supplies the character for separators that have none, so existing ones
+    // still render and are still coloured by widget.color. It gates adding NEW separators
+    // (see widgets.ts), which is a different question from recolouring the ones already there.
+    //
+    // The list and the toggle read this one predicate so they cannot disagree. Gating only the
+    // toggle stranded rows visible with no way to hide them, once the flag moved to the caller
+    // and stopped resetting on entry; gating only the list hides rows that still render.
+    const canShowSeparators = !settings.powerline.enabled;
 
     // Rows keep their position in the full line so a widget carries the same number
     // in both editor modes; filtered-out widgets simply leave a gap.
@@ -149,19 +153,23 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
      * is not reported back: the caller uses the reported id to restore its own cursor, and
      * overwriting it turns a Tab round trip into a silent jump to the first row. Once the
      * highlight moves anywhere else the guess is spent, so returning to that row does report.
+     *
+     * Wrapped rather than stored bare, because the guess is null when nothing on the line is
+     * colourable - and that is the case most in need of suppressing, not a "no guess" marker.
      */
-    const guessedHighlightId = useRef(
+    const guessedHighlight = useRef<{ id: string | null } | null>(
         initialWidgetId && !colorableWidgets.some(widget => widget.id === initialWidgetId)
-            ? highlightedItemId
+            ? { id: highlightedItemId }
             : null
     );
 
     useEffect(() => {
-        if (guessedHighlightId.current !== null && highlightedItemId === guessedHighlightId.current) {
+        // With no guess recorded this reads undefined, which never equals a string | null id.
+        if (highlightedItemId === guessedHighlight.current?.id) {
             return;
         }
 
-        guessedHighlightId.current = null;
+        guessedHighlight.current = null;
         onWidgetHighlight?.(highlightedItemId);
     }, [highlightedItemId, onWidgetHighlight]);
 
@@ -416,7 +424,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 setGradientHexInput('');
             }
         } else if ((input === 's' || input === 'S') && !key.ctrl) {
-            // Toggle show separators (only if not in powerline mode and no default separator)
+            // Toggle show separators (only if separator widgets are what renders)
             if (canShowSeparators) {
                 // The highlight is keyed by widget id, so it survives rows appearing and
                 // disappearing; the effect below repairs it if the highlighted row goes away.

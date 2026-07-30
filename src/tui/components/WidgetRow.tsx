@@ -15,7 +15,10 @@ import {
     isPowerlineThemeActive,
     type ThemeChannelColors
 } from '../../utils/effective-theme-colors';
-import { isGradientSpec } from '../../utils/gradient';
+import {
+    isGradientSpec,
+    parseGradientSpec
+} from '../../utils/gradient';
 import { getWidget } from '../../utils/widgets';
 
 export interface WidgetRowProps {
@@ -158,11 +161,20 @@ export function styleWidgetRowLabel(
 
     const fgOverride = settings.overrideForegroundColor;
     if (isOverrideSet(fgOverride)) {
+        // "gradient:" is only a prefix. A spec with too few resolvable stops passes isGradientSpec
+        // but parses to null, and the two paths part company there: powerline leaves the widget's
+        // own foreground alone, while the standard path has already dropped it and then paints no
+        // gradient over it. Both are reproduced, because a row exists to show what will render.
+        const overrideStops = parseGradientSpec(fgOverride);
         if (!isGradientSpec(fgOverride)) {
             fgColor = fgOverride;
         } else if (colorLevel !== 'ansi16') {
-            fgColor = fgOverride;
-            collapseGradient = false;
+            if (overrideStops) {
+                fgColor = fgOverride;
+                collapseGradient = false;
+            } else if (!settings.powerline.enabled) {
+                fgColor = undefined;
+            }
         }
     }
 

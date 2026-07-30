@@ -725,6 +725,24 @@ describe('ColorMenu', () => {
             }
         });
 
+        it('does not report an empty list as a highlight change', async () => {
+            const onWidgetHighlight = vi.fn();
+            const { teardown } = await renderWith({
+                widgets: [{ id: 'flex', type: 'flex-separator' }],
+                initialWidgetId: 'flex',
+                onWidgetHighlight
+            });
+
+            try {
+                // With nothing colourable the guess is null, which must still count as a guess:
+                // reporting it clears the caller's cursor and sends the widget editor to row 1,
+                // which is the round trip this screen is supposed to preserve.
+                expect(onWidgetHighlight).not.toHaveBeenCalled();
+            } finally {
+                teardown();
+            }
+        });
+
         it('reports a highlight the caller asked for', async () => {
             const onWidgetHighlight = vi.fn();
             const { teardown } = await renderWith({
@@ -839,21 +857,44 @@ describe('ColorMenu', () => {
             }
         });
 
-        it('hides separators once a default separator takes over', async () => {
+        const WITH_DEFAULT_SEPARATOR = {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 3 as const,
+            defaultSeparator: '~'
+        };
+
+        it('keeps listing separators when a default separator is set, because they still render', async () => {
             const { output, teardown } = await renderWith({
                 widgets: WIDGETS,
                 showSeparators: true,
-                settings: {
-                    ...DEFAULT_SETTINGS,
-                    colorLevel: 3,
-                    defaultSeparator: '|'
-                }
+                settings: WITH_DEFAULT_SEPARATOR
             });
 
             try {
-                // The (s) toggle is refused in this state, so rows left visible from before it
-                // was set could never be hidden again - the flag outlives this screen now.
-                expect(stripAnsi(output())).not.toContain('Separator |');
+                // A default separator is not a replacement for separator widgets already on the
+                // line - the renderer still draws them, colouring with widget.color ?? 'gray'.
+                // Hiding the rows would leave rendered output that cannot be selected or recoloured.
+                expect(stripAnsi(output())).toContain('Separator |');
+            } finally {
+                teardown();
+            }
+        });
+
+        it('lets the toggle hide separators a default separator did not remove', async () => {
+            const onShowSeparatorsChange = vi.fn();
+            const { stdin, teardown } = await renderWith({
+                widgets: WIDGETS,
+                showSeparators: true,
+                onShowSeparatorsChange,
+                settings: WITH_DEFAULT_SEPARATOR
+            });
+
+            try {
+                stdin.write('s');
+                await flushInk();
+
+                // Whatever the list shows, the toggle governs it - otherwise rows are stranded.
+                expect(onShowSeparatorsChange).toHaveBeenCalledWith(false);
             } finally {
                 teardown();
             }
