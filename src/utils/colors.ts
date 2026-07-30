@@ -141,7 +141,8 @@ export function applyColors(
     backgroundColor?: string,
     bold?: boolean,
     colorLevel: 'ansi16' | 'ansi256' | 'truecolor' = 'ansi16',
-    dim?: boolean | 'parens'
+    dim?: boolean | 'parens',
+    collapseGradient = false
 ): string {
     const styledText = dim === 'parens' ? applyParensDim(text, bold) : text;
 
@@ -181,9 +182,12 @@ export function applyColors(
         // palette; at ansi16 (or for an unparseable spec) we fall through to
         // getColorAnsiCode below, which suppresses gradient specs at ansi16.
         // parseGradientSpec returns null for non-gradient values, so it doubles
-        // as the prefix guard.
+        // as the prefix guard. collapseGradient takes the same fall-through on
+        // purpose, for callers whose text carries a single foreground code - a
+        // powerline segment - so they get the first stop at the right color level
+        // rather than deriving it themselves.
         const gradientStops = parseGradientSpec(foregroundColor);
-        if (gradientStops && colorLevel !== 'ansi16') {
+        if (gradientStops && colorLevel !== 'ansi16' && !collapseGradient) {
             return prefix + applyGradientToText(styledText, gradientStops, colorLevel) + '\x1b[39m' + suffix;
         }
 

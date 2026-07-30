@@ -15,10 +15,7 @@ import {
     isPowerlineThemeActive,
     type ThemeChannelColors
 } from '../../utils/effective-theme-colors';
-import {
-    isGradientSpec,
-    parseGradientSpec
-} from '../../utils/gradient';
+import { isGradientSpec } from '../../utils/gradient';
 import { getWidget } from '../../utils/widgets';
 
 export interface WidgetRowProps {
@@ -120,30 +117,25 @@ function isOverrideSet(override: string | undefined): override is string {
     return Boolean(override) && override !== 'none';
 }
 
-/** A gradient collapsed to its first stop, the way a single ANSI code has to represent it. */
-function gradientFirstStop(value: string): string | undefined {
-    const stops = parseGradientSpec(value);
-    const first = stops?.[0];
-    if (!first) {
-        return undefined;
-    }
-
-    const hex = [first.r, first.g, first.b]
-        .map(channel => channel.toString(16).padStart(2, '0'))
-        .join('');
-    return `hex:${hex}`;
-}
-
 /**
  * Paint a row label with the colour that widget renders in, so both editor modes agree.
  * themeChannels supplies the channels an active theme takes over; the widget's own colour
  * (then the widget's default) fills the rest. A widget whose colours it does not control -
  * a custom command preserving its command output's colours - is left untinted.
  *
- * The renderer's precedence is reproduced in full, because a row that ignores part of it
- * shows a colour the status line will not use: global overrides beat both the theme and the
- * widget, globalBold ORs with the widget's own bold, and under powerline a gradient collapses
- * to its first stop, since one segment carries one colour.
+ * The renderer's precedence is reproduced in full, because a row that ignores part of it shows
+ * a colour the status line will not use - including the parts that only apply to one of the two
+ * render paths. globalBold ORs with the widget's own bold in both. The rest differ:
+ *
+ * - A global background override is read by the standard path only; renderPowerlineStatusLine
+ *   never looks at it, so under powerline the theme or the widget keeps the background.
+ * - A gradient foreground override is not a solid colour, so neither path assigns it per widget.
+ *   It is painted across the finished line, giving each widget a slice - which a single row
+ *   cannot know, so the row shows the gradient across its own label instead of claiming one
+ *   stop for every row. At ansi16 that pass is a no-op and the widget keeps its own colour.
+ * - Under powerline one segment carries one foreground code, so a widget's own gradient
+ *   collapses to a single colour - at the color level in use, which is why applyColors is
+ *   asked to collapse rather than the stop being derived here.
  */
 export function styleWidgetRowLabel(
     label: string,
@@ -162,16 +154,20 @@ export function styleWidgetRowLabel(
     let fgColor: string | undefined = themeChannels?.fg ?? widget.color ?? widgetImpl?.getDefaultColor() ?? 'white';
     let bgColor = themeChannels?.bg ?? widget.backgroundColor;
 
-    if (isOverrideSet(settings.overrideForegroundColor)) {
-        fgColor = settings.overrideForegroundColor;
+    let collapseGradient = settings.powerline.enabled;
+
+    const fgOverride = settings.overrideForegroundColor;
+    if (isOverrideSet(fgOverride)) {
+        if (!isGradientSpec(fgOverride)) {
+            fgColor = fgOverride;
+        } else if (colorLevel !== 'ansi16') {
+            fgColor = fgOverride;
+            collapseGradient = false;
+        }
     }
 
-    if (isOverrideSet(settings.overrideBackgroundColor)) {
+    if (isOverrideSet(settings.overrideBackgroundColor) && !settings.powerline.enabled) {
         bgColor = settings.overrideBackgroundColor;
-    }
-
-    if (settings.powerline.enabled && fgColor && isGradientSpec(fgColor)) {
-        fgColor = gradientFirstStop(fgColor) ?? fgColor;
     }
 
     return applyColors(
@@ -180,7 +176,8 @@ export function styleWidgetRowLabel(
         bgColor,
         settings.globalBold || widget.bold,
         colorLevel,
-        widget.dim
+        widget.dim,
+        collapseGradient
     );
 }
 

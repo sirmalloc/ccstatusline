@@ -7,6 +7,7 @@ import {
 import React, {
     useEffect,
     useMemo,
+    useRef,
     useState
 } from 'react';
 
@@ -90,6 +91,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         [widgets, settings, themeSlotContext]
     );
 
+    // Separator widgets are only worth listing when they are what renders: powerline draws its
+    // own dividers and a default separator replaces them, which is why the (s) toggle is refused
+    // in both states. The filter has to agree - the flag is owned by the caller now, so it no
+    // longer resets on entry, and rows turned on beforehand would be stranded visible with a
+    // dead toggle.
+    const canShowSeparators = !settings.powerline.enabled && !settings.defaultSeparator;
+
     // Rows keep their position in the full line so a widget carries the same number
     // in both editor modes; filtered-out widgets simply leave a gap.
     const colorableEntries = useMemo(() => widgets
@@ -100,7 +108,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         .filter(({ widget }) => {
             // Include separators only if showSeparators is true
             if (widget.type === 'separator') {
-                return showSeparators;
+                return showSeparators && canShowSeparators;
             }
             // A flex separator is pure spacing - it renders no text of its own and takes no
             // theme slot, so there is nothing to colour. getWidget returns null for it, which
@@ -112,7 +120,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             const widgetInstance = getWidget(widget.type);
             // Include unknown widgets (they might support colors, we just don't know)
             return widgetInstance ? widgetInstance.supportsColors(widget) : true;
-        }), [widgets, showSeparators]);
+        }), [widgets, showSeparators, canShowSeparators]);
     const colorableWidgets = useMemo(() => colorableEntries.map(entry => entry.widget), [colorableEntries]);
     const [highlightedItemId, setHighlightedItemId] = useState(() => {
         if (initialWidgetId) {
@@ -135,7 +143,25 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         }
     }, [colorableWidgets, highlightedItemId]);
 
+    /**
+     * The highlight this screen picked because the caller's widget has no colourable row - a
+     * flex separator, or a separator while they are hidden. It is a guess, not a choice, so it
+     * is not reported back: the caller uses the reported id to restore its own cursor, and
+     * overwriting it turns a Tab round trip into a silent jump to the first row. Once the
+     * highlight moves anywhere else the guess is spent, so returning to that row does report.
+     */
+    const guessedHighlightId = useRef(
+        initialWidgetId && !colorableWidgets.some(widget => widget.id === initialWidgetId)
+            ? highlightedItemId
+            : null
+    );
+
     useEffect(() => {
+        if (guessedHighlightId.current !== null && highlightedItemId === guessedHighlightId.current) {
+            return;
+        }
+
+        guessedHighlightId.current = null;
         onWidgetHighlight?.(highlightedItemId);
     }, [highlightedItemId, onWidgetHighlight]);
 
@@ -197,12 +223,18 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         return widget && canEditColor(widget) ? widget : null;
     };
 
+    // A confirmation or a text entry owns the keyboard while it is open, so Tab must not reach
+    // across one: swapping screens from half-typed hex discards it, and from the clear-all
+    // prompt it abandons the dialog - both without asking. They handle Tab as they always did,
+    // by ignoring it.
+    const modeOwnsKeyboard = showClearConfirm || hexInputMode || ansi256InputMode || gradientMode;
+
     useInput((input, key) => {
-        // Tab is checked before the empty-state bail: with nothing colourable on the line, the
-        // widget editor is where you go to add something, and it is the screen this Tab reaches.
-        // Swallowing Tab here sent the user to the line selector instead, contradicting the
-        // "Add a widget first to continue" message on screen.
-        if (key.tab && onTabSwap) {
+        // Tab is otherwise checked before the empty-state bail: with nothing colourable on the
+        // line, the widget editor is where you go to add something, and it is the screen this Tab
+        // reaches. Swallowing Tab here sent the user to the line selector instead, contradicting
+        // the "Add a widget first to continue" message on screen.
+        if (key.tab && onTabSwap && !modeOwnsKeyboard) {
             onTabSwap();
             return;
         }
@@ -385,7 +417,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             }
         } else if ((input === 's' || input === 'S') && !key.ctrl) {
             // Toggle show separators (only if not in powerline mode and no default separator)
-            if (!settings.powerline.enabled && !settings.defaultSeparator) {
+            if (canShowSeparators) {
                 // The highlight is keyed by widget id, so it survives rows appearing and
                 // disappearing; the effect below repairs it if the highlighted row goes away.
                 onShowSeparatorsChange(!showSeparators);
@@ -746,7 +778,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {' '}
                         (r)eset, (c)lear all,
                         {themeActive ? ' (p)in/unpin,' : (hasAnyPins ? ' (p) unpin,' : '')}
-                        {!settings.powerline.enabled && !settings.defaultSeparator
+                        {canShowSeparators
                             ? ` (s)how separators: ${showSeparators ? 'ON' : 'OFF'},`
                             : ''}
                         {onTabSwap ? ' ⇥ edit widgets,' : ''}

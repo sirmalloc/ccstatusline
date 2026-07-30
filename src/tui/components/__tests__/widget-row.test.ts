@@ -159,14 +159,30 @@ describe('styleWidgetRowLabel', () => {
         expect(styled).not.toContain('38;2;236;239;244');
     });
 
-    it('lets a global background override beat the theme', () => {
+    it('lets a global background override beat the widget when powerline is off', () => {
+        const styled = styleWidgetRowLabel('Model', {
+            ...WIDGET,
+            backgroundColor: 'hex:112233'
+        }, {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 3 as const,
+            overrideBackgroundColor: 'hex:0000FF'
+        });
+
+        expect(styled).toContain('48;2;0;0;255');
+        expect(styled).not.toContain('48;2;17;34;51');
+    });
+
+    it('ignores a global background override under powerline, where the renderer never reads it', () => {
         const styled = styleWidgetRowLabel('Model', WIDGET, {
             ...THEMED_SETTINGS,
             overrideBackgroundColor: 'hex:0000FF'
         }, THEME_CHANNELS);
 
-        expect(styled).toContain('48;2;0;0;255');
-        expect(styled).not.toContain('48;2;191;97;106');
+        // renderPowerlineStatusLine contains no reference to overrideBackgroundColor - only the
+        // standard path applies it. A row painted blue here advertises a colour that never renders.
+        expect(styled).toContain('48;2;191;97;106');
+        expect(styled).not.toContain('48;2;0;0;255');
     });
 
     it('ignores an override set to none', () => {
@@ -216,5 +232,60 @@ describe('styleWidgetRowLabel', () => {
 
         expect(styled).toContain('38;2;255;0;0');
         expect(styled).toContain('38;2;0;0;255');
+    });
+
+    it('collapses a gradient at the color level in use, not always at truecolor', () => {
+        const widget: WidgetItem = {
+            id: '1',
+            type: 'model',
+            color: 'gradient:FF0000-0000FF'
+        };
+
+        // A gradient the renderer suppresses entirely at ansi16 - collapsing it to a hex value
+        // first would smuggle a truecolor escape into Basic/No Color mode.
+        const ansi16 = styleWidgetRowLabel('Model', widget, {
+            ...THEMED_SETTINGS,
+            colorLevel: 1 as const
+        });
+        expect(ansi16).toBe('Model');
+
+        const ansi256 = styleWidgetRowLabel('Model', widget, {
+            ...THEMED_SETTINGS,
+            colorLevel: 2 as const
+        });
+        expect(ansi256).toContain('38;5;');
+        expect(ansi256).not.toContain('38;2;');
+    });
+
+    it('keeps the widget colour when a gradient override cannot render at ansi16', () => {
+        const widget: WidgetItem = {
+            id: '1',
+            type: 'model',
+            color: 'hex:CC0000'
+        };
+        const ansi16 = { ...DEFAULT_SETTINGS, colorLevel: 1 as const };
+
+        // The renderer keeps the widget's own foreground here, because at ansi16 the whole-line
+        // gradient pass is a no-op. Treating the override as a solid colour would diverge.
+        const withOverride = styleWidgetRowLabel('Model', widget, {
+            ...ansi16,
+            overrideForegroundColor: 'gradient:FF0000-0000FF'
+        });
+
+        expect(withOverride).toBe(styleWidgetRowLabel('Model', widget, ansi16));
+        expect(withOverride).toContain('38;2;204;0;0');
+    });
+
+    it('paints a gradient override across the label rather than as a solid colour', () => {
+        const styled = styleWidgetRowLabel('Model', WIDGET, {
+            ...THEMED_SETTINGS,
+            overrideForegroundColor: 'gradient:FF0000-0000FF'
+        }, THEME_CHANNELS);
+
+        // A gradient override is painted across the finished line, so every widget shows a
+        // different slice of it. Collapsing it to one stop would paint every row identically.
+        expect(styled).toContain('38;2;255;0;0');
+        expect(styled).toContain('38;2;0;0;255');
+        expect(styled).not.toContain('38;2;236;239;244');
     });
 });

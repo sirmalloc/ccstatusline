@@ -641,4 +641,243 @@ describe('ColorMenu', () => {
             teardown();
         }
     });
+
+    /** Render with whatever props the test cares about; the rest get workable defaults. */
+    async function renderWith(overrides: Partial<React.ComponentProps<typeof ColorMenu>> & { widgets: WidgetItem[] }) {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(ColorMenu, {
+                lineIndex: 0,
+                themeSlotContext: allRendered(overrides.widgets),
+                editingBackground: false,
+                onEditingBackgroundChange: vi.fn(),
+                showSeparators: false,
+                onShowSeparatorsChange: vi.fn(),
+                settings: { ...DEFAULT_SETTINGS, colorLevel: 3 },
+                onUpdate: vi.fn(),
+                onBack: vi.fn(),
+                ...overrides
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+        await flushInk();
+        return {
+            stdin,
+            output: () => stdout.getOutput(),
+            teardown: () => {
+                instance.unmount();
+                instance.cleanup();
+                stdin.destroy();
+                stdout.destroy();
+                stderr.destroy();
+            }
+        };
+    }
+
+    describe('highlight reporting', () => {
+        const WIDGETS: WidgetItem[] = [
+            { id: 'flex', type: 'flex-separator' },
+            { id: 'model', type: 'model' }
+        ];
+
+        it('does not report a highlight it had to guess', async () => {
+            const onWidgetHighlight = vi.fn();
+            const { teardown } = await renderWith({
+                widgets: WIDGETS,
+                initialWidgetId: 'flex',
+                onWidgetHighlight
+            });
+
+            try {
+                // 'flex' has no colourable row, so this screen falls back to its first one. Reporting
+                // that guess overwrites the caller's cursor, and swapping back lands on row 1 - so a
+                // Tab round trip silently moves the widget editor's selection off the flex separator.
+                expect(onWidgetHighlight).not.toHaveBeenCalled();
+            } finally {
+                teardown();
+            }
+        });
+
+        it('reports the highlight once the user moves it', async () => {
+            const onWidgetHighlight = vi.fn();
+            const { stdin, teardown } = await renderWith({
+                widgets: [...WIDGETS, { id: 'version', type: 'version' }],
+                initialWidgetId: 'flex',
+                onWidgetHighlight
+            });
+
+            try {
+                stdin.write('\x1B[B'); // down arrow
+                await flushInk();
+
+                expect(onWidgetHighlight).toHaveBeenCalledWith('version');
+            } finally {
+                teardown();
+            }
+        });
+
+        it('reports a highlight the caller asked for', async () => {
+            const onWidgetHighlight = vi.fn();
+            const { teardown } = await renderWith({
+                widgets: WIDGETS,
+                initialWidgetId: 'model',
+                onWidgetHighlight
+            });
+
+            try {
+                expect(onWidgetHighlight).toHaveBeenCalledWith('model');
+            } finally {
+                teardown();
+            }
+        });
+    });
+
+    describe('Tab while another mode owns the keyboard', () => {
+        it('does not swap editors from hex input mode', async () => {
+            const onTabSwap = vi.fn();
+            const { stdin, teardown } = await renderWith({
+                widgets: [{ id: '1', type: 'model' }],
+                onTabSwap
+            });
+
+            try {
+                stdin.write('h'); // open hex entry
+                await flushInk();
+                stdin.write('\t');
+                await flushInk();
+
+                // Swapping here discards a half-typed colour with no prompt.
+                expect(onTabSwap).not.toHaveBeenCalled();
+            } finally {
+                teardown();
+            }
+        });
+
+        it('does not swap editors from the clear-all confirmation', async () => {
+            const onTabSwap = vi.fn();
+            const { stdin, teardown } = await renderWith({
+                widgets: [{ id: '1', type: 'model' }],
+                onTabSwap
+            });
+
+            try {
+                stdin.write('c'); // open the clear-all confirmation
+                await flushInk();
+                stdin.write('\t');
+                await flushInk();
+
+                expect(onTabSwap).not.toHaveBeenCalled();
+            } finally {
+                teardown();
+            }
+        });
+
+        it('still swaps editors from the normal list', async () => {
+            const onTabSwap = vi.fn();
+            const { stdin, teardown } = await renderWith({
+                widgets: [{ id: '1', type: 'model' }],
+                onTabSwap
+            });
+
+            try {
+                stdin.write('\t');
+                await flushInk();
+
+                expect(onTabSwap).toHaveBeenCalled();
+            } finally {
+                teardown();
+            }
+        });
+
+        it('still swaps editors when nothing on the line is colourable', async () => {
+            const onTabSwap = vi.fn();
+            const onBack = vi.fn();
+            const { stdin, teardown } = await renderWith({
+                widgets: [{ id: '1', type: 'flex-separator' }],
+                onTabSwap,
+                onBack
+            });
+
+            try {
+                stdin.write('\t');
+                await flushInk();
+
+                // The widget editor is where you go to add something, and this screen says so.
+                expect(onTabSwap).toHaveBeenCalled();
+                expect(onBack).not.toHaveBeenCalled();
+            } finally {
+                teardown();
+            }
+        });
+    });
+
+    describe('separator rows', () => {
+        const WIDGETS: WidgetItem[] = [
+            { id: '1', type: 'model' },
+            { id: '2', type: 'separator', character: '|' }
+        ];
+
+        it('lists separators when they are what renders', async () => {
+            const { output, teardown } = await renderWith({
+                widgets: WIDGETS,
+                showSeparators: true
+            });
+
+            try {
+                expect(stripAnsi(output())).toContain('Separator |');
+            } finally {
+                teardown();
+            }
+        });
+
+        it('hides separators once a default separator takes over', async () => {
+            const { output, teardown } = await renderWith({
+                widgets: WIDGETS,
+                showSeparators: true,
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    defaultSeparator: '|'
+                }
+            });
+
+            try {
+                // The (s) toggle is refused in this state, so rows left visible from before it
+                // was set could never be hidden again - the flag outlives this screen now.
+                expect(stripAnsi(output())).not.toContain('Separator |');
+            } finally {
+                teardown();
+            }
+        });
+
+        it('hides separators under powerline, which draws its own', async () => {
+            const { output, teardown } = await renderWith({
+                widgets: WIDGETS,
+                showSeparators: true,
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    colorLevel: 3,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true
+                    }
+                }
+            });
+
+            try {
+                expect(stripAnsi(output())).not.toContain('Separator |');
+            } finally {
+                teardown();
+            }
+        });
+    });
 });
