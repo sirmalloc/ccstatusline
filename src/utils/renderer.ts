@@ -849,13 +849,10 @@ export function calculateMaxWidthsFromPreRendered(
     const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(defaultPadding, settings.defaultPaddingSide);
     const paddingPairLength = sideLeadingPadding.length + sideTrailingPadding.length;
 
-    return preRenderedLines.map(preRenderedLine => {
+    return preRenderedLines.map((preRenderedLine) => {
         const lineMaxWidths: number[] = [];
         const isSeparatorBoundary = (entry: PreRenderedWidget | undefined): boolean => (
             entry?.widget.type === 'separator' || entry?.widget.type === 'flex-separator'
-        );
-        const filteredWidgets = preRenderedLine.filter(
-            w => w.widget.type !== 'separator' && w.widget.type !== 'flex-separator' && w.content
         );
         const hasNextRenderedWidgetBeforeSeparator = (originalIndex: number): boolean => {
             for (let j = originalIndex + 1; j < preRenderedLine.length; j++) {
