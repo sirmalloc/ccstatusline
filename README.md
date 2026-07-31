@@ -307,6 +307,15 @@ bunx -y ccstatusline@latest
 
 Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
 
+### Build from source (for custom/forked versions):
+
+```bash
+git clone git@github.com:godlockin/ccstatusline.git
+cd ccstatusline
+./install.sh
+```
+
+`install.sh` builds the project with Bun and automatically wires the local binary into `~/.claude/settings.json`. Restart Claude Code after running it.
 <br />
 <details>
 <summary><b>Configure ccstatusline</b></summary>
