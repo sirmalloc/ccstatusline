@@ -148,7 +148,18 @@ function findUsageApiLimit(limits: UsageApiLimit[] | null | undefined, kind: str
 // Mirrors the null-bucket placeholder guard for #343 above: a limits[] entry
 // reporting 0% with no resets_at is not a real usage window, so the
 // limits[] fallback below must not resurrect it as a phantom 0% reading.
+//
+// weekly_scoped entries naming a concrete model are exempt: accounts with a
+// per-model quota report that entry as percent 0 / resets_at null until the
+// model is first used in the current window (resets_at fills in on first use,
+// percent stays 0), so for those the zero reading is real data - the same
+// state a null legacy per-model bucket already reports as 0 via
+// getUsageApiBucketUtilization. Accounts without the quota omit the entry
+// entirely, so this cannot resurrect a phantom window.
 function isPlaceholderUsageApiLimit(limit: UsageApiLimit): boolean {
+    if (limit.scope?.model?.display_name) {
+        return false;
+    }
     return (limit.percent ?? 0) === 0 && (limit.resets_at ?? null) === null;
 }
 
