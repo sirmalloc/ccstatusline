@@ -14,6 +14,7 @@ import {
     migrateConfig,
     needsMigration
 } from './migrations';
+import { getPackageVersion } from './terminal';
 import { upgradeLegacyWidgetTypes } from './widgets';
 
 // Use fs.promises directly (always available in modern Node.js)
@@ -244,6 +245,93 @@ export async function saveSettings(settings: Settings): Promise<void> {
         const { syncWidgetHooks } = await import('./hooks');
         await syncWidgetHooks(settings);
     } catch { /* ignore hook sync failures */ }
+}
+
+export type ImportValidationResult
+    = | { status: 'valid'; data: Settings; presentKeys: (keyof Settings)[] }
+        | { status: 'invalid'; reason: string };
+
+function expandPath(filePath: string): string {
+    if (filePath.startsWith('~/') || filePath === '~') {
+        return path.join(os.homedir(), filePath.slice(2));
+    }
+    return filePath;
+}
+
+export async function exportConfig(settings: Settings, filePath: string): Promise<void> {
+    const expanded = expandPath(filePath);
+    const exportData = { ...settings, exportedBy: getPackageVersion() };
+    await mkdir(path.dirname(expanded), { recursive: true });
+    await writeFile(expanded, JSON.stringify(exportData, null, 2), 'utf-8');
+}
+
+export async function validateImportFile(filePath: string): Promise<ImportValidationResult> {
+    const expanded = expandPath(filePath);
+    let raw: string;
+    try {
+        raw = await readFile(expanded, 'utf-8');
+    } catch {
+        return { status: 'invalid', reason: `Cannot read file: ${expanded}` };
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return { status: 'invalid', reason: 'File is not valid JSON' };
+    }
+
+    if (
+        typeof parsed === 'object'
+        && parsed !== null
+        && 'version' in parsed
+        && typeof parsed.version === 'number'
+        && parsed.version > CURRENT_VERSION
+    ) {
+        return {
+            status: 'invalid',
+            reason: `Config version ${parsed.version} is newer than supported version ${CURRENT_VERSION}`
+        };
+    }
+
+    if (needsMigration(parsed, CURRENT_VERSION)) {
+        parsed = migrateConfig(parsed, CURRENT_VERSION);
+    }
+
+    const result = SettingsSchema.safeParse(parsed);
+    if (!result.success) {
+        return { status: 'invalid', reason: `Invalid config format: ${result.error.issues[0]?.message ?? 'unknown error'}` };
+    }
+
+    const presentKeys = Object.keys(parsed as Record<string, unknown>)
+        .filter((key): key is keyof Settings => key in result.data);
+
+    return { status: 'valid', data: result.data, presentKeys };
+}
+
+const IMPORT_EXCLUDED_KEYS = ['installation', 'version', 'updatemessage', 'exportedBy'] as const;
+type ImportExcludedKey = typeof IMPORT_EXCLUDED_KEYS[number];
+
+export function applyImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[] = Object.keys(imported) as (keyof Settings)[]
+): Settings {
+    const mergeKeys = new Set(presentKeys);
+    const importedClean = Object.fromEntries(
+        Object.entries(imported).filter(([k]) => !IMPORT_EXCLUDED_KEYS.includes(k as ImportExcludedKey)
+            && (mode === 'replace' || mergeKeys.has(k as keyof Settings))
+        )
+    ) as Partial<Settings>;
+
+    if (mode === 'replace') {
+        return SettingsSchema.parse({
+            ...importedClean,
+            installation: current.installation
+        });
+    }
+    return { ...current, ...importedClean };
 }
 
 export async function saveInstallationMetadata(metadata: InstallationMetadata | undefined): Promise<void> {

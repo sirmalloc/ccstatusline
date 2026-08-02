@@ -53,6 +53,17 @@
 - **🎯 Correct width, not just faster** - The old `tput cols` fallback reported its no-TTY default of 80 columns on terminals that were actually 209 wide. The new probe finds the real pty and reports the true width.
 - **♻️ The "no TTY" case is cached** - Claude Code spawns the status line without a TTY, so the probe returned `null`; because callers read it as `context.terminalWidth ?? getTerminalWidth()`, that `null` re-ran the whole ancestor walk **once per configured line, on every render**. That `null` result is now memoized in-process for the render, and persisted per-session via `~/.cache/ccstatusline/terminal-width.json` so later renders in the same session skip the walk entirely. A *discovered* width is deliberately never persisted across processes (only kept in-process for that one render), so a terminal resize — or resuming the same session in a differently-sized terminal — is always reflected on the next render rather than delayed by a stale cross-process cache entry.
 - **⏱️ `terminalWidthCacheTtlSeconds`** - New setting, default `5`, range 0–300. Controls how long a cached "no TTY" result is trusted before re-probing, in case a session moves from a non-interactive context into one with a real terminal. Set to `0` to always re-probe. (Note: unlike `gitCacheTtlSeconds`, where `0` means "never expire", `0` here disables the cache.)
+### v2.2.27 - Portable configuration import and export
+
+- **📦 Config import/export** - Export the current TUI configuration to JSON, validate and preview imports, then replace all settings or merge only supplied fields while preserving local installation metadata and leaving the result unsaved for review.
+
+### v2.2.25 - v2.2.26 - Fable usage, migrated usage API support, compaction accuracy, and rendering reliability
+
+- **🪄 Weekly Fable usage** - Added a `Weekly Fable Usage` widget with percentage, progress-bar, remaining-mode, and time-cursor controls.
+- **📊 Reshaped usage API support** - Session and all-model weekly usage can fall back to the newer `limits[]` response, while Sonnet, Opus, and Fable weekly widgets read authoritative `weekly_scoped` entries so migrated accounts do not show stale or frozen values.
+- **🧠 Correct post-compaction context** - Context length and percentage widgets reset immediately from `compact_boundary.postTokens` after `/compact`, then switch to the first new turn instead of retaining the pre-compaction size.
+- **🧹 Reliable hidden-widget separators** - Manual separators now look past widgets that render empty, preserve the intended visible boundary, and inherit colors from the actual preceding visible widget.
+- **⚡ Non-blocking Git PR/CI refreshes** - Git PR and CI widgets render from a versioned disk cache while stale data refreshes in the background, preventing slow `gh` calls from blocking the status line.
 
 ### v2.2.22 - v2.2.24 - Powerline flex mode, cache/CI/sandbox visibility, layout controls, composable metrics, and safer config
 
@@ -265,13 +276,14 @@
 
 ## ✨ Features
 
-- **📊 Real-time Metrics** - Display model name, git branch, token usage, per-model weekly usage, extra usage limits, voice input state, session duration, compaction count, block timer, and more
+- **📊 Real-time Metrics** - Display model name, git branch, token usage, Sonnet/Opus/Fable weekly usage, extra usage limits, voice input state, session duration, compaction count, block timer, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure multiple independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
 - **🔎 Fast Widget Picker** - Add/change widgets by category with search and ranked matching
 - **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, minimalist mode, and color overrides)
+- **📦 Portable Configurations** - Export settings to JSON and preview replace-or-merge imports for backups and sharing
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **🔧 Flexible Configuration** - Supports custom Claude Code config directory via `CLAUDE_CONFIG_DIR` environment variable
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
@@ -312,6 +324,7 @@ The interactive configuration tool provides a terminal UI where you can:
 - Configure flex separator behavior
 - Configure Claude Code status line refresh interval when supported
 - Edit custom text widgets
+- Export JSON backups and preview imported configs before replacing or merging settings
 - Install/uninstall to Claude Code settings
 - Preview your status line in real-time
 

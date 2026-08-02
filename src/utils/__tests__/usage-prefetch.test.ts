@@ -217,6 +217,32 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
+    it('triggers API fetch for fable-weekly-usage even when stdin rate_limits is fully populated', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 42,
+            sessionResetAt: '2026-03-20T12:00:00.000Z',
+            weeklyUsage: 15,
+            weeklyResetAt: '2026-03-27T12:00:00.000Z',
+            fableUsage: 5,
+            fableResetAt: '2026-03-27T12:00:00.000Z'
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'fable-weekly-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
+            }
+        });
+
+        expect(usageData?.fableUsage).toBe(5);
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'] }]);
+    });
+
     it.each([
         {
             apiUsageData: { weeklySonnetUsage: 8 },
@@ -379,6 +405,23 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
     });
 
+    it('uses aggregate weekly reset as the cursor fallback without fetching for fable reset data', async () => {
+        mockFetchUsageData.mockResolvedValue({ fableUsage: 8 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'fable-weekly-usage', metadata: { cursor: 'true' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { seven_day: { resets_at: 1774540000 } } });
+
+        expect(usageData).toEqual({
+            weeklyResetAt: epochToIso(1774540000),
+            fableUsage: 8
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'] }]);
+    });
+
     it('fetches extra usage fields while preserving statusline usage data', async () => {
         mockFetchUsageData.mockResolvedValue({
             extraUsageEnabled: true,
@@ -452,7 +495,14 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
     });
 
-    it('treats null requested per-model buckets as zero usage without fetching', async () => {
+    it('fetches scoped API usage when requested per-model stdin buckets are null', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            weeklySonnetUsage: 8,
+            weeklySonnetResetAt: '2026-03-27T12:00:00.000Z',
+            weeklyOpusUsage: 2,
+            weeklyOpusResetAt: '2026-03-27T12:00:00.000Z'
+        });
+
         const lines = makeLines(
             [{ id: '1', type: 'weekly-sonnet-usage' }, { id: '2', type: 'weekly-opus-usage' }]
         );
@@ -466,9 +516,38 @@ describe('usage prefetch', () => {
             }
         });
 
-        expect(usageData?.weeklySonnetUsage).toBe(0);
-        expect(usageData?.weeklyOpusUsage).toBe(0);
-        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+        expect(usageData?.weeklySonnetUsage).toBe(8);
+        expect(usageData?.weeklyOpusUsage).toBe(2);
+        expect(mockFetchUsageData.mock.calls).toEqual([[
+            { requiredFields: ['weeklySonnetUsage', 'weeklyOpusUsage'] }
+        ]]);
+    });
+
+    it('does not let null per-model stdin buckets overwrite scoped API usage fetched for another widget', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            weeklySonnetUsage: 8,
+            weeklyOpusUsage: 2,
+            extraUsageEnabled: true,
+            extraUsageUtilization: 25
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'extra-usage-utilization' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 },
+                seven_day_sonnet: null,
+                seven_day_opus: null
+            }
+        });
+
+        expect(usageData?.weeklySonnetUsage).toBe(8);
+        expect(usageData?.weeklyOpusUsage).toBe(2);
+        expect(usageData?.extraUsageUtilization).toBe(25);
+        expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
     it('falls back to API fetch when sessionResetAt is missing from rate_limits', async () => {
@@ -593,7 +672,7 @@ describe('extractUsageDataFromRateLimits', () => {
         expect(result?.weeklyOpusUsage).toBeUndefined();
     });
 
-    it('treats null per-model buckets as zero usage', () => {
+    it('treats null per-model buckets as missing until the API is checked', () => {
         const result = extractUsageDataFromRateLimits({
             five_hour: { used_percentage: 42, resets_at: 1774020000 },
             seven_day: { used_percentage: 15, resets_at: 1774540000 },
@@ -601,7 +680,7 @@ describe('extractUsageDataFromRateLimits', () => {
             seven_day_opus: null
         });
 
-        expect(result?.weeklySonnetUsage).toBe(0);
-        expect(result?.weeklyOpusUsage).toBe(0);
+        expect(result?.weeklySonnetUsage).toBeUndefined();
+        expect(result?.weeklyOpusUsage).toBeUndefined();
     });
 });
