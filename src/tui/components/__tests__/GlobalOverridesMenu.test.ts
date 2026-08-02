@@ -180,6 +180,84 @@ describe('GlobalOverridesMenu', () => {
         }
     });
 
+    it('displays padding side as "Both" by default', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn();
+        const onBack = vi.fn();
+
+        const instance = render(
+            React.createElement(GlobalOverridesMenu, {
+                settings: DEFAULT_SETTINGS,
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stdout.getOutput()).toContain('Padding Side:');
+            expect(stdout.getOutput()).toContain('Both');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it.each([
+        { starting: 'both' as const, expected: 'left' as const },
+        { starting: 'left' as const, expected: 'right' as const },
+        { starting: 'right' as const, expected: 'both' as const }
+    ])('cycles padding side from "$starting" to "$expected" when (d) is pressed', async ({ starting, expected }) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn();
+        const onBack = vi.fn();
+
+        const instance = render(
+            React.createElement(GlobalOverridesMenu, {
+                settings: { ...DEFAULT_SETTINGS, defaultPaddingSide: starting },
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('d');
+            await flushInk();
+
+            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ defaultPaddingSide: expected }));
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
     it('shows foreground override gradient and clear controls on the same line', async () => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();

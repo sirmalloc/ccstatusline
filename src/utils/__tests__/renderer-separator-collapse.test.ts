@@ -10,6 +10,7 @@ import {
     type Settings
 } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { stripSgrCodes } from '../ansi';
 import { renderStatusLine } from '../renderer';
 
 interface PreRenderedWidget {
@@ -66,6 +67,28 @@ describe('renderer separator collapse around empty widgets', () => {
         expect(out).toContain('C');
     });
 
+    it('looks past an empty widget when no separator already owns the boundary', () => {
+        const widgets = [T('a'), T('b'), SEP, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 1: '', 3: 'C' }));
+        expect(out).toBe('A | C');
+    });
+
+    it('replaces spacing before an empty widget with its following separator', () => {
+        const space: WidgetItem = { id: 'space', type: 'separator', character: ' ' };
+        const pipe: WidgetItem = { id: 'pipe', type: 'separator', character: '|' };
+        const widgets = [T('a'), space, T('b'), pipe, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: '', 4: 'C' }));
+        expect(out).toBe('A | C');
+    });
+
+    it('keeps a visible separator as the boundary around an empty widget', () => {
+        const colon: WidgetItem = { id: 'colon', type: 'separator', character: ':' };
+        const pipe: WidgetItem = { id: 'pipe', type: 'separator', character: '|' };
+        const widgets = [T('a'), colon, T('b'), pipe, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: '', 4: 'C' }));
+        expect(out).toBe('A:C');
+    });
+
     it('collapses multiple consecutive empty widgets into a single separator', () => {
         const widgets = [T('a'), SEP, T('b'), SEP, T('c'), SEP, T('d')];
         // both 'b' and 'c' render empty
@@ -115,6 +138,20 @@ describe('renderer separator collapse around empty widgets', () => {
         expect(out).toContain('C');
     });
 
+    it.each([
+        { label: 'true', merge: true },
+        { label: 'no-padding', merge: 'no-padding' }
+    ] as const)('keeps an explicit separator directly after a merge:$label widget', ({ merge }) => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            SEP,
+            { id: 'b', type: 'custom-text' }
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: 'B' }));
+
+        expect(out).toBe('A | B');
+    });
+
     it('lets a merge:no-padding widget glue to the next visible widget across an empty middle widget', () => {
         // Layout: [A(merge:no-padding), B(empty), SEP, C].
         //
@@ -146,5 +183,34 @@ describe('renderer separator collapse around empty widgets', () => {
         // No whitespace separator between A and C — they are directly adjacent.
         expect(stripped).toMatch(/A\s*C/);
         expect(stripped).not.toMatch(/A\s+\S+\s+C/);
+    });
+
+    it('lets a merge:true widget own the boundary across an empty middle widget', () => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge: true },
+            { id: 'b', type: 'custom-text' },
+            SEP,
+            { id: 'c', type: 'custom-text' }
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 1: '', 3: 'C' }));
+
+        expect(out).not.toContain('|');
+        expect(out).toContain('A');
+        expect(out).toContain('C');
+    });
+
+    it('does not borrow visible content across a flex separator', () => {
+        const widgets: WidgetItem[] = [
+            T('left'),
+            { id: 'flex', type: 'flex-separator' },
+            T('hidden'),
+            SEP,
+            T('right')
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'L', 2: '', 4: 'R' }));
+
+        expect(out).not.toContain('|');
+        expect(out).toContain('L');
+        expect(out).toContain('R');
     });
 });

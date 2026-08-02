@@ -55,12 +55,14 @@ export function getCommandResolutionPaths(
             ? execFileSync('where', [command], {
                 encoding: 'utf-8',
                 timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-                windowsHide: true
+                windowsHide: true,
+                stdio: ['ignore', 'pipe', 'ignore']
             })
             : execFileSync('which', ['-a', command], {
                 encoding: 'utf-8',
                 timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-                windowsHide: true
+                windowsHide: true,
+                stdio: ['ignore', 'pipe', 'ignore']
             });
 
         return splitCommandOutput(output);
@@ -76,6 +78,7 @@ function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
             encoding: 'utf-8',
             timeout: COMMAND_LOOKUP_TIMEOUT_MS,
             windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore'],
             ...getPackageManagerShellOptions(executable, platform)
         }).trim();
 
@@ -93,10 +96,14 @@ function getNpmGlobalBinDir(platform: NodeJS.Platform): string | null {
 
 function getBunGlobalBinDir(): string | null {
     try {
+        // bun writes an error to stderr when its global dir was never
+        // initialized (no `bun add -g` ever run); silence it so best-effort
+        // probing cannot leak into the TUI terminal.
         const binDir = execFileSync('bun', ['pm', 'bin', '-g'], {
             encoding: 'utf-8',
             timeout: COMMAND_LOOKUP_TIMEOUT_MS,
-            windowsHide: true
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'ignore']
         }).trim();
 
         return binDir || null;

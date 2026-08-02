@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import {
     describe,
     expect,
@@ -10,6 +11,7 @@ import {
     type InstallationMetadata
 } from '../../types/Settings';
 import {
+    applyTuiImport,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
     clearInstallMenuSelection,
@@ -61,6 +63,26 @@ describe('App confirm navigation helpers', () => {
         const menuSelections = { main: 5 };
 
         expect(clearInstallMenuSelection(menuSelections)).toBe(menuSelections);
+    });
+});
+
+describe('TUI config imports', () => {
+    it('synchronizes Chalk with the imported color level', () => {
+        const originalLevel = chalk.level;
+
+        try {
+            const imported = applyTuiImport(
+                { ...DEFAULT_SETTINGS, colorLevel: 2 },
+                { ...DEFAULT_SETTINGS, colorLevel: 0 },
+                'merge',
+                ['colorLevel']
+            );
+
+            expect(imported.colorLevel).toBe(0);
+            expect(chalk.level).toBe(0);
+        } finally {
+            chalk.level = originalLevel;
+        }
     });
 });
 
@@ -172,6 +194,9 @@ describe('Main menu structure', () => {
             'globalOverrides',
             'configureStatusLine',
             '-',
+            'exportConfig',
+            'importConfig',
+            '-',
             'install',
             '-',
             'exit',
@@ -189,6 +214,9 @@ describe('Main menu structure', () => {
             'terminalConfig',
             'globalOverrides',
             'configureStatusLine',
+            '-',
+            'exportConfig',
+            'importConfig',
             '-',
             'install',
             '-',
@@ -212,6 +240,9 @@ describe('Main menu structure', () => {
             'terminalConfig',
             'globalOverrides',
             'configureStatusLine',
+            '-',
+            'exportConfig',
+            'importConfig',
             '-',
             'manageInstallation',
             '-',
@@ -243,14 +274,14 @@ describe('Main menu structure', () => {
             sublabel: '(install first)'
         }));
         expect(buildManageInstallationItems()[0]).toEqual(expect.objectContaining({ label: '🔄 Check for Updates' }));
-        expect(getMainMenuInstallSelectionIndex(false)).toBe(5);
-        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(6);
-        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(6);
-        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(6);
+        expect(getMainMenuInstallSelectionIndex(false)).toBe(7);
+        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(8);
+        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(8);
+        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(8);
         expect(getMainMenuSelectionIndex(
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
-        )).toBe(6);
+        )).toBe(8);
     });
 });
 

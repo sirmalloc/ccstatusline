@@ -22,6 +22,7 @@ import {
     getClaudeSettingsPath,
     getExistingStatusLine,
     getRefreshInterval,
+    getSandboxConfig,
     getVoiceConfig,
     installStatusLine,
     isClaudeCodeVersionAtLeast,
@@ -810,5 +811,115 @@ describe('getVoiceConfig', () => {
             writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
             expect(getVoiceConfig(testProjectDir)).toEqual({ enabled: true });
         });
+    });
+});
+
+describe('getSandboxConfig', () => {
+    let testSandboxProjectDir = '';
+
+    function writeRawUserLocalSettings(content: string): void {
+        const settingsPath = path.join(testClaudeConfigDir, 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectSettings(content: string): void {
+        const settingsPath = path.join(testSandboxProjectDir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    function writeRawProjectLocalSettings(content: string): void {
+        const settingsPath = path.join(testSandboxProjectDir, '.claude', 'settings.local.json');
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, content, 'utf-8');
+    }
+
+    beforeEach(() => {
+        testSandboxProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-sandbox-project-'));
+    });
+
+    afterEach(() => {
+        if (testSandboxProjectDir) {
+            fs.rmSync(testSandboxProjectDir, { recursive: true, force: true });
+        }
+    });
+
+    it('returns null when no candidate file exists', () => {
+        expect(getSandboxConfig(testSandboxProjectDir)).toBeNull();
+    });
+
+    it('returns { enabled: false } when settings.json has no sandbox field', () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('returns { enabled: true } when sandbox.enabled is true', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('returns { enabled: false } when sandbox.enabled is false', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('returns { enabled: false } when sandbox exists but enabled is missing', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { network: { allowAll: true } } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('treats malformed JSON as "no override"', () => {
+        writeRawClaudeSettings('{ not json');
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('treats an unexpected sandbox shape as "no override"', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: 'on' }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('respects CLAUDE_CONFIG_DIR env var', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getClaudeSettingsPath().startsWith(testClaudeConfigDir)).toBe(true);
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('project-local overrides project (where /sandbox writes)', () => {
+        writeRawProjectSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        writeRawProjectLocalSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('project overrides user-global', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        writeRawProjectSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('user-local overrides user-global', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawUserLocalSettings(JSON.stringify({ sandbox: { enabled: false } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: false });
+    });
+
+    it('a layer without sandbox.enabled does not clobber a lower layer', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawProjectSettings(JSON.stringify({ sandbox: { network: {} } }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('a malformed higher-priority layer does not clobber a defined lower layer', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawProjectLocalSettings('{ corrupt');
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
+    });
+
+    it('falls through layers without sandbox.enabled until it finds a defined value', () => {
+        writeRawClaudeSettings(JSON.stringify({ sandbox: { enabled: true } }));
+        writeRawUserLocalSettings(JSON.stringify({ effortLevel: 'high' }));
+        writeRawProjectSettings(JSON.stringify({ sandbox: { network: {} } }));
+        writeRawProjectLocalSettings(JSON.stringify({ effortLevel: 'low' }));
+        expect(getSandboxConfig(testSandboxProjectDir)).toEqual({ enabled: true });
     });
 });

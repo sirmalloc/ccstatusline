@@ -8,6 +8,10 @@ import type {
 } from '../types';
 
 import {
+    getCompactBoundaryPostTokens,
+    isCompactBoundary
+} from './compaction';
+import {
     parseJsonlLine,
     readJsonlLines
 } from './jsonl-lines';
@@ -162,14 +166,19 @@ export interface TokenMetricsOptions { includeSubagents?: boolean }
 // value like "end_turn" or "tool_use". Return finalized entries plus the latest
 // unfinished one so live updates do not overcount duplicate partial rows. If the
 // transcript format has no stop_reason field at all, count all entries.
-function getFinalizedUsageEntries(lines: string[]): TranscriptLine[] {
-    const parsedEntries: TranscriptLine[] = [];
+interface IndexedTranscriptLine {
+    data: TranscriptLine;
+    lineIndex: number;
+}
+
+function getFinalizedUsageEntries(lines: string[]): IndexedTranscriptLine[] {
+    const parsedEntries: IndexedTranscriptLine[] = [];
     let hasStopReasonField = false;
 
-    for (const line of lines) {
+    for (const [lineIndex, line] of lines.entries()) {
         const data = parseJsonlLine(line) as TranscriptLine | null;
         if (data?.message?.usage) {
-            parsedEntries.push(data);
+            parsedEntries.push({ data, lineIndex });
             if (Object.hasOwn(data.message, 'stop_reason')) {
                 hasStopReasonField = true;
             }
@@ -177,20 +186,20 @@ function getFinalizedUsageEntries(lines: string[]): TranscriptLine[] {
     }
 
     return hasStopReasonField
-        ? parsedEntries.filter((data, index) => {
-            const stopReason = data.message?.stop_reason;
+        ? parsedEntries.filter((entry, index) => {
+            const stopReason = entry.data.message?.stop_reason;
             return Boolean(stopReason) || (stopReason === null && index === parsedEntries.length - 1);
         })
         : parsedEntries;
 }
 
-function sumUsage(entries: TranscriptLine[], skipSidechain: boolean): TokenUsageSum {
+function sumUsage(entries: IndexedTranscriptLine[], skipSidechain: boolean): TokenUsageSum {
     let inputTokens = 0;
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let cacheCreationTokens = 0;
 
-    for (const data of entries) {
+    for (const { data } of entries) {
         if (skipSidechain && data.isSidechain === true) {
             continue;
         }
@@ -207,30 +216,71 @@ function sumUsage(entries: TranscriptLine[], skipSidechain: boolean): TokenUsage
     return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
 }
 
-// Context length is the most recent main-chain (non-sidechain, non-error)
-// finalized entry's context size. Sub-agents do not share the main context window.
-function computeContextLength(entries: TranscriptLine[]): number {
+interface CompactBoundaryInfo {
+    lineIndex: number;
+    postTokens: number | null;
+}
+
+// Claude Code writes a { type: 'system', subtype: 'compact_boundary' } record on
+// every compaction. Usage entries before the most recent boundary describe a
+// context that no longer exists, so context length must never be derived from
+// them - otherwise it stays stuck at the pre-compaction size until the next turn
+// repopulates Claude Code's live status data.
+function findLastCompactBoundary(lines: string[]): CompactBoundaryInfo {
+    let lineIndex = -1;
+    let postTokens: number | null = null;
+
+    for (const [index, line] of lines.entries()) {
+        const data = parseJsonlLine(line) as TranscriptLine | null;
+        if (isCompactBoundary(data)) {
+            lineIndex = index;
+            postTokens = getCompactBoundaryPostTokens(data);
+        }
+    }
+
+    return { lineIndex, postTokens };
+}
+
+function contextLengthFromEntry(entry: TranscriptLine | null): number | null {
+    const usage = entry?.message?.usage;
+    if (!usage) {
+        return null;
+    }
+    return (usage.input_tokens || 0)
+        + (usage.cache_read_input_tokens ?? 0)
+        + (usage.cache_creation_input_tokens ?? 0);
+}
+
+// Context length is the live occupancy of the current context window. Without a
+// compaction it is the most recent main-chain (non-sidechain, non-error) turn.
+// After a compaction, prefer the first turn following the boundary, then the
+// boundary's reported post-compaction size, and otherwise 0 - the stale
+// pre-compaction turn must never leak through. Sub-agents do not share the main
+// context window, so this is only ever called with main-chain entries.
+function computeContextLength(entries: IndexedTranscriptLine[], boundary: CompactBoundaryInfo): number {
     let mostRecentMainChainEntry: TranscriptLine | null = null;
     let mostRecentTimestamp: Date | null = null;
+    let mostRecentPostCompactionEntry: TranscriptLine | null = null;
+    let mostRecentPostCompactionTimestamp: Date | null = null;
 
-    for (const data of entries) {
+    for (const { data, lineIndex } of entries) {
         if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
             const entryTime = new Date(data.timestamp);
             if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
                 mostRecentTimestamp = entryTime;
                 mostRecentMainChainEntry = data;
             }
+            if (lineIndex > boundary.lineIndex
+                && (!mostRecentPostCompactionTimestamp || entryTime > mostRecentPostCompactionTimestamp)) {
+                mostRecentPostCompactionTimestamp = entryTime;
+                mostRecentPostCompactionEntry = data;
+            }
         }
     }
 
-    if (mostRecentMainChainEntry?.message?.usage) {
-        const usage = mostRecentMainChainEntry.message.usage;
-        return (usage.input_tokens || 0)
-            + (usage.cache_read_input_tokens ?? 0)
-            + (usage.cache_creation_input_tokens ?? 0);
-    }
-
-    return 0;
+    return boundary.lineIndex >= 0
+        ? (contextLengthFromEntry(mostRecentPostCompactionEntry) ?? boundary.postTokens ?? 0)
+        : (contextLengthFromEntry(mostRecentMainChainEntry) ?? 0);
 }
 
 export async function getTokenMetrics(
@@ -245,7 +295,8 @@ export async function getTokenMetrics(
 
         const lines = await readJsonlLines(transcriptPath);
         const mainEntries = getFinalizedUsageEntries(lines);
-        const contextLength = computeContextLength(mainEntries);
+        const boundary = findLastCompactBoundary(lines);
+        const contextLength = computeContextLength(mainEntries, boundary);
 
         const subagentPaths = options.includeSubagents === true
             ? getSubagentTranscriptPaths(transcriptPath, getReferencedSubagentIds(lines))
