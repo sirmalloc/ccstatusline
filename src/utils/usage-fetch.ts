@@ -31,6 +31,13 @@ const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
+// The access token is what the API is called with; the refresh token is kept
+// alongside it only to fingerprint the account (see fingerprintUsageCredentials).
+interface UsageCredentials {
+    accessToken: string;
+    refreshToken?: string;
+}
+
 const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageLimit',
     'extraUsageUsed',
@@ -55,7 +62,12 @@ const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataFiel
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.resetField, bucket.usageField]))
 };
 
-const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
+const UsageCredentialsSchema = z.object({
+    claudeAiOauth: z.object({
+        accessToken: z.string().nullable().optional(),
+        refreshToken: z.string().nullable().optional()
+    }).optional()
+});
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
     blockedUntil: z.number(),
@@ -180,9 +192,16 @@ function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null
     }
 }
 
-function parseUsageAccessToken(rawJson: string): string | null {
-    const parsed = parseJsonWithSchema(rawJson, UsageCredentialsSchema);
-    return parsed?.claudeAiOauth?.accessToken ?? null;
+function parseUsageCredentials(rawJson: string): UsageCredentials | null {
+    const oauth = parseJsonWithSchema(rawJson, UsageCredentialsSchema)?.claudeAiOauth;
+    if (!oauth?.accessToken) {
+        return null;
+    }
+
+    return {
+        accessToken: oauth.accessToken,
+        refreshToken: oauth.refreshToken ?? undefined
+    };
 }
 
 function parseCachedUsageData(rawJson: string): UsageData | null {
@@ -213,12 +232,30 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
     };
 }
 
-// One-way fingerprint of the usage token, persisted alongside the cache so a
-// login switch (e.g. enterprise<->personal, a different token) invalidates the
-// cache immediately instead of waiting out the TTL. A truncated SHA-256 is a
-// stable identifier, not the token itself, so it is safe to write to disk.
+// One-way fingerprint of the usage credentials, persisted alongside the cache
+// so a login switch (e.g. enterprise<->personal, a different account)
+// invalidates the cache immediately instead of waiting out the TTL. A
+// truncated SHA-256 is a stable identifier, not the token itself, so it is
+// safe to write to disk.
 function fingerprintUsageToken(token: string): string {
     return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+// The access token is reissued on a short cycle (observed: ~8h expiry), so
+// hashing it makes the fingerprint change on an ordinary refresh of the very
+// same account. That is indistinguishable from a login switch here, and it
+// discards an otherwise valid cache - which matters most exactly when the
+// cache is load-bearing, i.e. while a fetch failure is being backed off: the
+// widgets then degrade to error text for the whole window (up to the server's
+// Retry-After) even though the cached reading is the user's own and current.
+//
+// The refresh token identifies the login rather than the session (observed:
+// ~13 day expiry, two orders of magnitude longer), so fingerprinting it keeps
+// the account-switch guard intact without churning on every refresh. It falls
+// back to the access token when absent, which keeps older credential files and
+// any keychain entry that only stores an access token working as before.
+function fingerprintUsageCredentials(credentials: UsageCredentials): string {
+    return fingerprintUsageToken(credentials.refreshToken ?? credentials.accessToken);
 }
 
 function readCachedTokenHash(rawJson: string): string | undefined {
@@ -469,9 +506,9 @@ function readMacKeychainSecret(service: string): string | null {
     }
 }
 
-function readUsageTokenFromMacKeychainService(service: string): string | null {
+function readUsageCredentialsFromMacKeychainService(service: string): UsageCredentials | null {
     const secret = readMacKeychainSecret(service);
-    return secret ? parseUsageAccessToken(secret) : null;
+    return secret ? parseUsageCredentials(secret) : null;
 }
 
 function listMacKeychainCredentialCandidates(): string[] {
@@ -493,36 +530,40 @@ function listMacKeychainCredentialCandidates(): string[] {
     }
 }
 
-function readUsageTokenFromMacKeychainCandidates(): string | null {
+function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | null {
     const candidates = listMacKeychainCredentialCandidates();
 
     for (const service of candidates) {
-        const token = readUsageTokenFromMacKeychainService(service);
-        if (token) {
-            return token;
+        const credentials = readUsageCredentialsFromMacKeychainService(service);
+        if (credentials) {
+            return credentials;
         }
     }
 
     return null;
 }
 
-function readUsageTokenFromCredentialsFile(): string | null {
+function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
     try {
         const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
-        return parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
+        return parseUsageCredentials(fs.readFileSync(credFile, 'utf8'));
     } catch {
         return null;
     }
 }
 
-export function getUsageToken(): string | null {
+export function getUsageCredentials(): UsageCredentials | null {
     if (process.platform !== 'darwin') {
-        return readUsageTokenFromCredentialsFile();
+        return readUsageCredentialsFromCredentialsFile();
     }
 
-    return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageTokenFromMacKeychainCandidates()
-        ?? readUsageTokenFromCredentialsFile();
+    return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageCredentialsFromMacKeychainCandidates()
+        ?? readUsageCredentialsFromCredentialsFile();
+}
+
+export function getUsageToken(): string | null {
+    return getUsageCredentials()?.accessToken ?? null;
 }
 
 function readStaleUsageCache(currentTokenHash: string | null): UsageData | null {
@@ -716,12 +757,13 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
     }
 
-    // Resolve the token up front (before lock/rate-limit checks so auth
-    // failures are not masked as timeout) and fingerprint it so the file cache
-    // can be invalidated on an account switch: a different token, written by a
+    // Resolve the credentials up front (before lock/rate-limit checks so auth
+    // failures are not masked as timeout) and fingerprint them so the file cache
+    // can be invalidated on an account switch: a different login, written by a
     // logout/login, no longer matches the cached fingerprint.
-    const token = getUsageToken();
-    const currentTokenHash = token ? fingerprintUsageToken(token) : null;
+    const credentials = getUsageCredentials();
+    const token = credentials?.accessToken ?? null;
+    const currentTokenHash = credentials ? fingerprintUsageCredentials(credentials) : null;
 
     // Check file cache
     try {
