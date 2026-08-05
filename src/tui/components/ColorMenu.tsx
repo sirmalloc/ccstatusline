@@ -24,7 +24,6 @@ import {
     clearAllWidgetStyling,
     cycleWidgetColor,
     cycleWidgetDim,
-    cycleWidgetNumberStyle,
     resetWidgetStyling,
     setWidgetColor,
     toggleWidgetBold
@@ -279,15 +278,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     onUpdate(newItems);
                 }
             }
-        } else if (input === 'n' || input === 'N') {
-            if (highlightedItemId && highlightedItemId !== 'back') {
-                // Cycle number format style for the highlighted item: default -> compact -> whole -> default
-                const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
-                if (selectedWidget) {
-                    const newItems = cycleWidgetNumberStyle(widgets, selectedWidget.id);
-                    onUpdate(newItems);
-                }
-            }
         } else if (input === 'r' || input === 'R') {
             if (highlightedItemId && highlightedItemId !== 'back') {
                 // Reset all styling (color, background, and bold) for the highlighted item
@@ -454,9 +444,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
     const styleIndicators = [
         selectedWidget?.bold ? '[BOLD]' : null,
         selectedWidget?.dim === true ? '[DIM]' : null,
-        selectedWidget?.dim === 'parens' ? '[DIM ()]' : null,
-        selectedWidget?.numberFormat?.style ? `[#${selectedWidget.numberFormat.style}]` : null,
-        selectedWidget?.numberFormat?.decimals !== undefined ? `[#${selectedWidget.numberFormat.decimals}dp]` : null
+        selectedWidget?.dim === 'parens' ? '[DIM ()]' : null
     ].filter(indicator => indicator !== null).join(' ');
 
     // Gradient selection mode takes over the whole view
@@ -600,7 +588,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         ↑↓ to select, ←→ to cycle
                         {' '}
                         {editingBackground ? 'background' : 'foreground'}
-                        , (f) to toggle bg/fg, (b)old, (d)im, (n)umber,
+                        , (f) to toggle bg/fg, (b)old, (d)im,
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {!editingBackground && settings.colorLevel >= 2 ? ' (g)radient,' : ''}
                         {' '}

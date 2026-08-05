@@ -337,4 +337,5 @@ export class CompactionCounterWidget implements Widget {
 
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

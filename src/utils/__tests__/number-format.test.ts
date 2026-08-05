@@ -12,8 +12,11 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { formatTokens } from '../format-tokens';
 import {
+    CYCLE_NUMBER_STYLE_ACTION,
+    cycleNumberStyle,
     formatCost,
     formatPercent,
+    getNumberFormatKeybind,
     renderMagnitude,
     resolveNumberFormat
 } from '../number-format';
@@ -111,6 +114,54 @@ describe('formatTokens with a format', () => {
     it('default (no format) is unchanged', () => {
         expect(formatTokens(1000000)).toBe('1.0M');
         expect(formatTokens(512000)).toBe('512.0k');
+    });
+});
+
+describe('cycleNumberStyle', () => {
+    it('cycles default, compact, whole, then back to default', () => {
+        const item: WidgetItem = { id: '1', type: 'tokens-input' };
+
+        const compact = cycleNumberStyle(item);
+        const whole = cycleNumberStyle(compact);
+        const off = cycleNumberStyle(whole);
+
+        expect(compact.numberFormat).toEqual({ style: 'compact' });
+        expect(whole.numberFormat).toEqual({ style: 'whole' });
+        expect(off).toEqual({ id: '1', type: 'tokens-input' });
+    });
+
+    it('preserves an explicit decimals across the cycle', () => {
+        const item: WidgetItem = { id: '1', type: 'tokens-input', numberFormat: { decimals: 2 } };
+
+        const compact = cycleNumberStyle(item);
+        const whole = cycleNumberStyle(compact);
+        const off = cycleNumberStyle(whole);
+
+        expect(compact.numberFormat).toEqual({ style: 'compact', decimals: 2 });
+        expect(whole.numberFormat).toEqual({ style: 'whole', decimals: 2 });
+        expect(off.numberFormat).toEqual({ decimals: 2 });
+    });
+
+    it('leaves other widget fields untouched', () => {
+        const item: WidgetItem = { id: '1', type: 'tokens-input', color: 'blue', bold: true };
+
+        expect(cycleNumberStyle(item)).toEqual({
+            id: '1',
+            type: 'tokens-input',
+            color: 'blue',
+            bold: true,
+            numberFormat: { style: 'compact' }
+        });
+    });
+});
+
+describe('getNumberFormatKeybind', () => {
+    it('binds the precision cycle to a key no widget uses', () => {
+        expect(getNumberFormatKeybind()).toEqual({
+            key: '.',
+            label: '(.) precision',
+            action: CYCLE_NUMBER_STYLE_ACTION
+        });
     });
 });
 
