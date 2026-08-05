@@ -75,7 +75,8 @@ describe('ExtraUsageUtilizationWidget', () => {
         expect(widget.getCustomKeybinds(baseItem)).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' },
+            { key: 'b', label: '(b)udget colors', action: 'toggle-budget-colors' }
         ]);
         expect(widget.getCustomKeybinds({
             ...baseItem,
@@ -83,7 +84,8 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' },
+            { key: 'b', label: '(b)udget colors', action: 'toggle-budget-colors' }
         ]);
         expect(widget.getCustomKeybinds({
             ...baseItem,
@@ -91,7 +93,8 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 'u', label: '(u) show used', action: 'toggle-invert' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' },
+            { key: 'b', label: '(b)udget colors', action: 'toggle-budget-colors' }
         ]);
         expect(widget.getEditorDisplay(baseItem).modifierText).toBe('(used)');
         expect(widget.getEditorDisplay({
