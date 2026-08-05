@@ -67,7 +67,7 @@ export class CustomCommandWidget implements Widget {
                 command: item.commandPath,
                 input: jsonInput,
                 timeoutMs: item.timeout ?? 1000,
-                ttlSeconds: settings.customCommandCacheTtlSeconds,
+                ttlSeconds: context.customCommandCacheTtlSeconds,
                 sessionId: context.data.session_id,
                 terminalWidth: context.terminalWidth
             });
