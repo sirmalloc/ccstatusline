@@ -1,4 +1,8 @@
-import { execSync } from 'child_process';
+import type {
+    SpawnSyncOptionsWithStringEncoding,
+    SpawnSyncReturns
+} from 'child_process';
+import { spawnSync } from 'child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -39,9 +43,37 @@ interface PersistentCustomCommandCache {
     entries: Record<string, CustomCommandCacheEntry>;
 }
 
-const DEFAULT_CUSTOM_COMMAND_CACHE_TTL_SECONDS = 5;
+/** Owner-only temp directory holding the command's stdin payload and its stdout. */
+interface CommandIo {
+    dir: string;
+    payloadFd: number;
+    stdoutFd: number;
+    stdoutPath: string;
+}
+
+/**
+ * Spawn options plus `detached`, which @types/node lists only for the async
+ * spawn. Node honors it for spawnSync too, and the POSIX tree kill depends on
+ * it: without it the shell shares our process group and no group exists to
+ * signal.
+ */
+interface SyncShellOptions extends SpawnSyncOptionsWithStringEncoding { detached?: boolean }
+
+const DEFAULT_CUSTOM_COMMAND_CACHE_TTL_SECONDS = 0;
 const MAX_CUSTOM_COMMAND_CACHE_TTL_SECONDS = 60;
 const CUSTOM_COMMAND_CACHE_SCHEMA_VERSION = 1 as const;
+
+// A status line is one terminal row, so anything past this cannot be displayed.
+// Bounding it keeps a chatty command from bloating the cache file, which every
+// widget in the render pass rewrites in full.
+const MAX_CACHED_OUTPUT_CHARS = 16_384;
+
+// Only reachable on the fallback path, where stdout is still a pipe.
+const MAX_PIPED_STDOUT_BYTES = 1024 * 1024;
+
+function isWindows(): boolean {
+    return process.platform === 'win32';
+}
 
 // In-process cache keeps cwd in the key. The persistent cache stores cwd once at
 // the file level and keys entries by command, session and terminal width.
@@ -71,6 +103,7 @@ function getCacheTtlMs(ttlSeconds: number | undefined): number {
 function getEntryKey(request: CustomCommandRequest): string {
     return [
         request.command,
+        String(request.timeoutMs),
         request.sessionId ?? '',
         typeof request.terminalWidth === 'number' ? String(request.terminalWidth) : ''
     ].join('\0');
@@ -206,49 +239,197 @@ function writePersistentCacheEntry(
     });
 }
 
-function getFailureMarker(error: unknown): string {
-    if (error instanceof Error) {
-        const execError = error as Error & {
-            code?: string;
-            signal?: string;
-            status?: number;
-        };
-        if (execError.code === 'ENOENT') {
-            return '[Cmd not found]';
-        } else if (execError.code === 'ETIMEDOUT') {
-            return '[Timeout]';
-        } else if (execError.code === 'EACCES') {
-            return '[Permission denied]';
-        } else if (execError.signal) {
-            return `[Signal: ${execError.signal}]`;
-        } else if (execError.status !== undefined) {
-            return `[Exit: ${execError.status}]`;
-        }
+/** Reads the errno string off a spawn error, which the Error type does not carry. */
+function getErrorCode(error: unknown): string | undefined {
+    if (error instanceof Error && 'code' in error && typeof error.code === 'string') {
+        return error.code;
     }
 
-    return '[Error]';
+    return undefined;
+}
+
+function getFailureMarker(result: SpawnSyncReturns<string>): string | null {
+    const errorCode = getErrorCode(result.error);
+
+    if (errorCode === 'ENOENT') {
+        return '[Cmd not found]';
+    } else if (errorCode === 'ETIMEDOUT') {
+        return '[Timeout]';
+    } else if (errorCode === 'EACCES') {
+        return '[Permission denied]';
+    } else if (result.error) {
+        return '[Error]';
+    } else if (result.signal) {
+        return `[Signal: ${result.signal}]`;
+    } else if (typeof result.status !== 'number') {
+        return '[Error]';
+    } else if (result.status !== 0) {
+        return `[Exit: ${result.status}]`;
+    }
+
+    return null;
+}
+
+function closeDescriptor(fd: number): void {
+    try {
+        fs.closeSync(fd);
+    } catch {
+        // Already closed, so there is nothing left to release.
+    }
+}
+
+function removeDirectory(dir: string): void {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+        // A descendant can still hold a handle here on Windows. The directory
+        // lives under the temp root and is safe to leave for the OS to reap.
+    }
+}
+
+/**
+ * Give the command both of its stdio streams as files rather than pipes.
+ *
+ * @remarks
+ * Every process in the shell tree inherits the pipe handles, and spawnSync
+ * returns only once every inheritor has closed them. One backgrounded
+ * descendant therefore holds the render open for as long as it lives, whatever
+ * the configured timeout says. Measured on Linux, `( sleep 3 ; echo LATE ) &`
+ * held a piped spawnSync for 3006ms and delivered output written after the
+ * shell had exited. The same command against files returns in 3ms.
+ *
+ * mkdtemp is what makes the paths safe to use: it creates an owner-only
+ * directory with an unguessable name in one atomic step, so neither file can be
+ * pre-created as a symlink or swapped between being written and being opened.
+ */
+function openCommandIo(input: string): CommandIo | null {
+    let dir: string | undefined;
+    let payloadFd: number | undefined;
+    let stdoutFd: number | undefined;
+
+    try {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-cmd-'));
+        const payloadPath = path.join(dir, 'stdin.json');
+        const stdoutPath = path.join(dir, 'stdout.txt');
+
+        fs.writeFileSync(payloadPath, input, { encoding: 'utf-8', flag: 'wx', mode: 0o600 });
+        payloadFd = fs.openSync(payloadPath, 'r');
+        stdoutFd = fs.openSync(stdoutPath, 'wx', 0o600);
+
+        return {
+            dir,
+            payloadFd,
+            stdoutFd,
+            stdoutPath
+        };
+    } catch {
+        if (payloadFd !== undefined) {
+            closeDescriptor(payloadFd);
+        }
+        if (stdoutFd !== undefined) {
+            closeDescriptor(stdoutFd);
+        }
+        if (dir !== undefined) {
+            removeDirectory(dir);
+        }
+
+        return null;
+    }
+}
+
+function closeCommandIo(io: CommandIo): void {
+    closeDescriptor(io.payloadFd);
+    closeDescriptor(io.stdoutFd);
+    removeDirectory(io.dir);
+}
+
+function readCapturedStdout(io: CommandIo): string {
+    try {
+        return fs.readFileSync(io.stdoutPath, 'utf-8');
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Kill everything the shell started, not just the shell.
+ *
+ * @remarks
+ * A timeout signals the shell alone, so a pipeline such as `curl ... | jq ...`
+ * leaves its remaining members running. On POSIX `detached: true` gives the shell
+ * its own process group, and that group outlives its leader, so a negated pid
+ * still reaches every member.
+ *
+ * Windows has no equivalent here: spawnSync returns only after terminating the
+ * shell, and `taskkill /T` needs a live pid to walk down from, so descendants
+ * there run until they exit on their own.
+ */
+function killProcessGroup(pid: number | undefined): void {
+    if (isWindows() || typeof pid !== 'number') {
+        return;
+    }
+
+    try {
+        process.kill(-pid, 'SIGKILL');
+    } catch {
+        // ESRCH once the group has already exited, which is the common case.
+    }
 }
 
 function executeCommand(request: CustomCommandRequest): CustomCommandResult {
+    const io = openCommandIo(request.input);
+
     try {
-        const stdout = execSync(request.command, {
+        const options: SyncShellOptions = {
+            shell: true,
             encoding: 'utf8',
-            input: request.input,
             timeout: request.timeoutMs,
-            stdio: ['pipe', 'pipe', 'ignore'],
+            stdio: io ? [io.payloadFd, io.stdoutFd, 'ignore'] : ['pipe', 'pipe', 'ignore'],
+            // Pinned rather than inherited, so a change to Node's default cannot
+            // silently turn large output into a failure marker.
+            maxBuffer: MAX_PIPED_STDOUT_BYTES,
             env: process.env,
-            windowsHide: true
-        }).trim();
+            windowsHide: true,
+            detached: !isWindows()
+        };
+
+        // Falling back to pipes keeps a temp directory problem from blanking the
+        // widget, at the cost of the timing guarantee above.
+        if (!io) {
+            options.input = request.input;
+        }
+
+        const result = spawnSync(request.command, options);
+
+        const marker = getFailureMarker(result);
+        if (marker !== null) {
+            // Only a timeout can leave the tree running. A command that exited on
+            // its own may have deliberately left a background job behind.
+            if (marker === '[Timeout]') {
+                killProcessGroup(result.pid);
+            }
+
+            return {
+                status: 'failed',
+                marker
+            };
+        }
+
+        const stdout = io ? readCapturedStdout(io) : result.stdout;
 
         return {
             status: 'ok',
-            stdout
+            stdout: stdout.slice(0, MAX_CACHED_OUTPUT_CHARS).trim()
         };
-    } catch (error) {
+    } catch {
         return {
             status: 'failed',
-            marker: getFailureMarker(error)
+            marker: '[Error]'
         };
+    } finally {
+        if (io) {
+            closeCommandIo(io);
+        }
     }
 }
 
@@ -260,9 +441,13 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
  * map alone would therefore never hit, so the cache is persisted to disk next to
  * the git cache.
  *
- * The key covers the command, the session and the terminal width. It deliberately
- * omits the rest of the piped payload, which carries token counts that change on
- * nearly every repaint and would make every lookup a miss.
+ * The key covers the command, its timeout, the session and the terminal width. It
+ * deliberately omits the rest of the piped payload, which carries token counts
+ * that change on nearly every repaint and would make every lookup a miss.
+ *
+ * Without a session id there is nothing to separate one session's output from
+ * another's, so the result stays in this process rather than reaching the file
+ * every session shares.
  */
 export function runCustomCommand(request: CustomCommandRequest): CustomCommandResult {
     const ttlMs = getCacheTtlMs(request.ttlSeconds);
@@ -273,6 +458,7 @@ export function runCustomCommand(request: CustomCommandRequest): CustomCommandRe
     const cwd = process.cwd();
     const entryKey = getEntryKey(request);
     const memoryCacheKey = `${entryKey}\0${cwd}`;
+    const canShareAcrossProcesses = typeof request.sessionId === 'string' && request.sessionId.length > 0;
     const now = Date.now();
 
     const memoryEntry = customCommandCache.get(memoryCacheKey);
@@ -280,19 +466,25 @@ export function runCustomCommand(request: CustomCommandRequest): CustomCommandRe
         return memoryEntry.result;
     }
 
-    const persistentEntry = readPersistentCacheEntry(cwd, entryKey, ttlMs, now);
-    if (persistentEntry) {
-        customCommandCache.set(memoryCacheKey, persistentEntry);
-        return persistentEntry.result;
+    if (canShareAcrossProcesses) {
+        const persistentEntry = readPersistentCacheEntry(cwd, entryKey, ttlMs, now);
+        if (persistentEntry) {
+            customCommandCache.set(memoryCacheKey, persistentEntry);
+            return persistentEntry.result;
+        }
     }
 
     const result = executeCommand(request);
+    // Stamped after the run, so a command slower than the TTL still gets the
+    // full TTL of reuse rather than expiring the moment it returns.
     const entry: CustomCommandCacheEntry = {
         result,
-        createdAt: now
+        createdAt: Date.now()
     };
     customCommandCache.set(memoryCacheKey, entry);
-    writePersistentCacheEntry(cwd, entryKey, entry, now);
+    if (canShareAcrossProcesses) {
+        writePersistentCacheEntry(cwd, entryKey, entry, entry.createdAt);
+    }
 
     return result;
 }
