@@ -9,7 +9,6 @@ import {
     clearAllWidgetStyling,
     cycleWidgetColor,
     cycleWidgetDim,
-    cycleWidgetNumberStyle,
     resetWidgetStyling,
     toggleWidgetBold,
     updateWidgetById
@@ -57,36 +56,6 @@ describe('color-menu mutations', () => {
         expect(parens[0]?.dim).toBe('parens');
         expect(off[0]).toEqual({ id: '1', type: 'tokens-input' });
         expect(whole[1]?.dim).toBeUndefined();
-    });
-
-    it('cycleWidgetNumberStyle cycles default, compact, whole, then default for the selected widget only', () => {
-        const widgets: WidgetItem[] = [
-            { id: '1', type: 'tokens-input' },
-            { id: '2', type: 'tokens-output' }
-        ];
-
-        const compact = cycleWidgetNumberStyle(widgets, '1');
-        const whole = cycleWidgetNumberStyle(compact, '1');
-        const off = cycleWidgetNumberStyle(whole, '1');
-
-        expect(compact[0]?.numberFormat).toEqual({ style: 'compact' });
-        expect(whole[0]?.numberFormat).toEqual({ style: 'whole' });
-        expect(off[0]).toEqual({ id: '1', type: 'tokens-input' });
-        expect(compact[1]?.numberFormat).toBeUndefined();
-    });
-
-    it('cycleWidgetNumberStyle preserves an explicit decimals across the cycle', () => {
-        const widgets: WidgetItem[] = [
-            { id: '1', type: 'tokens-input', numberFormat: { decimals: 2 } }
-        ];
-
-        const compact = cycleWidgetNumberStyle(widgets, '1');
-        const whole = cycleWidgetNumberStyle(compact, '1');
-        const off = cycleWidgetNumberStyle(whole, '1');
-
-        expect(compact[0]?.numberFormat).toEqual({ style: 'compact', decimals: 2 });
-        expect(whole[0]?.numberFormat).toEqual({ style: 'whole', decimals: 2 });
-        expect(off[0]?.numberFormat).toEqual({ decimals: 2 });
     });
 
     it('resetWidgetStyling removes color, backgroundColor, bold, dim, and numberFormat from one widget', () => {

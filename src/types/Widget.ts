@@ -47,6 +47,10 @@ export interface Widget {
     renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
+    // Whether the widget renders a number whose precision can be overridden.
+    // Gates the items editor's precision keybind; widgets that omit it are
+    // treated as non-numeric.
+    supportsNumberFormat?(): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
     getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
 }

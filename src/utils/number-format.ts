@@ -1,9 +1,55 @@
 import type {
     NumberFormat,
-    NumberKind
+    NumberKind,
+    NumberStyle
 } from '../types/NumberFormat';
 import type { Settings } from '../types/Settings';
-import type { WidgetItem } from '../types/Widget';
+import type {
+    CustomKeybind,
+    WidgetItem
+} from '../types/Widget';
+
+// Editor action and keybind for the per-widget precision cycle. The items editor
+// injects this for any widget whose supportsNumberFormat() is true, so a numeric
+// widget needs no keybind wiring of its own. '.' reads as the decimal point and
+// keeps every letter free for widget-specific binds.
+export const CYCLE_NUMBER_STYLE_ACTION = 'cycle-number-style';
+const NUMBER_FORMAT_KEYBIND: CustomKeybind = { key: '.', label: '(.) precision', action: CYCLE_NUMBER_STYLE_ACTION };
+
+export function getNumberFormatKeybind(): CustomKeybind {
+    return NUMBER_FORMAT_KEYBIND;
+}
+
+// Cycle the number style: default (precise) -> compact -> whole -> default.
+// Any explicit `decimals` is preserved across the cycle.
+export function cycleNumberStyle(item: WidgetItem): WidgetItem {
+    const currentStyle = item.numberFormat?.style;
+    const nextStyle: NumberStyle | undefined = currentStyle === undefined
+        ? 'compact'
+        : currentStyle === 'compact'
+            ? 'whole'
+            : undefined;
+    const decimals = item.numberFormat?.decimals;
+
+    if (nextStyle === undefined && decimals === undefined) {
+        const { numberFormat, ...restItem } = item;
+        void numberFormat; // Intentionally unused
+        return restItem;
+    }
+
+    const nextFormat: NumberFormat = {};
+    if (nextStyle !== undefined) {
+        nextFormat.style = nextStyle;
+    }
+    if (decimals !== undefined) {
+        nextFormat.decimals = decimals;
+    }
+
+    return {
+        ...item,
+        numberFormat: nextFormat
+    };
+}
 
 // Strip a pointless trailing ".0" (or ".00", ...) so a whole value reads cleanly
 // while a meaningful fraction is left intact.
