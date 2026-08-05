@@ -12,7 +12,8 @@ import {
     type ListEntry
 } from './List';
 
-type ConfigureStatusLineValue = 'refreshInterval' | 'gitCacheTtl';
+type TtlField = 'gitCacheTtl' | 'customCommandCacheTtl';
+type ConfigureStatusLineValue = 'refreshInterval' | TtlField;
 
 function getRefreshInputValue(interval: number | null): string {
     return interval === null ? '' : String(interval);
@@ -36,10 +37,17 @@ function getGitCacheTtlSublabel(ttlSeconds: number): string {
         : `(${ttlSeconds}s)`;
 }
 
+function getCustomCommandCacheTtlSublabel(ttlSeconds: number): string {
+    return ttlSeconds === 0
+        ? '(disabled)'
+        : `(${ttlSeconds}s)`;
+}
+
 export function buildConfigureStatusLineItems(
     refreshInterval: number | null,
     supportsRefreshInterval: boolean,
-    gitCacheTtlSeconds: number
+    gitCacheTtlSeconds: number,
+    customCommandCacheTtlSeconds: number
 ): ListEntry<ConfigureStatusLineValue>[] {
     return [
         {
@@ -56,6 +64,12 @@ export function buildConfigureStatusLineItems(
             sublabel: getGitCacheTtlSublabel(gitCacheTtlSeconds),
             value: 'gitCacheTtl',
             description: 'How long git widget subprocess output can be reused while .git/HEAD and .git/index are unchanged. Enter 0-60 seconds;\n0 disables age-based expiry, so cached output is reused until those git metadata mtimes change.'
+        },
+        {
+            label: '🔧 Custom Command Cache TTL',
+            sublabel: getCustomCommandCacheTtlSublabel(customCommandCacheTtlSeconds),
+            value: 'customCommandCacheTtl',
+            description: 'How long custom command output is reused before the command runs again. Enter 0-60 seconds;\n0 disables caching, so every status line render spawns the command.'
         }
     ];
 }
@@ -82,7 +96,7 @@ export function validateRefreshIntervalInput(value: string): string | null {
     return null;
 }
 
-export function validateGitCacheTtlInput(value: string): string | null {
+function validateTtlInput(value: string, label: string): string | null {
     const parsed = parseInt(value, 10);
 
     if (value === '' || isNaN(parsed)) {
@@ -90,22 +104,41 @@ export function validateGitCacheTtlInput(value: string): string | null {
     }
 
     if (parsed < 0) {
-        return `Minimum Git cache TTL is 0s (you entered ${parsed}s)`;
+        return `Minimum ${label} is 0s (you entered ${parsed}s)`;
     }
 
     if (parsed > 60) {
-        return `Maximum Git cache TTL is 60s (you entered ${parsed}s)`;
+        return `Maximum ${label} is 60s (you entered ${parsed}s)`;
     }
 
     return null;
+}
+
+export function validateGitCacheTtlInput(value: string): string | null {
+    return validateTtlInput(value, 'Git cache TTL');
+}
+
+export function validateCustomCommandCacheTtlInput(value: string): string | null {
+    return validateTtlInput(value, 'custom command cache TTL');
+}
+
+interface TtlFieldConfig {
+    currentValue: number;
+    prompt: string;
+    helperText: string;
+    hint: string;
+    validate: (value: string) => string | null;
+    onSave: (ttlSeconds: number) => void;
 }
 
 export interface RefreshIntervalMenuProps {
     currentInterval: number | null;
     supportsRefreshInterval: boolean;
     gitCacheTtlSeconds: number;
+    customCommandCacheTtlSeconds: number;
     onUpdate: (interval: number | null) => void;
     onGitCacheTtlUpdate: (ttlSeconds: number) => void;
+    onCustomCommandCacheTtlUpdate: (ttlSeconds: number) => void;
     onBack: () => void;
 }
 
@@ -113,15 +146,36 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     currentInterval,
     supportsRefreshInterval,
     gitCacheTtlSeconds,
+    customCommandCacheTtlSeconds,
     onUpdate,
     onGitCacheTtlUpdate,
+    onCustomCommandCacheTtlUpdate,
     onBack
 }) => {
     const [editingRefreshInterval, setEditingRefreshInterval] = useState(false);
-    const [editingGitCacheTtl, setEditingGitCacheTtl] = useState(false);
+    const [editingTtlField, setEditingTtlField] = useState<TtlField | null>(null);
     const [refreshInput, setRefreshInput] = useState(() => getRefreshInputValue(currentInterval));
-    const [gitCacheTtlInput, setGitCacheTtlInput] = useState(() => String(gitCacheTtlSeconds));
+    const [ttlInput, setTtlInput] = useState(() => String(gitCacheTtlSeconds));
     const [validationError, setValidationError] = useState<string | null>(null);
+
+    const ttlFields: Record<TtlField, TtlFieldConfig> = {
+        gitCacheTtl: {
+            currentValue: gitCacheTtlSeconds,
+            prompt: 'Enter Git cache TTL in seconds (0-60):',
+            helperText: 'This affects how quickly git widgets notice unstaged and untracked working-tree changes.',
+            hint: '0 disables age-based expiry; cache validity uses .git/HEAD and .git/index mtimes only.',
+            validate: validateGitCacheTtlInput,
+            onSave: onGitCacheTtlUpdate
+        },
+        customCommandCacheTtl: {
+            currentValue: customCommandCacheTtlSeconds,
+            prompt: 'Enter custom command cache TTL in seconds (0-60):',
+            helperText: 'This affects how quickly custom command widgets show new output, and how often they spawn a shell.',
+            hint: '0 disables caching; every status line render spawns the command again.',
+            validate: validateCustomCommandCacheTtlInput,
+            onSave: onCustomCommandCacheTtlUpdate
+        }
+    };
 
     useInput((input, key) => {
         if (editingRefreshInterval) {
@@ -162,31 +216,33 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
             return;
         }
 
-        if (editingGitCacheTtl) {
+        if (editingTtlField) {
+            const field = ttlFields[editingTtlField];
+
             if (key.return) {
-                const error = validateGitCacheTtlInput(gitCacheTtlInput);
+                const error = field.validate(ttlInput);
 
                 if (error) {
                     setValidationError(error);
                 } else {
-                    const value = parseInt(gitCacheTtlInput, 10);
-                    onGitCacheTtlUpdate(value);
-                    setEditingGitCacheTtl(false);
+                    const value = parseInt(ttlInput, 10);
+                    field.onSave(value);
+                    setEditingTtlField(null);
                     setValidationError(null);
                 }
             } else if (key.escape) {
-                setGitCacheTtlInput(String(gitCacheTtlSeconds));
-                setEditingGitCacheTtl(false);
+                setTtlInput(String(field.currentValue));
+                setEditingTtlField(null);
                 setValidationError(null);
             } else if (key.backspace) {
-                setGitCacheTtlInput(gitCacheTtlInput.slice(0, -1));
+                setTtlInput(ttlInput.slice(0, -1));
                 setValidationError(null);
             } else if (key.delete) {
                 // No cursor position in simple input
             } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
-                const newValue = gitCacheTtlInput + input;
+                const newValue = ttlInput + input;
                 if (newValue.length <= 2) {
-                    setGitCacheTtlInput(newValue);
+                    setTtlInput(newValue);
                     setValidationError(null);
                 }
             }
@@ -217,23 +273,23 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                         <Text dimColor>Press Enter to confirm, ESC to cancel. Leave empty to remove.</Text>
                     )}
                 </Box>
-            ) : editingGitCacheTtl ? (
+            ) : editingTtlField ? (
                 <Box marginTop={1} flexDirection='column'>
                     <Text>
-                        Enter Git cache TTL in seconds (0-60):
+                        {ttlFields[editingTtlField].prompt}
                         {' '}
-                        {gitCacheTtlInput}
-                        {gitCacheTtlInput.length > 0 ? 's' : ''}
+                        {ttlInput}
+                        {ttlInput.length > 0 ? 's' : ''}
                     </Text>
                     <Text> </Text>
                     <Text dimColor wrap='wrap'>
-                        This affects how quickly git widgets notice unstaged and untracked working-tree changes.
+                        {ttlFields[editingTtlField].helperText}
                     </Text>
                     {validationError ? (
                         <Text color='red'>{validationError}</Text>
                     ) : (
                         <Text dimColor>
-                            0 disables age-based expiry; cache validity uses .git/HEAD and .git/index mtimes only.
+                            {ttlFields[editingTtlField].hint}
                         </Text>
                     )}
                     <Text dimColor>Press Enter to confirm, ESC to cancel.</Text>
@@ -241,7 +297,12 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
             ) : (
                 <List
                     marginTop={1}
-                    items={buildConfigureStatusLineItems(currentInterval, supportsRefreshInterval, gitCacheTtlSeconds)}
+                    items={buildConfigureStatusLineItems(
+                        currentInterval,
+                        supportsRefreshInterval,
+                        gitCacheTtlSeconds,
+                        customCommandCacheTtlSeconds
+                    )}
                     onSelect={(value) => {
                         if (value === 'back') {
                             onBack();
@@ -254,8 +315,8 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                             return;
                         }
 
-                        setGitCacheTtlInput(String(gitCacheTtlSeconds));
-                        setEditingGitCacheTtl(true);
+                        setTtlInput(String(ttlFields[value].currentValue));
+                        setEditingTtlField(value);
                     }}
                     showBackButton={true}
                 />

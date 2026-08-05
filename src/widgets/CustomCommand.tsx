@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import {
     Box,
     Text,
@@ -16,6 +15,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import { getVisibleText } from '../utils/ansi';
+import { runCustomCommand } from '../utils/custom-command';
 import { shouldInsertInput } from '../utils/input-guards';
 
 export class CustomCommandWidget implements Widget {
@@ -58,55 +58,37 @@ export class CustomCommandWidget implements Widget {
         if (context.isPreview) {
             return item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
         } else if (item.commandPath && context.data) {
-            try {
-                const timeout = item.timeout ?? 1000;
-                const jsonInput = JSON.stringify(
-                    typeof context.terminalWidth === 'number'
-                        ? { ...context.data, terminal_width: context.terminalWidth }
-                        : context.data
-                );
-                let output = execSync(item.commandPath, {
-                    encoding: 'utf8',
-                    input: jsonInput,
-                    timeout: timeout,
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    env: process.env,
-                    windowsHide: true
-                }).trim();
+            const jsonInput = JSON.stringify(
+                typeof context.terminalWidth === 'number'
+                    ? { ...context.data, terminal_width: context.terminalWidth }
+                    : context.data
+            );
+            const result = runCustomCommand({
+                command: item.commandPath,
+                input: jsonInput,
+                timeoutMs: item.timeout ?? 1000,
+                ttlSeconds: settings.customCommandCacheTtlSeconds,
+                sessionId: context.data.session_id,
+                terminalWidth: context.terminalWidth
+            });
 
-                // Strip ANSI codes if preserveColors is false
-                if (!item.preserveColors) {
-                    // Strip ANSI/OSC escape sequences and keep only visible text
-                    output = getVisibleText(output);
-                }
-
-                if (item.maxWidth && output.length > item.maxWidth) {
-                    output = output.substring(0, item.maxWidth - 3) + '...';
-                }
-
-                return output || null;
-            } catch (error) {
-                // Provide more specific error messages
-                if (error instanceof Error) {
-                    const execError = error as Error & {
-                        code?: string;
-                        signal?: string;
-                        status?: number;
-                    };
-                    if (execError.code === 'ENOENT') {
-                        return '[Cmd not found]';
-                    } else if (execError.code === 'ETIMEDOUT') {
-                        return '[Timeout]';
-                    } else if (execError.code === 'EACCES') {
-                        return '[Permission denied]';
-                    } else if (execError.signal) {
-                        return `[Signal: ${execError.signal}]`;
-                    } else if (execError.status !== undefined) {
-                        return `[Exit: ${execError.status}]`;
-                    }
-                }
-                return '[Error]';
+            if (result.status === 'failed') {
+                return result.marker;
             }
+
+            let output = result.stdout;
+
+            // Strip ANSI codes if preserveColors is false
+            if (!item.preserveColors) {
+                // Strip ANSI/OSC escape sequences and keep only visible text
+                output = getVisibleText(output);
+            }
+
+            if (item.maxWidth && output.length > item.maxWidth) {
+                output = output.substring(0, item.maxWidth - 3) + '...';
+            }
+
+            return output || null;
         }
         return null;
     }
