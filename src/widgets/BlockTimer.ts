@@ -11,6 +11,7 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     cycleUsageDisplayMode,
@@ -26,13 +27,6 @@ import {
     toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
-
-function makeTimerProgressBar(percent: number, width: number): string {
-    const clampedPercent = Math.max(0, Math.min(100, percent));
-    const filledWidth = Math.floor((clampedPercent / 100) * width);
-    const emptyWidth = width - filledWidth;
-    return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
-}
 
 export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
