@@ -55,12 +55,12 @@ describe('FableWeeklyUsageWidget', () => {
             id: 'fable-weekly',
             type: 'fable-weekly-usage',
             metadata: { cursor: 'true', display: 'slider' }
-        }, context)).toBe('Fable Weekly: ▓▓░░░│░░░░ 20.0%');
+        }, context)).toBe('Weekly Fable: ▓▓░░░│░░░░ 20.0%');
         expect(render(widget, {
             id: 'fable-weekly',
             type: 'fable-weekly-usage',
             metadata: { cursor: 'true', display: 'slider-only' }
-        }, context)).toBe('Fable Weekly: ▓▓░░░│░░░░');
+        }, context)).toBe('Weekly Fable: ▓▓░░░│░░░░');
     });
 
     it('returns null when the per-model usage is missing from the API response', () => {
@@ -72,14 +72,15 @@ describe('FableWeeklyUsageWidget', () => {
         baseItem: { id: 'fable-weekly', type: 'fable-weekly-usage' },
         createWidget: () => new FableWeeklyUsageWidget(),
         errorMessageMock: usageErrorMessageMock,
-        expectedInvertedTime: 'Fable Weekly: 57.9%',
+        expectedInvertedTime: 'Weekly Fable: 57.9%',
         expectedModifierText: '(long bar, remaining)',
-        expectedPreviewInvertedTime: 'Fable Weekly: 96.0%',
-        expectedProgress: 'Fable Weekly: [███████████████████░░░░░░░░░░░░░] 57.9%',
+        expectedPreviewInvertedTime: 'Weekly Fable: 96.0%',
+        expectedProgress: 'Weekly Fable: [███████████████████░░░░░░░░░░░░░] 57.9%',
         expectedRawInvertedTime: '57.9%',
         expectedRawProgress: '[███████░░░░░░░░░] 42.1%',
         expectedRawTime: '42.1%',
-        expectedTime: 'Fable Weekly: 42.1%',
+        expectedTime: 'Weekly Fable: 42.1%',
+        expectedWholePercentTime: 'Weekly Fable: 42%',
         modifierItem: {
             id: 'fable-weekly',
             type: 'fable-weekly-usage',
