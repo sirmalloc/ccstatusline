@@ -50,6 +50,10 @@ import {
     getPackageVersion,
     getTerminalWidth
 } from './utils/terminal';
+import {
+    initUsageLog,
+    logStdinRateLimits
+} from './utils/usage-log';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
@@ -99,7 +103,18 @@ async function ensureWindowsUtf8CodePage() {
     }
 }
 
-async function renderMultipleLines(data: StatusJSON) {
+// Reads rate_limits off the raw, pre-zod stdin payload: StatusJSONSchema
+// declares rate_limits as a strict object, so the parsed data has unknown
+// buckets stripped - the usage log must keep them
+function getRawRateLimits(rawInput: unknown): unknown {
+    if (typeof rawInput !== 'object' || rawInput === null) {
+        return undefined;
+    }
+
+    return (rawInput as Record<string, unknown>).rate_limits;
+}
+
+async function renderMultipleLines(data: StatusJSON, rawInput?: unknown) {
     const settings = await loadSettings();
     const configError = getConfigLoadError();
 
@@ -108,6 +123,15 @@ async function renderMultipleLines(data: StatusJSON) {
 
     // Update color map after setting chalk level
     updateColorMap();
+
+    // Usage Tracker: runs before prefetchUsageDataIfNeeded so a slow or failed
+    // API fetch cannot delay the stdin record and so the api-path hook inside
+    // fetchUsageData sees an initialized logger. Only call site of initUsageLog.
+    initUsageLog(settings.usageTracker, {
+        sessionId: data.session_id,
+        modelId: typeof data.model === 'string' ? data.model : data.model?.id
+    });
+    logStdinRateLimits(getRawRateLimits(rawInput));
 
     // Get all lines to render
     const lines = settings.lines;
@@ -136,7 +160,7 @@ async function renderMultipleLines(data: StatusJSON) {
         sessionDuration = await getSessionDuration(data.transcript_path);
     }
 
-    const usageData = await prefetchUsageDataIfNeeded(lines, data);
+    const usageData = await prefetchUsageDataIfNeeded(lines, data, { forceUsageFetch: settings.usageTracker.enabled && settings.usageTracker.logApiUsage });
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
@@ -328,14 +352,16 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                // Parse and validate JSON in one step
-                const result = StatusJSONSchema.safeParse(JSON.parse(input));
+                // Keep the raw parse result: the usage log needs rate_limits
+                // before zod strips unknown buckets (see getRawRateLimits)
+                const rawInput: unknown = JSON.parse(input);
+                const result = StatusJSONSchema.safeParse(rawInput);
                 if (!result.success) {
                     console.error('Invalid status JSON format:', result.error.message);
                     process.exit(1);
                 }
 
-                await renderMultipleLines(result.data);
+                await renderMultipleLines(result.data, rawInput);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);

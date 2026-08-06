@@ -21,6 +21,7 @@ export type MainMenuOption = 'lines'
     | 'manageInstallation'
     | 'checkUpdates'
     | 'configureStatusLine'
+    | 'usageTracker'
     | 'exportConfig'
     | 'importConfig'
     | 'starGithub'
@@ -121,6 +122,11 @@ export function buildMainMenuItems(
             disabled: !isClaudeInstalled,
             value: 'configureStatusLine',
             description: 'Configure Claude Code status line settings like refresh interval'
+        },
+        {
+            label: '📊 Usage Tracker',
+            value: 'usageTracker',
+            description: 'Record rate limit usage to a local log file for later analysis'
         },
         '-',
         {

@@ -16,3 +16,4 @@ export * from './StatusLinePreview';
 export * from './TerminalOptionsMenu';
 export * from './TerminalWidthMenu';
 export * from './UpdateCheckerMenu';
+export * from './UsageTrackerMenu';

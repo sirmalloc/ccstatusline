@@ -8,6 +8,7 @@ import * as path from 'path';
 import { z } from 'zod';
 
 import { getClaudeConfigDir } from './claude-settings';
+import { logApiUsagePayload } from './usage-log';
 import type {
     UsageData,
     UsageDataField,
@@ -789,6 +790,11 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         } catch {
             // Ignore cache write errors
         }
+
+        // Usage Tracker api path: only the process that performed the live
+        // fetch reaches this point, so multi-session dedup is inherited from
+        // the cache design. No-op unless the piped render initialized the log.
+        logApiUsagePayload(response.body, currentTokenHash);
 
         // Clear the in-flight lock written above only once this response satisfies
         // the caller's requested fields. Incomplete 200 responses are cached but
