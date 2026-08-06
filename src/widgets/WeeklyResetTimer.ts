@@ -4,6 +4,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -17,6 +18,7 @@ import {
 } from '../utils/usage';
 
 import { makeModifierText } from './shared/editor-display';
+import { isHidden } from './shared/hideable';
 import {
     LOCALE_EDITOR_ACTION,
     renderUsageLocaleEditor
@@ -31,6 +33,7 @@ import {
     renderUsageTimezoneEditor
 } from './shared/timezone-editor';
 import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageLocale,
@@ -139,6 +142,10 @@ export class WeeklyResetTimerWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [USAGE_NO_DATA_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, ['compact', 'hours', 'absolute'], true);
@@ -218,6 +225,10 @@ export class WeeklyResetTimerWidget implements Widget {
         const window = resolveWeeklyUsageWindow(usageData);
 
         if (!window) {
+            if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {
+                return null;
+            }
+
             if (usageData.error) {
                 return getUsageErrorMessage(usageData.error);
             }
@@ -267,7 +278,7 @@ export class WeeklyResetTimerWidget implements Widget {
         const mode = item ? getUsageDisplayMode(item) : 'time';
         const isBarMode = isUsageProgressMode(mode) || isUsageSliderMode(mode);
         if (!item || (!isBarMode && !isUsageDateMode(item))) {
-            keybinds.push({ key: 'h', label: '(h)ours only', action: 'toggle-hours' });
+            keybinds.push({ key: 'o', label: '(o)nly hours', action: 'toggle-hours' });
         }
 
         return keybinds;
