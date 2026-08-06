@@ -27,8 +27,7 @@ export class OutputSpeedWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
-        return renderSpeedWidgetValue('output', item, context);
+        return renderSpeedWidgetValue('output', item, context, settings);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -41,4 +40,5 @@ export class OutputSpeedWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

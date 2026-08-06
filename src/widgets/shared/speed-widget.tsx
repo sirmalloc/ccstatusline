@@ -6,6 +6,7 @@ import {
 import React, { useState } from 'react';
 
 import type { RenderContext } from '../../types/RenderContext';
+import type { Settings } from '../../types/Settings';
 import type { SpeedMetrics } from '../../types/SpeedMetrics';
 import type {
     CustomKeybind,
@@ -14,6 +15,7 @@ import type {
     WidgetItem
 } from '../../types/Widget';
 import { shouldInsertInput } from '../../utils/input-guards';
+import { resolveNumberFormat } from '../../utils/number-format';
 import {
     calculateInputSpeed,
     calculateOutputSpeed,
@@ -110,14 +112,14 @@ export function getSpeedWidgetEditorDisplay(kind: SpeedWidgetKind, item: WidgetI
 export function renderSpeedWidgetValue(
     kind: SpeedWidgetKind,
     item: WidgetItem,
-    context: RenderContext
+    context: RenderContext,
+    settings: Settings
 ): string | null {
     const config = SPEED_WIDGET_CONFIG[kind];
-    const previewValue = isWidgetSpeedWindowEnabled(item)
-        ? config.windowedPreview
-        : config.sessionPreview;
+    const format = resolveNumberFormat('speed', item, settings);
 
     if (context.isPreview) {
+        const previewValue = isWidgetSpeedWindowEnabled(item) ? config.windowedPreview : config.sessionPreview;
         return formatRawOrLabeledValue(item, config.label, previewValue);
     }
 
@@ -127,7 +129,7 @@ export function renderSpeedWidgetValue(
     }
 
     const speed = calculateSpeed(kind, metrics);
-    return formatRawOrLabeledValue(item, config.label, formatSpeed(speed));
+    return formatRawOrLabeledValue(item, config.label, formatSpeed(speed, format));
 }
 
 export function getSpeedWidgetCustomKeybinds(): CustomKeybind[] {

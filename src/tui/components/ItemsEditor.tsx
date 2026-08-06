@@ -14,6 +14,7 @@ import type {
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
+import { getNumberFormatKeybind } from '../../utils/number-format';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
@@ -104,11 +105,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     };
 
     const getCustomKeybindsForWidget = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
-        if (!widgetImpl.getCustomKeybinds) {
-            return [];
-        }
+        const keybinds = widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [];
 
-        return widgetImpl.getCustomKeybinds(widget);
+        // Numeric widgets get the precision cycle here rather than in the color
+        // menu, so every non-color override stays on this screen and stays
+        // reachable while a powerline theme is active.
+        return widgetImpl.supportsNumberFormat?.() ? [...keybinds, getNumberFormatKeybind()] : keybinds;
     };
 
     const openWidgetPicker = (action: WidgetPickerAction) => {
