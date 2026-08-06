@@ -9,12 +9,15 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import { shouldInsertInput } from '../utils/input-guards';
+
+import { MERGE_TARGET_HIDDEN_HIDEABLE_STATE } from './shared/hideable';
 
 export class CustomSymbolWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -37,6 +40,12 @@ export class CustomSymbolWidget implements Widget {
             label: '(e)dit symbol',
             action: 'edit-symbol'
         }];
+    }
+
+    // The actual hiding happens in the renderer, which resolves the merge
+    // target's rendered output (see applyMergeTargetHiding)
+    getHideableStates(): HideableState[] {
+        return [MERGE_TARGET_HIDDEN_HIDEABLE_STATE];
     }
 
     renderEditor(props: WidgetEditorProps): React.ReactElement {

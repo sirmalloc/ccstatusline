@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -16,9 +17,12 @@ import {
     getRemoteWidgetKeybinds,
     getRemoteWidgetModifierText,
     handleRemoteWidgetAction,
-    isHideNoRemoteEnabled,
     isLinkToRepoEnabled
 } from './shared/git-remote';
+import {
+    NO_UPSTREAM_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 
 export class GitUpstreamOwnerRepoWidget implements Widget {
     getDefaultColor(): string { return 'magenta'; }
@@ -33,12 +37,16 @@ export class GitUpstreamOwnerRepoWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [NO_UPSTREAM_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         return handleRemoteWidgetAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideWhenEmpty = isHideNoRemoteEnabled(item);
+        const hideWhenEmpty = isHidden(item, NO_UPSTREAM_HIDEABLE_STATE.key);
         const linkEnabled = isLinkToRepoEnabled(item);
 
         if (context.isPreview) {
