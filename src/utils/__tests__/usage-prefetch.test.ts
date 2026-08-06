@@ -550,6 +550,60 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
 
+    it('force-fetches usage data for the tracker api log when no usage widgets exist', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 12 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'model' }],
+            [{ id: '2', type: 'git-branch' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {}, { forceUsageFetch: true });
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{ requiredFields: [] }]]);
+        expect(usageData).toEqual({ sessionUsage: 12 });
+    });
+
+    it('preserves the early return when no forced fetch is requested', async () => {
+        const lines = makeLines(
+            [{ id: '1', type: 'model' }],
+            [{ id: '2', type: 'git-branch' }]
+        );
+
+        expect(await prefetchUsageDataIfNeeded(lines, {}, { forceUsageFetch: false })).toBeNull();
+        expect(await prefetchUsageDataIfNeeded(lines, {}, {})).toBeNull();
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('force-fetches for the api log without changing render data when stdin satisfies every widget', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 99,
+            weeklySonnetUsage: 1,
+            error: 'rate-limited'
+        });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {
+            rate_limits: {
+                five_hour: { used_percentage: 42, resets_at: 1774020000 },
+                seven_day: { used_percentage: 15, resets_at: 1774540000 }
+            }
+        }, { forceUsageFetch: true });
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{ requiredFields: [] }]]);
+        // The fetch fires purely for the log hook; its result (including the
+        // error) is discarded so rendering matches the untracked behavior.
+        expect(usageData).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: epochToIso(1774020000),
+            weeklyUsage: 15,
+            weeklyResetAt: epochToIso(1774540000)
+        });
+    });
+
     it('falls back to API fetch when sessionResetAt is missing from rate_limits', async () => {
         mockFetchUsageData.mockResolvedValue({
             sessionUsage: 42,

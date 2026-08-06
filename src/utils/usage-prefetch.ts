@@ -212,17 +212,43 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
     return hasAnyUsageDataField(usageData) ? usageData : null;
 }
 
-export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: StatusJSON): Promise<UsageData | null> {
+export interface PrefetchUsageDataOptions {
+    // Usage Tracker api logging (usage-log.ts): fetchUsageData must run even
+    // when no widget needs its result, so the log hook inside it can fire.
+    // The 180s cache TTL naturally rate-limits the extra fetches.
+    forceUsageFetch?: boolean;
+}
+
+export async function prefetchUsageDataIfNeeded(
+    lines: WidgetItem[][],
+    data?: StatusJSON,
+    options?: PrefetchUsageDataOptions
+): Promise<UsageData | null> {
+    const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
+
     if (!hasUsageDependentWidgets(lines)) {
-        return null;
+        if (!options?.forceUsageFetch) {
+            return null;
+        }
+
+        // Nothing renders the returned data on this path; the fetch exists
+        // purely so the api-path log hook runs.
+        const apiData = await fetchUsageData({ requiredFields: [] });
+        return mergeUsageData(rateLimitsData, apiData);
     }
 
-    const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
     const missingRequirements = getMissingFetchRequirements(rateLimitsData, requirements);
     const missingFields = missingRequirements.fields;
 
     if (missingFields.length === 0) {
+        if (options?.forceUsageFetch) {
+            // Same hook-firing fetch as above. stdin satisfied every widget,
+            // so the result is deliberately discarded - rendering must stay
+            // identical to the untracked behavior.
+            await fetchUsageData({ requiredFields: [] });
+        }
+
         return rateLimitsData;
     }
 

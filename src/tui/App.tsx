@@ -93,7 +93,10 @@ import {
     TerminalWidthMenu,
     UninstallMenu,
     UpdateCheckerMenu,
+    UsageTrackerMenu,
+    buildMainMenuItems,
     getMainMenuInstallSelectionIndex,
+    getMainMenuSelectionIndex,
     type InstallSelection,
     type MainMenuOption,
     type UninstallSelection,
@@ -127,6 +130,7 @@ type AppScreen = 'main'
     | 'uninstallOptions'
     | 'updates'
     | 'refreshInterval'
+    | 'usageTracker'
     | 'exportConfig'
     | 'importConfig'
     | 'importPreview';
@@ -1011,6 +1015,9 @@ export const App: React.FC = () => {
             case 'configureStatusLine':
                 setScreen('refreshInterval');
                 break;
+            case 'usageTracker':
+                setScreen('usageTracker');
+                break;
             case 'exportConfig':
                 setScreen('exportConfig');
                 break;
@@ -1391,6 +1398,24 @@ export const App: React.FC = () => {
                             setScreen('main');
                         }}
                         onBack={() => {
+                            setScreen('main');
+                        }}
+                    />
+                )}
+                {screen === 'usageTracker' && (
+                    <UsageTrackerMenu
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
+                        }}
+                        onBack={() => {
+                            setMenuSelections(prev => ({
+                                ...prev,
+                                main: getMainMenuSelectionIndex(
+                                    buildMainMenuItems(isClaudeInstalled, hasChanges, effectiveInstallation),
+                                    'usageTracker'
+                                )
+                            }));
                             setScreen('main');
                         }}
                     />

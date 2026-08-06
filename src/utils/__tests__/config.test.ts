@@ -481,6 +481,38 @@ describe('config utilities', () => {
         expect(getConfigLoadError()).toBeNull();
     });
 
+    it('applies usageTracker defaults when loading a settings file that predates it', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []] });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.usageTracker).toEqual({
+            enabled: false,
+            logApiUsage: true,
+            heartbeatMinutes: 10,
+            rotateMaxMb: 5
+        });
+
+        // Loading alone does not rewrite the legacy file; the key round-trips
+        // through the next save.
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+
+        await saveSettings({
+            ...settings,
+            usageTracker: {
+                ...settings.usageTracker,
+                enabled: true
+            }
+        });
+
+        const reloaded = await loadSettings();
+        expect(reloaded.usageTracker.enabled).toBe(true);
+        expect(reloaded.usageTracker.logApiUsage).toBe(true);
+    });
+
     it('silently rewrites legacy git-pr widget type to git-review on load', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });

@@ -45,6 +45,18 @@ export const SettingsSchema_v1 = z.object({
     globalBold: z.boolean().optional()
 });
 
+// Usage Tracker (see src/utils/usage-log.ts). Additive with full defaults,
+// so no CURRENT_VERSION bump is needed
+export const UsageTrackerConfigSchema = z.object({
+    enabled: z.boolean().default(false),
+    logApiUsage: z.boolean().default(true),
+    logPath: z.string().optional(),
+    heartbeatMinutes: z.number().min(1).max(120).default(10),
+    rotateMaxMb: z.number().min(1).max(100).default(5)
+});
+
+export type UsageTrackerConfig = z.infer<typeof UsageTrackerConfigSchema>;
+
 // Main settings schema with defaults
 export const SettingsSchema = z.object({
     version: z.number().default(CURRENT_VERSION),
@@ -84,6 +96,12 @@ export const SettingsSchema = z.object({
         theme: undefined,
         autoAlign: false,
         continueThemeAcrossLines: false
+    }),
+    usageTracker: UsageTrackerConfigSchema.default({
+        enabled: false,
+        logApiUsage: true,
+        heartbeatMinutes: 10,
+        rotateMaxMb: 5
     }),
     updatemessage: z.object({
         message: z.string().nullable().optional(),
