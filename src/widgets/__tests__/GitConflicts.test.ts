@@ -29,6 +29,7 @@ const mockExecFileSync = execFileSync as unknown as {
 function render(options: {
     isPreview?: boolean;
     rawValue?: boolean;
+    hide?: string;
     hideNoGit?: boolean;
 } = {}) {
     const widget = new GitConflictsWidget();
@@ -37,7 +38,7 @@ function render(options: {
         id: 'git-conflicts',
         type: 'git-conflicts',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hide ? { hide: options.hide } : (options.hideNoGit ? { hide: 'no-git' } : undefined)
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
@@ -81,6 +82,24 @@ describe('GitConflictsWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render({ rawValue: true })).toBe('0');
+    });
+
+    it('hides zero conflicts when the zero state is enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBeNull();
+    });
+
+    it('keeps non-zero conflicts visible with the zero state enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce([
+            '100644 hash 1\tconflict-a',
+            '100644 hash 2\tconflict-a',
+            '100644 hash 3\tconflict-a'
+        ].join('\n'));
+
+        expect(render({ hide: 'zero' })).toBe('⚠ 1');
     });
 
     it('renders the conflict count', () => {
