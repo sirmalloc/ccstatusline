@@ -15,7 +15,11 @@ import { formatTokens } from '../utils/format-tokens';
 
 import {
     isMetadataFlagEnabled,
-    toggleMetadataFlag
+    isNerdFontEnabled,
+    setNerdFontFormat,
+    toggleMetadataFlag,
+    toggleNerdFont,
+    type NerdFontFormats
 } from './shared/metadata';
 import {
     getSlotSymbol,
@@ -34,7 +38,6 @@ const CYCLE_FORMAT_ACTION = 'cycle-format';
 const TOGGLE_HIDE_ZERO_ACTION = 'toggle-hide-zero';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
 const HIDE_ZERO_METADATA_KEY = 'hideZero';
-const NERD_FONT_METADATA_KEY = 'nerdFont';
 const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
 const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
@@ -60,42 +63,15 @@ function getFormat(item: WidgetItem): CompactionCounterFormat {
     return (FORMATS as readonly string[]).includes(format ?? '') ? (format as CompactionCounterFormat) : DEFAULT_FORMAT;
 }
 
-function removeNerdFont(item: WidgetItem): WidgetItem {
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
+// Only the icon format draws a glyph; the other two are text.
+function canUseNerdFont(item: WidgetItem): boolean {
+    return getFormat(item) === DEFAULT_FORMAT;
 }
 
-function setFormat(item: WidgetItem, format: CompactionCounterFormat): WidgetItem {
-    if (format === DEFAULT_FORMAT) {
-        const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
-        void removedFormat;
-
-        return {
-            ...item,
-            metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-        };
-    }
-
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: {
-            ...restMetadata,
-            format
-        }
-    };
-}
-
-function isNerdFontEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[NERD_FONT_METADATA_KEY] === 'true' && getFormat(item) === DEFAULT_FORMAT;
-}
+const NERD_FONT_FORMATS: NerdFontFormats<CompactionCounterFormat> = {
+    defaultFormat: DEFAULT_FORMAT,
+    canUseNerdFont
+};
 
 function isHideZeroEnabled(item: WidgetItem): boolean {
     return item.metadata?.[HIDE_ZERO_METADATA_KEY] === 'true';
@@ -179,24 +155,6 @@ function formatStats(data: CompactionData, item: WidgetItem, icon: string): stri
     return out;
 }
 
-function toggleNerdFont(item: WidgetItem): WidgetItem {
-    if (getFormat(item) !== DEFAULT_FORMAT) {
-        return removeNerdFont(item);
-    }
-
-    if (!isNerdFontEnabled(item)) {
-        return {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                [NERD_FONT_METADATA_KEY]: 'true'
-            }
-        };
-    }
-
-    return removeNerdFont(item);
-}
-
 function formatCount(count: number, format: CompactionCounterFormat, icon: string): string {
     switch (format) {
         case 'icon-space-number': return `${icon} ${count}`;
@@ -230,7 +188,7 @@ export class CompactionCounterWidget implements Widget {
             modifiers.push(`${metric} value`);
         } else {
             modifiers.push(getFormat(item));
-            if (isNerdFontEnabled(item)) {
+            if (isNerdFontEnabled(item, NERD_FONT_FORMATS)) {
                 modifiers.push('nerd font');
             }
             if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
@@ -262,7 +220,7 @@ export class CompactionCounterWidget implements Widget {
             const currentFormat = getFormat(item);
             const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
 
-            return setFormat(item, nextFormat);
+            return setNerdFontFormat(item, nextFormat, NERD_FONT_FORMATS);
         }
 
         if (action === TOGGLE_HIDE_ZERO_ACTION) {
@@ -270,7 +228,7 @@ export class CompactionCounterWidget implements Widget {
         }
 
         if (action === TOGGLE_NERD_FONT_ACTION) {
-            return toggleNerdFont(item);
+            return toggleNerdFont(item, NERD_FONT_FORMATS);
         }
 
         if (action === TOGGLE_TRIGGERS_ACTION) {
@@ -301,7 +259,7 @@ export class CompactionCounterWidget implements Widget {
             return null;
         }
 
-        const icon = isNerdFontEnabled(item) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
+        const icon = isNerdFontEnabled(item, NERD_FONT_FORMATS) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
         return formatStats(data, item, icon);
     }
 
@@ -318,7 +276,7 @@ export class CompactionCounterWidget implements Widget {
         }
 
         keybinds.push({ key: 'f', label: '(f)ormat', action: CYCLE_FORMAT_ACTION });
-        if (item === undefined || getFormat(item) === DEFAULT_FORMAT) {
+        if (item === undefined || canUseNerdFont(item)) {
             keybinds.push({ key: 'n', label: '(n)erd font', action: TOGGLE_NERD_FONT_ACTION });
         }
         keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
