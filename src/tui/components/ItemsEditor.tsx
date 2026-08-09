@@ -40,6 +40,7 @@ export interface ItemsEditorProps {
     onBack: () => void;
     lineNumber: number;
     settings: Settings;
+    onSwitchToColors?: () => void;
 }
 
 function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boolean {
@@ -50,7 +51,7 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
     return Boolean(widgets[index - 1]?.merge);
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings, onSwitchToColors }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
@@ -235,7 +236,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            onSwitchToColors
         });
     });
 
@@ -302,6 +304,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     }
     if (canExcludeAlign) {
         helpText += ', e(x)clude align';
+    }
+    if (onSwitchToColors) {
+        helpText += ', Tab edit colors';
     }
     helpText += ', ESC back';
 

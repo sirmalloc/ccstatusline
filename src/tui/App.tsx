@@ -64,6 +64,7 @@ import {
     installPowerlineFonts,
     type PowerlineFontStatus
 } from '../utils/powerline';
+import { arePerLineColorsThemeManaged } from '../utils/powerline-settings';
 import { getPackageVersion } from '../utils/terminal';
 import {
     checkForUpdates,
@@ -1204,6 +1205,7 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
+                        onSwitchToColors={arePerLineColorsThemeManaged(settings) ? undefined : () => { setScreen('colors'); }}
                     />
                 )}
                 {screen === 'colorLines' && (
