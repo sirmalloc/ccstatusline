@@ -30,3 +30,9 @@ export function buildEnabledPowerlineSettings(settings: Settings, removeManualSe
         lines
     };
 }
+
+export function arePerLineColorsThemeManaged(settings: Settings): boolean {
+    return settings.powerline.enabled
+        && !!settings.powerline.theme
+        && settings.powerline.theme !== 'custom';
+}
