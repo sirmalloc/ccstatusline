@@ -1244,6 +1244,7 @@ export const App: React.FC = () => {
                             // Go back to line selection for colors
                             setScreen('colorLines');
                         }}
+                        onSwitchToItems={() => { setScreen('items'); }}
                     />
                 )}
                 {screen === 'terminalConfig' && (
