@@ -595,8 +595,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {!editingBackground && settings.colorLevel >= 2 ? ' (g)radient,' : ''}
                         {' '}
-                        (r)eset, (c)lear all, ESC to go back
-                        {onSwitchToItems ? ', Tab edit items' : ''}
+                        (r)eset, (c)lear all,
+                        {onSwitchToItems ? ' Tab edit items,' : ''}
+                        {' '}
+                        ESC to go back
                     </Text>
                     {!settings.powerline.enabled && !settings.defaultSeparator && (
                         <Text dimColor>

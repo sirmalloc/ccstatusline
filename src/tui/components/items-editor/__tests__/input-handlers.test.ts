@@ -833,6 +833,9 @@ describe('items-editor input handlers', () => {
 
     it('does nothing on Tab when no colors switch is available', () => {
         const onBack = vi.fn();
+        const onUpdate = vi.fn();
+        const openWidgetPicker = vi.fn();
+        const setMoveMode = vi.fn();
 
         handleNormalInputMode({
             input: '',
@@ -841,16 +844,19 @@ describe('items-editor input handlers', () => {
             selectedIndex: 0,
             separatorChars: ['|'],
             onBack,
-            onUpdate: vi.fn(),
+            onUpdate,
             setSelectedIndex: vi.fn(),
-            setMoveMode: vi.fn(),
+            setMoveMode,
             setShowClearConfirm: vi.fn(),
-            openWidgetPicker: vi.fn(),
+            openWidgetPicker,
             getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
             setCustomEditorWidget: vi.fn()
         });
 
         expect(onBack).not.toHaveBeenCalled();
+        expect(onUpdate).not.toHaveBeenCalled();
+        expect(openWidgetPicker).not.toHaveBeenCalled();
+        expect(setMoveMode).not.toHaveBeenCalled();
     });
 
     describe('k shortcut - clone widget', () => {

@@ -12,6 +12,7 @@ import React, {
 
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { arePerLineColorsThemeManaged } from '../../utils/powerline-settings';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { List } from './List';
@@ -76,13 +77,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     };
 
     // Check if powerline theme is managing colors
-    const powerlineEnabled = settings ? settings.powerline.enabled : false;
     const powerlineTheme = settings ? settings.powerline.theme : undefined;
-    const isThemeManaged
-        = blockIfPowerlineActive
-            && powerlineEnabled
-            && powerlineTheme
-            && powerlineTheme !== 'custom';
+    const isThemeManaged = blockIfPowerlineActive && !!settings && arePerLineColorsThemeManaged(settings);
 
     // Handle keyboard input
     useInput((input, key) => {
@@ -157,8 +153,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     <Text color='yellow'>
                         ⚠ Colors are currently managed by the Powerline theme:
                         {' '
-                            + powerlineTheme.charAt(0).toUpperCase()
-                            + powerlineTheme.slice(1)}
+                            + (powerlineTheme ?? '').charAt(0).toUpperCase()
+                            + (powerlineTheme ?? '').slice(1)}
                     </Text>
                 </Box>
                 <Box marginTop={1}>
