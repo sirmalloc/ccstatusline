@@ -1192,6 +1192,12 @@ export const App: React.FC = () => {
                         initialSelection={menuSelections.lines}
                         title='Select Line to Edit Items'
                         allowEditing={true}
+                        onSwitchScreen={arePerLineColorsThemeManaged(settings)
+                            ? undefined
+                            : (index) => {
+                                setMenuSelections(prev => ({ ...prev, lines: index }));
+                                setScreen('colorLines');
+                            }}
                     />
                 )}
                 {screen === 'items' && (
@@ -1227,6 +1233,10 @@ export const App: React.FC = () => {
                         blockIfPowerlineActive={true}
                         settings={settings}
                         allowEditing={false}
+                        onSwitchScreen={(index) => {
+                            setMenuSelections(prev => ({ ...prev, lines: index }));
+                            setScreen('lines');
+                        }}
                     />
                 )}
                 {screen === 'colors' && (

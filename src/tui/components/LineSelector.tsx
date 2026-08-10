@@ -27,6 +27,7 @@ interface LineSelectorProps {
     blockIfPowerlineActive?: boolean;
     settings?: Settings;
     allowEditing?: boolean;
+    onSwitchScreen?: (currentIndex: number) => void;
 }
 
 const LineSelector: React.FC<LineSelectorProps> = ({
@@ -38,7 +39,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     title,
     blockIfPowerlineActive = false,
     settings,
-    allowEditing = false
+    allowEditing = false,
+    onSwitchScreen
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -137,6 +139,11 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     setMoveMode(true);
                 }
                 return;
+        }
+
+        if (key.tab) {
+            onSwitchScreen?.(selectedIndex);
+            return;
         }
 
         if (key.escape) {
@@ -245,9 +252,9 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     <Text dimColor>
                         {allowEditing ? (
                             localLines.length > 1
-                                ? '(a) to append new line, (d) to delete line, (m) to move line, ESC to go back'
-                                : '(a) to append new line, ESC to go back'
-                        ) : 'ESC to go back'}
+                                ? `(a) to append new line, (d) to delete line, (m) to move line${onSwitchScreen ? ', Tab switch items/colors' : ''}, ESC to go back`
+                                : `(a) to append new line${onSwitchScreen ? ', Tab switch items/colors' : ''}, ESC to go back`
+                        ) : `${onSwitchScreen ? 'Tab switch items/colors, ' : ''}ESC to go back`}
                     </Text>
                 )}
 
