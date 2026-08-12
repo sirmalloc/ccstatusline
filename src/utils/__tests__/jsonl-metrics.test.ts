@@ -513,6 +513,44 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('aggregates token metrics by streaming many usage lines without a whole-file string read', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'streamed-tokens.jsonl');
+
+        // Many small lines so the streamer crosses chunk boundaries while the
+        // cumulative totals stay easy to assert. Regression for #550: full-file
+        // utf-8 reads throw once transcripts exceed Node's max string length.
+        const lineCount = 2500;
+        const handle = fs.openSync(transcriptPath, 'w');
+        try {
+            for (let i = 0; i < lineCount; i++) {
+                fs.writeSync(handle, `${makeUsageLine({
+                    timestamp: `2026-01-01T10:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z`,
+                    input: 2,
+                    output: 3,
+                    cacheRead: 4,
+                    cacheCreate: 1,
+                    stopReason: 'end_turn'
+                })}\n`);
+            }
+        } finally {
+            fs.closeSync(handle);
+        }
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: lineCount * 2,
+            outputTokens: lineCount * 3,
+            cachedTokens: lineCount * 5,
+            cacheReadTokens: lineCount * 4,
+            cacheCreationTokens: lineCount * 1,
+            totalTokens: lineCount * 10,
+            contextLength: 2 + 4 + 1
+        });
+    }, 30000);
+
     it('calculates speed metrics from user-to-assistant processing windows', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);

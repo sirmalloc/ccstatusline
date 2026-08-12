@@ -12,6 +12,7 @@ import {
     isCompactBoundary
 } from './compaction';
 import {
+    iterateJsonlLines,
     parseJsonlLine,
     readJsonlLines
 } from './jsonl-lines';
@@ -91,39 +92,29 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
             return null;
         }
 
-        const lines = await readJsonlLines(transcriptPath);
-
-        if (lines.length === 0) {
-            return null;
-        }
-
         let firstTimestamp: Date | null = null;
         let lastTimestamp: Date | null = null;
+        let sawAnyLine = false;
 
-        // Find first valid timestamp
-        for (const line of lines) {
+        for await (const line of iterateJsonlLines(transcriptPath)) {
+            sawAnyLine = true;
             const data = parseJsonlLine(line) as { timestamp?: string } | null;
-            if (data?.timestamp) {
-                firstTimestamp = new Date(data.timestamp);
-                break;
-            }
-        }
-
-        // Find last valid timestamp (iterate backwards)
-        for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i];
-            if (!line) {
+            if (!data?.timestamp) {
                 continue;
             }
 
-            const data = parseJsonlLine(line) as { timestamp?: string } | null;
-            if (data?.timestamp) {
-                lastTimestamp = new Date(data.timestamp);
-                break;
+            const timestamp = new Date(data.timestamp);
+            if (Number.isNaN(timestamp.getTime())) {
+                continue;
             }
+
+            if (!firstTimestamp) {
+                firstTimestamp = timestamp;
+            }
+            lastTimestamp = timestamp;
         }
 
-        if (!firstTimestamp || !lastTimestamp) {
+        if (!sawAnyLine || !firstTimestamp || !lastTimestamp) {
             return null;
         }
 
@@ -154,12 +145,11 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
 
 export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
     try {
-        // Use Node.js-compatible file reading
+        // Stream line-by-line. Full-file readFile('utf-8') throws once a session
+        // transcript exceeds Node's max string length (~512MB).
         if (!fs.existsSync(transcriptPath)) {
             return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
         }
-
-        const lines = await readJsonlLines(transcriptPath);
 
         let inputTokens = 0;
         let outputTokens = 0;
@@ -187,10 +177,13 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         let lastCompactBoundaryLineIndex = -1;
         let lastCompactBoundaryPostTokens: number | null = null;
 
+        // Only usage-bearing rows are retained (not the raw transcript text), so
+        // multi-hundred-MB sessions stay within normal heap limits.
         const parsedEntries: { data: TranscriptLine; lineIndex: number }[] = [];
         let hasStopReasonField = false;
+        let lineIndex = 0;
 
-        for (const [lineIndex, line] of lines.entries()) {
+        for await (const line of iterateJsonlLines(transcriptPath)) {
             const data = parseJsonlLine(line) as TranscriptLine | null;
             if (isCompactBoundary(data)) {
                 lastCompactBoundaryLineIndex = lineIndex;
@@ -202,6 +195,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                     hasStopReasonField = true;
                 }
             }
+            lineIndex += 1;
         }
 
         const entriesToCount = hasStopReasonField
@@ -211,7 +205,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
             })
             : parsedEntries;
 
-        for (const { data, lineIndex } of entriesToCount) {
+        for (const { data, lineIndex: entryLineIndex } of entriesToCount) {
             const usage = data.message?.usage;
             if (!usage) {
                 continue;
@@ -230,7 +224,7 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
                     mostRecentTimestamp = entryTime;
                     mostRecentMainChainEntry = data;
                 }
-                if (lineIndex > lastCompactBoundaryLineIndex
+                if (entryLineIndex > lastCompactBoundaryLineIndex
                     && (!mostRecentPostCompactionTimestamp || entryTime > mostRecentPostCompactionTimestamp)) {
                     mostRecentPostCompactionTimestamp = entryTime;
                     mostRecentPostCompactionEntry = data;
