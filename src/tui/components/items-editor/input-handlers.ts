@@ -1,5 +1,6 @@
 import type {
     CustomKeybind,
+    Rule,
     Widget,
     WidgetItem,
     WidgetItemType
@@ -333,6 +334,125 @@ export function handleMoveInputMode({
     }
 }
 
+export interface HandleRuleInputModeArgs {
+    input: string;
+    key: InputKey;
+    widgets: WidgetItem[];
+    selectedIndex: number;
+    selectedRuleIndex: number;
+    onPrevRule: () => void;
+    onNextRule: () => void;
+    onCollapse: () => void;
+    onUpdate: (widgets: WidgetItem[]) => void;
+    onSelectRule: (index: number) => void;
+    onEditCondition: (ruleIndex: number) => void;
+}
+
+/**
+ * Input for a widget whose rules accordion is open. The rule list takes over the arrows
+ * while it is expanded, so this reports whether it consumed the key and the caller skips
+ * the widget-level handler when it did.
+ */
+export function handleRuleInputMode({
+    input,
+    key,
+    widgets,
+    selectedIndex,
+    selectedRuleIndex,
+    onPrevRule,
+    onNextRule,
+    onCollapse,
+    onUpdate,
+    onSelectRule,
+    onEditCondition
+}: HandleRuleInputModeArgs): boolean {
+    const currentWidget = widgets[selectedIndex];
+    if (!currentWidget) {
+        return false;
+    }
+
+    const rules = currentWidget.rules ?? [];
+    const ruleCount = rules.length;
+
+    const commitRules = (newRules: Rule[]) => {
+        const newWidgets = [...widgets];
+        newWidgets[selectedIndex] = { ...currentWidget, rules: newRules };
+        onUpdate(newWidgets);
+    };
+
+    if (key.escape) {
+        onCollapse();
+        return true;
+    }
+
+    if (key.upArrow) {
+        onPrevRule();
+        return true;
+    }
+
+    if (key.downArrow) {
+        onNextRule();
+        return true;
+    }
+
+    if (input === 'a') {
+        const insertIndex = ruleCount > 0 ? selectedRuleIndex + 1 : 0;
+        const newRules = [...rules];
+        newRules.splice(insertIndex, 0, { when: {}, apply: {} });
+        commitRules(newRules);
+        onSelectRule(insertIndex);
+        return true;
+    }
+
+    if (input === 'd' && ruleCount > 0) {
+        const newRules = rules.filter((_, i) => i !== selectedRuleIndex);
+        commitRules(newRules);
+        // Deliberately stays expanded on the empty list rather than collapsing, so the
+        // widget can be given a fresh rule without reopening the accordion.
+        onSelectRule(Math.max(0, Math.min(selectedRuleIndex, newRules.length - 1)));
+        return true;
+    }
+
+    if (input === 's' && ruleCount > 0) {
+        const rule = rules[selectedRuleIndex];
+        if (rule) {
+            const newRules = [...rules];
+            if (rule.stop) {
+                const { stop, ...rest } = rule;
+                void stop; // Intentionally unused
+                newRules[selectedRuleIndex] = rest;
+            } else {
+                newRules[selectedRuleIndex] = { ...rule, stop: true };
+            }
+            commitRules(newRules);
+        }
+        return true;
+    }
+
+    if ((input === 'e' || key.return) && ruleCount > 0) {
+        onEditCondition(selectedRuleIndex);
+        return true;
+    }
+
+    if ((input === 'j' || input === 'k') && ruleCount > 1) {
+        const targetIndex = input === 'j'
+            ? (selectedRuleIndex + 1 >= ruleCount ? 0 : selectedRuleIndex + 1)
+            : (selectedRuleIndex - 1 < 0 ? ruleCount - 1 : selectedRuleIndex - 1);
+        const newRules = [...rules];
+        const moved = newRules[selectedRuleIndex];
+        const target = newRules[targetIndex];
+        if (moved && target) {
+            newRules[selectedRuleIndex] = target;
+            newRules[targetIndex] = moved;
+            commitRules(newRules);
+            onSelectRule(targetIndex);
+        }
+        return true;
+    }
+
+    return false;
+}
+
 export interface HandleNormalInputModeArgs {
     input: string;
     key: InputKey;
@@ -349,6 +469,8 @@ export interface HandleNormalInputModeArgs {
     getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
     getUniqueBackgroundColor?: (insertIndex: number) => string | undefined;
+    onTabSwap?: () => void;
+    onToggleAccordion?: (widgetId: string) => void;
 }
 
 export function handleNormalInputMode({
@@ -366,7 +488,9 @@ export function handleNormalInputMode({
     openWidgetPicker,
     getCustomKeybindsForWidget,
     setCustomEditorWidget,
-    getUniqueBackgroundColor
+    getUniqueBackgroundColor,
+    onTabSwap,
+    onToggleAccordion
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1);
@@ -378,6 +502,11 @@ export function handleNormalInputMode({
         openWidgetPicker('change');
     } else if (key.return && widgets.length > 0) {
         setMoveMode(true);
+    } else if (input === '+' && onToggleAccordion && widgets.length > 0) {
+        const widget = widgets[selectedIndex];
+        if (widget) {
+            onToggleAccordion(widget.id);
+        }
     } else if (input === 'a') {
         openWidgetPicker('add');
     } else if (input === 'i') {
@@ -469,6 +598,16 @@ export function handleNormalInputMode({
                 newWidgets[selectedIndex] = { ...currentWidget, excludeFromAutoAlign: true };
             }
             onUpdate(newWidgets);
+        }
+    } else if (key.tab && onTabSwap && widgets.length > 0) {
+        const currentWidget = widgets[selectedIndex];
+        if (currentWidget
+            && currentWidget.type !== 'separator'
+            && currentWidget.type !== 'flex-separator') {
+            const widgetImpl = getWidget(currentWidget.type);
+            if (widgetImpl?.supportsColors(currentWidget)) {
+                onTabSwap();
+            }
         }
     } else if (key.escape) {
         onBack();

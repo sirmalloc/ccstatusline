@@ -7,6 +7,7 @@ import {
 import type { WidgetItem } from '../../types/Widget';
 import {
     advanceGlobalPowerlineThemeIndex,
+    assignPowerlineThemeSlots,
     countPowerlineThemeSlots,
     type PowerlineThemeSlotEntry
 } from '../powerline-theme-index';
@@ -51,6 +52,37 @@ describe('powerline theme index utils', () => {
         ];
 
         expect(countPowerlineThemeSlots(entries)).toBe(3);
+    });
+
+    it('assigns merged widgets the same slot and skips unrendered entries', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model', merge: true }),
+            entry({ id: '2', type: 'context-length' }),
+            entry({ id: '3', type: 'separator' }),
+            entry({ id: '4', type: 'git-branch' }, ''),
+            entry({ id: '5', type: 'git-changes' })
+        ];
+
+        expect(assignPowerlineThemeSlots(entries)).toEqual([0, 0, -1, -1, 1]);
+    });
+
+    it('starts assignment from a carried-over index', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model' }),
+            entry({ id: '2', type: 'git-branch' })
+        ];
+
+        expect(assignPowerlineThemeSlots(entries, 3)).toEqual([3, 4]);
+    });
+
+    it('breaks a merge run at a separator', () => {
+        const entries: PowerlineThemeSlotEntry[] = [
+            entry({ id: '1', type: 'model', merge: true }),
+            entry({ id: '2', type: 'flex-separator' }),
+            entry({ id: '3', type: 'context-length' })
+        ];
+
+        expect(assignPowerlineThemeSlots(entries)).toEqual([0, -1, 1]);
     });
 
     it('advances a running global theme index', () => {

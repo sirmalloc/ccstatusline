@@ -100,7 +100,9 @@ export class GitAheadBehindWidget implements Widget {
         return renderSymbolSlotsEditor(props, [AHEAD_SLOT, BEHIND_SLOT]);
     }
 
-    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, _item: WidgetItem): number | string | boolean | null {
         if (!isInsideGitWorkTree(context))
             return null;
         const result = getGitAheadBehind(context);

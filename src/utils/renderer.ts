@@ -25,14 +25,19 @@ import {
     applyColors,
     applyParensDim,
     bgToFg,
-    getColorAnsiCode,
-    getPowerlineTheme
+    getColorAnsiCode
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import { getActiveThemeColors } from './effective-theme-colors';
 import {
     isGradientSpec,
     parseGradientSpec
 } from './gradient';
+import {
+    NO_THEME_SLOT,
+    assignPowerlineThemeSlots
+} from './powerline-theme-index';
+import { applyRules } from './rules-engine';
 import { getTerminalWidth } from './terminal';
 import { getWidget } from './widgets';
 
@@ -141,17 +146,7 @@ function renderPowerlineStatusLine(
     );
 
     // Get theme colors if a theme is set and not 'custom'
-    const themeName = config.theme as string | undefined;
-    let themeColors: { fg: string[]; bg: string[] } | undefined;
-
-    if (themeName && themeName !== 'custom') {
-        const theme = getPowerlineTheme(themeName);
-        if (theme) {
-            const colorLevel = getColorLevelString(settings.colorLevel);
-            const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
-            themeColors = theme[colorLevelKey];
-        }
-    }
+    const themeColors = getActiveThemeColors(settings);
 
     // Get color level from settings
     const colorLevel = getColorLevelString(settings.colorLevel);
@@ -186,7 +181,15 @@ function renderPowerlineStatusLine(
         originalIndex: number;
         widget: WidgetItem;
     }[] = [];
-    let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
+    // Theme color slot per widget, assigned by the shared helper the color editor also
+    // uses, so what the editor previews cannot drift from what renders here.
+    const themeColorSlots = assignPowerlineThemeSlots(
+        widgets.map((widget, index) => ({
+            widget,
+            content: preRenderedWidgets[index]?.content ?? ''
+        })),
+        continueThemeAcrossLines ? globalThemeColorOffset : 0
+    );
 
     const hasNextRenderedWidgetBeforeSeparator = (originalIndex: number): boolean => {
         for (let j = originalIndex + 1; j < widgets.length; j++) {
@@ -235,7 +238,10 @@ function renderPowerlineStatusLine(
     }
 
     for (let i = 0; i < filteredWidgets.length; i++) {
-        const widget = filteredWidgets[i];
+        // Use the pre-rendered widget (which has rule overrides applied) for color/style lookups
+        const actualPreRenderedIndex = preRenderedIndices[i];
+        const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
+        const widget = preRendered?.widget ?? filteredWidgets[i];
         if (!widget)
             continue;
         let widgetText = '';
@@ -246,10 +252,6 @@ function renderPowerlineStatusLine(
             // These are filtered out in powerline mode
             continue;
         }
-
-        // Use pre-rendered content - use the correct index from the mapping
-        const actualPreRenderedIndex = preRenderedIndices[i];
-        const preRendered = actualPreRenderedIndex !== undefined ? preRenderedWidgets[actualPreRenderedIndex] : undefined;
         const widgetImpl = getWidget(widget.type);
         if (preRendered?.content) {
             widgetText = preRendered.content;
@@ -296,16 +298,19 @@ function renderPowerlineStatusLine(
             // For custom commands with preserveColors, only skip foreground theme colors
             const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
 
-            if (themeColors) {
-                if (!skipFgTheme) {
-                    fgColor = themeColors.fg[widgetColorIndex % themeColors.fg.length] ?? fgColor;
-                }
-                bgColor = themeColors.bg[widgetColorIndex % themeColors.bg.length] ?? bgColor;
+            const themeColorSlot = actualPreRenderedIndex !== undefined
+                ? themeColorSlots[actualPreRenderedIndex] ?? NO_THEME_SLOT
+                : NO_THEME_SLOT;
 
-                // Only increment color index if this widget is not merged with the next one
-                // This ensures merged widgets share the same color
-                if (!mergesWithNext) {
-                    widgetColorIndex++;
+            if (themeColors && themeColorSlot !== NO_THEME_SLOT) {
+                // A pinned channel keeps the widget's own colour (it wins over the theme).
+                // preserveColors (custom-command) still takes precedence for the foreground.
+                // Pinned widgets still occupy their slot, so siblings' colours don't shift.
+                if (!skipFgTheme && !widget.pinColor) {
+                    fgColor = themeColors.fg[themeColorSlot % themeColors.fg.length] ?? fgColor;
+                }
+                if (!widget.pinBackgroundColor) {
+                    bgColor = themeColors.bg[themeColorSlot % themeColors.bg.length] ?? bgColor;
                 }
             }
 
@@ -819,7 +824,18 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            let effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+
+            // Evaluate rules: apply overrides from matching rules
+            if (effectiveWidget.rules && effectiveWidget.rules.length > 0) {
+                effectiveWidget = applyRules(effectiveWidget, context, lineWidgets);
+            }
+
+            // If rules determined this widget should be hidden, skip it
+            if (effectiveWidget.hide) {
+                continue;
+            }
+
             const widgetText = widgetImpl.render(effectiveWidget, context, settings) ?? '';
 
             // Store the rendered content without padding (padding is applied later)
@@ -828,7 +844,7 @@ export function preRenderAllWidgets(
             preRenderedLine.push({
                 content: widgetText,
                 plainLength,
-                widget
+                widget: effectiveWidget
             });
         }
 
@@ -1001,8 +1017,9 @@ export function renderStatusLine(
     let hasFlexSeparator = false;
 
     // Build elements based on configured widgets
+    // Use the pre-rendered widget (which has rule overrides applied) for color/style lookups
     for (let i = 0; i < widgets.length; i++) {
-        const widget = widgets[i];
+        const widget = preRenderedWidgets[i]?.widget ?? widgets[i];
         if (!widget)
             continue;
 
@@ -1016,7 +1033,7 @@ export function renderStatusLine(
             let replacesSpacingSeparator = false;
             let crossedEmptyWidget = false;
             for (let j = i - 1; j >= 0; j--) {
-                const prevWidget = widgets[j];
+                const prevWidget = preRenderedWidgets[j]?.widget ?? widgets[j];
                 if (!prevWidget)
                     continue;
                 if (prevWidget.type === 'separator') {
@@ -1055,7 +1072,7 @@ export function renderStatusLine(
 
             if (settings.inheritSeparatorColors && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
-                const prevWidget = widgets[contentBeforeIndex];
+                const prevWidget = preRenderedWidgets[contentBeforeIndex]?.widget ?? widgets[contentBeforeIndex];
                 if (prevWidget) {
                     // Get the previous widget's colors
                     let widgetColor = prevWidget.color;

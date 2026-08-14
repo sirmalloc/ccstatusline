@@ -11,6 +11,8 @@ import {
     getModelContextIdentifier
 } from '../utils/model-context';
 import { formatTokens } from '../utils/renderer';
+import { parseTokenCount } from '../utils/value-parsers';
+import { getValueFromRender } from '../utils/widget-values';
 
 export class ContextWindowWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }
@@ -38,6 +40,12 @@ export class ContextWindowWidget implements Widget {
         }
 
         return item.rawValue ? formatTokens(total) : `Win: ${formatTokens(total)}`;
+    }
+
+    getValueType(): 'number' { return 'number'; }
+
+    getValue(context: RenderContext, item: WidgetItem): number | string | boolean | null {
+        return getValueFromRender(this, context, item, parseTokenCount);
     }
 
     supportsRawValue(): boolean { return true; }
