@@ -47,6 +47,13 @@ export interface Widget {
     supportsColors(item: WidgetItem): boolean;
     handleEditorAction?(action: string, item: WidgetItem): WidgetItem | null;
     getNumericValue?(context: RenderContext, item: WidgetItem): number | null;
+    /**
+     * When true for the given item, the widget's rendered output already
+     * contains its own ANSI foreground codes and the renderer must not apply
+     * theme/item foreground colors on top of it (see custom-command's
+     * preserve-colors mode).
+     */
+    preservesRenderedColors?(item: WidgetItem): boolean;
 }
 
 export interface WidgetEditorProps {

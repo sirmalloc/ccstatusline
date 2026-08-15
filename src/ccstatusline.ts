@@ -11,6 +11,7 @@ import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
+import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
 import { updateColorMap } from './utils/colors';
 import {
     ZERO_COMPACTION_STATS,
@@ -137,6 +138,7 @@ async function renderMultipleLines(data: StatusJSON) {
     }
 
     const usageData = await prefetchUsageDataIfNeeded(lines, data);
+    const claudeStatusData = await prefetchClaudeStatusIfNeeded(lines);
 
     let speedMetrics: SpeedMetrics | null = null;
     let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
@@ -168,6 +170,7 @@ async function renderMultipleLines(data: StatusJSON) {
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        claudeStatusData,
         sessionDuration,
         skillsMetrics,
         compactionData,

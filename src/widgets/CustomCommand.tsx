@@ -124,6 +124,10 @@ export class CustomCommandWidget implements Widget {
         return <CustomCommandEditor {...props} />;
     }
 
+    preservesRenderedColors(item: WidgetItem): boolean {
+        return item.preserveColors === true;
+    }
+
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean {
         // Only supports colors if preserveColors is false
