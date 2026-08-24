@@ -27,19 +27,12 @@ export async function readStdin(): Promise<string | null> {
     const chunks: string[] = [];
 
     const read = async (): Promise<string> => {
-        // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined') {
-            // Bun environment
-            const decoder = new TextDecoder();
-            for await (const chunk of Bun.stdin.stream()) {
-                chunks.push(decoder.decode(chunk));
-            }
-        } else {
-            // Node.js environment
-            process.stdin.setEncoding('utf8');
-            for await (const chunk of process.stdin) {
-                chunks.push(chunk as string);
-            }
+        // Bun exposes the same Node-compatible process.stdin stream. Reading
+        // through it keeps this function testable and avoids maintaining two
+        // subtly different input paths.
+        process.stdin.setEncoding('utf8');
+        for await (const chunk of process.stdin) {
+            chunks.push(chunk as string);
         }
         return chunks.join('');
     };
@@ -50,7 +43,9 @@ export async function readStdin(): Promise<string | null> {
         return await Promise.race([
             read(),
             new Promise<string>((resolve) => {
-                timer = setTimeout(() => resolve(chunks.join('')), getStdinTimeoutMs());
+                timer = setTimeout(() => {
+                    resolve(chunks.join(''));
+                }, getStdinTimeoutMs());
             })
         ]);
     } catch {
@@ -62,6 +57,9 @@ export async function readStdin(): Promise<string | null> {
 
         // The reader can still hold the stream open after the race settles.
         process.stdin.pause();
-        process.stdin.unref?.();
+        const unref = Reflect.get(process.stdin, 'unref') as unknown;
+        if (typeof unref === 'function') {
+            unref.call(process.stdin);
+        }
     }
 }
