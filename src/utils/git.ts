@@ -38,6 +38,7 @@ interface PersistentGitCache {
 
 const DEFAULT_GIT_CACHE_TTL_SECONDS = 5;
 const GIT_CACHE_SCHEMA_VERSION = 1 as const;
+const GIT_COMMAND_TIMEOUT_MS = 5_000;
 
 // In-process cache keeps cwd in the key; the persistent cache stores cwd once
 // at the file level and keys entries by command.
@@ -331,6 +332,7 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+            timeout: GIT_COMMAND_TIMEOUT_MS,
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
