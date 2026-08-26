@@ -19,13 +19,48 @@ import {
     handleToggleNoGitAction,
     isHideNoGitEnabled
 } from './shared/git-no-git';
+import { removeMetadataKeys } from './shared/metadata';
 import {
-    formatSymbolPrefix,
+    getSlotSymbol,
     getSymbolKeybind,
-    renderSymbolOverrideEditor
+    renderSymbolSlotsEditor,
+    type SymbolSlot
 } from './shared/symbol-override';
 
-const DEFAULT_SYMBOL = '⚠';
+const CONFLICT_SLOT: SymbolSlot = { id: 'character', label: 'Conflicts', defaultSymbol: '⚠' };
+const CLEAN_SLOT: SymbolSlot = { id: 'symbolClean', label: 'Clean', defaultSymbol: '✓' };
+
+// How the widget renders with no conflicts. 'count' keeps the warning glyph and
+// a 0, 'clean' swaps in the clean glyph, 'hidden' drops the widget entirely.
+const ZERO_DISPLAYS = ['count', 'clean', 'hidden'] as const;
+type ZeroDisplay = typeof ZERO_DISPLAYS[number];
+
+const DEFAULT_ZERO_DISPLAY: ZeroDisplay = 'count';
+const ZERO_DISPLAY_METADATA_KEY = 'zeroDisplay';
+const CYCLE_ZERO_DISPLAY_ACTION = 'cycle-zero-display';
+
+function getZeroDisplay(item: WidgetItem): ZeroDisplay {
+    const value = item.metadata?.[ZERO_DISPLAY_METADATA_KEY];
+    return (ZERO_DISPLAYS as readonly string[]).includes(value ?? '') ? (value as ZeroDisplay) : DEFAULT_ZERO_DISPLAY;
+}
+
+// The default is stored as the absence of the key, so untouched items keep no metadata.
+function cycleZeroDisplay(item: WidgetItem): WidgetItem {
+    const current = getZeroDisplay(item);
+    const next = ZERO_DISPLAYS[(ZERO_DISPLAYS.indexOf(current) + 1) % ZERO_DISPLAYS.length] ?? DEFAULT_ZERO_DISPLAY;
+
+    if (next === DEFAULT_ZERO_DISPLAY) {
+        return removeMetadataKeys(item, [ZERO_DISPLAY_METADATA_KEY]);
+    }
+
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            [ZERO_DISPLAY_METADATA_KEY]: next
+        }
+    };
+}
 
 export class GitConflictsWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
@@ -39,6 +74,12 @@ export class GitConflictsWidget implements Widget {
         if (noGitText)
             modifiers.push('hide \'no git\'');
 
+        const zeroDisplay = getZeroDisplay(item);
+        if (zeroDisplay === 'clean')
+            modifiers.push('clean when zero');
+        else if (zeroDisplay === 'hidden')
+            modifiers.push('hide when zero');
+
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
@@ -46,17 +87,21 @@ export class GitConflictsWidget implements Widget {
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === CYCLE_ZERO_DISPLAY_ACTION) {
+            return cycleZeroDisplay(item);
+        }
+
         return handleToggleNoGitAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideNoGit = isHideNoGitEnabled(item);
-        const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
+        const symbol = getSlotSymbol(item, CONFLICT_SLOT);
 
         if (context.isPreview) {
             if (item.rawValue)
                 return '2';
-            return `${prefix}2`;
+            return `${symbol}2`;
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -65,22 +110,31 @@ export class GitConflictsWidget implements Widget {
 
         const count = getGitConflictCount(context);
 
+        if (count === 0) {
+            const zeroDisplay = getZeroDisplay(item);
+            if (zeroDisplay === 'hidden')
+                return null;
+            if (zeroDisplay === 'clean' && !item.rawValue)
+                return getSlotSymbol(item, CLEAN_SLOT);
+        }
+
         if (item.rawValue) {
             return count.toString();
         }
 
-        return `${prefix}${count}`;
+        return `${symbol}${count}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             ...getHideNoGitKeybinds(),
+            { key: 'z', label: '(z)ero conflicts display', action: CYCLE_ZERO_DISPLAY_ACTION },
             getSymbolKeybind()
         ];
     }
 
     renderEditor(props: WidgetEditorProps) {
-        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
+        return renderSymbolSlotsEditor(props, [CONFLICT_SLOT, CLEAN_SLOT]);
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
