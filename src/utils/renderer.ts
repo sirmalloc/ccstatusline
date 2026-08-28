@@ -1132,6 +1132,20 @@ export function renderStatusLine(
         elements.pop();
     }
 
+    // Drop spacing-only separators that ended up directly against a flex-separator.
+    // The flex-separator owns that gap (it expands to fill the line, or falls back
+    // to its own ' | ' when terminal width is unknown), so an adjacent space just
+    // doubles up. This happens when the widget between them renders nothing.
+    for (let i = elements.length - 1; i >= 0; i--) {
+        if (elements[i]?.type !== 'separator'
+            || !isSpacingSeparator(elements[i]?.widget, settings.defaultSeparator)) {
+            continue;
+        }
+        if (elements[i - 1]?.type === 'flex-separator' || elements[i + 1]?.type === 'flex-separator') {
+            elements.splice(i, 1);
+        }
+    }
+
     // Apply default padding and separators
     const finalElements: string[] = [];
     const padding = settings.defaultPadding ?? '';

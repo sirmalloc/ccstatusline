@@ -199,6 +199,23 @@ describe('renderer separator collapse around empty widgets', () => {
         expect(out).toContain('C');
     });
 
+    it('drops a spacing separator stranded against a flex separator when the widget between renders empty', () => {
+        const space: WidgetItem = { id: 'space', type: 'separator', character: ' ' };
+        const widgets: WidgetItem[] = [
+            T('a'),
+            space,
+            T('b'),
+            { id: 'flex', type: 'flex-separator' },
+            T('c')
+        ];
+        const settings = createSettings({ colorLevel: 0 });
+        const context: RenderContext = { isPreview: false, terminalWidth: 0 };
+        const preRenderedWidgets = makePreRendered(widgets, { 0: 'A', 2: '', 4: 'C' });
+        const out = stripSgrCodes(renderStatusLine(widgets, settings, context, preRenderedWidgets, []));
+
+        expect(out).toBe('A | C');
+    });
+
     it('does not borrow visible content across a flex separator', () => {
         const widgets: WidgetItem[] = [
             T('left'),
