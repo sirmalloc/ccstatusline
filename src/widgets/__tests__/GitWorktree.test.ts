@@ -11,6 +11,7 @@ import type {
     RenderContext,
     WidgetItem
 } from '../../types';
+import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitWorktreeWidget } from '../GitWorktree';
@@ -46,7 +47,7 @@ function render(options: {
         metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
     };
 
-    return widget.render(item, context);
+    return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
 describe('GitWorktreeWidget', () => {

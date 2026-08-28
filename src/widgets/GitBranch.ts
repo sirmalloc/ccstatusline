@@ -21,6 +21,7 @@ import {
 } from '../utils/hyperlink';
 
 import { makeModifierText } from './shared/editor-display';
+import { shouldHideGitWidgetForJj } from './shared/git-jj-precedence';
 import {
     getHideNoGitKeybinds,
     getHideNoGitModifierText,
@@ -102,7 +103,6 @@ export class GitBranchWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
         const hideNoGit = isHideNoGitEnabled(item);
         const isLink = isLinkEnabled(item);
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
@@ -110,6 +110,10 @@ export class GitBranchWidget implements Widget {
         if (context.isPreview) {
             const text = item.rawValue ? 'main' : `${prefix}main`;
             return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
+        }
+
+        if (shouldHideGitWidgetForJj('git-branch', context, settings)) {
+            return null;
         }
 
         if (!isInsideGitWorkTree(context)) {
