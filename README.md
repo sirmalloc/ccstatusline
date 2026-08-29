@@ -362,6 +362,25 @@ For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -
 
 </details>
 
+<details>
+<summary><b>Usage Tracker (opt-in usage logging)</b></summary>
+
+The Usage Tracker records your subscription rate limit usage over time so it can be analyzed later. It is **off by default**; enable it in the TUI under **📊 Usage Tracker**.
+
+When enabled, every distinct rate limit observation is appended as one JSON line to:
+
+```
+$XDG_DATA_HOME/ccstatusline/usage-log.jsonl   # or ~/.local/share/ccstatusline/usage-log.jsonl
+```
+
+Each record holds the rate limit percentages and reset timestamps exactly as Claude Code (or the Anthropic usage API) reported them, plus a hashed account id so records from different accounts can be told apart. **Tokens, credentials, prompts, and transcript contents are never written.** Heartbeat records mark stretches without new observations, so gaps in the data are unambiguous.
+
+The log is size bound: once it passes the configured rotation size (default 5 MB), it is rotated to `usage-log.1.jsonl` and only that one previous file is kept.
+
+> ⚠️ **API logging:** the tracker also logs the Anthropic usage API responses by default. If you have no usage widgets configured, that starts polling the usage API (~1 request every 3 minutes across all your sessions) where previously there were none. Turn **API Usage Logging** off to log only what Claude Code already sends.
+
+</details>
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

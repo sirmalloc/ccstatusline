@@ -30,6 +30,12 @@ describe('CustomCommandWidget', () => {
         globalBold: false,
         gitCacheTtlSeconds: 5,
         minimalistMode: false,
+        usageTracker: {
+            enabled: false,
+            logApiUsage: true,
+            heartbeatMinutes: 10,
+            rotateMaxMb: 5
+        },
         powerline: {
             enabled: false,
             separators: [],
