@@ -16,6 +16,7 @@ import {
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
+    getSliderBarChars,
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     isUsageCompact,
@@ -78,7 +79,7 @@ export class BlockTimerWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(previewPercent);
+                const slider = makeSliderBar(previewPercent, getSliderBarChars(item));
                 const sliderDisplay = displayMode === 'slider'
                     ? `${slider} ${previewPercent.toFixed(1)}%`
                     : slider;
@@ -99,7 +100,7 @@ export class BlockTimerWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const emptySlider = makeSliderBar(0);
+                const emptySlider = makeSliderBar(0, getSliderBarChars(item));
                 const sliderDisplay = displayMode === 'slider'
                     ? `${emptySlider} 0.0%`
                     : emptySlider;
@@ -119,7 +120,7 @@ export class BlockTimerWidget implements Widget {
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
-            const slider = makeSliderBar(percent);
+            const slider = makeSliderBar(percent, getSliderBarChars(item));
             const sliderDisplay = displayMode === 'slider'
                 ? `${slider} ${percent.toFixed(1)}%`
                 : slider;

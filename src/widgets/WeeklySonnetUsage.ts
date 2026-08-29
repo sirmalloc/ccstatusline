@@ -15,6 +15,7 @@ import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     cycleUsageDisplayMode,
+    getSliderBarChars,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
     getUsagePercentCustomKeybinds,
@@ -76,7 +77,8 @@ export class WeeklySonnetUsageWidget implements Widget {
             }
 
             if (isUsageSliderMode(displayMode)) {
-                const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
+                const barChars = getSliderBarChars(item);
+                const slider = makeSliderBar(renderedPercent, showCursor ? { ...barChars, cursorPercent: 50 } : barChars);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
                 return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
             }
@@ -111,7 +113,7 @@ export class WeeklySonnetUsageWidget implements Widget {
         }
 
         if (isUsageSliderMode(displayMode)) {
-            const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
+            const slider = makeSliderBar(renderedPercent, { ...getSliderBarChars(item), ...getCursorOptions() });
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
             return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
         }

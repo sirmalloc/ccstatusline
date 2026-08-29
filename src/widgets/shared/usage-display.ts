@@ -44,23 +44,41 @@ export function isUsageSliderMode(mode: UsageDisplayMode): boolean {
     return mode === 'slider' || mode === 'slider-only';
 }
 
-interface SliderBarOptions { cursorPercent?: number }
+interface SliderBarOptions {
+    width?: number;
+    cursorPercent?: number;
+    filledChar?: string;
+    emptyChar?: string;
+}
 
-export function makeSliderBar(percent: number, width: number = SLIDER_WIDTH, options?: SliderBarOptions): string {
+export function getSliderBarChars(item: WidgetItem): { filledChar: string; emptyChar: string } {
+    const filledChar = typeof item.metadata?.filledChar === 'string' && item.metadata.filledChar.length > 0
+        ? item.metadata.filledChar
+        : '▓';
+    const emptyChar = typeof item.metadata?.emptyChar === 'string' && item.metadata.emptyChar.length > 0
+        ? item.metadata.emptyChar
+        : '░';
+    return { filledChar, emptyChar };
+}
+
+export function makeSliderBar(percent: number, options?: SliderBarOptions): string {
+    const width = options?.width ?? SLIDER_WIDTH;
     const clamped = Math.max(0, Math.min(100, percent));
     const filled = Math.round((clamped / 100) * width);
     const cursorPos = options?.cursorPercent !== undefined
         ? Math.min(Math.floor((Math.max(0, Math.min(100, options.cursorPercent)) / 100) * width), width - 1)
         : -1;
+    const filledChar = options?.filledChar ?? '▓';
+    const emptyChar = options?.emptyChar ?? '░';
 
     let bar = '';
     for (let i = 0; i < width; i++) {
         if (i === cursorPos) {
             bar += '│';
         } else if (i < filled) {
-            bar += '▓';
+            bar += filledChar;
         } else {
-            bar += '░';
+            bar += emptyChar;
         }
     }
 
