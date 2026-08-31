@@ -103,14 +103,28 @@ describe('jsonl line cache', () => {
 
     it('serves one entry for the many spellings of a path', () => {
         fs.writeFileSync(transcript, `${makeLine('a')}\n`);
-        const viaBackslash = transcript.split('/').join('\\');
-        const viaForwardSlash = transcript.split('\\').join('/');
-        const viaDotSegment = path.join(tempDir, '.', path.basename(transcript));
 
-        const first = readJsonlLinesSync(viaBackslash);
+        // Built by hand rather than through path.join, which would normalize
+        // these back into the very string they are meant to differ from.
+        const base = path.basename(transcript);
+        const sep = path.sep;
+        const spellings = [
+            transcript,
+            `${tempDir}${sep}.${sep}${base}`,
+            `${tempDir}${sep}${sep}${base}`
+        ];
 
-        expect(readJsonlLinesSync(viaForwardSlash)).toBe(first);
-        expect(readJsonlLinesSync(viaDotSegment)).toBe(first);
+        // A backslash separates paths on Windows and is an ordinary filename
+        // character elsewhere, so only Windows has the slash-direction spelling.
+        if (process.platform === 'win32') {
+            spellings.push(transcript.split('\\').join('/'));
+        }
+
+        const first = readJsonlLinesSync(nth(spellings, 0));
+
+        for (const spelling of spellings.slice(1)) {
+            expect(readJsonlLinesSync(spelling)).toBe(first);
+        }
     });
 
     it('shares one entry between the sync and async readers', async () => {
