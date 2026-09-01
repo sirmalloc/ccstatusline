@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Mock } from 'vitest';
@@ -13,6 +14,7 @@ import {
 
 import * as claudeSettings from '../claude-settings';
 import {
+    getMacKeychainConfigDirService,
     getUsageToken,
     parseMacKeychainCredentialCandidates
 } from '../usage-fetch';
@@ -25,6 +27,30 @@ vi.mock('child_process', () => ({
 
 const CREDENTIALS_FILE = path.join('/fake/claude', '.credentials.json');
 const mockedExecFileSync = execFileSync as unknown as Mock;
+const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
+const ORIGINAL_SECURESTORAGE_CONFIG_DIR = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+
+// The config-dir lookup keys off these variables, so every test starts from
+// the default (unset) profile regardless of the environment running the suite.
+beforeEach(() => {
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+});
+
+afterEach(() => {
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+    if (ORIGINAL_CLAUDE_CONFIG_DIR !== undefined) {
+        process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+    }
+    if (ORIGINAL_SECURESTORAGE_CONFIG_DIR !== undefined) {
+        process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = ORIGINAL_SECURESTORAGE_CONFIG_DIR;
+    }
+});
+
+function makeConfigDirService(configDir: string): string {
+    return `Claude Code-credentials-${createHash('sha256').update(configDir).digest('hex').slice(0, 8)}`;
+}
 
 function makeTokenPayload(token: string): string {
     return JSON.stringify({ claudeAiOauth: { accessToken: token } });
@@ -222,5 +248,92 @@ describe('getUsageToken', () => {
         expect(getUsageToken()).toBe('linux-file-token');
         expect(getUsageToken()).toBe('linux-file-token');
         expect(mockedExecFileSync).not.toHaveBeenCalled();
+    });
+
+    it('reads the CLAUDE_CONFIG_DIR keychain service first and skips the plain service on a hit', () => {
+        const configDirService = makeConfigDirService('/fake/claude');
+
+        process.env.CLAUDE_CONFIG_DIR = '/fake/claude';
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command === 'security' && args?.[0] === 'find-generic-password' && args[2] === configDirService) {
+                return makeTokenPayload('profile-token');
+            }
+
+            throw new Error(`Unexpected security args: ${args?.join(' ')}`);
+        });
+
+        expect(getUsageToken()).toBe('profile-token');
+        expect(getSecurityCallLog()).toEqual([
+            `find-generic-password -s ${configDirService} -w`
+        ]);
+    });
+
+    it('falls back to the plain keychain service when the CLAUDE_CONFIG_DIR entry is missing', () => {
+        const configDirService = makeConfigDirService('/fake/claude');
+
+        process.env.CLAUDE_CONFIG_DIR = '/fake/claude';
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command !== 'security' || !args) {
+                throw new Error(`Unexpected security args: ${args?.join(' ')}`);
+            }
+
+            if (args[0] === 'find-generic-password' && args[2] === configDirService) {
+                throw new Error('missing profile credential');
+            }
+
+            if (args[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials') {
+                return makeTokenPayload('exact-token');
+            }
+
+            throw new Error(`Unexpected security args: ${args.join(' ')}`);
+        });
+
+        expect(getUsageToken()).toBe('exact-token');
+        expect(getSecurityCallLog()).toEqual([
+            `find-generic-password -s ${configDirService} -w`,
+            'find-generic-password -s Claude Code-credentials -w'
+        ]);
+    });
+});
+
+describe('getMacKeychainConfigDirService', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.spyOn(claudeSettings, 'getClaudeConfigDir').mockReturnValue('/fake/claude');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('returns null for the default profile', () => {
+        expect(getMacKeychainConfigDirService()).toBeNull();
+    });
+
+    it('suffixes the service with the first 8 hex chars of sha256(config dir) when CLAUDE_CONFIG_DIR is set', () => {
+        process.env.CLAUDE_CONFIG_DIR = '/fake/claude';
+
+        expect(getMacKeychainConfigDirService()).toBe(makeConfigDirService('/fake/claude'));
+    });
+
+    it('hashes the NFC-normalized directory, matching Claude Code', () => {
+        process.env.CLAUDE_CONFIG_DIR = '/fake/café';
+        vi.spyOn(claudeSettings, 'getClaudeConfigDir').mockReturnValue('/fake/café');
+
+        expect(getMacKeychainConfigDirService()).toBe(makeConfigDirService('/fake/café'));
+    });
+
+    it('lets CLAUDE_SECURESTORAGE_CONFIG_DIR override the hash input, and an empty override forces the plain service', () => {
+        process.env.CLAUDE_CONFIG_DIR = '/fake/claude';
+
+        process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = '/fake/secure';
+        expect(getMacKeychainConfigDirService()).toBe(makeConfigDirService('/fake/secure'));
+
+        process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = '';
+        expect(getMacKeychainConfigDirService()).toBeNull();
     });
 });
