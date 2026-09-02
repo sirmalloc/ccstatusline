@@ -518,17 +518,18 @@ function readUsageTokenFromCredentialsFile(): string | null {
 // Claude Code stores each non-default profile's credential under its own
 // keychain service: the plain name plus `-<sha256(configDir)[:8]>`, added
 // whenever CLAUDE_CONFIG_DIR is set. CLAUDE_SECURESTORAGE_CONFIG_DIR, when
-// present, replaces the hash input (an empty value forces the plain name),
-// and the directory is NFC-normalized before hashing. Mirrors Claude Code's
-// own service-name builder (#521); returns null for the default profile.
+// present, replaces the hash input (an empty value forces the plain name).
+// The hash input is the raw environment value, NFC-normalized but not
+// resolved — the goal is to reproduce the exact string Claude Code's own
+// service-name builder hashes, not to locate a directory (#521). Returns
+// null for the default profile.
 export function getMacKeychainConfigDirService(): string | null {
-    const override = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
-    const isDefaultProfile = override !== undefined ? override === '' : !process.env.CLAUDE_CONFIG_DIR;
-    if (isDefaultProfile) {
+    const rawConfigDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? '';
+    if (rawConfigDir === '') {
         return null;
     }
 
-    const configDir = (override ?? getClaudeConfigDir()).normalize('NFC');
+    const configDir = rawConfigDir.normalize('NFC');
     const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8);
     return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
 }
@@ -538,12 +539,18 @@ export function getUsageToken(): string | null {
         return readUsageTokenFromCredentialsFile();
     }
 
-    // The active profile's own entry comes first; otherwise the plain service
-    // wins and a non-default profile silently reports the default account.
     const configDirService = getMacKeychainConfigDirService();
+    if (configDirService !== null) {
+        // A non-default profile owns exactly one keychain service name. On a
+        // miss, the plain service and the other suffixed items all belong to
+        // other profiles (or MCP servers), so fall through only to the
+        // profile's own .credentials.json rather than surface another
+        // account's usage.
+        return readUsageTokenFromMacKeychainService(configDirService)
+            ?? readUsageTokenFromCredentialsFile();
+    }
 
-    return (configDirService ? readUsageTokenFromMacKeychainService(configDirService) : null)
-        ?? readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+    return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
         ?? readUsageTokenFromMacKeychainCandidates()
         ?? readUsageTokenFromCredentialsFile();
 }
