@@ -138,17 +138,100 @@ describe('Token widgets', () => {
         expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:5160');
     });
 
+    it('hides zero counts only when the zero hide state is enabled', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const context: RenderContext = {
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 0
+            }
+        };
+
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:0');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('applies number formatting without bypassing zero hiding', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const context: RenderContext = {
+            tokenMetrics: {
+                inputTokens: 1000,
+                outputTokens: 2000,
+                cachedTokens: 3000,
+                totalTokens: 6000,
+                contextLength: 0
+            }
+        };
+        const numberFormat = { style: 'compact' as const };
+
+        new TokensInputWidget().render({ id: 'in', type: 'tokens-input', numberFormat }, context, DEFAULT_SETTINGS);
+        new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', numberFormat }, context, DEFAULT_SETTINGS);
+        new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', numberFormat }, context, DEFAULT_SETTINGS);
+        new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', numberFormat }, context, DEFAULT_SETTINGS);
+
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(1, 1000, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(2, 2000, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(3, 3000, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(4, 6000, numberFormat);
+
+        const zeroContext: RenderContext = {
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 0
+            }
+        };
+        expect(new TokensInputWidget().render({
+            id: 'hidden',
+            type: 'tokens-input',
+            numberFormat,
+            metadata: { hide: 'zero' }
+        }, zeroContext, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('declares the zero hideable state for all token widgets', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+
+        for (const widget of [new TokensInputWidget(), new TokensOutputWidget(), new TokensCachedWidget(), new TokensTotalWidget()]) {
+            expect(widget.getHideableStates().map(state => state.key)).toEqual(['zero']);
+        }
+    });
+
     it('renders expected preview labels and raw values for all token widgets', async () => {
         const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
         const context: RenderContext = { isPreview: true };
 
-        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: 15.2k');
-        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('15.2k');
-        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBe('Out: 3.4k');
-        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('3.4k');
-        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached' }, context, DEFAULT_SETTINGS)).toBe('Cached: 12k');
-        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('12k');
-        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total' }, context, DEFAULT_SETTINGS)).toBe('Total: 30.6k');
-        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('30.6k');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:15200');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:15200');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBe('Out: fmt:3400');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:3400');
+        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached' }, context, DEFAULT_SETTINGS)).toBe('Cached: fmt:12000');
+        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:12000');
+        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total' }, context, DEFAULT_SETTINGS)).toBe('Total: fmt:30600');
+        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:30600');
+    });
+
+    it('formats every preview sample with the selected token style', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const context: RenderContext = { isPreview: true };
+        const numberFormat = { style: 'whole' as const };
+
+        new TokensInputWidget().render({ id: 'in', type: 'tokens-input', numberFormat }, context, DEFAULT_SETTINGS);
+        new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', numberFormat }, context, DEFAULT_SETTINGS);
+        new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', numberFormat }, context, DEFAULT_SETTINGS);
+        new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', numberFormat }, context, DEFAULT_SETTINGS);
+
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(1, 15200, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(2, 3400, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(3, 12000, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(4, 30600, numberFormat);
     });
 });

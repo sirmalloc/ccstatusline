@@ -39,6 +39,8 @@ export interface RenderContext {
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
     sessionDuration?: string | null;
+    transcriptSessionName?: string | null;
+    transcriptThinkingEffort?: { value: string; known: boolean } | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     compactionData?: CompactionData | null;
