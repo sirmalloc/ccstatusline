@@ -1,6 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -10,6 +11,10 @@ import {
     resolveNumberFormat
 } from '../utils/number-format';
 
+import { isHidden } from './shared/hideable';
+
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when cost is $0.00' };
+
 export class SessionCostWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows the total session cost in USD'; }
@@ -17,6 +22,10 @@ export class SessionCostWidget implements Widget {
     getCategory(): string { return 'Session'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -31,6 +40,10 @@ export class SessionCostWidget implements Widget {
         }
 
         const formattedCost = formatCost(totalCost, format);
+
+        if (formattedCost === '$0.00' && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+            return null;
+        }
 
         return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
     }

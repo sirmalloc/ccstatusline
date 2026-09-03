@@ -1,6 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -9,7 +10,10 @@ import { getContextWindowOutputTotalTokens } from '../utils/context-window';
 import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
+import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when token count is zero' };
 
 export class TokensOutputWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -20,21 +24,28 @@ export class TokensOutputWidget implements Widget {
         return { displayText: this.getDisplayName() };
     }
 
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
+    }
+
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             return formatRawOrLabeledValue(item, 'Out: ', '3.4k');
         }
 
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens, format));
+        const outputTotalTokens = context.tokenMetrics?.outputTokens
+            ?? getContextWindowOutputTotalTokens(context.data)
+            ?? null;
+        if (outputTotalTokens === null) {
+            return null;
         }
 
-        const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
-        if (outputTotalTokens !== null) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens, format));
+        if (outputTotalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+            return null;
         }
-        return null;
+
+        return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens, format));
     }
 
     supportsRawValue(): boolean { return true; }

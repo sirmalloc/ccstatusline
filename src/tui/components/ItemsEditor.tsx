@@ -23,8 +23,14 @@ import {
     getWidgetCatalog,
     getWidgetCatalogCategories
 } from '../../utils/widgets';
+import {
+    EDIT_HIDE_STATES_ACTION,
+    getHideKeybind,
+    getHideModifierText
+} from '../../widgets/shared/hideable';
 
 import { ConfirmDialog } from './ConfirmDialog';
+import { HideStatesEditor } from './HideStatesEditor';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -105,12 +111,25 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     };
 
     const getCustomKeybindsForWidget = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
-        const keybinds = widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [];
+        const keybinds = widgetImpl.getCustomKeybinds ? [...widgetImpl.getCustomKeybinds(widget)] : [];
 
         // Numeric widgets get the precision cycle here rather than in the color
         // menu, so every non-color override stays on this screen and stays
         // reachable while a powerline theme is active.
-        return widgetImpl.supportsNumberFormat?.() ? [...keybinds, getNumberFormatKeybind()] : keybinds;
+        if (widgetImpl.supportsNumberFormat?.()) {
+            keybinds.push(getNumberFormatKeybind());
+        }
+
+        // Widgets declaring hideable states share a single (h)ide… keybind
+        // that opens the hide-state checklist instead of per-widget toggles.
+        // Such widgets must leave 'h' unbound: keybind matching takes the
+        // first hit, so a widget-level 'h' would shadow this one (enforced by
+        // a registry-wide test in utils/__tests__/widgets.test.ts)
+        if ((widgetImpl.getHideableStates?.().length ?? 0) > 0) {
+            keybinds.push(getHideKeybind());
+        }
+
+        return keybinds;
     };
 
     const openWidgetPicker = (action: WidgetPickerAction) => {
@@ -314,6 +333,19 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         : widgetPicker?.action === 'insert'
             ? 'Insert Widget'
             : 'Change Widget Type';
+
+    // The hide-state checklist is shared across all widgets that declare
+    // hideable states, so it renders here rather than via widget renderEditor
+    if (customEditorWidget?.action === EDIT_HIDE_STATES_ACTION) {
+        return (
+            <HideStatesEditor
+                widget={customEditorWidget.widget}
+                states={customEditorWidget.impl.getHideableStates?.() ?? []}
+                onComplete={handleEditorComplete}
+                onCancel={handleEditorCancel}
+            />
+        );
+    }
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
@@ -543,6 +575,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
                                 const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
                                 const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const hideModifierText = widgetImpl ? getHideModifierText(widget, widgetImpl.getHideableStates?.() ?? []) : undefined;
 
                                 return (
                                     <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
@@ -558,6 +591,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                             <Text dimColor>
                                                 {' '}
                                                 {modifierText}
+                                            </Text>
+                                        )}
+                                        {hideModifierText && (
+                                            <Text dimColor>
+                                                {' '}
+                                                {hideModifierText}
                                             </Text>
                                         )}
                                         {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}

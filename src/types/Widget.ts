@@ -22,7 +22,6 @@ export const WidgetItemSchema = z.object({
     preserveColors: z.boolean().optional(),
     timeout: z.number().optional(),
     merge: z.union([z.boolean(), z.literal('no-padding')]).optional(),
-    hide: z.boolean().optional(),
     excludeFromAutoAlign: z.boolean().optional(),
     metadata: z.record(z.string(), z.string()).optional()
 });
@@ -36,6 +35,15 @@ export interface WidgetEditorDisplay {
     modifierText?: string;
 }
 
+// A condition under which a widget can hide instead of rendering placeholder
+// output (e.g. 'no-git', 'zero'). Stored in metadata.hide as a comma-separated
+// list of enabled state keys; defaultEnabled states apply when metadata.hide is absent.
+export interface HideableState {
+    key: string;
+    label: string;
+    defaultEnabled?: boolean;
+}
+
 export interface Widget {
     getDefaultColor(): string;
     getDescription(): string;
@@ -44,6 +52,7 @@ export interface Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay;
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
     getCustomKeybinds?(item?: WidgetItem): CustomKeybind[];
+    getHideableStates?(): HideableState[];
     renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
