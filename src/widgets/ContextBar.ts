@@ -87,13 +87,16 @@ export class ContextBarWidget implements Widget {
         const percentFormat = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
+            const usedDisplay = formatTokens(50000, tokenFormat, 0);
+            const totalDisplay = formatTokens(200000, tokenFormat, 0);
+            const percentDisplay = formatPercent(25, percentFormat, 0);
             if (isBarSliderMode(displayMode)) {
                 const slider = makeSliderBar(25);
-                const sliderDisplay = displayMode === 'slider' ? `${slider} 50k/200k (25%)` : slider;
+                const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${percentDisplay})` : slider;
                 return item.rawValue ? sliderDisplay : `Context: ${sliderDisplay}`;
             }
             const barWidth = displayMode === 'progress' ? 32 : 16;
-            const previewDisplay = `${makeUsageProgressBar(25, barWidth)} 50k/200k (25%)`;
+            const previewDisplay = `${makeUsageProgressBar(25, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
             return item.rawValue ? previewDisplay : `Context: ${previewDisplay}`;
         }
 

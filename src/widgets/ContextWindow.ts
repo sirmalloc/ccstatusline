@@ -25,7 +25,8 @@ export class ContextWindowWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return item.rawValue ? '200k' : 'Win: 200k';
+            const value = formatTokens(200000, format);
+            return item.rawValue ? value : `Win: ${value}`;
         }
 
         let total = getContextWindowSize(context.data);

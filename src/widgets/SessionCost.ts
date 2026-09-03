@@ -31,7 +31,8 @@ export class SessionCostWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            return item.rawValue ? '$2.45' : 'Cost: $2.45';
+            const value = formatCost(2.45, format);
+            return item.rawValue ? value : `Cost: ${value}`;
         }
 
         const totalCost = context.data?.cost?.total_cost_usd;

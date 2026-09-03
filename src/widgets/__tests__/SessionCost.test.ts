@@ -28,6 +28,14 @@ describe('SessionCostWidget', () => {
         expect(render({ id: 'session-cost', type: 'session-cost' }, {})).toBeNull();
     });
 
+    it('formats the preview sample with the selected cost style', () => {
+        expect(render({
+            id: 'session-cost',
+            type: 'session-cost',
+            numberFormat: { style: 'whole' }
+        }, { isPreview: true })).toBe('Cost: $2');
+    });
+
     it('declares the zero hideable state', () => {
         expect(new SessionCostWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
     });

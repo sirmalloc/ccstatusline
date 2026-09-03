@@ -78,7 +78,8 @@ export class FreeMemoryWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('memory', item, settings);
         if (context.isPreview) {
-            return item.rawValue ? '12.4G/16.0G' : 'Mem: 12.4G/16.0G';
+            const value = `${formatBytes(12.4 * 1024 ** 3, format)}/${formatBytes(16 * 1024 ** 3, format)}`;
+            return item.rawValue ? value : `Mem: ${value}`;
         }
 
         const total = os.totalmem();

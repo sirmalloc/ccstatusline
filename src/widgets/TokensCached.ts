@@ -30,7 +30,7 @@ export class TokensCachedWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cached: ', '12k');
+            return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(12000, format));
         }
 
         if (context.tokenMetrics) {

@@ -31,7 +31,7 @@ export class TokensOutputWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Out: ', '3.4k');
+            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(3400, format));
         }
 
         const outputTotalTokens = context.tokenMetrics?.outputTokens

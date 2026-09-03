@@ -44,8 +44,9 @@ export class CacheHitRateWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Hit: ', '87.0%');
+            return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(87, format));
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
@@ -63,7 +64,6 @@ export class CacheHitRateWidget implements Widget {
             return null;
         }
 
-        const format = resolveNumberFormat('percent', item, settings);
         return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(hitRate, format));
     }
 

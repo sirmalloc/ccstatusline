@@ -46,8 +46,8 @@ interface SpeedWidgetKindConfig {
     label: string;
     displayName: string;
     description: string;
-    sessionPreview: string;
-    windowedPreview: string;
+    sessionPreview: number;
+    windowedPreview: number;
 }
 
 const SPEED_WIDGET_CONFIG: Record<SpeedWidgetKind, SpeedWidgetKindConfig> = {
@@ -55,22 +55,22 @@ const SPEED_WIDGET_CONFIG: Record<SpeedWidgetKind, SpeedWidgetKindConfig> = {
         label: 'In: ',
         displayName: 'Input Speed',
         description: 'Shows session-average input token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
-        sessionPreview: '85.2 t/s',
-        windowedPreview: '31.5 t/s'
+        sessionPreview: 85.2,
+        windowedPreview: 31.5
     },
     output: {
         label: 'Out: ',
         displayName: 'Output Speed',
         description: 'Shows session-average output token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
-        sessionPreview: '42.5 t/s',
-        windowedPreview: '26.8 t/s'
+        sessionPreview: 42.5,
+        windowedPreview: 26.8
     },
     total: {
         label: 'Total: ',
         displayName: 'Total Speed',
         description: 'Shows session-average total token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
-        sessionPreview: '127.7 t/s',
-        windowedPreview: '58.3 t/s'
+        sessionPreview: 127.7,
+        windowedPreview: 58.3
     }
 };
 
@@ -124,7 +124,7 @@ export function renderSpeedWidgetValue(
 
     if (context.isPreview) {
         const previewValue = isWidgetSpeedWindowEnabled(item) ? config.windowedPreview : config.sessionPreview;
-        return formatRawOrLabeledValue(item, config.label, previewValue);
+        return formatRawOrLabeledValue(item, config.label, formatSpeed(previewValue, format));
     }
 
     const metrics = getSpeedMetricsForWidget(item, context);

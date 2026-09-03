@@ -42,8 +42,11 @@ export class CacheReadWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const tokenFormat = resolveNumberFormat('token', item, settings);
+        const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Read: ', '12k (64.0%)');
+            const value = formatTokensWithPercentage(12000, 64, tokenFormat, percentFormat);
+            return formatRawOrLabeledValue(item, 'Cache Read: ', value);
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
@@ -56,8 +59,6 @@ export class CacheReadWidget implements Widget {
             return null;
         }
 
-        const tokenFormat = resolveNumberFormat('token', item, settings);
-        const percentFormat = resolveNumberFormat('percent', item, settings);
         const value = formatTokensWithPercentage(tokens.read, getCacheReadPercentage(tokens), tokenFormat, percentFormat);
         return formatRawOrLabeledValue(item, 'Cache Read: ', value);
     }

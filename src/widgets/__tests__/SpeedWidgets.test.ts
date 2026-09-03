@@ -69,6 +69,13 @@ describe('OutputSpeedWidget', () => {
         expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: 42.5 t/s');
     });
 
+    it('should format the preview value with the selected speed style', () => {
+        const context: RenderContext = { isPreview: true };
+        const item = createItem('output-speed', { numberFormat: { style: 'whole' } });
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Out: 43 t/s');
+    });
+
     it('should render window preview when window metadata is enabled', () => {
         const context: RenderContext = { isPreview: true };
         const item = createItem('output-speed', { metadata: { windowSeconds: '45' } });

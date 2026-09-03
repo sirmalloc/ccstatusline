@@ -21,7 +21,8 @@ export class ContextLengthWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return item.rawValue ? '18.6k' : 'Ctx: 18.6k';
+            const value = formatTokens(18600, format);
+            return item.rawValue ? value : `Ctx: ${value}`;
         }
 
         const contextLengthTokens = getContextWindowContextLengthTokens(context.data);

@@ -42,8 +42,11 @@ export class CacheWriteWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const tokenFormat = resolveNumberFormat('token', item, settings);
+        const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Write: ', '3k (16.0%)');
+            const value = formatTokensWithPercentage(3000, 16, tokenFormat, percentFormat);
+            return formatRawOrLabeledValue(item, 'Cache Write: ', value);
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
@@ -56,8 +59,6 @@ export class CacheWriteWidget implements Widget {
             return null;
         }
 
-        const tokenFormat = resolveNumberFormat('token', item, settings);
-        const percentFormat = resolveNumberFormat('percent', item, settings);
         const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens), tokenFormat, percentFormat);
         return formatRawOrLabeledValue(item, 'Cache Write: ', value);
     }

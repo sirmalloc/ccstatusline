@@ -218,7 +218,20 @@ describe('Cache widgets', () => {
         const context: RenderContext = { isPreview: true };
 
         expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate'), context, DEFAULT_SETTINGS)).toBe('Cache Hit: 87.0%');
-        expect(new w.CacheReadWidget().render(turnItem('cache-read', { rawValue: true }), context, DEFAULT_SETTINGS)).toBe('12k (64.0%)');
-        expect(new w.CacheWriteWidget().render(turnItem('cache-write'), context, DEFAULT_SETTINGS)).toBe('Cache Write: 3k (16.0%)');
+        expect(new w.CacheReadWidget().render(turnItem('cache-read', { rawValue: true }), context, DEFAULT_SETTINGS)).toBe('fmt:12000 (64.0%)');
+        expect(new w.CacheWriteWidget().render(turnItem('cache-write'), context, DEFAULT_SETTINGS)).toBe('Cache Write: fmt:3000 (16.0%)');
+    });
+
+    it('formats every preview sample with the selected styles', async () => {
+        const w = await loadWidgets();
+        const context: RenderContext = { isPreview: true };
+        const numberFormat = { style: 'whole' as const };
+
+        expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate', { numberFormat }), context, DEFAULT_SETTINGS)).toBe('Cache Hit: 87%');
+        expect(new w.CacheReadWidget().render(turnItem('cache-read', { numberFormat }), context, DEFAULT_SETTINGS)).toBe('Cache Read: fmt:12000 (64%)');
+        expect(new w.CacheWriteWidget().render(turnItem('cache-write', { numberFormat }), context, DEFAULT_SETTINGS)).toBe('Cache Write: fmt:3000 (16%)');
+
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(1, 12000, numberFormat);
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(2, 3000, numberFormat);
     });
 });

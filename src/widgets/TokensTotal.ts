@@ -30,7 +30,7 @@ export class TokensTotalWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Total: ', '30.6k');
+            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(30600, format));
         }
 
         if (context.tokenMetrics) {
