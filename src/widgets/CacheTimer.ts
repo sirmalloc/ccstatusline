@@ -75,8 +75,7 @@ function hasCacheActivity(entry: TranscriptEntry): boolean {
 // A single transcript record can exceed the initial tail read (pasted prompts
 // and tool results reach hundreds of KiB), leaving only an unparseable
 // fragment in view, so the read doubles until the state resolves or the whole
-// file has been scanned — the same worst case as the full-file transcript
-// reads the token widgets already do every render.
+// file has been scanned.
 const INITIAL_TAIL_BYTES = 32768;
 
 /**
