@@ -47,6 +47,13 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.28 - Faster transcript rendering and resilient caches
+
+- **⚡ Faster large-session rendering** - Reuses each transcript read across token, duration, speed, compaction, and thinking-effort calculations, and briefly caches no-active-block scans so large transcript histories are not repeatedly reread.
+- **🩹 Self-healing usage locks** - Usage widgets ignore impossible fetch-lock deadlines more than 24 hours ahead, allowing poisoned locks caused by clock jumps or old test artifacts to recover on the next render.
+- **🧹 Bounded Git cache cleanup** - Failed persistent Git-cache writes clean up their temporary file and reuse one stable fallback name, preventing Windows file locks from leaking thousands of orphaned temp files.
+- **📊 Consistent timer bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now round progress-bar fill to the nearest cell, matching the other progress widgets.
+
 ### v2.2.27 - Portable configuration import and export
 
 - **📦 Config import/export** - Export the current TUI configuration to JSON, validate and preview imports, then replace all settings or merge only supplied fields while preserving local installation metadata and leaving the result unsaved for review.
@@ -140,6 +147,10 @@
 - **🧹 Cleaner empty-widget separators** - Manual separators now collapse around widgets that render empty, avoiding dangling separators when hide-when-empty widgets disappear.
 - **🧱 More resilient Git helpers** - Git widgets handle missing or unusual git command output more defensively.
 
+<br />
+<details>
+<summary><b>Older updates (v2.2.8 and earlier)</b></summary>
+
 ### v2.2.8 - Git widgets, smarter picker search, and minimalist mode
 
 - **🔀 New Git PR widget** - Added a `Git PR` widget with clickable PR links plus optional status and title display for the current branch.
@@ -149,10 +160,6 @@
 - **🔎 Smarter widget picker search** - The add/change widget picker now supports substring, initialism, and fuzzy matching, with ranked results and live match highlighting.
 - **📏 Better terminal width detection** - Flex separators and right-alignment now work more reliably when ccstatusline is launched through wrapper processes or nested PTYs.
 - **🎨 Powerline theme continuity** - Built-in Powerline themes can now continue colors cleanly across multiple status lines instead of restarting each line.
-
-<br />
-<details>
-<summary><b>Older updates (v2.2.6 and earlier)</b></summary>
 
 ### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
 
