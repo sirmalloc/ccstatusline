@@ -57,7 +57,7 @@ export class CacheHitRateWidget implements Widget {
 
         const hitRate = getCacheHitRate(tokens);
         if (hitRate === null) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', '0.0%');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(0, format));
         }
 
         if (hitRate === 0 && hideWhenEmpty) {

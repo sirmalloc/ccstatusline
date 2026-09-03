@@ -99,16 +99,17 @@ export class BlockTimerWidget implements Widget {
                 return null;
             }
 
+            const emptyPercent = formatPercent(0, format);
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const emptyBar = '░'.repeat(barWidth);
-                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] 0.0%`);
+                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] ${emptyPercent}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const emptySlider = makeSliderBar(0);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${emptySlider} 0.0%`
+                    ? `${emptySlider} ${emptyPercent}`
                     : emptySlider;
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }

@@ -154,6 +154,7 @@ describe('Cache widgets', () => {
 
         // Token widgets drop percentages when there is no prompt-context denominator.
         expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate'), context, DEFAULT_SETTINGS)).toBe('Cache Hit: 0.0%');
+        expect(new w.CacheHitRateWidget().render(turnItem('cache-hit-rate', { numberFormat: { style: 'whole' } }), context, DEFAULT_SETTINGS)).toBe('Cache Hit: 0%');
         expect(new w.CacheReadWidget().render(turnItem('cache-read'), context, DEFAULT_SETTINGS)).toBe('Cache Read: fmt:0');
         expect(new w.CacheWriteWidget().render(turnItem('cache-write'), context, DEFAULT_SETTINGS)).toBe('Cache Write: fmt:0');
     });

@@ -103,6 +103,12 @@ describe('BlockTimerWidget', () => {
             type: 'block-timer',
             metadata: { display: 'progress' }
         }, { usageData: { error: 'timeout' } })).toBe(`Block [${'░'.repeat(32)}] 0.0%`);
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'progress' },
+            numberFormat: { style: 'compact' }
+        }, { usageData: { error: 'timeout' } })).toBe(`Block [${'░'.repeat(32)}] 0%`);
     });
 
     it('hides empty values when the no-data hide state is enabled', () => {
@@ -205,6 +211,12 @@ describe('BlockTimerWidget', () => {
             type: 'block-timer',
             metadata: { display: 'slider' }
         }, { usageData: { error: 'timeout' } })).toBe('Block ░░░░░░░░░░ 0.0%');
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'slider' },
+            numberFormat: { style: 'whole' }
+        }, { usageData: { error: 'timeout' } })).toBe('Block ░░░░░░░░░░ 0%');
         expect(render(widget, {
             id: 'block',
             type: 'block-timer',
