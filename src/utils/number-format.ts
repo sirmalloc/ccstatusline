@@ -20,15 +20,20 @@ export function getNumberFormatKeybind(): CustomKeybind {
     return NUMBER_FORMAT_KEYBIND;
 }
 
+export function getNextNumberStyle(currentStyle: NumberStyle | undefined): NumberStyle | undefined {
+    const normalizedStyle = currentStyle === 'precise' ? undefined : currentStyle;
+
+    return normalizedStyle === undefined
+        ? 'compact'
+        : normalizedStyle === 'compact'
+            ? 'whole'
+            : undefined;
+}
+
 // Cycle the number style: default (precise) -> compact -> whole -> default.
 // Any explicit `decimals` is preserved across the cycle.
 export function cycleNumberStyle(item: WidgetItem): WidgetItem {
-    const currentStyle = item.numberFormat?.style;
-    const nextStyle: NumberStyle | undefined = currentStyle === undefined
-        ? 'compact'
-        : currentStyle === 'compact'
-            ? 'whole'
-            : undefined;
+    const nextStyle = getNextNumberStyle(item.numberFormat?.style);
     const decimals = item.numberFormat?.decimals;
 
     if (nextStyle === undefined && decimals === undefined) {

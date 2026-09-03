@@ -10,8 +10,7 @@ import {
     NUMBER_KINDS,
     type GlobalNumberFormat,
     type NumberFormat,
-    type NumberKind,
-    type NumberStyle
+    type NumberKind
 } from '../../types/NumberFormat';
 import {
     DefaultPaddingSideSchema,
@@ -25,17 +24,15 @@ import {
 } from '../../utils/colors';
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
 import { shouldInsertInput } from '../../utils/input-guards';
+import { getNextNumberStyle } from '../../utils/number-format';
 
 import { ConfirmDialog } from './ConfirmDialog';
-
-const NUMBER_FORMAT_STYLES: (NumberStyle | undefined)[] = [undefined, 'compact', 'whole'];
 
 // Cycle a number kind's global style: default (precise) -> compact -> whole -> default.
 // A global style forces that kind across all widgets (see resolveNumberFormat).
 function cycleGlobalNumberStyle(settings: Settings, kind: NumberKind): Settings {
     const current = settings.numberFormat?.[kind]?.style;
-    const currentIndex = NUMBER_FORMAT_STYLES.indexOf(current);
-    const nextStyle = NUMBER_FORMAT_STYLES[(currentIndex + 1) % NUMBER_FORMAT_STYLES.length];
+    const nextStyle = getNextNumberStyle(current);
 
     const kindFormat: NumberFormat = { ...settings.numberFormat?.[kind] };
     if (nextStyle === undefined) {

@@ -16,6 +16,7 @@ import {
     cycleNumberStyle,
     formatCost,
     formatPercent,
+    getNextNumberStyle,
     getNumberFormatKeybind,
     renderMagnitude,
     resolveNumberFormat
@@ -140,6 +141,17 @@ describe('cycleNumberStyle', () => {
         expect(compact.numberFormat).toEqual({ style: 'compact', decimals: 2 });
         expect(whole.numberFormat).toEqual({ style: 'whole', decimals: 2 });
         expect(off.numberFormat).toEqual({ decimals: 2 });
+    });
+
+    it('treats an explicit precise style as the default state', () => {
+        const item: WidgetItem = {
+            id: '1',
+            type: 'tokens-input',
+            numberFormat: { style: 'precise', decimals: 2 }
+        };
+
+        expect(cycleNumberStyle(item).numberFormat).toEqual({ style: 'compact', decimals: 2 });
+        expect(getNextNumberStyle('precise')).toBe('compact');
     });
 
     it('leaves other widget fields untouched', () => {
