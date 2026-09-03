@@ -20,6 +20,11 @@ export function getNumberFormatKeybind(): CustomKeybind {
     return NUMBER_FORMAT_KEYBIND;
 }
 
+export function getNumberFormatModifierText(item: WidgetItem): string | undefined {
+    const style = item.numberFormat?.style;
+    return style === 'compact' || style === 'whole' ? `(${style})` : undefined;
+}
+
 export function getNextNumberStyle(currentStyle: NumberStyle | undefined): NumberStyle | undefined {
     const normalizedStyle = currentStyle === 'precise' ? undefined : currentStyle;
 

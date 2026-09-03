@@ -18,6 +18,7 @@ import {
     formatPercent,
     getNextNumberStyle,
     getNumberFormatKeybind,
+    getNumberFormatModifierText,
     renderMagnitude,
     resolveNumberFormat
 } from '../number-format';
@@ -174,6 +175,24 @@ describe('getNumberFormatKeybind', () => {
             label: '(.) precision',
             action: CYCLE_NUMBER_STYLE_ACTION
         });
+    });
+});
+
+describe('getNumberFormatModifierText', () => {
+    const item = (style?: 'precise' | 'compact' | 'whole'): WidgetItem => ({
+        id: '1',
+        type: 'tokens-input',
+        ...(style ? { numberFormat: { style } } : {})
+    });
+
+    it('omits the default number style', () => {
+        expect(getNumberFormatModifierText(item())).toBeUndefined();
+        expect(getNumberFormatModifierText(item('precise'))).toBeUndefined();
+    });
+
+    it('labels non-default number styles', () => {
+        expect(getNumberFormatModifierText(item('compact'))).toBe('(compact)');
+        expect(getNumberFormatModifierText(item('whole'))).toBe('(whole)');
     });
 });
 
