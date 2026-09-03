@@ -7,6 +7,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 
 import {
     formatTokensWithPercentage,
@@ -41,8 +42,11 @@ export class CacheReadWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const tokenFormat = resolveNumberFormat('token', item, settings);
+        const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Read: ', '12k (64.0%)');
+            const value = formatTokensWithPercentage(12000, 64, tokenFormat, percentFormat);
+            return formatRawOrLabeledValue(item, 'Cache Read: ', value);
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
@@ -55,7 +59,7 @@ export class CacheReadWidget implements Widget {
             return null;
         }
 
-        const value = formatTokensWithPercentage(tokens.read, getCacheReadPercentage(tokens));
+        const value = formatTokensWithPercentage(tokens.read, getCacheReadPercentage(tokens), tokenFormat, percentFormat);
         return formatRawOrLabeledValue(item, 'Cache Read: ', value);
     }
 
@@ -65,4 +69,5 @@ export class CacheReadWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

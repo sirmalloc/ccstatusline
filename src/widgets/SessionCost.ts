@@ -6,6 +6,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatCost,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import { isHidden } from './shared/hideable';
 
@@ -25,8 +29,10 @@ export class SessionCostWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            return item.rawValue ? '$2.45' : 'Cost: $2.45';
+            const value = formatCost(2.45, format);
+            return item.rawValue ? value : `Cost: ${value}`;
         }
 
         const totalCost = context.data?.cost?.total_cost_usd;
@@ -34,16 +40,18 @@ export class SessionCostWidget implements Widget {
             return null;
         }
 
-        // Format the cost to 2 decimal places
-        const formattedCost = `$${totalCost.toFixed(2)}`;
-
-        if (formattedCost === '$0.00' && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+        // Keep the zero-state threshold tied to the baseline cent precision,
+        // independent of the selected display style or decimal override.
+        const roundsToZeroCents = totalCost >= 0 && totalCost < 0.005;
+        if (roundsToZeroCents && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
 
+        const formattedCost = formatCost(totalCost, format);
         return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

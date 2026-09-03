@@ -30,13 +30,15 @@ function createItem(
     options: {
         rawValue?: boolean;
         metadata?: Record<string, string>;
+        numberFormat?: WidgetItem['numberFormat'];
     } = {}
 ): WidgetItem {
     return {
         id: type,
         type,
         rawValue: options.rawValue,
-        metadata: options.metadata
+        metadata: options.metadata,
+        numberFormat: options.numberFormat
     };
 }
 
@@ -65,6 +67,13 @@ describe('OutputSpeedWidget', () => {
     it('should render session preview value by default', () => {
         const context: RenderContext = { isPreview: true };
         expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: 42.5 t/s');
+    });
+
+    it('should format the preview value with the selected speed style', () => {
+        const context: RenderContext = { isPreview: true };
+        const item = createItem('output-speed', { numberFormat: { style: 'whole' } });
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Out: 43 t/s');
     });
 
     it('should render window preview when window metadata is enabled', () => {
@@ -99,6 +108,19 @@ describe('speed widget hideable states', () => {
 
         expect(widget.render(createItem('output-speed'), context, DEFAULT_SETTINGS)).toBe('Out: —');
         expect(widget.render(createItem('output-speed', { metadata: { hide: 'no-data' } }), context, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('applies number formatting without bypassing no-data hiding', () => {
+        const widget = new OutputSpeedWidget();
+        const numberFormat = { style: 'compact' as const };
+        const speedContext: RenderContext = { speedMetrics: createSpeedMetrics({ outputTokens: 500, totalDurationMs: 10000 }) };
+        const noDataContext: RenderContext = { speedMetrics: createSpeedMetrics({ totalDurationMs: 0 }) };
+
+        expect(widget.render(createItem('output-speed', { numberFormat }), speedContext, DEFAULT_SETTINGS)).toBe('Out: 50 t/s');
+        expect(widget.render(createItem('output-speed', {
+            metadata: { hide: 'no-data' },
+            numberFormat
+        }), noDataContext, DEFAULT_SETTINGS)).toBeNull();
     });
 });
 

@@ -1,3 +1,4 @@
+import type { NumberFormat } from '../types/NumberFormat';
 import type {
     CompactionData,
     RenderContext
@@ -13,6 +14,7 @@ import type {
 } from '../types/Widget';
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
 import { formatTokens } from '../utils/format-tokens';
+import { resolveNumberFormat } from '../utils/number-format';
 
 import { isHidden } from './shared/hideable';
 import {
@@ -109,12 +111,12 @@ function getMetricValue(data: CompactionData, metric: CompactionMetric): number 
     }
 }
 
-function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
+function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem, format: NumberFormat): string {
     if (tokensReclaimed <= 0) {
         return '';
     }
     const symbol = getSlotSymbol(item, RECLAIMED_SLOT);
-    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed)}` : ` ${formatTokens(tokensReclaimed)}`;
+    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed, format)}` : ` ${formatTokens(tokensReclaimed, format)}`;
 }
 
 function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
@@ -131,13 +133,13 @@ function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
     return parts.length > 0 ? ` (${parts.join(', ')})` : '';
 }
 
-function formatStats(data: CompactionData, item: WidgetItem, icon: string): string {
+function formatStats(data: CompactionData, item: WidgetItem, icon: string, format: NumberFormat): string {
     let out = formatCount(data.count, getFormat(item), icon);
     if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
         out += formatTriggerSuffix(data.byTrigger);
     }
     if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
-        out += formatReclaimedSuffix(data.tokensReclaimed, item);
+        out += formatReclaimedSuffix(data.tokensReclaimed, item, format);
     }
     return out;
 }
@@ -227,7 +229,7 @@ export class CompactionCounterWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
+        const format = resolveNumberFormat('token', item, settings);
         const data = context.isPreview ? SAMPLE_STATS : (context.compactionData ?? ZERO_COMPACTION_STATS);
         const metric = getMetric(item);
 
@@ -236,7 +238,7 @@ export class CompactionCounterWidget implements Widget {
             if (value === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key) && !context.isPreview) {
                 return null;
             }
-            return metric === 'reclaimed' ? formatTokens(value) : String(value);
+            return metric === 'reclaimed' ? formatTokens(value, format) : String(value);
         }
 
         if (data.count === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key) && !context.isPreview) {
@@ -244,7 +246,7 @@ export class CompactionCounterWidget implements Widget {
         }
 
         const icon = isNerdFontEnabled(item, NERD_FONT_FORMATS) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
-        return formatStats(data, item, icon);
+        return formatStats(data, item, icon, format);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -276,4 +278,5 @@ export class CompactionCounterWidget implements Widget {
 
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

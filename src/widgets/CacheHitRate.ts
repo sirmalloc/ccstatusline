@@ -7,6 +7,10 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import {
     getCacheHitRate,
@@ -40,8 +44,9 @@ export class CacheHitRateWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Hit: ', '87.0%');
+            return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(87, format));
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
@@ -52,14 +57,14 @@ export class CacheHitRateWidget implements Widget {
 
         const hitRate = getCacheHitRate(tokens);
         if (hitRate === null) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', '0.0%');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(0, format));
         }
 
         if (hitRate === 0 && hideWhenEmpty) {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, 'Cache Hit: ', `${hitRate.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(hitRate, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -68,4 +73,5 @@ export class CacheHitRateWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
 import { isHidden } from './shared/hideable';
@@ -27,19 +28,21 @@ export class TokensCachedWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cached: ', '12k');
+            return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(12000, format));
         }
 
         if (context.tokenMetrics) {
             if (context.tokenMetrics.cachedTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(context.tokenMetrics.cachedTokens));
+            return formatRawOrLabeledValue(item, 'Cached: ', formatTokens(context.tokenMetrics.cachedTokens, format));
         }
         return null;
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

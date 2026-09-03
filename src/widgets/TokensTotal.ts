@@ -6,6 +6,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
 import { isHidden } from './shared/hideable';
@@ -27,19 +28,21 @@ export class TokensTotalWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Total: ', '30.6k');
+            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(30600, format));
         }
 
         if (context.tokenMetrics) {
             if (context.tokenMetrics.totalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens));
+            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens, format));
         }
         return null;
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

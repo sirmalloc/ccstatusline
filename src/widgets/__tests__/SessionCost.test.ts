@@ -28,6 +28,14 @@ describe('SessionCostWidget', () => {
         expect(render({ id: 'session-cost', type: 'session-cost' }, {})).toBeNull();
     });
 
+    it('formats the preview sample with the selected cost style', () => {
+        expect(render({
+            id: 'session-cost',
+            type: 'session-cost',
+            numberFormat: { style: 'whole' }
+        }, { isPreview: true })).toBe('Cost: $2');
+    });
+
     it('declares the zero hideable state', () => {
         expect(new SessionCostWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
     });
@@ -54,5 +62,18 @@ describe('SessionCostWidget', () => {
             type: 'session-cost',
             metadata: { hide: 'zero' }
         }, { data: { cost: { total_cost_usd: 0.001 } } })).toBeNull();
+    });
+
+    it.each([
+        { name: 'compact', numberFormat: { style: 'compact' as const } },
+        { name: 'whole', numberFormat: { style: 'whole' as const } },
+        { name: 'custom-decimal', numberFormat: { decimals: 4 } }
+    ])('preserves zero hiding with the $name number format', ({ numberFormat }) => {
+        expect(render({
+            id: 'session-cost',
+            type: 'session-cost',
+            metadata: { hide: 'zero' },
+            numberFormat
+        }, { data: { cost: { total_cost_usd: 0 } } })).toBeNull();
     });
 });

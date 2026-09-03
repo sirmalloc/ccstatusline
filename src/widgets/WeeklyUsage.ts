@@ -8,6 +8,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
+import {
     getUsageErrorMessage,
     resolveWeeklyUsageWindow
 } from '../utils/usage';
@@ -68,6 +72,7 @@ export class WeeklyUsageWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const showCursor = isUsageCursorEnabled(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = 12;
@@ -76,17 +81,17 @@ export class WeeklyUsageWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(renderedPercent, width, showCursor ? { cursorPercent: 50 } : undefined);
-                const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
+                const progressDisplay = `[${progressBar}] ${formatPercent(renderedPercent, format)}`;
                 return formatRawOrLabeledValue(item, 'Weekly: ', progressDisplay);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(renderedPercent, undefined, showCursor ? { cursorPercent: 50 } : undefined);
-                const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+                const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
                 return formatRawOrLabeledValue(item, 'Weekly: ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly: ', `${renderedPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Weekly: ', formatPercent(renderedPercent, format));
         }
 
         const data = context.usageData ?? {};
@@ -114,17 +119,17 @@ export class WeeklyUsageWidget implements Widget {
             const width = getUsageProgressBarWidth(displayMode);
 
             const progressBar = makeTimerProgressBar(renderedPercent, width, getCursorOptions());
-            const progressDisplay = `[${progressBar}] ${renderedPercent.toFixed(1)}%`;
+            const progressDisplay = `[${progressBar}] ${formatPercent(renderedPercent, format)}`;
             return formatRawOrLabeledValue(item, 'Weekly: ', progressDisplay);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const slider = makeSliderBar(renderedPercent, undefined, getCursorOptions());
-            const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+            const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
             return formatRawOrLabeledValue(item, 'Weekly: ', sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, 'Weekly: ', `${renderedPercent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Weekly: ', formatPercent(renderedPercent, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -133,4 +138,5 @@ export class WeeklyUsageWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

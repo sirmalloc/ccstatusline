@@ -6,6 +6,10 @@ import type {
 } from '../../../types/Widget';
 import { generateGuid } from '../../../utils/guid';
 import {
+    CYCLE_NUMBER_STYLE_ACTION,
+    cycleNumberStyle
+} from '../../../utils/number-format';
+import {
     filterWidgetCatalog,
     getWidget,
     type WidgetCatalogEntry
@@ -487,13 +491,19 @@ export function handleNormalInputMode({
             if (matchedKeybind && !key.ctrl) {
                 // The hide-state checklist is rendered by the items editor for
                 // every widget that declares hideable states, so it bypasses
-                // widget-level action handling
+                // widget-level action handling.
                 if (matchedKeybind.action === EDIT_HIDE_STATES_ACTION) {
                     setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
                     return;
                 }
 
-                if (widgetImpl.handleEditorAction) {
+                // The precision cycle is shared by every numeric widget, so it is
+                // applied here instead of in each widget's handleEditorAction.
+                if (matchedKeybind.action === CYCLE_NUMBER_STYLE_ACTION) {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = cycleNumberStyle(currentWidget);
+                    onUpdate(newWidgets);
+                } else if (widgetImpl.handleEditorAction) {
                     const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
                     if (updatedWidget) {
                         const newWidgets = [...widgets];

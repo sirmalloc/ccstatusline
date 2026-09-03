@@ -8,6 +8,10 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
+import {
     formatUsageDuration,
     resolveUsageWindowWithFallback
 } from '../utils/usage';
@@ -65,6 +69,7 @@ export class BlockTimerWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 26.1 : 73.9;
@@ -72,13 +77,13 @@ export class BlockTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(previewPercent);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    ? `${slider} ${formatPercent(previewPercent, format)}`
                     : slider;
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }
@@ -94,16 +99,17 @@ export class BlockTimerWidget implements Widget {
                 return null;
             }
 
+            const emptyPercent = formatPercent(0, format);
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const emptyBar = '░'.repeat(barWidth);
-                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] 0.0%`);
+                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] ${emptyPercent}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const emptySlider = makeSliderBar(0);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${emptySlider} 0.0%`
+                    ? `${emptySlider} ${emptyPercent}`
                     : emptySlider;
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }
@@ -115,15 +121,14 @@ export class BlockTimerWidget implements Widget {
             const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
-            const percentage = percent.toFixed(1);
-            return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${percentage}%`);
+            return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const slider = makeSliderBar(percent);
             const sliderDisplay = displayMode === 'slider'
-                ? `${slider} ${percent.toFixed(1)}%`
+                ? `${slider} ${formatPercent(percent, format)}`
                 : slider;
             return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
         }
@@ -142,4 +147,5 @@ export class BlockTimerWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

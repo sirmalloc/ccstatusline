@@ -29,8 +29,7 @@ export class TotalSpeedWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
-        return renderSpeedWidgetValue('total', item, context);
+        return renderSpeedWidgetValue('total', item, context, settings);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -47,4 +46,5 @@ export class TotalSpeedWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

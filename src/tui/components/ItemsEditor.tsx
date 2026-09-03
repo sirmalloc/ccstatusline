@@ -14,6 +14,10 @@ import type {
 } from '../../types/Widget';
 import { getBackgroundColorsForPowerline } from '../../utils/colors';
 import { generateGuid } from '../../utils/guid';
+import {
+    getNumberFormatKeybind,
+    getNumberFormatModifierText
+} from '../../utils/number-format';
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
@@ -111,6 +115,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     const getCustomKeybindsForWidget = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
         const keybinds = widgetImpl.getCustomKeybinds ? [...widgetImpl.getCustomKeybinds(widget)] : [];
+
+        // Numeric widgets get the precision cycle here rather than in the color
+        // menu, so every non-color override stays on this screen and stays
+        // reachable while a powerline theme is active.
+        if (widgetImpl.supportsNumberFormat?.()) {
+            keybinds.push(getNumberFormatKeybind());
+        }
 
         // Widgets declaring hideable states share a single (h)ide… keybind
         // that opens the hide-state checklist instead of per-widget toggles.
@@ -567,6 +578,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                 const widgetImpl = widget.type !== 'separator' && widget.type !== 'flex-separator' ? getWidget(widget.type) : null;
                                 const { displayText, modifierText } = widgetImpl?.getEditorDisplay(widget) ?? { displayText: getWidgetDisplay(widget) };
                                 const supportsRawValue = widgetImpl?.supportsRawValue() ?? false;
+                                const numberFormatModifierText = widgetImpl?.supportsNumberFormat?.()
+                                    ? getNumberFormatModifierText(widget)
+                                    : undefined;
                                 const hideModifierText = widgetImpl ? getHideModifierText(widget, widgetImpl.getHideableStates?.() ?? []) : undefined;
 
                                 return (
@@ -583,6 +597,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                             <Text dimColor>
                                                 {' '}
                                                 {modifierText}
+                                            </Text>
+                                        )}
+                                        {numberFormatModifierText && (
+                                            <Text dimColor>
+                                                {' '}
+                                                {numberFormatModifierText}
                                             </Text>
                                         )}
                                         {hideModifierText && (

@@ -69,6 +69,32 @@ describe('ExtraUsageUsedWidget', () => {
         })).toBe('Overage Used: €5.42');
     });
 
+    it('applies the global cost style while preserving the reported currency', () => {
+        const widget = new ExtraUsageUsedWidget();
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            numberFormat: { cost: { style: 'whole' as const } }
+        };
+        const context: RenderContext = {
+            usageData: {
+                extraUsageCurrency: 'EUR',
+                extraUsageEnabled: true,
+                extraUsageUsed: 542
+            }
+        };
+
+        expect(widget.render({
+            id: 'extra',
+            type: 'extra-usage-used',
+            numberFormat: { decimals: 3 }
+        }, context, settings)).toBe('Overage Used: €5');
+        expect(widget.render({
+            id: 'extra',
+            type: 'extra-usage-used'
+        }, { isPreview: true }, settings)).toBe('Overage Used: $106');
+        expect(widget.supportsNumberFormat()).toBe(true);
+    });
+
     it('declares the disabled and no-data hideable states', () => {
         const widget = new ExtraUsageUsedWidget();
 

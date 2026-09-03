@@ -60,6 +60,32 @@ describe('ExtraUsageRemainingWidget', () => {
         })).toBe('Overage Left: €3,894.00');
     });
 
+    it('applies the global cost style while preserving the reported currency', () => {
+        const widget = new ExtraUsageRemainingWidget();
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            numberFormat: { cost: { style: 'compact' as const } }
+        };
+        const context: RenderContext = {
+            usageData: {
+                extraUsageCurrency: 'EUR',
+                extraUsageEnabled: true,
+                extraUsageLimit: 400000,
+                extraUsageUsed: 10600
+            }
+        };
+
+        expect(widget.render({
+            id: 'extra',
+            type: 'extra-usage-remaining'
+        }, context, settings)).toBe('Overage Left: €3,894');
+        expect(widget.render({
+            id: 'extra',
+            type: 'extra-usage-remaining'
+        }, { isPreview: true }, settings)).toBe('Overage Left: $3,894');
+        expect(widget.supportsNumberFormat()).toBe(true);
+    });
+
     it('clamps remaining budget at zero', () => {
         const widget = new ExtraUsageRemainingWidget();
 
