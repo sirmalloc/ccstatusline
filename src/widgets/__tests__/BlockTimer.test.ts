@@ -72,6 +72,26 @@ describe('BlockTimerWidget', () => {
         expect(render(widget, item, { usageData: {} })).toBe('Block [████░░░░░░░░░░░░] 25.0%');
     });
 
+    it('rounds the progress bar fill to the nearest cell', () => {
+        const widget = new BlockTimerWidget();
+        const item: WidgetItem = {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'progress' }
+        };
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 13302000,
+            remainingMs: 4698000,
+            elapsedPercent: 73.9,
+            remainingPercent: 26.1
+        });
+
+        // 73.9% of 32 cells is 23.648, past the half-cell mark, so the 24th cell fills.
+        expect(render(widget, item, { usageData: {} })).toBe(`Block [${'█'.repeat(24)}${'░'.repeat(8)}] 73.9%`);
+    });
+
     it('renders empty values when no usage or fallback data exists', () => {
         const widget = new BlockTimerWidget();
 

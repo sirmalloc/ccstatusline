@@ -20,6 +20,7 @@ import {
     LOCALE_EDITOR_ACTION,
     renderUsageLocaleEditor
 } from './shared/locale-editor';
+import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     TIMEZONE_EDITOR_ACTION,
@@ -45,13 +46,6 @@ import {
     toggleUsageHourFormat,
     toggleUsageInverted
 } from './shared/usage-display';
-
-function makeTimerProgressBar(percent: number, width: number): string {
-    const clampedPercent = Math.max(0, Math.min(100, percent));
-    const filledWidth = Math.floor((clampedPercent / 100) * width);
-    const emptyWidth = width - filledWidth;
-    return '█'.repeat(filledWidth) + '░'.repeat(emptyWidth);
-}
 
 const BLOCK_RESET_PREVIEW_AT = '2026-03-12T08:30:00.000Z';
 const USAGE_TIMER_LOADING_MESSAGE = '[Loading]';
