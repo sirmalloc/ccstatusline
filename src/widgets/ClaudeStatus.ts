@@ -94,14 +94,17 @@ export class ClaudeStatusWidget implements Widget {
             }
             const previewBuckets: ClaudeIncidentImpact[] = ['none', 'none', 'minor', 'none', 'major', 'none', 'critical', 'none'];
             const previewBar = previewBuckets.map(bucket => colorize(HISTORY_BAR_CHAR, bucket)).join('');
-            return formatRawOrLabeledValue(item, LABEL, `${colorize('ok', 'none')} ${previewBar}`);
+            const previewStatus = colorize(formatRawOrLabeledValue(item, LABEL, 'ok'), 'none');
+            return `${previewStatus} ${previewBar}`;
         }
 
         const data = context.claudeStatusData;
         if (!data || data.error || data.indicator === undefined) {
             // Degrade quietly on fetch/parse failures instead of breaking the line.
-            const placeholder = showHistory ? colorize('?', 'unknown') : '?';
-            return formatRawOrLabeledValue(item, LABEL, placeholder);
+            if (showHistory) {
+                return colorize(formatRawOrLabeledValue(item, LABEL, '?'), 'unknown');
+            }
+            return formatRawOrLabeledValue(item, LABEL, '?');
         }
 
         const statusText = INDICATOR_TEXT[data.indicator] ?? data.indicator;
@@ -109,10 +112,16 @@ export class ClaudeStatusWidget implements Widget {
             return formatRawOrLabeledValue(item, LABEL, statusText);
         }
 
-        const coloredStatus = colorize(statusText, getIndicatorColorKey(data.indicator));
+        // Color the label together with the status. The renderer deliberately
+        // skips its theme foreground while preserving the multi-colored strip,
+        // so leaving the label uncolored could make it unreadable in Powerline.
+        const coloredStatus = colorize(
+            formatRawOrLabeledValue(item, LABEL, statusText),
+            getIndicatorColorKey(data.indicator)
+        );
         const buckets = computeIncidentHistoryBuckets(data.incidents ?? [], Date.now());
         const bar = buckets.map(bucket => colorize(HISTORY_BAR_CHAR, bucket)).join('');
-        return formatRawOrLabeledValue(item, LABEL, `${coloredStatus} ${bar}`);
+        return `${coloredStatus} ${bar}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

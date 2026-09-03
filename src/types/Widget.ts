@@ -65,8 +65,8 @@ export interface Widget {
     /**
      * When true for the given item, the widget's rendered output already
      * contains its own ANSI foreground codes and the renderer must not apply
-     * theme/item foreground colors on top of it (see custom-command's
-     * preserve-colors mode).
+     * theme/item foreground colors on top of it. Global foreground overrides
+     * still take precedence (see custom-command's preserve-colors mode).
      */
     preservesRenderedColors?(item: WidgetItem): boolean;
 }

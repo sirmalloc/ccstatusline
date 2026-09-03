@@ -42,7 +42,8 @@ export function getWidget(type: WidgetItemType): Widget | null {
 /**
  * True when the item's rendered output carries its own ANSI foreground codes
  * (e.g. custom-command with preserve colors, Claude Status with history), so
- * the renderer must not layer theme/item foreground colors on top of it.
+ * the renderer must not layer theme/item foreground colors on top of it unless
+ * a global foreground override is active.
  */
 export function widgetPreservesColors(item: WidgetItem): boolean {
     return getWidget(item.type)?.preservesRenderedColors?.(item) ?? false;

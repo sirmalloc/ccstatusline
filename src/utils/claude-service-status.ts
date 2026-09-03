@@ -95,6 +95,7 @@ const StatusResponseSchema = z.looseObject({ status: z.looseObject({ indicator: 
 const IncidentsResponseSchema = z.looseObject({
     incidents: z.array(z.looseObject({
         impact: z.string().nullable().optional(),
+        started_at: z.string().nullable().optional(),
         created_at: z.string().nullable().optional(),
         resolved_at: z.string().nullable().optional()
     })).nullable().optional()
@@ -124,7 +125,7 @@ function parseTimestampMs(value: string | null | undefined): number | null {
 /**
  * Extract the incident windows relevant to the history strip. Incidents with
  * impact 'none' (or an unrecognized impact) and incidents without a parseable
- * created_at are dropped.
+ * started_at or created_at are dropped.
  */
 export function parseClaudeIncidentsResponse(rawJson: string): ClaudeIncidentWindow[] | null {
     const parsed = parseJsonWithSchema(rawJson, IncidentsResponseSchema);
@@ -139,7 +140,8 @@ export function parseClaudeIncidentsResponse(rawJson: string): ClaudeIncidentWin
             continue;
         }
 
-        const startMs = parseTimestampMs(incident.created_at);
+        const startMs = parseTimestampMs(incident.started_at)
+            ?? parseTimestampMs(incident.created_at);
         if (startMs === null) {
             continue;
         }
@@ -260,7 +262,30 @@ function getStatusPageProxyUrl(): string | null {
     return proxyUrl?.length ? proxyUrl : null;
 }
 
-function fetchStatusPagePath(pathName: string): Promise<string | null> {
+interface StatusPageResponse {
+    statusCode?: number;
+    setEncoding(encoding: BufferEncoding): unknown;
+    on(event: 'data', listener: (chunk: string) => void): unknown;
+    on(event: 'end' | 'aborted' | 'error', listener: () => void): unknown;
+}
+
+interface StatusPageRequest {
+    destroy(): void;
+    end(): void;
+    on(event: 'error' | 'timeout', listener: () => void): unknown;
+}
+
+type StatusPageRequestFn = (
+    options: https.RequestOptions,
+    onResponse: (response: StatusPageResponse) => void
+) => StatusPageRequest;
+
+const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.request(options, onResponse);
+
+function fetchStatusPagePath(
+    pathName: string,
+    requestFn: StatusPageRequestFn = requestStatusPage
+): Promise<string | null> {
     return new Promise((resolve) => {
         let settled = false;
 
@@ -287,7 +312,7 @@ function fetchStatusPagePath(pathName: string): Promise<string | null> {
             return;
         }
 
-        const request = https.request(requestOptions, (response) => {
+        const request = requestFn(requestOptions, (response) => {
             let data = '';
             response.setEncoding('utf8');
             response.on('data', (chunk: string) => {
@@ -296,6 +321,8 @@ function fetchStatusPagePath(pathName: string): Promise<string | null> {
             response.on('end', () => {
                 finish(response.statusCode === 200 && data ? data : null);
             });
+            response.on('aborted', () => { finish(null); });
+            response.on('error', () => { finish(null); });
         });
 
         request.on('error', () => { finish(null); });
@@ -306,6 +333,9 @@ function fetchStatusPagePath(pathName: string): Promise<string | null> {
         request.end();
     });
 }
+
+// Exposed only for deterministic response-stream failure tests.
+export const __testing = { fetchStatusPagePath };
 
 function toStatusData(cache: CachedClaudeStatus): ClaudeServiceStatusData {
     return {

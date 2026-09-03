@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import {
     describe,
     expect,
@@ -8,12 +9,15 @@ import type { ClaudeIncidentWindow } from '../claude-service-status';
 import {
     INCIDENT_HISTORY_BUCKET_COUNT,
     INCIDENT_HISTORY_BUCKET_MS,
+    __testing,
     computeIncidentHistoryBuckets,
     hasClaudeStatusWidgets,
     isClaudeStatusHistoryEnabled,
     parseClaudeIncidentsResponse,
     parseClaudeStatusResponse
 } from '../claude-service-status';
+
+type StatusPageRequestFn = NonNullable<Parameters<typeof __testing.fetchStatusPagePath>[1]>;
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW = Date.parse('2026-08-15T12:00:00Z');
@@ -88,10 +92,15 @@ describe('parseClaudeStatusResponse', () => {
 });
 
 describe('parseClaudeIncidentsResponse', () => {
-    it('extracts incident windows and drops impact "none" and unknown impacts', () => {
+    it('prefers started_at, falls back to created_at, and drops untracked impacts', () => {
         const raw = JSON.stringify({
             incidents: [
-                { impact: 'major', created_at: '2026-08-15T00:00:00Z', resolved_at: '2026-08-15T02:00:00Z' },
+                {
+                    impact: 'major',
+                    started_at: '2026-08-14T22:00:00Z',
+                    created_at: '2026-08-15T00:00:00Z',
+                    resolved_at: '2026-08-15T02:00:00Z'
+                },
                 { impact: 'minor', created_at: '2026-08-15T03:00:00Z', resolved_at: null },
                 { impact: 'none', created_at: '2026-08-15T04:00:00Z', resolved_at: '2026-08-15T05:00:00Z' },
                 { impact: 'catastrophic', created_at: '2026-08-15T04:00:00Z', resolved_at: null }
@@ -101,7 +110,7 @@ describe('parseClaudeIncidentsResponse', () => {
         expect(parseClaudeIncidentsResponse(raw)).toEqual([
             {
                 impact: 'major',
-                startMs: Date.parse('2026-08-15T00:00:00Z'),
+                startMs: Date.parse('2026-08-14T22:00:00Z'),
                 endMs: Date.parse('2026-08-15T02:00:00Z')
             },
             {
@@ -112,14 +121,64 @@ describe('parseClaudeIncidentsResponse', () => {
         ]);
     });
 
-    it('drops incidents without a parseable created_at', () => {
-        const raw = JSON.stringify({ incidents: [{ impact: 'critical', created_at: 'garbage', resolved_at: null }] });
+    it('falls back to created_at when started_at is malformed', () => {
+        const raw = JSON.stringify({
+            incidents: [{
+                impact: 'critical',
+                started_at: 'garbage',
+                created_at: '2026-08-15T04:00:00Z',
+                resolved_at: null
+            }]
+        });
+        expect(parseClaudeIncidentsResponse(raw)).toEqual([{
+            impact: 'critical',
+            startMs: Date.parse('2026-08-15T04:00:00Z'),
+            endMs: null
+        }]);
+    });
+
+    it('drops incidents without a parseable start timestamp', () => {
+        const raw = JSON.stringify({ incidents: [{ impact: 'critical', started_at: 'garbage', created_at: null, resolved_at: null }] });
         expect(parseClaudeIncidentsResponse(raw)).toEqual([]);
     });
 
     it('returns null for malformed JSON and an empty list for a missing incidents array', () => {
         expect(parseClaudeIncidentsResponse('not json')).toBeNull();
         expect(parseClaudeIncidentsResponse('{}')).toEqual([]);
+    });
+});
+
+describe('status page response handling', () => {
+    function responseFailureRequest(event: 'aborted' | 'error'): StatusPageRequestFn {
+        return (_options, onResponse) => {
+            const response = Object.assign(new EventEmitter(), {
+                statusCode: 200,
+                setEncoding: () => undefined
+            });
+            const request = Object.assign(new EventEmitter(), {
+                destroy: () => undefined,
+                end() {
+                    onResponse(response);
+                    response.emit('data', 'partial response');
+                    if (event === 'error') {
+                        response.emit('error', new Error('response stream failed'));
+                    } else {
+                        response.emit('aborted');
+                    }
+                }
+            });
+
+            return request;
+        };
+    }
+
+    it.each(['aborted', 'error'] as const)('settles with null when the response emits %s', async (event) => {
+        const result = await Promise.race([
+            __testing.fetchStatusPagePath('/test', responseFailureRequest(event)),
+            new Promise<'timeout'>(resolve => setTimeout(() => { resolve('timeout'); }, 100))
+        ]);
+
+        expect(result).toBeNull();
     });
 });
 

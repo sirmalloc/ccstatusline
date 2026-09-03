@@ -64,6 +64,17 @@ function maybeApplyForegroundGradient(
     return stops ? applyLineGradient(line, stops, colorLevel) : line;
 }
 
+function hasForegroundOverride(settings: Settings): boolean {
+    return Boolean(settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
+}
+
+// A global foreground override owns the foreground even for widgets that
+// normally carry intrinsic ANSI colors. Other styling (bold, dim, background)
+// remains independent of foreground preservation.
+function preservesIntrinsicForeground(item: WidgetItem, settings: Settings): boolean {
+    return widgetPreservesColors(item) && !hasForegroundOverride(settings);
+}
+
 // Split the default padding string into the leading/trailing pieces that
 // actually get applied, based on which side(s) padding is configured for.
 function resolvePaddingSides(padding: string, side: DefaultPaddingSide | undefined): { leading: string; trailing: string } {
@@ -273,8 +284,7 @@ function renderPowerlineStatusLine(
 
             // If override FG color is set and this widget preserves its own colors,
             // we need to strip the ANSI codes from the widget text
-            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                && widgetPreservesColors(widget)) {
+            if (hasForegroundOverride(settings) && widgetPreservesColors(widget)) {
                 // Strip ANSI color codes when override is active
                 widgetText = stripSgrCodes(widgetText);
             }
@@ -301,7 +311,7 @@ function renderPowerlineStatusLine(
 
             // Apply theme colors if a theme is set (and not 'custom')
             // For widgets that preserve their own colors, only skip foreground theme colors
-            const skipFgTheme = widgetPreservesColors(widget);
+            const skipFgTheme = preservesIntrinsicForeground(widget, settings);
 
             if (themeColors) {
                 if (!skipFgTheme) {
@@ -440,7 +450,7 @@ function renderPowerlineStatusLine(
 
     const powerlineGradientWidth = overrideForegroundGradientStops && colorLevel !== 'ansi16'
         ? widgetElements.reduce((sum, element) => {
-            const isPreserveColors = widgetPreservesColors(element.widget);
+            const isPreserveColors = preservesIntrinsicForeground(element.widget, settings);
             return isPreserveColors ? sum : sum + getVisibleWidth(element.content);
         }, 0)
         : 0;
@@ -491,19 +501,20 @@ function renderPowerlineStatusLine(
 
         let widgetContent = '';
 
-        // For widgets that preserve their own colors, only skip foreground color/bold
-        const isPreserveColors = widgetPreservesColors(widget.widget);
+        // Intrinsic colors replace only the renderer's foreground. Global/item
+        // intensity and Powerline backgrounds still apply around that content.
+        const isPreserveColors = preservesIntrinsicForeground(widget.widget, settings);
 
-        if (shouldBold && !isPreserveColors) {
+        if (shouldBold) {
             widgetContent += '\x1b[1m';
         }
-        if (shouldDim && !isPreserveColors) {
+        if (shouldDim) {
             widgetContent += '\x1b[2m';
         }
         const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
             ? overrideForegroundGradientStops
             : null;
-        const styledContent = widget.widget.dim === 'parens' && !isPreserveColors
+        const styledContent = widget.widget.dim === 'parens'
             ? applyParensDim(widget.content, shouldBold)
             : widget.content;
 
@@ -1174,8 +1185,17 @@ export function renderStatusLine(
                             finalOutput = truncateStyledText(widgetText, widget.maxWidth, { ellipsis: false });
                         }
                     }
-                    // Preserve original colors from command output
-                    elements.push({ content: finalOutput, type: widget.type, widget });
+                    if (hasForegroundOverride(settings)) {
+                        finalOutput = stripSgrCodes(finalOutput);
+                    }
+                    // Preserve intrinsic foregrounds only when no global
+                    // foreground override is active. Bold, dim, backgrounds,
+                    // and global overrides still wrap the widget normally.
+                    elements.push({
+                        content: applyColorsWithOverride(finalOutput, undefined, widget.backgroundColor, widget.bold, widget.dim),
+                        type: widget.type,
+                        widget
+                    });
                 } else {
                     // Normal widget rendering with colors
                     elements.push({
