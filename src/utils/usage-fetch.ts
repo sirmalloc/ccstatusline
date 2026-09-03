@@ -522,9 +522,39 @@ function readUsageTokenFromCredentialsFile(): string | null {
     }
 }
 
+// Claude Code stores each non-default profile's credential under its own
+// keychain service: the plain name plus `-<sha256(configDir)[:8]>`, added
+// whenever CLAUDE_CONFIG_DIR is set. CLAUDE_SECURESTORAGE_CONFIG_DIR, when
+// present, replaces the hash input (an empty value forces the plain name).
+// The hash input is the raw environment value, NFC-normalized but not
+// resolved — the goal is to reproduce the exact string Claude Code's own
+// service-name builder hashes, not to locate a directory (#521). Returns
+// null for the default profile.
+export function getMacKeychainConfigDirService(): string | null {
+    const rawConfigDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? '';
+    if (rawConfigDir === '') {
+        return null;
+    }
+
+    const configDir = rawConfigDir.normalize('NFC');
+    const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8);
+    return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
+}
+
 export function getUsageToken(): string | null {
     if (process.platform !== 'darwin') {
         return readUsageTokenFromCredentialsFile();
+    }
+
+    const configDirService = getMacKeychainConfigDirService();
+    if (configDirService !== null) {
+        // A non-default profile owns exactly one keychain service name. On a
+        // miss, the plain service and the other suffixed items all belong to
+        // other profiles (or MCP servers), so fall through only to the
+        // profile's own .credentials.json rather than surface another
+        // account's usage.
+        return readUsageTokenFromMacKeychainService(configDirService)
+            ?? readUsageTokenFromCredentialsFile();
     }
 
     return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
