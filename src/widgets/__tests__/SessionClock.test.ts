@@ -65,4 +65,15 @@ describe('SessionClockWidget', () => {
             metadata: { hide: 'zero' }
         }, {})).toBeNull();
     });
+
+    it('hides transcript-derived sub-minute durations when the zero hide state is enabled', () => {
+        const context: RenderContext = { sessionDuration: '<1m' };
+
+        expect(render({ id: 'session-clock', type: 'session-clock' }, context)).toBe('Session: <1m');
+        expect(render({
+            id: 'session-clock',
+            type: 'session-clock',
+            metadata: { hide: 'zero' }
+        }, context)).toBeNull();
+    });
 });

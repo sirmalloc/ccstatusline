@@ -61,7 +61,7 @@ export class SessionClockWidget implements Widget {
         }
 
         const duration = context.sessionDuration ?? '0m';
-        if (duration === '0m' && hideZero) {
+        if ((duration === '0m' || duration === '<1m') && hideZero) {
             return null;
         }
         return item.rawValue ? duration : `Session: ${duration}`;
