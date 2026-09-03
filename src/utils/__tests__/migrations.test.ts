@@ -126,6 +126,26 @@ describe('v3 to v4 hide flag migration', () => {
         expect(item?.metadata).toEqual({ hide: expected });
     });
 
+    it('converts Git Conflicts hidden-zero display to the unified zero hide state', () => {
+        const item = migrateItem({
+            id: '1',
+            type: 'git-conflicts',
+            metadata: { hideNoGit: 'true', zeroDisplay: 'hidden' }
+        });
+
+        expect(item?.metadata).toEqual({ hide: 'no-git,zero' });
+    });
+
+    it('preserves the non-hiding Git Conflicts clean display', () => {
+        const item = migrateItem({
+            id: '1',
+            type: 'git-conflicts',
+            metadata: { hideNoGit: 'true', zeroDisplay: 'clean' }
+        });
+
+        expect(item?.metadata).toEqual({ hide: 'no-git', zeroDisplay: 'clean' });
+    });
+
     it('expands hideNoGit to every state it covered on git-ahead-behind', () => {
         const item = migrateItem({ id: '1', type: 'git-ahead-behind', metadata: { hideNoGit: 'true' } });
 

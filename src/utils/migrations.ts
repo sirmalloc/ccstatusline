@@ -243,7 +243,11 @@ function migrateItemHideFlags(item: unknown): unknown {
 
     const metadata = item.metadata;
     const presentKeys = V4_LEGACY_HIDE_KEYS.filter(key => key in metadata);
-    if (presentKeys.length === 0) {
+    // PR #562 briefly represented Git Conflicts' hidden-zero choice as a
+    // display mode. Fold that choice into the shared zero hide state while
+    // preserving the non-hiding `clean` display mode.
+    const hasLegacyHiddenZeroDisplay = item.type === 'git-conflicts' && metadata.zeroDisplay === 'hidden';
+    if (presentKeys.length === 0 && !hasLegacyHiddenZeroDisplay) {
         return item;
     }
 
@@ -266,9 +270,16 @@ function migrateItemHideFlags(item: unknown): unknown {
             }
         }
     }
+    if (hasLegacyHiddenZeroDisplay) {
+        enabled.add('zero');
+    }
 
     const nextMetadata: Record<string, unknown> = Object.fromEntries(
-        Object.entries(metadata).filter(([key]) => !V4_LEGACY_HIDE_KEYS.includes(key) && key !== 'hide')
+        Object.entries(metadata).filter(([key]) => (
+            !V4_LEGACY_HIDE_KEYS.includes(key)
+            && key !== 'hide'
+            && !(hasLegacyHiddenZeroDisplay && key === 'zeroDisplay')
+        ))
     );
     const orderedEnabled = rule.stateOrder.filter(state => enabled.has(state));
     const defaults = rule.defaultEnabled ?? [];
