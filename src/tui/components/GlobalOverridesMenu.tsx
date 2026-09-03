@@ -28,6 +28,8 @@ import { getNextNumberStyle } from '../../utils/number-format';
 
 import { ConfirmDialog } from './ConfirmDialog';
 
+const NUMBER_FORMAT_KIND_WIDTH = Math.max(...NUMBER_KINDS.map(kind => kind.length));
+
 // Cycle a number kind's global style: default (precise) -> compact -> whole -> default.
 // A global style forces that kind across all widgets (see resolveNumberFormat).
 function cycleGlobalNumberStyle(settings: Settings, kind: NumberKind): Settings {
@@ -311,7 +313,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         return (
                             <Text key={kind} color={idx === numberFormatKindIndex ? 'cyan' : undefined}>
                                 {idx === numberFormatKindIndex ? '▶ ' : '  '}
-                                {kind}
+                                {kind.padStart(NUMBER_FORMAT_KIND_WIDTH)}
                                 {': '}
                                 {style}
                             </Text>
