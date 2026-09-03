@@ -15,6 +15,11 @@ import {
     isCompactBoundary
 } from './compaction';
 import {
+    contextLengthFromUsageTokens,
+    parseUsageTokens,
+    type UsageTokens
+} from './context-window';
+import {
     iterateJsonlLines,
     parseJsonlLine
 } from './jsonl-lines';
@@ -23,16 +28,6 @@ import {
     type ResolvedThinkingEffort
 } from './jsonl-metadata';
 import { getSessionNameFromRecord } from './jsonl-session';
-
-export interface SpeedMetricsOptions {
-    includeSubagents?: boolean;
-    windowSeconds?: number;
-}
-
-export interface SpeedMetricsCollectionOptions {
-    includeSubagents?: boolean;
-    windowSeconds?: number[];
-}
 
 export interface SpeedMetricsCollection {
     sessionAverage: SpeedMetrics;
@@ -86,15 +81,8 @@ interface CollectedSpeedMetrics {
     latestTimestampMs: number | null;
 }
 
-interface RetainedTokenUsage {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheCreationTokens: number;
-}
-
 interface TokenMetricEntry {
-    usage: RetainedTokenUsage;
+    usage: UsageTokens;
     stopReason: string | null | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
@@ -105,9 +93,9 @@ interface TokenMetricAccumulator {
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
-    mostRecentMainChainUsage: RetainedTokenUsage | null;
+    mostRecentMainChainUsage: UsageTokens | null;
     mostRecentTimestampMs: number | null;
-    mostRecentPostCompactionUsage: RetainedTokenUsage | null;
+    mostRecentPostCompactionUsage: UsageTokens | null;
     mostRecentPostCompactionTimestampMs: number | null;
 }
 
@@ -156,10 +144,10 @@ function accumulateTokenMetricEntry(
     includePostCompactionUsage: boolean
 ): void {
     const { usage } = entry;
-    accumulator.inputTokens += usage.inputTokens;
-    accumulator.outputTokens += usage.outputTokens;
-    accumulator.cacheReadTokens += usage.cacheReadTokens;
-    accumulator.cacheCreationTokens += usage.cacheCreationTokens;
+    accumulator.inputTokens += usage.input;
+    accumulator.outputTokens += usage.output;
+    accumulator.cacheReadTokens += usage.read;
+    accumulator.cacheCreationTokens += usage.creation;
 
     if (!entry.isMainChain || entry.timestampMs === null) {
         return;
@@ -201,12 +189,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const usage = message?.usage;
     if (usage) {
         const entry: TokenMetricEntry = {
-            usage: {
-                inputTokens: usage.input_tokens || 0,
-                outputTokens: usage.output_tokens || 0,
-                cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-                cacheCreationTokens: usage.cache_creation_input_tokens ?? 0
-            },
+            usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
             isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
@@ -230,8 +213,8 @@ function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
         accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
     }
 
-    const contextLengthFromUsage = (usage: RetainedTokenUsage | null): number | null => usage
-        ? usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens
+    const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
+        ? contextLengthFromUsageTokens(usage)
         : null;
     const contextLength = state.sawCompactBoundary
         ? (contextLengthFromUsage(state.metrics.mostRecentPostCompactionUsage) ?? state.lastCompactBoundaryPostTokens ?? 0)
@@ -269,16 +252,6 @@ function collectAgentIds(value: unknown, agentIds: Set<string>) {
 
         collectAgentIds(nestedValue, agentIds);
     }
-}
-
-export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
-    const result = await scanTranscript(transcriptPath, { includeSessionDuration: true });
-    return result.sessionDuration;
-}
-
-export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
-    const result = await scanTranscript(transcriptPath, { includeTokenMetrics: true });
-    return result.tokenMetrics ?? createEmptyTokenMetrics();
 }
 
 function parseTimestampMs(value: string | undefined): number | null {
@@ -382,9 +355,10 @@ function collectSpeedMetricRecord(
         interval = { startMs: state.lastUserTimestampMs, endMs: timestampMs };
     }
 
+    const usage = parseUsageTokens(data.message.usage);
     state.requests.push({
-        inputTokens: data.message.usage.input_tokens || 0,
-        outputTokens: data.message.usage.output_tokens || 0,
+        inputTokens: usage.input,
+        outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
         interval
     });
@@ -688,21 +662,6 @@ function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: 
     return matchedPaths;
 }
 
-export async function getSpeedMetricsCollection(
-    transcriptPath: string,
-    options: SpeedMetricsCollectionOptions = {}
-): Promise<SpeedMetricsCollection> {
-    const result = await scanTranscript(transcriptPath, {
-        includeSpeedMetrics: true,
-        includeSubagents: options.includeSubagents,
-        speedWindowSeconds: options.windowSeconds
-    });
-    return result.speedMetricsCollection ?? {
-        sessionAverage: createEmptySpeedMetrics(),
-        windowed: buildEmptyWindowedMetrics(normalizeSpeedWindows(options.windowSeconds))
-    };
-}
-
 export async function getTranscriptAnalysis(
     transcriptPath: string,
     options: TranscriptAnalysisOptions = {}
@@ -720,21 +679,4 @@ export async function getTranscriptAnalysis(
         thinkingEffort: result.thinkingEffort,
         sessionName: result.sessionName
     };
-}
-
-export async function getSpeedMetrics(
-    transcriptPath: string,
-    options: SpeedMetricsOptions = {}
-): Promise<SpeedMetrics> {
-    const requestedWindow = normalizeWindowSeconds(options.windowSeconds);
-    const metricsCollection = await getSpeedMetricsCollection(transcriptPath, {
-        includeSubagents: options.includeSubagents,
-        windowSeconds: requestedWindow ? [requestedWindow] : []
-    });
-
-    if (requestedWindow === null) {
-        return metricsCollection.sessionAverage;
-    }
-
-    return metricsCollection.windowed[requestedWindow.toString()] ?? createEmptySpeedMetrics();
 }

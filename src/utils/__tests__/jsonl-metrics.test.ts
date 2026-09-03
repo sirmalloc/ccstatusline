@@ -8,13 +8,57 @@ import {
     it
 } from 'vitest';
 
-import {
-    getSessionDuration,
-    getSpeedMetrics,
-    getSpeedMetricsCollection,
-    getTokenMetrics,
-    getTranscriptAnalysis
-} from '../jsonl';
+import type {
+    SpeedMetrics,
+    TokenMetrics
+} from '../../types';
+import type { StatusJSON } from '../../types/StatusJSON';
+import { getContextWindowMetrics } from '../context-window';
+import { getTranscriptAnalysis } from '../jsonl';
+import type { SpeedMetricsCollection } from '../jsonl-metrics';
+
+// The render path makes one combined scan; these narrow the result to the one
+// metric each case is about, so the assertions stay readable.
+async function getSessionDuration(transcriptPath: string): Promise<string | null> {
+    const analysis = await getTranscriptAnalysis(transcriptPath, { includeSessionDuration: true });
+    return analysis.sessionDuration;
+}
+
+async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
+    const analysis = await getTranscriptAnalysis(transcriptPath);
+    return analysis.tokenMetrics;
+}
+
+async function getSpeedMetricsCollection(
+    transcriptPath: string,
+    options: { includeSubagents?: boolean; windowSeconds?: number[] } = {}
+): Promise<SpeedMetricsCollection> {
+    const analysis = await getTranscriptAnalysis(transcriptPath, {
+        includeSpeedMetrics: true,
+        includeSubagents: options.includeSubagents,
+        speedWindowSeconds: options.windowSeconds
+    });
+    if (!analysis.speedMetricsCollection) {
+        throw new Error('speed metrics were requested but not collected');
+    }
+
+    return analysis.speedMetricsCollection;
+}
+
+async function getSpeedMetrics(
+    transcriptPath: string,
+    options: { includeSubagents?: boolean; windowSeconds?: number } = {}
+): Promise<SpeedMetrics> {
+    const { windowSeconds } = options;
+    const collection = await getSpeedMetricsCollection(transcriptPath, {
+        includeSubagents: options.includeSubagents,
+        windowSeconds: windowSeconds === undefined ? [] : [windowSeconds]
+    });
+
+    return windowSeconds === undefined
+        ? collection.sessionAverage
+        : collection.windowed[windowSeconds.toString()] ?? collection.sessionAverage;
+}
 
 function makeUsageLine(params: {
     timestamp: string;
@@ -76,6 +120,32 @@ describe('jsonl transcript metrics', () => {
                 fs.rmSync(root, { recursive: true, force: true });
             }
         }
+    });
+
+    it('clamps malformed usage counts the way the live status path does', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'malformed-usage.jsonl');
+        const usage = {
+            input_tokens: '12',
+            output_tokens: -7,
+            cache_read_input_tokens: 5000,
+            cache_creation_input_tokens: 100
+        };
+        fs.writeFileSync(transcriptPath, `${JSON.stringify({
+            timestamp: '2026-01-01T10:00:00.000Z',
+            message: { stop_reason: 'end_turn', usage }
+        })}\n`);
+
+        const metrics = await getTokenMetrics(transcriptPath);
+        const live = getContextWindowMetrics({ context_window: { current_usage: usage } } as unknown as StatusJSON);
+
+        // A non-numeric or negative count reads as 0 in both paths, so the
+        // transcript fallback can never disagree with the live status JSON.
+        expect(metrics.inputTokens).toBe(0);
+        expect(metrics.outputTokens).toBe(0);
+        expect(metrics.contextLength).toBe(5100);
+        expect(metrics.contextLength).toBe(live.contextLengthTokens);
     });
 
     it('formats session duration as <1m for sub-minute transcripts', async () => {

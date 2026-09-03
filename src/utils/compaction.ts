@@ -1,11 +1,4 @@
-import * as fs from 'fs';
-
 import type { CompactionData } from '../types/RenderContext';
-
-import {
-    iterateJsonlLines,
-    parseJsonlLine
-} from './jsonl-lines';
 
 /** Shared zeroed stats for missing/unreadable transcripts and as a render fallback. Treat as read-only. */
 export const ZERO_COMPACTION_STATS: CompactionData = Object.freeze({
@@ -71,39 +64,5 @@ export function accumulateCompactionStats(stats: CompactionData, record: unknown
         if (Number.isFinite(reclaimed)) {
             stats.tokensReclaimed += Math.max(0, reclaimed);
         }
-    }
-}
-
-/**
- * Count context-compaction events and summarize their `compactMetadata` by
- * scanning the transcript for `{type:'system', subtype:'compact_boundary'}`
- * markers Claude Code writes on every compaction. Exact and immune to transient
- * context-percentage noise. Sidechain (subagent) records are excluded.
- *
- * `trigger` missing or unrecognized is counted under `unknown` (never guessed).
- * `tokensReclaimed` sums `preTokens - postTokens` only for markers where both
- * are finite numbers; older markers without `postTokens` contribute 0.
- */
-export function computeCompactionStats(lines: readonly string[]): CompactionData {
-    const stats = createCompactionStats();
-    for (const line of lines) {
-        accumulateCompactionStats(stats, parseJsonlLine(line));
-    }
-    return stats;
-}
-
-/** Best-effort: returns zeroed stats when the transcript is missing or unreadable. */
-export async function getCompactionStats(transcriptPath: string): Promise<CompactionData> {
-    try {
-        if (!fs.existsSync(transcriptPath)) {
-            return ZERO_COMPACTION_STATS;
-        }
-        const stats = createCompactionStats();
-        for await (const line of iterateJsonlLines(transcriptPath)) {
-            accumulateCompactionStats(stats, parseJsonlLine(line));
-        }
-        return stats;
-    } catch {
-        return ZERO_COMPACTION_STATS;
     }
 }

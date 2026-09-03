@@ -1,73 +1,8 @@
 import * as fs from 'fs';
 import { StringDecoder } from 'string_decoder';
-import { promisify } from 'util';
 
+/** Read size for both sync iterators. Exported so tests size records against it rather than a copy. */
 export const JSONL_READ_CHUNK_BYTES = 1024 * 1024;
-const stat = promisify(fs.stat);
-const statSync = fs.statSync;
-
-/** Transcripts to retain. A render reads the session transcript and the subagent transcripts it references. */
-const MAX_CACHED_FILES = 8;
-
-interface CacheEntry {
-    /** Size and modification time, so an appended transcript is re-read rather than served stale. */
-    readonly version: string;
-    readonly lines: readonly string[];
-}
-
-/**
- * Split lines, keyed by file identity.
- *
- * @remarks
- * Compatibility callers can still request a materialized line array. Reuse
- * keeps repeated reads of an unchanged file to one walk, while transcript
- * analysis uses the streaming iterators directly.
- */
-const lineCache = new Map<string, CacheEntry>();
-
-/**
- * Identifies the file itself rather than the string used to reach it.
- *
- * @remarks
- * Windows accepts many spellings of one path, and the code mixes them: a
- * transcript path arrives with backslashes while a glob yields forward slashes.
- * Keying on the device and inode gives those one entry instead of several.
- * Inodes exceed the safe integer range, so the stat is taken as bigint.
- */
-function identify(stats: fs.BigIntStats, filePath: string): string {
-    // A filesystem that reports no inode leaves the path as the only identity.
-    if (stats.ino === 0n) {
-        return `path:${filePath}`;
-    }
-
-    return `ino:${stats.dev}:${stats.ino}`;
-}
-
-function versionOf(stats: fs.BigIntStats): string {
-    return `${stats.size}:${stats.mtimeNs}`;
-}
-
-function readCached(identity: string, version: string): readonly string[] | undefined {
-    const entry = lineCache.get(identity);
-    return entry?.version === version ? entry.lines : undefined;
-}
-
-function writeCached(identity: string, version: string, lines: readonly string[]): readonly string[] {
-    // Re-inserting moves the entry to the end, so eviction stays least-recently-written.
-    lineCache.delete(identity);
-    lineCache.set(identity, { version, lines });
-
-    while (lineCache.size > MAX_CACHED_FILES) {
-        const oldest = lineCache.keys().next();
-        if (oldest.done) {
-            break;
-        }
-
-        lineCache.delete(oldest.value);
-    }
-
-    return lines;
-}
 
 /**
  * Splits byte chunks using JSONL's LF delimiter without interpreting Unicode
@@ -281,73 +216,6 @@ export function* iterateJsonlLinesReverseSync(filePath: string): Generator<strin
     } finally {
         fs.closeSync(fd);
     }
-}
-
-/**
- * Options accepted by both readers.
- */
-export interface ReadJsonlLinesOptions {
-    /**
-     * Whether to serve and populate the shared cache. Defaults to true.
-     *
-     * @remarks
-     * Pass false for a sweep across many transcripts. Those read each file once,
-     * so caching cannot hit, and retaining their lines holds arbitrarily many
-     * whole transcripts for the life of the process.
-     */
-    readonly cache?: boolean;
-}
-
-/**
- * Discards every cached transcript.
- *
- * @remarks
- * Exported for tests, which need to isolate cases that reuse a path.
- */
-export function clearJsonlLineCache(): void {
-    lineCache.clear();
-}
-
-export async function readJsonlLines(filePath: string, options?: ReadJsonlLinesOptions): Promise<readonly string[]> {
-    const readLines = async (): Promise<string[]> => {
-        const lines: string[] = [];
-        for await (const line of iterateJsonlLines(filePath)) {
-            lines.push(line);
-        }
-        return lines;
-    };
-
-    if (options?.cache === false) {
-        return readLines();
-    }
-
-    const stats = await stat(filePath, { bigint: true });
-    const identity = identify(stats, filePath);
-    const version = versionOf(stats);
-
-    const cached = readCached(identity, version);
-    if (cached !== undefined) {
-        return cached;
-    }
-
-    return writeCached(identity, version, await readLines());
-}
-
-export function readJsonlLinesSync(filePath: string, options?: ReadJsonlLinesOptions): readonly string[] {
-    if (options?.cache === false) {
-        return Array.from(iterateJsonlLinesSync(filePath));
-    }
-
-    const stats = statSync(filePath, { bigint: true });
-    const identity = identify(stats, filePath);
-    const version = versionOf(stats);
-
-    const cached = readCached(identity, version);
-    if (cached !== undefined) {
-        return cached;
-    }
-
-    return writeCached(identity, version, Array.from(iterateJsonlLinesSync(filePath)));
 }
 
 export function parseJsonlLine(line: string): unknown {

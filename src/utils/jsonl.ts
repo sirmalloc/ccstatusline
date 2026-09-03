@@ -5,13 +5,7 @@ export {
     writeBlockCache
 } from './jsonl-cache';
 export { getBlockMetrics } from './jsonl-blocks';
-export {
-    getSessionDuration,
-    getSpeedMetrics,
-    getSpeedMetricsCollection,
-    getTokenMetrics,
-    getTranscriptAnalysis
-} from './jsonl-metrics';
+export { getTranscriptAnalysis } from './jsonl-metrics';
 export type {
     TranscriptAnalysis,
     TranscriptAnalysisOptions
