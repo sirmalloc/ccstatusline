@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -11,6 +12,7 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
@@ -27,6 +29,8 @@ import {
     toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
+
+const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no active block' };
 
 export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -86,6 +90,10 @@ export class BlockTimerWidget implements Widget {
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {
+            if (isHidden(item, NO_DATA_HIDEABLE_STATE.key)) {
+                return null;
+            }
+
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const emptyBar = '░'.repeat(barWidth);
@@ -126,6 +134,10 @@ export class BlockTimerWidget implements Widget {
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         return getUsageTimerCustomKeybinds(item);
+    }
+
+    getHideableStates(): HideableState[] {
+        return [NO_DATA_HIDEABLE_STATE];
     }
 
     supportsRawValue(): boolean { return true; }

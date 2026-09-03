@@ -195,7 +195,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
             isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
         };
 
-        const hasStopReason = Object.hasOwn(message, 'stop_reason');
+        const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
