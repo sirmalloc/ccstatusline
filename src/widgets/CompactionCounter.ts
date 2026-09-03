@@ -1,3 +1,4 @@
+import type { NumberFormat } from '../types/NumberFormat';
 import type {
     CompactionData,
     RenderContext
@@ -5,6 +6,7 @@ import type {
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -12,7 +14,9 @@ import type {
 } from '../types/Widget';
 import { ZERO_COMPACTION_STATS } from '../utils/compaction';
 import { formatTokens } from '../utils/format-tokens';
+import { resolveNumberFormat } from '../utils/number-format';
 
+import { isHidden } from './shared/hideable';
 import {
     isMetadataFlagEnabled,
     isNerdFontEnabled,
@@ -35,9 +39,7 @@ type CompactionCounterFormat = typeof FORMATS[number];
 
 const DEFAULT_FORMAT: CompactionCounterFormat = 'icon-space-number';
 const CYCLE_FORMAT_ACTION = 'cycle-format';
-const TOGGLE_HIDE_ZERO_ACTION = 'toggle-hide-zero';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
-const HIDE_ZERO_METADATA_KEY = 'hideZero';
 const TOGGLE_TRIGGERS_ACTION = 'toggle-triggers';
 const SHOW_TRIGGERS_METADATA_KEY = 'showTriggers';
 const TOGGLE_RECLAIMED_ACTION = 'toggle-reclaimed';
@@ -52,6 +54,7 @@ const DEFAULT_METRIC: CompactionMetric = 'count';
 const METRIC_METADATA_KEY = 'metric';
 const CYCLE_METRIC_ACTION = 'cycle-metric';
 const RECLAIMED_SLOT: SymbolSlot = { id: 'symbolReclaimed', label: 'Reclaimed', defaultSymbol: '↓' };
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when count is zero' };
 const SAMPLE_STATS: CompactionData = Object.freeze({
     count: 2,
     byTrigger: Object.freeze({ auto: 1, manual: 1, unknown: 0 }),
@@ -72,20 +75,6 @@ const NERD_FONT_FORMATS: NerdFontFormats<CompactionCounterFormat> = {
     defaultFormat: DEFAULT_FORMAT,
     canUseNerdFont
 };
-
-function isHideZeroEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[HIDE_ZERO_METADATA_KEY] === 'true';
-}
-
-function toggleHideZero(item: WidgetItem): WidgetItem {
-    return {
-        ...item,
-        metadata: {
-            ...(item.metadata ?? {}),
-            [HIDE_ZERO_METADATA_KEY]: (!isHideZeroEnabled(item)).toString()
-        }
-    };
-}
 
 function getMetric(item: WidgetItem): CompactionMetric {
     const metric = item.metadata?.[METRIC_METADATA_KEY];
@@ -122,12 +111,12 @@ function getMetricValue(data: CompactionData, metric: CompactionMetric): number 
     }
 }
 
-function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem): string {
+function formatReclaimedSuffix(tokensReclaimed: number, item: WidgetItem, format: NumberFormat): string {
     if (tokensReclaimed <= 0) {
         return '';
     }
     const symbol = getSlotSymbol(item, RECLAIMED_SLOT);
-    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed)}` : ` ${formatTokens(tokensReclaimed)}`;
+    return symbol.length > 0 ? ` ${symbol}${formatTokens(tokensReclaimed, format)}` : ` ${formatTokens(tokensReclaimed, format)}`;
 }
 
 function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
@@ -144,13 +133,13 @@ function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
     return parts.length > 0 ? ` (${parts.join(', ')})` : '';
 }
 
-function formatStats(data: CompactionData, item: WidgetItem, icon: string): string {
+function formatStats(data: CompactionData, item: WidgetItem, icon: string, format: NumberFormat): string {
     let out = formatCount(data.count, getFormat(item), icon);
     if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
         out += formatTriggerSuffix(data.byTrigger);
     }
     if (isMetadataFlagEnabled(item, SHOW_RECLAIMED_METADATA_KEY)) {
-        out += formatReclaimedSuffix(data.tokensReclaimed, item);
+        out += formatReclaimedSuffix(data.tokensReclaimed, item, format);
     }
     return out;
 }
@@ -198,14 +187,15 @@ export class CompactionCounterWidget implements Widget {
                 modifiers.push('reclaimed');
             }
         }
-        if (isHideZeroEnabled(item)) {
-            modifiers.push('hide zero');
-        }
 
         return {
             displayText: 'Compaction Counter',
             modifierText: `(${modifiers.join(', ')})`
         };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -221,10 +211,6 @@ export class CompactionCounterWidget implements Widget {
             const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
 
             return setNerdFontFormat(item, nextFormat, NERD_FONT_FORMATS);
-        }
-
-        if (action === TOGGLE_HIDE_ZERO_ACTION) {
-            return toggleHideZero(item);
         }
 
         if (action === TOGGLE_NERD_FONT_ACTION) {
@@ -243,24 +229,24 @@ export class CompactionCounterWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
+        const format = resolveNumberFormat('token', item, settings);
         const data = context.isPreview ? SAMPLE_STATS : (context.compactionData ?? ZERO_COMPACTION_STATS);
         const metric = getMetric(item);
 
         if (metric !== DEFAULT_METRIC) {
             const value = getMetricValue(data, metric);
-            if (value === 0 && isHideZeroEnabled(item) && !context.isPreview) {
+            if (value === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key) && !context.isPreview) {
                 return null;
             }
-            return metric === 'reclaimed' ? formatTokens(value) : String(value);
+            return metric === 'reclaimed' ? formatTokens(value, format) : String(value);
         }
 
-        if (data.count === 0 && isHideZeroEnabled(item) && !context.isPreview) {
+        if (data.count === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key) && !context.isPreview) {
             return null;
         }
 
         const icon = isNerdFontEnabled(item, NERD_FONT_FORMATS) ? COMPACTION_NERD_FONT_ICON : COMPACTION_ICON;
-        return formatStats(data, item, icon);
+        return formatStats(data, item, icon, format);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
@@ -269,9 +255,9 @@ export class CompactionCounterWidget implements Widget {
         ];
 
         // The format / glyph / trigger toggles only shape the composite 'count'
-        // display; a single-metric value just needs the metric and hide-zero.
+        // display; a single-metric value just needs the metric selector, since
+        // hide-zero is one of the states in the shared hide checklist.
         if (item !== undefined && getMetric(item) !== DEFAULT_METRIC) {
-            keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
             return keybinds;
         }
 
@@ -281,7 +267,6 @@ export class CompactionCounterWidget implements Widget {
         }
         keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
         keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
-        keybinds.push({ key: 'h', label: '(h)ide when zero', action: TOGGLE_HIDE_ZERO_ACTION });
         keybinds.push(getSymbolKeybind());
 
         return keybinds;
@@ -293,4 +278,5 @@ export class CompactionCounterWidget implements Widget {
 
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

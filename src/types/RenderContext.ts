@@ -50,6 +50,8 @@ export interface RenderContext {
     usageData?: RenderUsageData | null;
     claudeStatusData?: ClaudeStatusRenderData | null;
     sessionDuration?: string | null;
+    transcriptSessionName?: string | null;
+    transcriptThinkingEffort?: { value: string; known: boolean } | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     compactionData?: CompactionData | null;

@@ -34,7 +34,7 @@ function render(options: {
     const item: WidgetItem = {
         id: 'jj-changes',
         type: 'jj-changes',
-        metadata: options.hideNoJj ? { hideNoJj: 'true' } : undefined
+        metadata: options.hideNoJj ? { hide: 'no-jj' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);

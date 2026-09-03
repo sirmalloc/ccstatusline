@@ -56,6 +56,7 @@ function render(options: {
     isPreview?: boolean;
     statusData?: Partial<StatusJSON>;
     settingsValue?: unknown;
+    transcriptThinkingEffort?: RenderContext['transcriptThinkingEffort'];
 } = {}): string | null {
     const {
         transcriptPath = options.fileContent !== undefined ? path.join(tempDir, 'session.jsonl') : undefined,
@@ -63,7 +64,8 @@ function render(options: {
         rawValue = false,
         isPreview = false,
         statusData = {},
-        settingsValue = {}
+        settingsValue = {},
+        transcriptThinkingEffort
     } = options;
 
     const widget = new ThinkingEffortWidget();
@@ -73,7 +75,8 @@ function render(options: {
     };
     const context: RenderContext = {
         data: Object.keys(data).length > 0 ? data : undefined,
-        isPreview
+        isPreview,
+        transcriptThinkingEffort
     };
     const item: WidgetItem = {
         id: 'thinking-effort',
@@ -230,6 +233,16 @@ describe('ThinkingEffortWidget', () => {
                 settingsValue: { effortLevel: 'medium' }
             });
             expect(result).toBe('Thinking: medium');
+        });
+
+        it('uses effort precomputed by the shared transcript analysis', () => {
+            const result = render({
+                transcriptPath: path.join(tempDir, 'missing.jsonl'),
+                transcriptThinkingEffort: { value: 'high', known: true },
+                settingsValue: { effortLevel: 'low' }
+            });
+
+            expect(result).toBe('Thinking: high');
         });
     });
 
