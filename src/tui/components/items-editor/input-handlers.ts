@@ -6,10 +6,15 @@ import type {
 } from '../../../types/Widget';
 import { generateGuid } from '../../../utils/guid';
 import {
+    CYCLE_NUMBER_STYLE_ACTION,
+    cycleNumberStyle
+} from '../../../utils/number-format';
+import {
     filterWidgetCatalog,
     getWidget,
     type WidgetCatalogEntry
 } from '../../../utils/widgets';
+import { EDIT_HIDE_STATES_ACTION } from '../../../widgets/shared/hideable';
 
 export type WidgetPickerAction = 'change' | 'add' | 'insert';
 export type WidgetPickerLevel = 'category' | 'widget';
@@ -476,7 +481,7 @@ export function handleNormalInputMode({
         const currentWidget = widgets[selectedIndex];
         if (currentWidget && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
             const widgetImpl = getWidget(currentWidget.type);
-            if (!widgetImpl?.getCustomKeybinds) {
+            if (!widgetImpl) {
                 return;
             }
 
@@ -484,7 +489,21 @@ export function handleNormalInputMode({
             const matchedKeybind = customKeybinds.find(kb => kb.key === input);
 
             if (matchedKeybind && !key.ctrl) {
-                if (widgetImpl.handleEditorAction) {
+                // The hide-state checklist is rendered by the items editor for
+                // every widget that declares hideable states, so it bypasses
+                // widget-level action handling.
+                if (matchedKeybind.action === EDIT_HIDE_STATES_ACTION) {
+                    setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
+                    return;
+                }
+
+                // The precision cycle is shared by every numeric widget, so it is
+                // applied here instead of in each widget's handleEditorAction.
+                if (matchedKeybind.action === CYCLE_NUMBER_STYLE_ACTION) {
+                    const newWidgets = [...widgets];
+                    newWidgets[selectedIndex] = cycleNumberStyle(currentWidget);
+                    onUpdate(newWidgets);
+                } else if (widgetImpl.handleEditorAction) {
                     const updatedWidget = widgetImpl.handleEditorAction(matchedKeybind.action, currentWidget);
                     if (updatedWidget) {
                         const newWidgets = [...widgets];

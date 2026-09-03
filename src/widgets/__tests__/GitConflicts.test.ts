@@ -29,14 +29,16 @@ const mockExecFileSync = execFileSync as unknown as {
 function render(options: {
     isPreview?: boolean;
     rawValue?: boolean;
+    hide?: string;
     hideNoGit?: boolean;
     zeroDisplay?: string;
     cleanSymbol?: string;
 } = {}) {
     const widget = new GitConflictsWidget();
     const context: RenderContext = { isPreview: options.isPreview };
+    const hide = options.hide ?? (options.hideNoGit ? 'no-git' : undefined);
     const metadata: Record<string, string> = {
-        ...(options.hideNoGit ? { hideNoGit: 'true' } : {}),
+        ...(hide !== undefined ? { hide } : {}),
         ...(options.zeroDisplay ? { zeroDisplay: options.zeroDisplay } : {}),
         ...(options.cleanSymbol ? { symbolClean: options.cleanSymbol } : {})
     };
@@ -67,7 +69,7 @@ describe('GitConflictsWidget', () => {
         clearGitCache();
     });
 
-    it('renders preview content', () => {
+    it('renders preview content without a space between the glyph and count', () => {
         expect(render({ isPreview: true })).toBe('⚠2');
     });
 
@@ -81,61 +83,62 @@ describe('GitConflictsWidget', () => {
         expect(render()).toBe('(no git)');
     });
 
-    it('hides no git when configured', () => {
+    it('hides no git through the shared hide state', () => {
         mockExecFileSync.mockReturnValue('false\n');
 
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
-    it('renders zero conflicts instead of hiding the widget', () => {
-        mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('');
+    it('declares no-git and zero as hideable states', () => {
+        expect(new GitConflictsWidget().getHideableStates().map(state => state.key)).toEqual(['no-git', 'zero']);
+    });
+
+    it('renders zero conflicts instead of hiding the widget by default', () => {
+        mockConflictCount(0);
 
         expect(render()).toBe('⚠0');
     });
 
     it('renders raw zero conflicts as a numeric count', () => {
-        mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('');
+        mockConflictCount(0);
 
         expect(render({ rawValue: true })).toBe('0');
     });
 
-    it('renders the conflict count', () => {
-        mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce([
-            '100644 hash 1\tconflict-a',
-            '100644 hash 2\tconflict-a',
-            '100644 hash 3\tconflict-a',
-            '100644 hash 1\tconflict-b',
-            '100644 hash 2\tconflict-b',
-            '100644 hash 3\tconflict-b'
-        ].join('\n'));
+    it('hides zero conflicts through the shared hide state', () => {
+        mockConflictCount(0);
+
+        expect(render({ hide: 'zero' })).toBeNull();
+    });
+
+    it('hides zero conflicts in raw value mode through the shared hide state', () => {
+        mockConflictCount(0);
+
+        expect(render({ hide: 'zero', rawValue: true })).toBeNull();
+    });
+
+    it('gives the shared hide state precedence over the clean display', () => {
+        mockConflictCount(0);
+
+        expect(render({ hide: 'zero', zeroDisplay: 'clean' })).toBeNull();
+    });
+
+    it('keeps non-zero conflicts visible with the zero hide state enabled', () => {
+        mockConflictCount(1);
+
+        expect(render({ hide: 'zero' })).toBe('⚠1');
+    });
+
+    it('renders the conflict count without a space', () => {
+        mockConflictCount(2);
 
         expect(render()).toBe('⚠2');
     });
 
     it('renders raw conflicts as a numeric count', () => {
-        mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce([
-            '100644 hash 1\tconflict-a',
-            '100644 hash 2\tconflict-a',
-            '100644 hash 3\tconflict-a'
-        ].join('\n'));
+        mockConflictCount(1);
 
         expect(render({ rawValue: true })).toBe('1');
-    });
-
-    it('hides the widget when zero conflicts are configured as hidden', () => {
-        mockConflictCount(0);
-
-        expect(render({ zeroDisplay: 'hidden' })).toBeNull();
-    });
-
-    it('hides the widget when zero conflicts are hidden in raw value mode', () => {
-        mockConflictCount(0);
-
-        expect(render({ zeroDisplay: 'hidden', rawValue: true })).toBeNull();
     });
 
     it('renders the clean glyph when zero conflicts are configured as clean', () => {
@@ -156,28 +159,27 @@ describe('GitConflictsWidget', () => {
         expect(render({ zeroDisplay: 'clean', rawValue: true })).toBe('0');
     });
 
-    it('renders the conflict count regardless of the zero display mode', () => {
+    it('renders the conflict glyph and count for non-zero conflicts in clean mode', () => {
         mockConflictCount(2);
 
-        expect(render({ zeroDisplay: 'hidden' })).toBe('⚠2');
+        expect(render({ zeroDisplay: 'clean' })).toBe('⚠2');
     });
 
-    it('cycles the zero display mode back to the default', () => {
+    it('toggles the visible zero display back to the default', () => {
         const widget = new GitConflictsWidget();
         const item: WidgetItem = { id: 'git-conflicts', type: 'git-conflicts' };
 
         const clean = widget.handleEditorAction('cycle-zero-display', item);
-        const hidden = widget.handleEditorAction('cycle-zero-display', clean ?? item);
-        const back = widget.handleEditorAction('cycle-zero-display', hidden ?? item);
+        const back = widget.handleEditorAction('cycle-zero-display', clean ?? item);
 
         expect(clean?.metadata?.zeroDisplay).toBe('clean');
-        expect(hidden?.metadata?.zeroDisplay).toBe('hidden');
         expect(back?.metadata?.zeroDisplay).toBeUndefined();
     });
 
-    it('exposes the zero display keybind', () => {
+    it('keeps zero appearance on z and leaves h to the shared hide editor', () => {
         const keys = new GitConflictsWidget().getCustomKeybinds().map(keybind => keybind.key);
 
         expect(keys).toContain('z');
+        expect(keys).not.toContain('h');
     });
 });

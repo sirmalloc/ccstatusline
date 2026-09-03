@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -12,13 +13,10 @@ import {
     isInsideGitWorkTree
 } from '../utils/git';
 
-import { makeModifierText } from './shared/editor-display';
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import { removeMetadataKeys } from './shared/metadata';
 import {
     getSlotSymbol,
@@ -27,12 +25,13 @@ import {
     type SymbolSlot
 } from './shared/symbol-override';
 
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when there are no conflicts' };
 const CONFLICT_SLOT: SymbolSlot = { id: 'character', label: 'Conflicts', defaultSymbol: '⚠' };
 const CLEAN_SLOT: SymbolSlot = { id: 'symbolClean', label: 'Clean', defaultSymbol: '✓' };
 
-// How the widget renders with no conflicts. 'count' keeps the warning glyph and
-// a 0, 'clean' swaps in the clean glyph, 'hidden' drops the widget entirely.
-const ZERO_DISPLAYS = ['count', 'clean', 'hidden'] as const;
+// Hiding the zero state is handled by the shared hideable-state system. This
+// setting only controls how a visible conflict-free tree is represented.
+const ZERO_DISPLAYS = ['count', 'clean'] as const;
 type ZeroDisplay = typeof ZERO_DISPLAYS[number];
 
 const DEFAULT_ZERO_DISPLAY: ZeroDisplay = 'count';
@@ -69,21 +68,14 @@ export class GitConflictsWidget implements Widget {
     getCategory(): string { return 'Git'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
-
-        const zeroDisplay = getZeroDisplay(item);
-        if (zeroDisplay === 'clean')
-            modifiers.push('clean when zero');
-        else if (zeroDisplay === 'hidden')
-            modifiers.push('hide when zero');
-
         return {
             displayText: this.getDisplayName(),
-            modifierText: makeModifierText(modifiers)
+            modifierText: getZeroDisplay(item) === 'clean' ? '(clean when zero)' : undefined
         };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE, ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -91,11 +83,11 @@ export class GitConflictsWidget implements Widget {
             return cycleZeroDisplay(item);
         }
 
-        return handleToggleNoGitAction(action, item);
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const symbol = getSlotSymbol(item, CONFLICT_SLOT);
 
         if (context.isPreview) {
@@ -111,10 +103,9 @@ export class GitConflictsWidget implements Widget {
         const count = getGitConflictCount(context);
 
         if (count === 0) {
-            const zeroDisplay = getZeroDisplay(item);
-            if (zeroDisplay === 'hidden')
+            if (isHidden(item, ZERO_HIDEABLE_STATE.key))
                 return null;
-            if (zeroDisplay === 'clean' && !item.rawValue)
+            if (getZeroDisplay(item) === 'clean' && !item.rawValue)
                 return getSlotSymbol(item, CLEAN_SLOT);
         }
 
@@ -127,7 +118,6 @@ export class GitConflictsWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            ...getHideNoGitKeybinds(),
             { key: 'z', label: '(z)ero conflicts display', action: CYCLE_ZERO_DISPLAY_ACTION },
             getSymbolKeybind()
         ];

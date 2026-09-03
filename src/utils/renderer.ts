@@ -12,6 +12,10 @@ import type {
     DefaultPaddingSide,
     Settings
 } from '../types/Settings';
+import {
+    MERGE_TARGET_HIDDEN_HIDEABLE_STATE,
+    isHidden
+} from '../widgets/shared/hideable';
 
 import {
     applyLineGradient,
@@ -785,6 +789,65 @@ export function countPowerlineStartCapSlots(
     return renderedSegmentCount;
 }
 
+// Decorative widget types that can opt into hiding alongside their merge target
+const DECORATIVE_WIDGET_TYPES = new Set(['custom-text', 'custom-symbol']);
+
+function isSeparatorType(type: string): boolean {
+    return type === 'separator' || type === 'flex-separator';
+}
+
+// Collapses decorative items (custom-text/custom-symbol) that opted into the
+// merge-target-hidden state when the widget they are merged with rendered
+// nothing, so merged chains hide as a unit instead of leaving orphaned icons.
+export function applyMergeTargetHiding(preRenderedLine: PreRenderedWidget[]): void {
+    let chainStart = 0;
+    for (let i = 0; i <= preRenderedLine.length; i++) {
+        const element = preRenderedLine[i];
+        if (element && !isSeparatorType(element.widget.type)) {
+            continue;
+        }
+
+        applyMergeTargetHidingToSegment(preRenderedLine.slice(chainStart, i));
+        chainStart = i + 1;
+    }
+}
+
+function applyMergeTargetHidingToSegment(segment: PreRenderedWidget[]): void {
+    let chainStart = 0;
+    for (let i = 0; i < segment.length; i++) {
+        const linksToNext = Boolean(segment[i]?.widget.merge) && i < segment.length - 1;
+        if (linksToNext) {
+            continue;
+        }
+
+        const chain = segment.slice(chainStart, i + 1);
+        chainStart = i + 1;
+        if (chain.length < 2) {
+            continue;
+        }
+
+        for (let position = 0; position < chain.length; position++) {
+            const element = chain[position];
+            if (!element
+                || !DECORATIVE_WIDGET_TYPES.has(element.widget.type)
+                || !isHidden(element.widget, MERGE_TARGET_HIDDEN_HIDEABLE_STATE.key)) {
+                continue;
+            }
+
+            // The target is the nearest non-decorative widget in the chain,
+            // preferring the merge direction (forward), falling back to the
+            // widget merging into this one (backward)
+            const target = chain.slice(position + 1).find(candidate => !DECORATIVE_WIDGET_TYPES.has(candidate.widget.type))
+                ?? chain.slice(0, position).reverse().find(candidate => !DECORATIVE_WIDGET_TYPES.has(candidate.widget.type));
+
+            if (target?.content === '') {
+                element.content = '';
+                element.plainLength = 0;
+            }
+        }
+    }
+}
+
 // Pre-render all widgets once and cache the results
 export function preRenderAllWidgets(
     allLinesWidgets: WidgetItem[][],
@@ -832,6 +895,7 @@ export function preRenderAllWidgets(
             });
         }
 
+        applyMergeTargetHiding(preRenderedLine);
         preRenderedLines.push(preRenderedLine);
     }
 

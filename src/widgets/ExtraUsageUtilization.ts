@@ -2,21 +2,23 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 import { getUsageErrorMessage } from '../utils/usage';
 
-import {
-    appendHideDisabledModifier,
-    getHideExtraUsageDisabledKeybind,
-    handleToggleExtraUsageDisabledAction,
-    isHideExtraUsageDisabledEnabled
-} from './shared/extra-usage-disabled';
+import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
+import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -38,19 +40,15 @@ export class ExtraUsageUtilizationWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: appendHideDisabledModifier(
-                getUsageDisplayModifierText(item, { showUsageDirection: true }),
-                item
-            )
+            modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true })
         };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        const hideDisabledItem = handleToggleExtraUsageDisabledAction(action, item);
-        if (hideDisabledItem) {
-            return hideDisabledItem;
-        }
+    getHideableStates(): HideableState[] {
+        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
+    }
 
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, [], true, true);
         }
@@ -65,6 +63,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = 2.6;
@@ -73,27 +72,30 @@ export class ExtraUsageUtilizationWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(renderedPercent, width);
-                return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${renderedPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(renderedPercent);
-                const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+                const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
                 return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Overage: ', `${renderedPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Overage: ', formatPercent(renderedPercent, format));
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
-            return isHideExtraUsageDisabledEnabled(item)
+            return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
                 : formatRawOrLabeledValue(item, 'Overage: ', 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
-            if (data.error)
-                return getUsageErrorMessage(data.error);
+            if (data.error) {
+                return isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)
+                    ? null
+                    : getUsageErrorMessage(data.error);
+            }
             return null;
         }
 
@@ -104,22 +106,23 @@ export class ExtraUsageUtilizationWidget implements Widget {
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
             const progressBar = makeTimerProgressBar(renderedPercent, width);
-            return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${renderedPercent.toFixed(1)}%`);
+            return formatRawOrLabeledValue(item, 'Overage: ', `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const slider = makeSliderBar(renderedPercent);
-            const sliderDisplay = displayMode === 'slider' ? `${slider} ${renderedPercent.toFixed(1)}%` : slider;
+            const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
             return formatRawOrLabeledValue(item, 'Overage: ', sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, 'Overage: ', `${renderedPercent.toFixed(1)}%`);
+        return formatRawOrLabeledValue(item, 'Overage: ', formatPercent(renderedPercent, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return [...getUsagePercentCustomKeybinds(item, false), getHideExtraUsageDisabledKeybind()];
+        return getUsagePercentCustomKeybinds(item, false);
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }
