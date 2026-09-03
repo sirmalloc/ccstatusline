@@ -233,7 +233,7 @@ function migrateItemHideFlags(item: unknown): unknown {
 
     // hasOwn, because a type naming an Object.prototype member would otherwise
     // resolve to an inherited value and pass the guard below as a truthy rule.
-    if (!Object.hasOwn(V4_HIDE_FLAG_RULES, item.type)) {
+    if (!Object.prototype.hasOwnProperty.call(V4_HIDE_FLAG_RULES, item.type)) {
         return item;
     }
     const rule = V4_HIDE_FLAG_RULES[item.type];
