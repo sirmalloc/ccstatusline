@@ -55,4 +55,17 @@ describe('SessionCostWidget', () => {
             metadata: { hide: 'zero' }
         }, { data: { cost: { total_cost_usd: 0.001 } } })).toBeNull();
     });
+
+    it.each([
+        { name: 'compact', numberFormat: { style: 'compact' as const } },
+        { name: 'whole', numberFormat: { style: 'whole' as const } },
+        { name: 'custom-decimal', numberFormat: { decimals: 4 } }
+    ])('preserves zero hiding with the $name number format', ({ numberFormat }) => {
+        expect(render({
+            id: 'session-cost',
+            type: 'session-cost',
+            metadata: { hide: 'zero' },
+            numberFormat
+        }, { data: { cost: { total_cost_usd: 0 } } })).toBeNull();
+    });
 });

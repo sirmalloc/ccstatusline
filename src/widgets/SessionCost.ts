@@ -39,12 +39,14 @@ export class SessionCostWidget implements Widget {
             return null;
         }
 
-        const formattedCost = formatCost(totalCost, format);
-
-        if (formattedCost === '$0.00' && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+        // Keep the zero-state threshold tied to the baseline cent precision,
+        // independent of the selected display style or decimal override.
+        const roundsToZeroCents = totalCost >= 0 && totalCost < 0.005;
+        if (roundsToZeroCents && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
 
+        const formattedCost = formatCost(totalCost, format);
         return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
     }
 
