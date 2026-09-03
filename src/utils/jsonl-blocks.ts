@@ -183,7 +183,9 @@ function findMostRecentBlockStartTime(
 function getAllTimestampsFromFile(filePath: string): Date[] {
     const timestamps: Date[] = [];
     try {
-        const lines = readJsonlLinesSync(filePath);
+        // This sweep visits each transcript once, across as many as the lookback
+        // selects, so caching cannot hit and would retain every one of them.
+        const lines = readJsonlLinesSync(filePath, { cache: false });
 
         for (const line of lines) {
             const json = parseJsonlLine(line) as {

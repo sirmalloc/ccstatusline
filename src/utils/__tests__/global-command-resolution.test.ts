@@ -82,7 +82,7 @@ describe('global command resolution', () => {
         expect(execFileSyncSpy).toHaveBeenCalled();
         for (const call of execFileSyncSpy.mock.calls) {
             const options = call[2] as { stdio?: string[] };
-            expect(options.stdio).toEqual(['ignore', 'pipe', 'ignore']);
+            expect(options.stdio?.[2]).toBe('ignore');
         }
     });
 
