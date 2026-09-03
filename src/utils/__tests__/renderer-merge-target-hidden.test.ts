@@ -109,15 +109,15 @@ describe('applyMergeTargetHiding', () => {
         expect(line[0]?.content).toBe('abc1234');
     });
 
-    it('skips separator elements when pairing merged items', () => {
+    it.each(['separator', 'flex-separator'])('treats %s elements as merge-chain boundaries', (separatorType) => {
         const line = [
             hidingSymbol('★', true),
-            element('separator', ''),
+            element(separatorType, ''),
             element('git-branch', '')
         ];
 
         applyMergeTargetHiding(line);
 
-        expect(line[0]?.content).toBe('');
+        expect(line[0]?.content).toBe('★');
     });
 });

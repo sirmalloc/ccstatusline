@@ -800,18 +800,27 @@ function isSeparatorType(type: string): boolean {
 // merge-target-hidden state when the widget they are merged with rendered
 // nothing, so merged chains hide as a unit instead of leaving orphaned icons.
 export function applyMergeTargetHiding(preRenderedLine: PreRenderedWidget[]): void {
-    // Merge flags pair adjacent non-separator items, so chains are detected on
-    // the separator-free view of the line (matching powerline merge handling)
-    const chainable = preRenderedLine.filter(element => !isSeparatorType(element.widget.type));
-
     let chainStart = 0;
-    for (let i = 0; i < chainable.length; i++) {
-        const linksToNext = Boolean(chainable[i]?.widget.merge) && i < chainable.length - 1;
+    for (let i = 0; i <= preRenderedLine.length; i++) {
+        const element = preRenderedLine[i];
+        if (element && !isSeparatorType(element.widget.type)) {
+            continue;
+        }
+
+        applyMergeTargetHidingToSegment(preRenderedLine.slice(chainStart, i));
+        chainStart = i + 1;
+    }
+}
+
+function applyMergeTargetHidingToSegment(segment: PreRenderedWidget[]): void {
+    let chainStart = 0;
+    for (let i = 0; i < segment.length; i++) {
+        const linksToNext = Boolean(segment[i]?.widget.merge) && i < segment.length - 1;
         if (linksToNext) {
             continue;
         }
 
-        const chain = chainable.slice(chainStart, i + 1);
+        const chain = segment.slice(chainStart, i + 1);
         chainStart = i + 1;
         if (chain.length < 2) {
             continue;
