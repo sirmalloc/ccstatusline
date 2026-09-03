@@ -47,9 +47,13 @@
 
 ## 🆕 Recent Updates
 
-### v2.2.28 - Faster transcript rendering and resilient caches
+### v2.2.28 - v2.2.29 - Service health, flexible formatting, and resilient rendering
 
-- **⚡ Faster large-session rendering** - Reuses each transcript read across token, duration, speed, compaction, and thinking-effort calculations, and briefly caches no-active-block scans so large transcript histories are not repeatedly reread.
+- **🩺 Claude service health** - Added a `Claude Status` widget with live severity, a cached 48-hour incident-history strip, stale-data fallback, and graceful `?` output when status data is unavailable.
+- **🙈 Unified conditional hiding** - Numeric, Git, JJ, usage, cache, and other widgets now share an `h` checklist for supported hide conditions, with automatic migration of existing settings and optional merge-target hiding for decorative text or symbols.
+- **🔢 Configurable number formatting** - Numeric widgets can use precise, compact, or whole-number styles per widget or globally by token, speed, percent, memory, and cost type, while advanced configs can set decimal precision explicitly.
+- **📜 Faster, reliable large-session rendering** - Transcript-backed token, duration, speed, compaction, effort, and session-name metrics now stream JSONL records through one shared scan instead of loading an entire transcript into a single string, while no-active-block results are briefly cached to avoid repeated full-history scans.
+- **⚠️ Git conflict display controls** - Git Conflicts can hide when the count is zero or show either `⚠0` or a customizable clean glyph when the tree is conflict-free.
 - **🩹 Self-healing usage locks** - Usage widgets ignore impossible fetch-lock deadlines more than 24 hours ahead, allowing poisoned locks caused by clock jumps or old test artifacts to recover on the next render.
 - **🧹 Bounded Git cache cleanup** - Failed persistent Git-cache writes clean up their temporary file and reuse one stable fallback name, preventing Windows file locks from leaking thousands of orphaned temp files.
 - **📊 Consistent timer bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now round progress-bar fill to the nearest cell, matching the other progress widgets.

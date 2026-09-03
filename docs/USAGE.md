@@ -108,6 +108,8 @@ Configure global formatting preferences that apply to all widgets:
   - Press **(o)** to toggle
 - **Minimalist Mode** - Force widgets into raw-value rendering globally for a cleaner, label-free status line
   - Press **(m)** to toggle
+- **Number Formatting** - Choose precise, compact, or whole-number output independently for token, speed, percent, memory, and cost values
+  - Press **(n)** to configure each number type; a global choice overrides per-widget formatting for that type
 - **Override Foreground Color** - Force all widgets to use the same text color, or a whole-line **gradient** (see below)
   - Press **(f)** to cycle through colors
   - Press **(g)** to choose a gradient
@@ -195,6 +197,15 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
+## Number Formatting
+
+Numeric widgets support three display styles without changing their underlying values:
+- **Precise** (default) keeps the formatter's normal trailing zeros, such as `1.0M` or `$1.20`
+- **Compact** removes insignificant trailing zeros while preserving real fractions, such as `1M` or `1.1M`
+- **Whole** rounds the displayed value to zero decimal places, such as `1M`
+
+Select a numeric widget in the line editor and press `.` to cycle its style. In **Global Overrides**, press `n` to set a style for all token, speed, percent, memory, or cost widgets; that per-type global setting takes precedence over individual widget styles. Advanced configurations can also set `numberFormat.decimals` from `0` to `6` on a widget or number type in `settings.json`; the style then controls whether those decimal places are retained, trimmed, or suppressed.
+
 ## Widget Editor Keybinds
 
 Common controls in the line editor:
@@ -209,6 +220,7 @@ Common controls in the line editor:
 - `c` clear the current line
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
+- `.` cycle precise/compact/whole number formatting (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back
