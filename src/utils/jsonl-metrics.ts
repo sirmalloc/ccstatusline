@@ -71,7 +71,7 @@ function collectAgentIds(value: unknown, agentIds: Set<string>) {
     }
 }
 
-function getReferencedSubagentIds(lines: string[]): Set<string> {
+function getReferencedSubagentIds(lines: readonly string[]): Set<string> {
     const agentIds = new Set<string>();
 
     for (const line of lines) {
@@ -108,9 +108,7 @@ export async function getSessionDuration(transcriptPath: string): Promise<string
                 continue;
             }
 
-            if (!firstTimestamp) {
-                firstTimestamp = timestamp;
-            }
+            firstTimestamp ??= timestamp;
             lastTimestamp = timestamp;
         }
 
@@ -323,7 +321,7 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-function collectSpeedMetricsFromLines(lines: string[], ignoreSidechain: boolean): CollectedSpeedMetrics {
+function collectSpeedMetricsFromLines(lines: readonly string[], ignoreSidechain: boolean): CollectedSpeedMetrics {
     const requests: SpeedRequest[] = [];
 
     let lastUserTimestamp: Date | null = null;

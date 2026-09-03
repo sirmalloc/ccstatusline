@@ -6,7 +6,17 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getSandboxConfig } from '../utils/claude-settings';
+import {
+    getSandboxConfig,
+    resolveClaudeConfigCwd
+} from '../utils/claude-settings';
+
+import {
+    isNerdFontEnabled,
+    setNerdFontFormat,
+    toggleNerdFont,
+    type NerdFontFormats
+} from './shared/metadata';
 
 const DOT_ON = '●';
 const DOT_OFF = '○';
@@ -19,7 +29,6 @@ type SandboxFormat = typeof FORMATS[number];
 const DEFAULT_FORMAT: SandboxFormat = 'glyph';
 const CYCLE_FORMAT_ACTION = 'cycle-format';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
-const NERD_FONT_METADATA_KEY = 'nerdFont';
 
 function getFormat(item: WidgetItem): SandboxFormat {
     const f = item.metadata?.format;
@@ -30,61 +39,10 @@ function canUseNerdFont(item: WidgetItem): boolean {
     return getFormat(item) === 'glyph';
 }
 
-function removeNerdFont(item: WidgetItem): WidgetItem {
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
-}
-
-function setFormat(item: WidgetItem, format: SandboxFormat): WidgetItem {
-    let updatedItem: WidgetItem;
-
-    if (format === DEFAULT_FORMAT) {
-        const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
-        void removedFormat;
-
-        updatedItem = {
-            ...item,
-            metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-        };
-    } else {
-        updatedItem = {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                format
-            }
-        };
-    }
-
-    return canUseNerdFont(updatedItem) ? updatedItem : removeNerdFont(updatedItem);
-}
-
-function isNerdFontEnabled(item: WidgetItem): boolean {
-    return canUseNerdFont(item) && item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
-}
-
-function toggleNerdFont(item: WidgetItem): WidgetItem {
-    if (!canUseNerdFont(item)) {
-        return removeNerdFont(item);
-    }
-
-    if (!isNerdFontEnabled(item)) {
-        return {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                [NERD_FONT_METADATA_KEY]: 'true'
-            }
-        };
-    }
-
-    return removeNerdFont(item);
-}
+const NERD_FONT_FORMATS: NerdFontFormats<SandboxFormat> = {
+    defaultFormat: DEFAULT_FORMAT,
+    canUseNerdFont
+};
 
 function formatStatus(enabled: boolean, format: SandboxFormat, nerdFont: boolean, rawValue: boolean): string {
     const stateText = enabled ? 'ON' : 'OFF';
@@ -102,16 +60,6 @@ function formatStatus(enabled: boolean, format: SandboxFormat, nerdFont: boolean
     }
 }
 
-function resolveSandboxConfigCwd(context: RenderContext): string | undefined {
-    const candidates = [
-        context.data?.workspace?.project_dir,
-        context.data?.cwd,
-        context.data?.workspace?.current_dir
-    ];
-
-    return candidates.find(candidate => typeof candidate === 'string' && candidate.trim().length > 0);
-}
-
 export class SandboxStatusWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string {
@@ -126,7 +74,7 @@ export class SandboxStatusWidget implements Widget {
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [getFormat(item)];
-        if (isNerdFontEnabled(item)) {
+        if (isNerdFontEnabled(item, NERD_FONT_FORMATS)) {
             modifiers.push('nerd font');
         }
 
@@ -141,11 +89,11 @@ export class SandboxStatusWidget implements Widget {
             const currentFormat = getFormat(item);
             const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
 
-            return setFormat(item, nextFormat);
+            return setNerdFontFormat(item, nextFormat, NERD_FONT_FORMATS);
         }
 
         if (action === TOGGLE_NERD_FONT_ACTION) {
-            return toggleNerdFont(item);
+            return toggleNerdFont(item, NERD_FONT_FORMATS);
         }
 
         return null;
@@ -153,13 +101,13 @@ export class SandboxStatusWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const format = getFormat(item);
-        const nerdFont = isNerdFontEnabled(item);
+        const nerdFont = isNerdFontEnabled(item, NERD_FONT_FORMATS);
 
         if (context.isPreview) {
             return formatStatus(true, format, nerdFont, item.rawValue ?? false);
         }
 
-        const config = getSandboxConfig(resolveSandboxConfigCwd(context));
+        const config = getSandboxConfig(resolveClaudeConfigCwd(context));
         if (config === null) {
             return null;
         }

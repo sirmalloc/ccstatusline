@@ -48,7 +48,7 @@ export function getCompactBoundaryPostTokens(record: unknown): number | null {
  * `tokensReclaimed` sums `preTokens - postTokens` only for markers where both
  * are finite numbers; older markers without `postTokens` contribute 0.
  */
-export function computeCompactionStats(lines: string[]): CompactionData {
+export function computeCompactionStats(lines: readonly string[]): CompactionData {
     const stats: CompactionData = {
         count: 0,
         byTrigger: { auto: 0, manual: 0, unknown: 0 },
