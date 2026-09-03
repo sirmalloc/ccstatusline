@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import type { CompactionData } from '../types/RenderContext';
 
 import {
-    parseJsonlLine,
-    readJsonlLines
+    iterateJsonlLines,
+    parseJsonlLine
 } from './jsonl-lines';
 
 /** Shared zeroed stats for missing/unreadable transcripts and as a render fallback. Treat as read-only. */
@@ -38,6 +38,42 @@ export function getCompactBoundaryPostTokens(record: unknown): number | null {
     return typeof post === 'number' && Number.isFinite(post) ? Math.max(0, post) : null;
 }
 
+export function createCompactionStats(): CompactionData {
+    return {
+        count: 0,
+        byTrigger: { auto: 0, manual: 0, unknown: 0 },
+        tokensReclaimed: 0
+    };
+}
+
+export function accumulateCompactionStats(stats: CompactionData, record: unknown): void {
+    if (!isCompactBoundary(record)) {
+        return;
+    }
+
+    stats.count += 1;
+    const meta = (record as { compactMetadata?: unknown }).compactMetadata;
+    const metaRecord = (typeof meta === 'object' && meta !== null) ? meta as Record<string, unknown> : null;
+
+    const trigger = metaRecord?.trigger;
+    if (trigger === 'auto') {
+        stats.byTrigger.auto += 1;
+    } else if (trigger === 'manual') {
+        stats.byTrigger.manual += 1;
+    } else {
+        stats.byTrigger.unknown += 1;
+    }
+
+    const pre = metaRecord?.preTokens;
+    const post = metaRecord?.postTokens;
+    if (typeof pre === 'number' && typeof post === 'number') {
+        const reclaimed = pre - post;
+        if (Number.isFinite(reclaimed)) {
+            stats.tokensReclaimed += Math.max(0, reclaimed);
+        }
+    }
+}
+
 /**
  * Count context-compaction events and summarize their `compactMetadata` by
  * scanning the transcript for `{type:'system', subtype:'compact_boundary'}`
@@ -49,38 +85,9 @@ export function getCompactBoundaryPostTokens(record: unknown): number | null {
  * are finite numbers; older markers without `postTokens` contribute 0.
  */
 export function computeCompactionStats(lines: readonly string[]): CompactionData {
-    const stats: CompactionData = {
-        count: 0,
-        byTrigger: { auto: 0, manual: 0, unknown: 0 },
-        tokensReclaimed: 0
-    };
+    const stats = createCompactionStats();
     for (const line of lines) {
-        const record = parseJsonlLine(line);
-        if (!isCompactBoundary(record)) {
-            continue;
-        }
-        stats.count += 1;
-
-        const meta = (record as { compactMetadata?: unknown }).compactMetadata;
-        const metaRecord = (typeof meta === 'object' && meta !== null) ? meta as Record<string, unknown> : null;
-
-        const trigger = metaRecord?.trigger;
-        if (trigger === 'auto') {
-            stats.byTrigger.auto += 1;
-        } else if (trigger === 'manual') {
-            stats.byTrigger.manual += 1;
-        } else {
-            stats.byTrigger.unknown += 1;
-        }
-
-        const pre = metaRecord?.preTokens;
-        const post = metaRecord?.postTokens;
-        if (typeof pre === 'number' && typeof post === 'number') {
-            const reclaimed = pre - post;
-            if (Number.isFinite(reclaimed)) {
-                stats.tokensReclaimed += Math.max(0, reclaimed);
-            }
-        }
+        accumulateCompactionStats(stats, parseJsonlLine(line));
     }
     return stats;
 }
@@ -91,8 +98,11 @@ export async function getCompactionStats(transcriptPath: string): Promise<Compac
         if (!fs.existsSync(transcriptPath)) {
             return ZERO_COMPACTION_STATS;
         }
-        const lines = await readJsonlLines(transcriptPath);
-        return computeCompactionStats(lines);
+        const stats = createCompactionStats();
+        for await (const line of iterateJsonlLines(transcriptPath)) {
+            accumulateCompactionStats(stats, parseJsonlLine(line));
+        }
+        return stats;
     } catch {
         return ZERO_COMPACTION_STATS;
     }

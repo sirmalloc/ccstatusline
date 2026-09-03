@@ -9,7 +9,12 @@ export {
     getSessionDuration,
     getSpeedMetrics,
     getSpeedMetricsCollection,
-    getTokenMetrics
+    getTokenMetrics,
+    getTranscriptAnalysis
+} from './jsonl-metrics';
+export type {
+    TranscriptAnalysis,
+    TranscriptAnalysisOptions
 } from './jsonl-metrics';
 export {
     getTranscriptThinkingEffort,

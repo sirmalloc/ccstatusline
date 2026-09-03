@@ -6,23 +6,30 @@ import type {
     TokenMetrics,
     TranscriptLine
 } from '../types';
+import type { CompactionData } from '../types/RenderContext';
 
 import {
+    accumulateCompactionStats,
+    createCompactionStats,
     getCompactBoundaryPostTokens,
     isCompactBoundary
 } from './compaction';
 import {
     iterateJsonlLines,
-    parseJsonlLine,
-    readJsonlLines
+    parseJsonlLine
 } from './jsonl-lines';
+import {
+    getThinkingEffortUpdate,
+    type ResolvedThinkingEffort
+} from './jsonl-metadata';
+import { getSessionNameFromRecord } from './jsonl-session';
 
 export interface SpeedMetricsOptions {
     includeSubagents?: boolean;
     windowSeconds?: number;
 }
 
-interface SpeedMetricsCollectionOptions {
+export interface SpeedMetricsCollectionOptions {
     includeSubagents?: boolean;
     windowSeconds?: number[];
 }
@@ -30,6 +37,36 @@ interface SpeedMetricsCollectionOptions {
 export interface SpeedMetricsCollection {
     sessionAverage: SpeedMetrics;
     windowed: Record<string, SpeedMetrics>;
+}
+
+export interface TranscriptAnalysisOptions {
+    includeSessionDuration?: boolean;
+    includeSpeedMetrics?: boolean;
+    includeSubagents?: boolean;
+    speedWindowSeconds?: number[];
+    includeCompactionStats?: boolean;
+    includeThinkingEffort?: boolean;
+    includeSessionName?: boolean;
+}
+
+export interface TranscriptAnalysis {
+    tokenMetrics: TokenMetrics;
+    sessionDuration: string | null;
+    speedMetricsCollection: SpeedMetricsCollection | null;
+    compactionData: CompactionData | null;
+    thinkingEffort: ResolvedThinkingEffort | undefined;
+    sessionName: string | null;
+}
+
+interface TranscriptScanOptions extends TranscriptAnalysisOptions { includeTokenMetrics?: boolean }
+
+interface TranscriptScanResult {
+    tokenMetrics: TokenMetrics | null;
+    sessionDuration: string | null;
+    speedMetricsCollection: SpeedMetricsCollection | null;
+    compactionData: CompactionData | null;
+    thinkingEffort: ResolvedThinkingEffort | undefined;
+    sessionName: string | null;
 }
 
 interface SpeedInterval {
@@ -59,9 +96,8 @@ interface RetainedTokenUsage {
 interface TokenMetricEntry {
     usage: RetainedTokenUsage;
     stopReason: string | null | undefined;
-    timestamp: string | undefined;
+    timestampMs: number | null;
     isMainChain: boolean;
-    lineIndex: number;
 }
 
 interface TokenMetricAccumulator {
@@ -70,9 +106,30 @@ interface TokenMetricAccumulator {
     cacheReadTokens: number;
     cacheCreationTokens: number;
     mostRecentMainChainUsage: RetainedTokenUsage | null;
-    mostRecentTimestamp: Date | null;
+    mostRecentTimestampMs: number | null;
     mostRecentPostCompactionUsage: RetainedTokenUsage | null;
-    mostRecentPostCompactionTimestamp: Date | null;
+    mostRecentPostCompactionTimestampMs: number | null;
+}
+
+interface TokenMetricState {
+    metrics: TokenMetricAccumulator;
+    hasStopReasonField: boolean;
+    lastUsageEntry: TokenMetricEntry | null;
+    sawCompactBoundary: boolean;
+    boundaryAfterLastUsage: boolean;
+    lastCompactBoundaryPostTokens: number | null;
+}
+
+function createEmptyTokenMetrics(): TokenMetrics {
+    return {
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 0,
+        contextLength: 0
+    };
 }
 
 function createTokenMetricAccumulator(): TokenMetricAccumulator {
@@ -82,21 +139,21 @@ function createTokenMetricAccumulator(): TokenMetricAccumulator {
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
         mostRecentMainChainUsage: null,
-        mostRecentTimestamp: null,
+        mostRecentTimestampMs: null,
         mostRecentPostCompactionUsage: null,
-        mostRecentPostCompactionTimestamp: null
+        mostRecentPostCompactionTimestampMs: null
     };
 }
 
 function resetPostCompactionUsage(accumulator: TokenMetricAccumulator): void {
     accumulator.mostRecentPostCompactionUsage = null;
-    accumulator.mostRecentPostCompactionTimestamp = null;
+    accumulator.mostRecentPostCompactionTimestampMs = null;
 }
 
 function accumulateTokenMetricEntry(
     accumulator: TokenMetricAccumulator,
     entry: TokenMetricEntry,
-    lastCompactBoundaryLineIndex: number
+    includePostCompactionUsage: boolean
 ): void {
     const { usage } = entry;
     accumulator.inputTokens += usage.inputTokens;
@@ -104,20 +161,92 @@ function accumulateTokenMetricEntry(
     accumulator.cacheReadTokens += usage.cacheReadTokens;
     accumulator.cacheCreationTokens += usage.cacheCreationTokens;
 
-    if (!entry.isMainChain || !entry.timestamp) {
+    if (!entry.isMainChain || entry.timestampMs === null) {
         return;
     }
 
-    const entryTime = new Date(entry.timestamp);
-    if (!accumulator.mostRecentTimestamp || entryTime > accumulator.mostRecentTimestamp) {
-        accumulator.mostRecentTimestamp = entryTime;
+    if (accumulator.mostRecentTimestampMs === null || entry.timestampMs > accumulator.mostRecentTimestampMs) {
+        accumulator.mostRecentTimestampMs = entry.timestampMs;
         accumulator.mostRecentMainChainUsage = usage;
     }
-    if (entry.lineIndex > lastCompactBoundaryLineIndex
-        && (!accumulator.mostRecentPostCompactionTimestamp || entryTime > accumulator.mostRecentPostCompactionTimestamp)) {
-        accumulator.mostRecentPostCompactionTimestamp = entryTime;
+    if (includePostCompactionUsage
+        && (accumulator.mostRecentPostCompactionTimestampMs === null
+            || entry.timestampMs > accumulator.mostRecentPostCompactionTimestampMs)) {
+        accumulator.mostRecentPostCompactionTimestampMs = entry.timestampMs;
         accumulator.mostRecentPostCompactionUsage = usage;
     }
+}
+
+function createTokenMetricState(): TokenMetricState {
+    return {
+        metrics: createTokenMetricAccumulator(),
+        hasStopReasonField: false,
+        lastUsageEntry: null,
+        sawCompactBoundary: false,
+        boundaryAfterLastUsage: false,
+        lastCompactBoundaryPostTokens: null
+    };
+}
+
+function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
+    const compactBoundary = isCompactBoundary(data);
+    if (compactBoundary) {
+        state.sawCompactBoundary = true;
+        state.boundaryAfterLastUsage = true;
+        state.lastCompactBoundaryPostTokens = getCompactBoundaryPostTokens(data);
+        resetPostCompactionUsage(state.metrics);
+    }
+
+    const message = data?.message;
+    const usage = message?.usage;
+    if (usage) {
+        const entry: TokenMetricEntry = {
+            usage: {
+                inputTokens: usage.input_tokens || 0,
+                outputTokens: usage.output_tokens || 0,
+                cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+                cacheCreationTokens: usage.cache_creation_input_tokens ?? 0
+            },
+            stopReason: message.stop_reason,
+            timestampMs,
+            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
+        };
+
+        const hasStopReason = Object.hasOwn(message, 'stop_reason');
+        if (hasStopReason && !state.hasStopReasonField) {
+            state.hasStopReasonField = true;
+            state.metrics = createTokenMetricAccumulator();
+        }
+        if (!state.hasStopReasonField || entry.stopReason) {
+            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+        }
+        state.lastUsageEntry = entry;
+        state.boundaryAfterLastUsage = compactBoundary;
+    }
+}
+
+function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
+    if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
+        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+    }
+
+    const contextLengthFromUsage = (usage: RetainedTokenUsage | null): number | null => usage
+        ? usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens
+        : null;
+    const contextLength = state.sawCompactBoundary
+        ? (contextLengthFromUsage(state.metrics.mostRecentPostCompactionUsage) ?? state.lastCompactBoundaryPostTokens ?? 0)
+        : (contextLengthFromUsage(state.metrics.mostRecentMainChainUsage) ?? 0);
+    const cachedTokens = state.metrics.cacheReadTokens + state.metrics.cacheCreationTokens;
+
+    return {
+        inputTokens: state.metrics.inputTokens,
+        outputTokens: state.metrics.outputTokens,
+        cachedTokens,
+        cacheReadTokens: state.metrics.cacheReadTokens,
+        cacheCreationTokens: state.metrics.cacheCreationTokens,
+        totalTokens: state.metrics.inputTokens + state.metrics.outputTokens + cachedTokens,
+        contextLength
+    };
 }
 
 function collectAgentIds(value: unknown, agentIds: Set<string>) {
@@ -142,191 +271,23 @@ function collectAgentIds(value: unknown, agentIds: Set<string>) {
     }
 }
 
-function getReferencedSubagentIds(lines: readonly string[]): Set<string> {
-    const agentIds = new Set<string>();
-
-    for (const line of lines) {
-        const data = parseJsonlLine(line);
-        if (!data) {
-            continue;
-        }
-
-        collectAgentIds(data, agentIds);
-    }
-
-    return agentIds;
-}
-
 export async function getSessionDuration(transcriptPath: string): Promise<string | null> {
-    try {
-        if (!fs.existsSync(transcriptPath)) {
-            return null;
-        }
-
-        let firstTimestamp: Date | null = null;
-        let lastTimestamp: Date | null = null;
-        let sawAnyLine = false;
-
-        for await (const line of iterateJsonlLines(transcriptPath)) {
-            sawAnyLine = true;
-            const data = parseJsonlLine(line) as { timestamp?: string } | null;
-            if (!data?.timestamp) {
-                continue;
-            }
-
-            const timestamp = new Date(data.timestamp);
-            if (Number.isNaN(timestamp.getTime())) {
-                continue;
-            }
-
-            firstTimestamp ??= timestamp;
-            lastTimestamp = timestamp;
-        }
-
-        if (!sawAnyLine || !firstTimestamp || !lastTimestamp) {
-            return null;
-        }
-
-        // Calculate duration in milliseconds
-        const durationMs = lastTimestamp.getTime() - firstTimestamp.getTime();
-
-        // Convert to minutes
-        const totalMinutes = Math.floor(durationMs / (1000 * 60));
-
-        if (totalMinutes < 1) {
-            return '<1m';
-        }
-
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-
-        if (hours === 0) {
-            return `${minutes}m`;
-        } else if (minutes === 0) {
-            return `${hours}hr`;
-        } else {
-            return `${hours}hr ${minutes}m`;
-        }
-    } catch {
-        return null;
-    }
+    const result = await scanTranscript(transcriptPath, { includeSessionDuration: true });
+    return result.sessionDuration;
 }
 
 export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
-    try {
-        // Stream line-by-line. Full-file readFile('utf-8') throws once a session
-        // transcript exceeds Node's max string length (~512MB).
-        if (!fs.existsSync(transcriptPath)) {
-            return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
-        }
-
-        // Parse each line and sum up token usage for totals.
-        // Claude Code writes multiple JSONL entries per API call during streaming:
-        // intermediate entries have stop_reason: null, and the final entry has a
-        // string value like "end_turn" or "tool_use". For streaming-aware
-        // transcripts, count finalized entries plus the latest unfinished entry so
-        // live updates do not overcount duplicate partial rows. If the transcript
-        // format has no stop_reason field at all, fall back to counting all entries.
-        //
-        // Claude Code also writes a { type:'system', subtype:'compact_boundary' }
-        // record on every compaction. Usage entries before the most recent boundary
-        // describe a context that no longer exists, so they must not drive context
-        // length - otherwise it stays stuck at the pre-compaction size until the
-        // next turn repopulates Claude Code's live status data.
-        let lastCompactBoundaryLineIndex = -1;
-        let lastCompactBoundaryPostTokens: number | null = null;
-
-        // Aggregate both transcript formats in one pass. This avoids retaining
-        // assistant message content while preserving the legacy fallback when no
-        // usage row has a stop_reason field.
-        const legacyMetrics = createTokenMetricAccumulator();
-        const streamingMetrics = createTokenMetricAccumulator();
-        let lastUsageEntry: TokenMetricEntry | null = null;
-        let hasStopReasonField = false;
-        let lineIndex = 0;
-
-        for await (const line of iterateJsonlLines(transcriptPath)) {
-            const data = parseJsonlLine(line) as TranscriptLine | null;
-            if (isCompactBoundary(data)) {
-                lastCompactBoundaryLineIndex = lineIndex;
-                lastCompactBoundaryPostTokens = getCompactBoundaryPostTokens(data);
-                resetPostCompactionUsage(legacyMetrics);
-                resetPostCompactionUsage(streamingMetrics);
-            }
-            const message = data?.message;
-            const usage = message?.usage;
-            if (usage) {
-                const entry: TokenMetricEntry = {
-                    usage: {
-                        inputTokens: usage.input_tokens || 0,
-                        outputTokens: usage.output_tokens || 0,
-                        cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-                        cacheCreationTokens: usage.cache_creation_input_tokens ?? 0
-                    },
-                    stopReason: message.stop_reason,
-                    timestamp: data?.timestamp,
-                    isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
-                    lineIndex
-                };
-
-                accumulateTokenMetricEntry(legacyMetrics, entry, lastCompactBoundaryLineIndex);
-                if (Object.hasOwn(message, 'stop_reason')) {
-                    hasStopReasonField = true;
-                }
-                if (entry.stopReason) {
-                    accumulateTokenMetricEntry(streamingMetrics, entry, lastCompactBoundaryLineIndex);
-                }
-                lastUsageEntry = entry;
-            }
-            lineIndex += 1;
-        }
-
-        if (hasStopReasonField && lastUsageEntry?.stopReason === null) {
-            accumulateTokenMetricEntry(streamingMetrics, lastUsageEntry, lastCompactBoundaryLineIndex);
-        }
-
-        const metrics = hasStopReasonField ? streamingMetrics : legacyMetrics;
-
-        // Context length is the live occupancy of the current context window.
-        // Without a compaction it is the most recent main-chain turn. After a
-        // compaction, prefer the first turn following the boundary, then the
-        // boundary's reported post-compaction size, and otherwise 0 - the stale
-        // pre-compaction turn must never leak through.
-        const contextLengthFromUsage = (usage: RetainedTokenUsage | null): number | null => {
-            if (!usage) {
-                return null;
-            }
-            return usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens;
-        };
-
-        const contextLength = lastCompactBoundaryLineIndex >= 0
-            ? (contextLengthFromUsage(metrics.mostRecentPostCompactionUsage) ?? lastCompactBoundaryPostTokens ?? 0)
-            : (contextLengthFromUsage(metrics.mostRecentMainChainUsage) ?? 0);
-
-        const cachedTokens = metrics.cacheReadTokens + metrics.cacheCreationTokens;
-        const totalTokens = metrics.inputTokens + metrics.outputTokens + cachedTokens;
-
-        return {
-            inputTokens: metrics.inputTokens,
-            outputTokens: metrics.outputTokens,
-            cachedTokens,
-            cacheReadTokens: metrics.cacheReadTokens,
-            cacheCreationTokens: metrics.cacheCreationTokens,
-            totalTokens,
-            contextLength
-        };
-    } catch {
-        return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
-    }
+    const result = await scanTranscript(transcriptPath, { includeTokenMetrics: true });
+    return result.tokenMetrics ?? createEmptyTokenMetrics();
 }
 
-function parseTimestamp(value: string | undefined): Date | null {
+function parseTimestampMs(value: string | undefined): number | null {
     if (!value) {
         return null;
     }
 
-    const timestamp = new Date(value);
-    return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+    const timestampMs = Date.parse(value);
+    return Number.isNaN(timestampMs) ? null : timestampMs;
 }
 
 function mergeIntervals(intervals: SpeedInterval[]): SpeedInterval[] {
@@ -383,60 +344,60 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-function collectSpeedMetricsFromLines(lines: readonly string[], ignoreSidechain: boolean): CollectedSpeedMetrics {
-    const requests: SpeedRequest[] = [];
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
 
-    let lastUserTimestamp: Date | null = null;
-    let latestTimestampMs: number | null = null;
+function createSpeedMetricCollector(): SpeedMetricCollectorState {
+    return {
+        requests: [],
+        latestTimestampMs: null,
+        lastUserTimestampMs: null
+    };
+}
 
-    for (const line of lines) {
-        const data = parseJsonlLine(line) as TranscriptLine | null;
-        if (!data || data.isApiErrorMessage) {
-            continue;
-        }
-
-        if (ignoreSidechain && data.isSidechain === true) {
-            continue;
-        }
-
-        const entryTimestamp = parseTimestamp(data.timestamp);
-        if (entryTimestamp) {
-            const entryTimestampMs = entryTimestamp.getTime();
-            if (latestTimestampMs === null || entryTimestampMs > latestTimestampMs) {
-                latestTimestampMs = entryTimestampMs;
-            }
-        }
-
-        if (data.type === 'user' && entryTimestamp) {
-            lastUserTimestamp = entryTimestamp;
-            continue;
-        }
-
-        if (data.type === 'assistant' && data.message?.usage) {
-            const inputTokens = data.message.usage.input_tokens || 0;
-            const outputTokens = data.message.usage.output_tokens || 0;
-            let interval: SpeedInterval | null = null;
-            if (entryTimestamp && lastUserTimestamp) {
-                const startMs = lastUserTimestamp.getTime();
-                const endMs = entryTimestamp.getTime();
-                if (endMs > startMs) {
-                    interval = { startMs, endMs };
-                }
-            }
-
-            requests.push({
-                inputTokens,
-                outputTokens,
-                assistantTimestampMs: entryTimestamp ? entryTimestamp.getTime() : null,
-                interval
-            });
-        }
+function collectSpeedMetricRecord(
+    state: SpeedMetricCollectorState,
+    data: TranscriptLine | null,
+    timestampMs: number | null,
+    ignoreSidechain: boolean
+): void {
+    if (!data || data.isApiErrorMessage || (ignoreSidechain && data.isSidechain === true)) {
+        return;
     }
 
-    return {
-        requests,
-        latestTimestampMs
-    };
+    if (timestampMs !== null && (state.latestTimestampMs === null || timestampMs > state.latestTimestampMs)) {
+        state.latestTimestampMs = timestampMs;
+    }
+
+    if (data.type === 'user' && timestampMs !== null) {
+        state.lastUserTimestampMs = timestampMs;
+        return;
+    }
+
+    if (data.type !== 'assistant' || !data.message?.usage) {
+        return;
+    }
+
+    let interval: SpeedInterval | null = null;
+    if (timestampMs !== null && state.lastUserTimestampMs !== null && timestampMs > state.lastUserTimestampMs) {
+        interval = { startMs: state.lastUserTimestampMs, endMs: timestampMs };
+    }
+
+    state.requests.push({
+        inputTokens: data.message.usage.input_tokens || 0,
+        outputTokens: data.message.usage.output_tokens || 0,
+        assistantTimestampMs: timestampMs,
+        interval
+    });
+}
+
+async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
+    const state = createSpeedMetricCollector();
+    for await (const line of iterateJsonlLines(filePath)) {
+        const data = parseJsonlLine(line) as TranscriptLine | null;
+        collectSpeedMetricRecord(state, data, parseTimestampMs(data?.timestamp), ignoreSidechain);
+    }
+
+    return state;
 }
 
 function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSpeedMetrics {
@@ -527,6 +488,155 @@ function buildEmptyWindowedMetrics(windowSeconds: number[]): Record<string, Spee
     return windowed;
 }
 
+function buildSpeedMetricsCollection(collected: CollectedSpeedMetrics[], windowSeconds: number[]): SpeedMetricsCollection {
+    const combined = mergeCollectedSpeedMetrics(collected);
+    const windowed: Record<string, SpeedMetrics> = {};
+    for (const window of windowSeconds) {
+        windowed[window.toString()] = buildSpeedMetrics(combined, window);
+    }
+
+    return {
+        sessionAverage: buildSpeedMetrics(combined),
+        windowed
+    };
+}
+
+function formatSessionDuration(firstTimestampMs: number | null, lastTimestampMs: number | null): string | null {
+    if (firstTimestampMs === null || lastTimestampMs === null) {
+        return null;
+    }
+
+    const totalMinutes = Math.floor((lastTimestampMs - firstTimestampMs) / (1000 * 60));
+    if (totalMinutes < 1) {
+        return '<1m';
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) {
+        return `${minutes}m`;
+    }
+    if (minutes === 0) {
+        return `${hours}hr`;
+    }
+    return `${hours}hr ${minutes}m`;
+}
+
+function normalizeSpeedWindows(windowSeconds: number[] | undefined): number[] {
+    return Array.from(
+        new Set(
+            (windowSeconds ?? [])
+                .map(window => normalizeWindowSeconds(window))
+                .filter((window): window is number => window !== null)
+        )
+    );
+}
+
+function createEmptyScanResult(options: TranscriptScanOptions, speedWindows: number[]): TranscriptScanResult {
+    return {
+        tokenMetrics: options.includeTokenMetrics ? createEmptyTokenMetrics() : null,
+        sessionDuration: null,
+        speedMetricsCollection: options.includeSpeedMetrics
+            ? {
+                sessionAverage: createEmptySpeedMetrics(),
+                windowed: buildEmptyWindowedMetrics(speedWindows)
+            }
+            : null,
+        compactionData: options.includeCompactionStats ? createCompactionStats() : null,
+        thinkingEffort: undefined,
+        sessionName: null
+    };
+}
+
+async function scanTranscript(transcriptPath: string, options: TranscriptScanOptions): Promise<TranscriptScanResult> {
+    const speedWindows = normalizeSpeedWindows(options.speedWindowSeconds);
+    const emptyResult = createEmptyScanResult(options, speedWindows);
+    if (!fs.existsSync(transcriptPath)) {
+        return emptyResult;
+    }
+
+    const tokenState = options.includeTokenMetrics ? createTokenMetricState() : null;
+    const speedState = options.includeSpeedMetrics ? createSpeedMetricCollector() : null;
+    const compactionData = options.includeCompactionStats ? createCompactionStats() : null;
+    const referencedAgentIds = options.includeSpeedMetrics && options.includeSubagents
+        ? new Set<string>()
+        : null;
+    let firstTimestampMs: number | null = null;
+    let lastTimestampMs: number | null = null;
+    let thinkingEffort: ResolvedThinkingEffort | undefined;
+    let sessionName: string | null = null;
+
+    try {
+        for await (const line of iterateJsonlLines(transcriptPath)) {
+            const data = parseJsonlLine(line) as TranscriptLine | null;
+            const needsTimestamp = options.includeSessionDuration === true
+                || speedState !== null
+                || Boolean(data?.message?.usage);
+            const timestampMs = needsTimestamp ? parseTimestampMs(data?.timestamp) : null;
+
+            if (tokenState) {
+                collectTokenMetricRecord(tokenState, data, timestampMs);
+            }
+            if (options.includeSessionDuration && timestampMs !== null) {
+                firstTimestampMs ??= timestampMs;
+                lastTimestampMs = timestampMs;
+            }
+            if (speedState) {
+                collectSpeedMetricRecord(speedState, data, timestampMs, true);
+            }
+            if (referencedAgentIds) {
+                collectAgentIds(data, referencedAgentIds);
+            }
+            if (compactionData) {
+                accumulateCompactionStats(compactionData, data);
+            }
+            if (options.includeThinkingEffort) {
+                const update = getThinkingEffortUpdate(data);
+                if (update) {
+                    thinkingEffort = update.effort;
+                }
+            }
+            if (options.includeSessionName) {
+                sessionName = getSessionNameFromRecord(data) ?? sessionName;
+            }
+        }
+
+        let speedMetricsCollection: SpeedMetricsCollection | null = null;
+        if (speedState) {
+            const collected: CollectedSpeedMetrics[] = [speedState];
+            if (referencedAgentIds) {
+                const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedAgentIds);
+                const subagentMetrics = await Promise.all(subagentPaths.map(async (subagentPath) => {
+                    try {
+                        return await collectSpeedMetricsFromFile(subagentPath, false);
+                    } catch {
+                        return null;
+                    }
+                }));
+                for (const metrics of subagentMetrics) {
+                    if (metrics) {
+                        collected.push(metrics);
+                    }
+                }
+            }
+            speedMetricsCollection = buildSpeedMetricsCollection(collected, speedWindows);
+        }
+
+        return {
+            tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+            sessionDuration: options.includeSessionDuration
+                ? formatSessionDuration(firstTimestampMs, lastTimestampMs)
+                : null,
+            speedMetricsCollection,
+            compactionData,
+            thinkingEffort,
+            sessionName
+        };
+    } catch {
+        return emptyResult;
+    }
+}
+
 function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: Set<string>): string[] {
     if (referencedAgentIds.size === 0) {
         return [];
@@ -582,65 +692,34 @@ export async function getSpeedMetricsCollection(
     transcriptPath: string,
     options: SpeedMetricsCollectionOptions = {}
 ): Promise<SpeedMetricsCollection> {
-    const normalizedWindows = Array.from(
-        new Set(
-            (options.windowSeconds ?? [])
-                .map(window => normalizeWindowSeconds(window))
-                .filter((window): window is number => window !== null)
-        )
-    );
-    const emptyWindowedMetrics = buildEmptyWindowedMetrics(normalizedWindows);
+    const result = await scanTranscript(transcriptPath, {
+        includeSpeedMetrics: true,
+        includeSubagents: options.includeSubagents,
+        speedWindowSeconds: options.windowSeconds
+    });
+    return result.speedMetricsCollection ?? {
+        sessionAverage: createEmptySpeedMetrics(),
+        windowed: buildEmptyWindowedMetrics(normalizeSpeedWindows(options.windowSeconds))
+    };
+}
 
-    try {
-        if (!fs.existsSync(transcriptPath)) {
-            return {
-                sessionAverage: createEmptySpeedMetrics(),
-                windowed: emptyWindowedMetrics
-            };
-        }
+export async function getTranscriptAnalysis(
+    transcriptPath: string,
+    options: TranscriptAnalysisOptions = {}
+): Promise<TranscriptAnalysis> {
+    const result = await scanTranscript(transcriptPath, {
+        ...options,
+        includeTokenMetrics: true
+    });
 
-        const mainLines = await readJsonlLines(transcriptPath);
-        const allCollected: CollectedSpeedMetrics[] = [
-            collectSpeedMetricsFromLines(mainLines, true)
-        ];
-
-        if (options.includeSubagents === true) {
-            const referencedSubagentIds = getReferencedSubagentIds(mainLines);
-            const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedSubagentIds);
-            const subagentMetricsResults = await Promise.all(subagentPaths.map(async (subagentPath) => {
-                try {
-                    const subagentLines = await readJsonlLines(subagentPath);
-                    return collectSpeedMetricsFromLines(subagentLines, false);
-                } catch {
-                    return null;
-                }
-            }));
-
-            for (const subagentMetrics of subagentMetricsResults) {
-                if (!subagentMetrics) {
-                    continue;
-                }
-
-                allCollected.push(subagentMetrics);
-            }
-        }
-
-        const combined = mergeCollectedSpeedMetrics(allCollected);
-        const windowed: Record<string, SpeedMetrics> = {};
-        for (const window of normalizedWindows) {
-            windowed[window.toString()] = buildSpeedMetrics(combined, window);
-        }
-
-        return {
-            sessionAverage: buildSpeedMetrics(combined),
-            windowed
-        };
-    } catch {
-        return {
-            sessionAverage: createEmptySpeedMetrics(),
-            windowed: emptyWindowedMetrics
-        };
-    }
+    return {
+        tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(),
+        sessionDuration: result.sessionDuration,
+        speedMetricsCollection: result.speedMetricsCollection,
+        compactionData: result.compactionData,
+        thinkingEffort: result.thinkingEffort,
+        sessionName: result.sessionName
+    };
 }
 
 export async function getSpeedMetrics(

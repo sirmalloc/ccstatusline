@@ -1,8 +1,8 @@
 import * as fs from 'fs';
-import { createInterface } from 'node:readline';
+import { StringDecoder } from 'string_decoder';
 import { promisify } from 'util';
 
-const SYNC_READ_CHUNK_BYTES = 1024 * 1024;
+export const JSONL_READ_CHUNK_BYTES = 1024 * 1024;
 const stat = promisify(fs.stat);
 const statSync = fs.statSync;
 
@@ -19,9 +19,9 @@ interface CacheEntry {
  * Split lines, keyed by file identity.
  *
  * @remarks
- * Several consumers require the same materialized transcript lines during one
- * render. Reuse keeps those consumers to one file walk, while aggregation-only
- * consumers can use the streaming iterators directly.
+ * Compatibility callers can still request a materialized line array. Reuse
+ * keeps repeated reads of an unchanged file to one walk, while transcript
+ * analysis uses the streaming iterators directly.
  */
 const lineCache = new Map<string, CacheEntry>();
 
@@ -70,41 +70,143 @@ function writeCached(identity: string, version: string, lines: readonly string[]
 }
 
 /**
+ * Splits byte chunks using JSONL's LF delimiter without interpreting Unicode
+ * line separators or lone carriage returns as record boundaries.
+ */
+class JsonlLineSplitter {
+    private decoder = new StringDecoder('utf8');
+    private readonly fragments: string[] = [];
+    private hasBytesInLine = false;
+    private isFirstLine = true;
+
+    * write(chunk: Buffer): Generator<string> {
+        let start = 0;
+        let newline = chunk.indexOf(0x0a, start);
+
+        while (newline !== -1) {
+            this.append(chunk.subarray(start, newline));
+            const line = this.finishLine();
+            if (line !== null) {
+                yield line;
+            }
+
+            start = newline + 1;
+            newline = chunk.indexOf(0x0a, start);
+        }
+
+        this.append(chunk.subarray(start));
+    }
+
+    * end(): Generator<string> {
+        if (!this.hasBytesInLine) {
+            return;
+        }
+
+        const line = this.finishLine();
+        if (line !== null) {
+            yield line;
+        }
+    }
+
+    private append(bytes: Buffer): void {
+        if (bytes.length === 0) {
+            return;
+        }
+
+        this.hasBytesInLine = true;
+        const decoded = this.decoder.write(bytes);
+        if (decoded.length > 0) {
+            this.fragments.push(decoded);
+        }
+    }
+
+    private finishLine(): string | null {
+        const decodedTail = this.decoder.end();
+        if (decodedTail.length > 0) {
+            this.fragments.push(decodedTail);
+        }
+
+        let line = this.fragments.join('');
+        this.fragments.length = 0;
+        this.decoder = new StringDecoder('utf8');
+        this.hasBytesInLine = false;
+
+        if (this.isFirstLine) {
+            this.isFirstLine = false;
+            if (line.charCodeAt(0) === 0xfeff) {
+                line = line.slice(1);
+            }
+        }
+
+        if (line.endsWith('\r')) {
+            line = line.slice(0, -1);
+        }
+
+        return line.length > 0 ? line : null;
+    }
+}
+
+function decodeReverseLine(segments: Buffer[], totalBytes: number, stripBom: boolean): string | null {
+    let lineBuffer: Buffer;
+    if (segments.length === 1) {
+        const segment = segments[0];
+        if (!segment) {
+            return null;
+        }
+        lineBuffer = segment;
+    } else {
+        lineBuffer = Buffer.concat(segments.slice().reverse(), totalBytes);
+    }
+
+    let line = lineBuffer.toString('utf8');
+    if (stripBom && line.charCodeAt(0) === 0xfeff) {
+        line = line.slice(1);
+    }
+    if (line.endsWith('\r')) {
+        line = line.slice(0, -1);
+    }
+
+    return line.length > 0 ? line : null;
+}
+
+/**
  * Stream a JSONL file line-by-line without materializing the whole file as one
  * string. Claude Code session transcripts can exceed Node's max string length
  * (~512MB / 0x1fffffe8), so `fs.readFile(..., 'utf-8')` throws and callers that
  * catch the error end up reporting zeros.
  */
 export async function* iterateJsonlLines(filePath: string): AsyncGenerator<string> {
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
-    const reader = createInterface({
-        input: stream,
-        crlfDelay: Infinity
-    });
+    const stream = fs.createReadStream(filePath, { highWaterMark: JSONL_READ_CHUNK_BYTES });
+    const splitter = new JsonlLineSplitter();
+    // Active read errors reject the async iterator. This listener also covers a
+    // late close error emitted after iterator cleanup on network filesystems.
+    stream.on('error', () => undefined);
 
     try {
-        for await (const line of reader) {
-            if (line.length > 0) {
+        for await (const chunk of stream as AsyncIterable<Buffer>) {
+            for (const line of splitter.write(chunk)) {
                 yield line;
             }
         }
+
+        for (const line of splitter.end()) {
+            yield line;
+        }
     } finally {
-        reader.close();
         stream.destroy();
     }
 }
 
 /**
  * Synchronous line iterator for call sites that cannot be async.
- * Buffers chunk segments until a line is complete, then decodes the assembled
- * Buffer so multi-byte UTF-8 sequences are never split across chunk boundaries.
+ * Decodes chunk segments incrementally so multi-byte UTF-8 sequences and long
+ * records spanning chunks remain correct without repeatedly copying prefixes.
  */
 export function* iterateJsonlLinesSync(filePath: string): Generator<string> {
     const fd = fs.openSync(filePath, 'r');
     try {
-        const scratch = Buffer.allocUnsafe(SYNC_READ_CHUNK_BYTES);
-        const pending: Buffer[] = [];
-        let pendingBytes = 0;
+        const scratch = Buffer.allocUnsafe(JSONL_READ_CHUNK_BYTES);
+        const splitter = new JsonlLineSplitter();
 
         for (;;) {
             const bytesRead = fs.readSync(fd, scratch, 0, scratch.length, null);
@@ -112,52 +214,68 @@ export function* iterateJsonlLinesSync(filePath: string): Generator<string> {
                 break;
             }
 
-            const chunk = scratch.subarray(0, bytesRead);
-            let start = 0;
-
-            for (let i = 0; i < chunk.length; i++) {
-                if (chunk[i] !== 0x0a) {
-                    continue;
-                }
-
-                const segment = chunk.subarray(start, i);
-                let lineBuf: Buffer;
-                if (pending.length === 0) {
-                    lineBuf = segment;
-                } else {
-                    if (segment.length > 0) {
-                        pending.push(segment);
-                        pendingBytes += segment.length;
-                    }
-                    lineBuf = Buffer.concat(pending, pendingBytes);
-                }
-
-                pending.length = 0;
-                pendingBytes = 0;
-                start = i + 1;
-
-                if (lineBuf.length > 0 && lineBuf[lineBuf.length - 1] === 0x0d) {
-                    lineBuf = lineBuf.subarray(0, lineBuf.length - 1);
-                }
-                if (lineBuf.length > 0) {
-                    yield lineBuf.toString('utf8');
-                }
-            }
-
-            if (start < chunk.length) {
-                const remainder = Buffer.from(chunk.subarray(start));
-                pending.push(remainder);
-                pendingBytes += remainder.length;
+            for (const line of splitter.write(scratch.subarray(0, bytesRead))) {
+                yield line;
             }
         }
 
-        if (pendingBytes > 0) {
-            let lineBuf = Buffer.concat(pending, pendingBytes);
-            if (lineBuf[lineBuf.length - 1] === 0x0d) {
-                lineBuf = lineBuf.subarray(0, lineBuf.length - 1);
+        for (const line of splitter.end()) {
+            yield line;
+        }
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+
+/**
+ * Reads JSONL records from newest to oldest without loading the whole file.
+ * This is intended for widgets that only need the latest matching record.
+ */
+export function* iterateJsonlLinesReverseSync(filePath: string): Generator<string> {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+        let position = fs.fstatSync(fd).size;
+        const segments: Buffer[] = [];
+        let totalBytes = 0;
+
+        while (position > 0) {
+            const readSize = Math.min(JSONL_READ_CHUNK_BYTES, position);
+            position -= readSize;
+
+            const chunk = Buffer.allocUnsafe(readSize);
+            fs.readSync(fd, chunk, 0, readSize, position);
+            let end = chunk.length;
+            let newline = chunk.lastIndexOf(0x0a, end - 1);
+
+            while (newline !== -1) {
+                const segment = chunk.subarray(newline + 1, end);
+                if (segment.length > 0) {
+                    segments.push(segment);
+                    totalBytes += segment.length;
+                }
+
+                const line = decodeReverseLine(segments, totalBytes, false);
+                segments.length = 0;
+                totalBytes = 0;
+                if (line !== null) {
+                    yield line;
+                }
+
+                end = newline;
+                newline = chunk.lastIndexOf(0x0a, end - 1);
             }
-            if (lineBuf.length > 0) {
-                yield lineBuf.toString('utf8');
+
+            if (end > 0) {
+                const segment = chunk.subarray(0, end);
+                segments.push(segment);
+                totalBytes += segment.length;
+            }
+        }
+
+        if (totalBytes > 0) {
+            const line = decodeReverseLine(segments, totalBytes, true);
+            if (line !== null) {
+                yield line;
             }
         }
     } finally {

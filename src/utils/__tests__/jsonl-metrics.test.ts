@@ -12,7 +12,8 @@ import {
     getSessionDuration,
     getSpeedMetrics,
     getSpeedMetricsCollection,
-    getTokenMetrics
+    getTokenMetrics,
+    getTranscriptAnalysis
 } from '../jsonl';
 
 function makeUsageLine(params: {
@@ -161,6 +162,31 @@ describe('jsonl transcript metrics', () => {
             totalTokens: 2032,
             contextLength: 250
         });
+    });
+
+    it('ignores invalid timestamps when choosing the latest context usage', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'invalid-timestamp.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: 'not-a-timestamp',
+                input: 100,
+                output: 1
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 5,
+                output: 2,
+                cacheRead: 5000
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.contextLength).toBe(5005);
+        expect(metrics.totalTokens).toBe(5108);
     });
 
     it('skips intermediate streaming entries and only counts final entries per API call', async () => {
@@ -513,14 +539,13 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
-    it('aggregates token metrics by streaming many usage lines without a whole-file string read', async () => {
+    it('aggregates token metrics across many usage records', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
         tempRoots.push(root);
         const transcriptPath = path.join(root, 'streamed-tokens.jsonl');
 
-        // Many small lines so the streamer crosses chunk boundaries while the
-        // cumulative totals stay easy to assert. Regression for #550: full-file
-        // utf-8 reads throw once transcripts exceed Node's max string length.
+        // Many small lines keep the cumulative totals easy to assert while
+        // exercising repeated record aggregation.
         const lineCount = 2500;
         const handle = fs.openSync(transcriptPath, 'w');
         try {
@@ -551,7 +576,7 @@ describe('jsonl transcript metrics', () => {
         });
     }, 30000);
 
-    it('discards large assistant content after extracting token fields', async () => {
+    it('aggregates usage rows containing multi-megabyte assistant content', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
         tempRoots.push(root);
         const transcriptPath = path.join(root, 'large-assistant-content.jsonl');
@@ -594,6 +619,100 @@ describe('jsonl transcript metrics', () => {
             cacheCreationTokens: 3,
             totalTokens: 30,
             contextLength: 14
+        });
+    });
+
+    it('collects configured transcript metrics in one combined analysis', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'combined.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            JSON.stringify({
+                type: 'user',
+                timestamp: '2026-01-01T10:00:00.000Z',
+                message: { content: 'hello' }
+            }),
+            JSON.stringify({
+                type: 'assistant',
+                timestamp: '2026-01-01T10:01:00.000Z',
+                message: {
+                    stop_reason: 'end_turn',
+                    usage: {
+                        input_tokens: 2,
+                        output_tokens: 3,
+                        cache_read_input_tokens: 4,
+                        cache_creation_input_tokens: 1
+                    }
+                }
+            }),
+            JSON.stringify({
+                type: 'custom-title',
+                customTitle: 'Combined Session',
+                timestamp: '2026-01-01T10:02:00.000Z'
+            }),
+            JSON.stringify({
+                type: 'system',
+                timestamp: '2026-01-01T10:03:00.000Z',
+                message: { content: '<local-command-stdout>Set effort level to high</local-command-stdout>' }
+            }),
+            JSON.stringify({
+                type: 'system',
+                subtype: 'compact_boundary',
+                timestamp: '2026-01-01T10:04:00.000Z',
+                compactMetadata: {
+                    trigger: 'manual',
+                    preTokens: 10,
+                    postTokens: 5
+                }
+            })
+        ].join('\n'));
+
+        const analysis = await getTranscriptAnalysis(transcriptPath, {
+            includeSessionDuration: true,
+            includeSpeedMetrics: true,
+            speedWindowSeconds: [300],
+            includeCompactionStats: true,
+            includeThinkingEffort: true,
+            includeSessionName: true
+        });
+
+        expect(analysis).toEqual({
+            tokenMetrics: {
+                inputTokens: 2,
+                outputTokens: 3,
+                cachedTokens: 5,
+                cacheReadTokens: 4,
+                cacheCreationTokens: 1,
+                totalTokens: 10,
+                contextLength: 5
+            },
+            sessionDuration: '4m',
+            speedMetricsCollection: {
+                sessionAverage: {
+                    totalDurationMs: 60000,
+                    inputTokens: 2,
+                    outputTokens: 3,
+                    totalTokens: 5,
+                    requestCount: 1
+                },
+                windowed: {
+                    300: {
+                        totalDurationMs: 60000,
+                        inputTokens: 2,
+                        outputTokens: 3,
+                        totalTokens: 5,
+                        requestCount: 1
+                    }
+                }
+            },
+            compactionData: {
+                count: 1,
+                byTrigger: { auto: 0, manual: 1, unknown: 0 },
+                tokensReclaimed: 5
+            },
+            thinkingEffort: { value: 'high', known: true },
+            sessionName: 'Combined Session'
         });
     });
 

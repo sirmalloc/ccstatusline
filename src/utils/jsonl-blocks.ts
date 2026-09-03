@@ -6,8 +6,8 @@ import type { BlockMetrics } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
 import {
-    parseJsonlLine,
-    readJsonlLinesSync
+    iterateJsonlLinesSync,
+    parseJsonlLine
 } from './jsonl-lines';
 
 const statSync = fs.statSync;
@@ -183,11 +183,7 @@ function findMostRecentBlockStartTime(
 function getAllTimestampsFromFile(filePath: string): Date[] {
     const timestamps: Date[] = [];
     try {
-        // This sweep visits each transcript once, across as many as the lookback
-        // selects, so caching cannot hit and would retain every one of them.
-        const lines = readJsonlLinesSync(filePath, { cache: false });
-
-        for (const line of lines) {
+        for (const line of iterateJsonlLinesSync(filePath)) {
             const json = parseJsonlLine(line) as {
                 timestamp?: string;
                 isSidechain?: boolean;

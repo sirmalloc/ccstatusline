@@ -10,9 +10,12 @@ import {
 } from 'vitest';
 
 import {
+    JSONL_READ_CHUNK_BYTES,
     clearJsonlLineCache,
     iterateJsonlLines,
+    iterateJsonlLinesReverseSync,
     iterateJsonlLinesSync,
+    parseJsonlLine,
     readJsonlLines,
     readJsonlLinesSync
 } from '../jsonl-lines';
@@ -20,7 +23,12 @@ import {
 describe('jsonl line streaming', () => {
     const tempRoots: string[] = [];
 
+    beforeEach(() => {
+        clearJsonlLineCache();
+    });
+
     afterEach(() => {
+        clearJsonlLineCache();
         while (tempRoots.length > 0) {
             const root = tempRoots.pop();
             if (root) {
@@ -49,7 +57,7 @@ describe('jsonl line streaming', () => {
             '{"id":2}',
             '{"id":3}'
         ]);
-        expect(readJsonlLinesSync(filePath)).toEqual([
+        expect(readJsonlLinesSync(filePath, { cache: false })).toEqual([
             '{"id":1}',
             '{"id":2}',
             '{"id":3}'
@@ -63,7 +71,7 @@ describe('jsonl line streaming', () => {
             '{"a":1}',
             '{"b":2}'
         ]);
-        expect(readJsonlLinesSync(filePath)).toEqual([
+        expect(readJsonlLinesSync(filePath, { cache: false })).toEqual([
             '{"a":1}',
             '{"b":2}'
         ]);
@@ -74,10 +82,9 @@ describe('jsonl line streaming', () => {
         tempRoots.push(root);
         const filePath = path.join(root, 'utf8.jsonl');
 
-        const chunkBytes = 1024 * 1024;
         const opening = '{"value":"';
         const emoji = '😀';
-        const line = `${opening}${'x'.repeat(chunkBytes - Buffer.byteLength(opening) - 2)}${emoji}"}`;
+        const line = `${opening}${'x'.repeat(JSONL_READ_CHUNK_BYTES - Buffer.byteLength(opening) - 2)}${emoji}"}`;
         fs.writeFileSync(filePath, line, 'utf8');
 
         const lines = readJsonlLinesSync(filePath);
@@ -86,15 +93,71 @@ describe('jsonl line streaming', () => {
 
     it('reads a record spanning many sync chunks followed by another record', () => {
         const filePath = writeTranscript('long-record.jsonl', [
-            `{"value":"${'x'.repeat(6 * 1024 * 1024)}"}`,
+            `{"value":"${'x'.repeat(6 * JSONL_READ_CHUNK_BYTES)}"}`,
             '{"value":"next"}'
         ].join('\n'));
 
         const lines = Array.from(iterateJsonlLinesSync(filePath));
 
         expect(lines).toHaveLength(2);
-        expect(nth(lines, 0)).toHaveLength((6 * 1024 * 1024) + 12);
+        expect(nth(lines, 0)).toHaveLength((6 * JSONL_READ_CHUNK_BYTES) + 12);
         expect(nth(lines, 1)).toBe('{"value":"next"}');
+    });
+
+    it('uses LF-only record boundaries consistently in async and sync readers', async () => {
+        const unicodeRecord = JSON.stringify({ value: 'before\u2028middle\u2029after' });
+        const filePath = writeTranscript('unicode-separators.jsonl', `${unicodeRecord}\n{"value":"next"}\n`);
+
+        const asyncLines = await readJsonlLines(filePath, { cache: false });
+        const syncLines = readJsonlLinesSync(filePath, { cache: false });
+
+        expect(asyncLines).toEqual([unicodeRecord, '{"value":"next"}']);
+        expect(syncLines).toEqual(asyncLines);
+        expect(asyncLines.map(parseJsonlLine)).not.toContain(null);
+    });
+
+    it('preserves lone carriage returns as content rather than record boundaries', async () => {
+        const filePath = writeTranscript('lone-cr.jsonl', 'left\rright\nnext');
+
+        await expect(readJsonlLines(filePath, { cache: false })).resolves.toEqual([
+            'left\rright',
+            'next'
+        ]);
+        expect(readJsonlLinesSync(filePath, { cache: false })).toEqual(['left\rright', 'next']);
+    });
+
+    it('strips a UTF-8 BOM from the first record in both readers', async () => {
+        const filePath = writeTranscript('bom.jsonl', '\uFEFF{"value":1}\n{"value":2}\n');
+
+        const asyncLines = await readJsonlLines(filePath, { cache: false });
+        const syncLines = readJsonlLinesSync(filePath, { cache: false });
+
+        expect(asyncLines).toEqual(['{"value":1}', '{"value":2}']);
+        expect(syncLines).toEqual(asyncLines);
+        expect(asyncLines.map(parseJsonlLine)).not.toContain(null);
+    });
+
+    it('reads records from newest to oldest without loading earlier content', () => {
+        const filePath = writeTranscript('reverse.jsonl', '\uFEFF{"value":1}\r\n{"value":2}\n{"value":3}');
+
+        expect(Array.from(iterateJsonlLinesReverseSync(filePath))).toEqual([
+            '{"value":3}',
+            '{"value":2}',
+            '{"value":1}'
+        ]);
+    });
+
+    it('reverse-reads a UTF-8 record spanning multiple chunks', () => {
+        const opening = '{"value":"';
+        const longLine = `${opening}${'x'.repeat((2 * JSONL_READ_CHUNK_BYTES) - Buffer.byteLength(opening) - 2)}😀"}`;
+        const filePath = writeTranscript('reverse-long.jsonl', `${longLine}\n{"value":"latest"}`);
+
+        const lines = Array.from(iterateJsonlLinesReverseSync(filePath));
+
+        expect(lines).toEqual([
+            '{"value":"latest"}',
+            longLine
+        ]);
     });
 
     it('streams via async iterator without loading the full file as one string', async () => {
@@ -117,11 +180,7 @@ describe('jsonl line streaming', () => {
         expect(Array.from(iterateJsonlLinesSync(filePath))).toEqual(seen);
     });
 
-    it('can read files larger than Node max string length via streaming', async () => {
-        // Node refuses to create a single string longer than ~0x1fffffe8 (~512MB).
-        // Building a real 512MB+ fixture is too heavy for unit tests, so we prove
-        // the streaming path never calls readFile/readFileSync for the payload and
-        // still aggregates many chunks correctly by reading a multi-chunk file.
+    it('streams files containing many records across multiple chunks', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-lines-'));
         tempRoots.push(root);
         const filePath = path.join(root, 'chunked.jsonl');
@@ -144,6 +203,12 @@ describe('jsonl line streaming', () => {
         const syncLines = readJsonlLinesSync(filePath);
         expect(syncLines).toHaveLength(lineCount);
     }, 30000);
+
+    it('rejects stream open errors through the async reader', async () => {
+        const missingPath = path.join(os.tmpdir(), 'ccstatusline-jsonl-lines-missing', 'missing.jsonl');
+
+        await expect(readJsonlLines(missingPath, { cache: false })).rejects.toThrow();
+    });
 });
 
 /** Matches MAX_CACHED_FILES in jsonl-lines.ts. */
