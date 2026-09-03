@@ -84,6 +84,19 @@ describe('jsonl line streaming', () => {
         expect(lines).toEqual([line]);
     });
 
+    it('reads a record spanning many sync chunks followed by another record', () => {
+        const filePath = writeTranscript('long-record.jsonl', [
+            `{"value":"${'x'.repeat(6 * 1024 * 1024)}"}`,
+            '{"value":"next"}'
+        ].join('\n'));
+
+        const lines = Array.from(iterateJsonlLinesSync(filePath));
+
+        expect(lines).toHaveLength(2);
+        expect(nth(lines, 0)).toHaveLength((6 * 1024 * 1024) + 12);
+        expect(nth(lines, 1)).toBe('{"value":"next"}');
+    });
+
     it('streams via async iterator without loading the full file as one string', async () => {
         const filePath = writeTranscript('stream.jsonl', [
             '{"line":1}',

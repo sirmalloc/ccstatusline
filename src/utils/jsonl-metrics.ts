@@ -49,6 +49,77 @@ interface CollectedSpeedMetrics {
     latestTimestampMs: number | null;
 }
 
+interface RetainedTokenUsage {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+}
+
+interface TokenMetricEntry {
+    usage: RetainedTokenUsage;
+    stopReason: string | null | undefined;
+    timestamp: string | undefined;
+    isMainChain: boolean;
+    lineIndex: number;
+}
+
+interface TokenMetricAccumulator {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    mostRecentMainChainUsage: RetainedTokenUsage | null;
+    mostRecentTimestamp: Date | null;
+    mostRecentPostCompactionUsage: RetainedTokenUsage | null;
+    mostRecentPostCompactionTimestamp: Date | null;
+}
+
+function createTokenMetricAccumulator(): TokenMetricAccumulator {
+    return {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        mostRecentMainChainUsage: null,
+        mostRecentTimestamp: null,
+        mostRecentPostCompactionUsage: null,
+        mostRecentPostCompactionTimestamp: null
+    };
+}
+
+function resetPostCompactionUsage(accumulator: TokenMetricAccumulator): void {
+    accumulator.mostRecentPostCompactionUsage = null;
+    accumulator.mostRecentPostCompactionTimestamp = null;
+}
+
+function accumulateTokenMetricEntry(
+    accumulator: TokenMetricAccumulator,
+    entry: TokenMetricEntry,
+    lastCompactBoundaryLineIndex: number
+): void {
+    const { usage } = entry;
+    accumulator.inputTokens += usage.inputTokens;
+    accumulator.outputTokens += usage.outputTokens;
+    accumulator.cacheReadTokens += usage.cacheReadTokens;
+    accumulator.cacheCreationTokens += usage.cacheCreationTokens;
+
+    if (!entry.isMainChain || !entry.timestamp) {
+        return;
+    }
+
+    const entryTime = new Date(entry.timestamp);
+    if (!accumulator.mostRecentTimestamp || entryTime > accumulator.mostRecentTimestamp) {
+        accumulator.mostRecentTimestamp = entryTime;
+        accumulator.mostRecentMainChainUsage = usage;
+    }
+    if (entry.lineIndex > lastCompactBoundaryLineIndex
+        && (!accumulator.mostRecentPostCompactionTimestamp || entryTime > accumulator.mostRecentPostCompactionTimestamp)) {
+        accumulator.mostRecentPostCompactionTimestamp = entryTime;
+        accumulator.mostRecentPostCompactionUsage = usage;
+    }
+}
+
 function collectAgentIds(value: unknown, agentIds: Set<string>) {
     if (!value || typeof value !== 'object') {
         return;
@@ -149,12 +220,6 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
             return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
         }
 
-        let inputTokens = 0;
-        let outputTokens = 0;
-        let cacheReadTokens = 0;
-        let cacheCreationTokens = 0;
-        let contextLength = 0;
-
         // Parse each line and sum up token usage for totals.
         // Claude Code writes multiple JSONL entries per API call during streaming:
         // intermediate entries have stop_reason: null, and the final entry has a
@@ -168,16 +233,15 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
         // describe a context that no longer exists, so they must not drive context
         // length - otherwise it stays stuck at the pre-compaction size until the
         // next turn repopulates Claude Code's live status data.
-        let mostRecentMainChainEntry: TranscriptLine | null = null;
-        let mostRecentTimestamp: Date | null = null;
-        let mostRecentPostCompactionEntry: TranscriptLine | null = null;
-        let mostRecentPostCompactionTimestamp: Date | null = null;
         let lastCompactBoundaryLineIndex = -1;
         let lastCompactBoundaryPostTokens: number | null = null;
 
-        // Only usage-bearing rows are retained (not the raw transcript text), so
-        // multi-hundred-MB sessions stay within normal heap limits.
-        const parsedEntries: { data: TranscriptLine; lineIndex: number }[] = [];
+        // Aggregate both transcript formats in one pass. This avoids retaining
+        // assistant message content while preserving the legacy fallback when no
+        // usage row has a stop_reason field.
+        const legacyMetrics = createTokenMetricAccumulator();
+        const streamingMetrics = createTokenMetricAccumulator();
+        let lastUsageEntry: TokenMetricEntry | null = null;
         let hasStopReasonField = false;
         let lineIndex = 0;
 
@@ -186,73 +250,71 @@ export async function getTokenMetrics(transcriptPath: string): Promise<TokenMetr
             if (isCompactBoundary(data)) {
                 lastCompactBoundaryLineIndex = lineIndex;
                 lastCompactBoundaryPostTokens = getCompactBoundaryPostTokens(data);
+                resetPostCompactionUsage(legacyMetrics);
+                resetPostCompactionUsage(streamingMetrics);
             }
-            if (data?.message?.usage) {
-                parsedEntries.push({ data, lineIndex });
-                if (Object.hasOwn(data.message, 'stop_reason')) {
+            const message = data?.message;
+            const usage = message?.usage;
+            if (usage) {
+                const entry: TokenMetricEntry = {
+                    usage: {
+                        inputTokens: usage.input_tokens || 0,
+                        outputTokens: usage.output_tokens || 0,
+                        cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+                        cacheCreationTokens: usage.cache_creation_input_tokens ?? 0
+                    },
+                    stopReason: message.stop_reason,
+                    timestamp: data?.timestamp,
+                    isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+                    lineIndex
+                };
+
+                accumulateTokenMetricEntry(legacyMetrics, entry, lastCompactBoundaryLineIndex);
+                if (Object.hasOwn(message, 'stop_reason')) {
                     hasStopReasonField = true;
                 }
+                if (entry.stopReason) {
+                    accumulateTokenMetricEntry(streamingMetrics, entry, lastCompactBoundaryLineIndex);
+                }
+                lastUsageEntry = entry;
             }
             lineIndex += 1;
         }
 
-        const entriesToCount = hasStopReasonField
-            ? parsedEntries.filter((entry, index) => {
-                const stopReason = entry.data.message?.stop_reason;
-                return Boolean(stopReason) || (stopReason === null && index === parsedEntries.length - 1);
-            })
-            : parsedEntries;
-
-        for (const { data, lineIndex: entryLineIndex } of entriesToCount) {
-            const usage = data.message?.usage;
-            if (!usage) {
-                continue;
-            }
-
-            inputTokens += usage.input_tokens || 0;
-            outputTokens += usage.output_tokens || 0;
-            cacheReadTokens += usage.cache_read_input_tokens ?? 0;
-            cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
-
-            // Track the most recent entry with isSidechain: false (or undefined, which defaults to main chain)
-            // Also skip API error messages (synthetic messages with 0 tokens)
-            if (data.isSidechain !== true && data.timestamp && !data.isApiErrorMessage) {
-                const entryTime = new Date(data.timestamp);
-                if (!mostRecentTimestamp || entryTime > mostRecentTimestamp) {
-                    mostRecentTimestamp = entryTime;
-                    mostRecentMainChainEntry = data;
-                }
-                if (entryLineIndex > lastCompactBoundaryLineIndex
-                    && (!mostRecentPostCompactionTimestamp || entryTime > mostRecentPostCompactionTimestamp)) {
-                    mostRecentPostCompactionTimestamp = entryTime;
-                    mostRecentPostCompactionEntry = data;
-                }
-            }
+        if (hasStopReasonField && lastUsageEntry?.stopReason === null) {
+            accumulateTokenMetricEntry(streamingMetrics, lastUsageEntry, lastCompactBoundaryLineIndex);
         }
+
+        const metrics = hasStopReasonField ? streamingMetrics : legacyMetrics;
 
         // Context length is the live occupancy of the current context window.
         // Without a compaction it is the most recent main-chain turn. After a
         // compaction, prefer the first turn following the boundary, then the
         // boundary's reported post-compaction size, and otherwise 0 - the stale
         // pre-compaction turn must never leak through.
-        const contextLengthFromEntry = (entry: TranscriptLine | null): number | null => {
-            const usage = entry?.message?.usage;
+        const contextLengthFromUsage = (usage: RetainedTokenUsage | null): number | null => {
             if (!usage) {
                 return null;
             }
-            return (usage.input_tokens || 0)
-                + (usage.cache_read_input_tokens ?? 0)
-                + (usage.cache_creation_input_tokens ?? 0);
+            return usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens;
         };
 
-        contextLength = lastCompactBoundaryLineIndex >= 0
-            ? (contextLengthFromEntry(mostRecentPostCompactionEntry) ?? lastCompactBoundaryPostTokens ?? 0)
-            : (contextLengthFromEntry(mostRecentMainChainEntry) ?? 0);
+        const contextLength = lastCompactBoundaryLineIndex >= 0
+            ? (contextLengthFromUsage(metrics.mostRecentPostCompactionUsage) ?? lastCompactBoundaryPostTokens ?? 0)
+            : (contextLengthFromUsage(metrics.mostRecentMainChainUsage) ?? 0);
 
-        const cachedTokens = cacheReadTokens + cacheCreationTokens;
-        const totalTokens = inputTokens + outputTokens + cachedTokens;
+        const cachedTokens = metrics.cacheReadTokens + metrics.cacheCreationTokens;
+        const totalTokens = metrics.inputTokens + metrics.outputTokens + cachedTokens;
 
-        return { inputTokens, outputTokens, cachedTokens, cacheReadTokens, cacheCreationTokens, totalTokens, contextLength };
+        return {
+            inputTokens: metrics.inputTokens,
+            outputTokens: metrics.outputTokens,
+            cachedTokens,
+            cacheReadTokens: metrics.cacheReadTokens,
+            cacheCreationTokens: metrics.cacheCreationTokens,
+            totalTokens,
+            contextLength
+        };
     } catch {
         return { inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, contextLength: 0 };
     }

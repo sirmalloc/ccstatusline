@@ -96,14 +96,15 @@ export async function* iterateJsonlLines(filePath: string): AsyncGenerator<strin
 
 /**
  * Synchronous line iterator for call sites that cannot be async.
- * Completes each line in a Buffer before decoding so multi-byte UTF-8 sequences
- * are never split across chunk boundaries.
+ * Buffers chunk segments until a line is complete, then decodes the assembled
+ * Buffer so multi-byte UTF-8 sequences are never split across chunk boundaries.
  */
 export function* iterateJsonlLinesSync(filePath: string): Generator<string> {
     const fd = fs.openSync(filePath, 'r');
     try {
         const scratch = Buffer.allocUnsafe(SYNC_READ_CHUNK_BYTES);
-        let pending = Buffer.alloc(0);
+        const pending: Buffer[] = [];
+        let pendingBytes = 0;
 
         for (;;) {
             const bytesRead = fs.readSync(fd, scratch, 0, scratch.length, null);
@@ -112,31 +113,46 @@ export function* iterateJsonlLinesSync(filePath: string): Generator<string> {
             }
 
             const chunk = scratch.subarray(0, bytesRead);
-            const combined = pending.length > 0 ? Buffer.concat([pending, chunk]) : chunk;
             let start = 0;
 
-            for (let i = 0; i < combined.length; i++) {
-                if (combined[i] !== 0x0a) {
+            for (let i = 0; i < chunk.length; i++) {
+                if (chunk[i] !== 0x0a) {
                     continue;
                 }
 
-                let lineBuf = combined.subarray(start, i);
+                const segment = chunk.subarray(start, i);
+                let lineBuf: Buffer;
+                if (pending.length === 0) {
+                    lineBuf = segment;
+                } else {
+                    if (segment.length > 0) {
+                        pending.push(segment);
+                        pendingBytes += segment.length;
+                    }
+                    lineBuf = Buffer.concat(pending, pendingBytes);
+                }
+
+                pending.length = 0;
+                pendingBytes = 0;
+                start = i + 1;
+
                 if (lineBuf.length > 0 && lineBuf[lineBuf.length - 1] === 0x0d) {
                     lineBuf = lineBuf.subarray(0, lineBuf.length - 1);
                 }
                 if (lineBuf.length > 0) {
                     yield lineBuf.toString('utf8');
                 }
-                start = i + 1;
             }
 
-            pending = start === 0
-                ? Buffer.from(combined)
-                : Buffer.from(combined.subarray(start));
+            if (start < chunk.length) {
+                const remainder = Buffer.from(chunk.subarray(start));
+                pending.push(remainder);
+                pendingBytes += remainder.length;
+            }
         }
 
-        if (pending.length > 0) {
-            let lineBuf = pending;
+        if (pendingBytes > 0) {
+            let lineBuf = Buffer.concat(pending, pendingBytes);
             if (lineBuf[lineBuf.length - 1] === 0x0d) {
                 lineBuf = lineBuf.subarray(0, lineBuf.length - 1);
             }

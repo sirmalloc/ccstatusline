@@ -551,6 +551,52 @@ describe('jsonl transcript metrics', () => {
         });
     }, 30000);
 
+    it('discards large assistant content after extracting token fields', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'large-assistant-content.jsonl');
+        const content = 'x'.repeat(2 * 1024 * 1024);
+
+        fs.writeFileSync(transcriptPath, [
+            JSON.stringify({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                message: {
+                    content,
+                    stop_reason: 'end_turn',
+                    usage: {
+                        input_tokens: 2,
+                        output_tokens: 3,
+                        cache_read_input_tokens: 4,
+                        cache_creation_input_tokens: 1
+                    }
+                }
+            }),
+            JSON.stringify({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                message: {
+                    content,
+                    stop_reason: 'end_turn',
+                    usage: {
+                        input_tokens: 5,
+                        output_tokens: 6,
+                        cache_read_input_tokens: 7,
+                        cache_creation_input_tokens: 2
+                    }
+                }
+            })
+        ].join('\n'));
+
+        await expect(getTokenMetrics(transcriptPath)).resolves.toEqual({
+            inputTokens: 7,
+            outputTokens: 9,
+            cachedTokens: 14,
+            cacheReadTokens: 11,
+            cacheCreationTokens: 3,
+            totalTokens: 30,
+            contextLength: 14
+        });
+    });
+
     it('calculates speed metrics from user-to-assistant processing windows', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
