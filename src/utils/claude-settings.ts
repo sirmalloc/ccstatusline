@@ -422,9 +422,13 @@ export async function installStatusLine({
         padding: 0
     };
 
-    // Only set refreshInterval if Claude Code version supports it (>=2.1.97)
-    if (supportsRefreshInterval) {
-        settings.statusLine.refreshInterval = existingRefreshInterval ?? 10;
+    // Default refreshInterval only on supported versions (>=2.1.97), but always keep an
+    // existing value - the version probe also returns false when `claude --version` fails.
+    const refreshInterval = supportsRefreshInterval
+        ? (existingRefreshInterval ?? 10)
+        : existingRefreshInterval;
+    if (refreshInterval !== undefined) {
+        settings.statusLine.refreshInterval = refreshInterval;
     }
 
     await saveClaudeSettings(settings);

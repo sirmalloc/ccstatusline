@@ -351,6 +351,19 @@ describe('installStatusLine refreshInterval', () => {
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(5);
     });
+
+    it('should preserve existing refreshInterval when version is unsupported', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 5
+            }
+        }));
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
+        expect(readInstalledRefreshInterval()).toBe(5);
+    });
 });
 
 describe('refreshInterval', () => {
