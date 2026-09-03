@@ -35,9 +35,10 @@ export interface ColorMenuProps {
     settings: Settings;
     onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
+    onSwitchToItems?: () => void;
 }
 
-export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack }) => {
+export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settings, onUpdate, onBack, onSwitchToItems }) => {
     const [showSeparators, setShowSeparators] = useState(false);
     const [hexInputMode, setHexInputMode] = useState(false);
     const [hexInput, setHexInput] = useState('');
@@ -222,7 +223,9 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         }
 
         // Normal keyboard handling when there are items
-        if (key.escape) {
+        if (key.tab) {
+            onSwitchToItems?.();
+        } else if (key.escape) {
             if (editingBackground) {
                 setEditingBackground(false);
             } else {
@@ -592,7 +595,10 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                         {settings.colorLevel === 3 ? ' (h)ex,' : settings.colorLevel === 2 ? ' (a)nsi256,' : ''}
                         {!editingBackground && settings.colorLevel >= 2 ? ' (g)radient,' : ''}
                         {' '}
-                        (r)eset, (c)lear all, ESC to go back
+                        (r)eset, (c)lear all,
+                        {onSwitchToItems ? ' Tab edit items,' : ''}
+                        {' '}
+                        ESC to go back
                     </Text>
                     {!settings.powerline.enabled && !settings.defaultSeparator && (
                         <Text dimColor>

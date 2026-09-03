@@ -349,6 +349,7 @@ export interface HandleNormalInputModeArgs {
     getCustomKeybindsForWidget: (widgetImpl: Widget, widget: WidgetItem) => CustomKeybind[];
     setCustomEditorWidget: (state: CustomEditorWidgetState | null) => void;
     getUniqueBackgroundColor?: (insertIndex: number) => string | undefined;
+    onSwitchToColors?: () => void;
 }
 
 export function handleNormalInputMode({
@@ -366,7 +367,8 @@ export function handleNormalInputMode({
     openWidgetPicker,
     getCustomKeybindsForWidget,
     setCustomEditorWidget,
-    getUniqueBackgroundColor
+    getUniqueBackgroundColor,
+    onSwitchToColors
 }: HandleNormalInputModeArgs): void {
     if (key.upArrow && widgets.length > 0) {
         setSelectedIndex(selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1);
@@ -470,6 +472,8 @@ export function handleNormalInputMode({
             }
             onUpdate(newWidgets);
         }
+    } else if (key.tab) {
+        onSwitchToColors?.();
     } else if (key.escape) {
         onBack();
     } else if (widgets.length > 0) {

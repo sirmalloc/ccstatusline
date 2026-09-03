@@ -64,6 +64,7 @@ import {
     installPowerlineFonts,
     type PowerlineFontStatus
 } from '../utils/powerline';
+import { arePerLineColorsThemeManaged } from '../utils/powerline-settings';
 import { getPackageVersion } from '../utils/terminal';
 import {
     checkForUpdates,
@@ -1191,6 +1192,12 @@ export const App: React.FC = () => {
                         initialSelection={menuSelections.lines}
                         title='Select Line to Edit Items'
                         allowEditing={true}
+                        onSwitchScreen={arePerLineColorsThemeManaged(settings)
+                            ? undefined
+                            : (index) => {
+                                setMenuSelections(prev => ({ ...prev, lines: index }));
+                                setScreen('colorLines');
+                            }}
                     />
                 )}
                 {screen === 'items' && (
@@ -1204,6 +1211,7 @@ export const App: React.FC = () => {
                         }}
                         lineNumber={selectedLine + 1}
                         settings={settings}
+                        onSwitchToColors={arePerLineColorsThemeManaged(settings) ? undefined : () => { setScreen('colors'); }}
                     />
                 )}
                 {screen === 'colorLines' && (
@@ -1225,6 +1233,10 @@ export const App: React.FC = () => {
                         blockIfPowerlineActive={true}
                         settings={settings}
                         allowEditing={false}
+                        onSwitchScreen={(index) => {
+                            setMenuSelections(prev => ({ ...prev, lines: index }));
+                            setScreen('lines');
+                        }}
                     />
                 )}
                 {screen === 'colors' && (
@@ -1242,6 +1254,7 @@ export const App: React.FC = () => {
                             // Go back to line selection for colors
                             setScreen('colorLines');
                         }}
+                        onSwitchToItems={() => { setScreen('items'); }}
                     />
                 )}
                 {screen === 'terminalConfig' && (

@@ -808,6 +808,57 @@ describe('items-editor input handlers', () => {
         expect(customEditorState?.widget?.type).toBe('skills');
     });
 
+    it('switches to colors on Tab in normal mode', () => {
+        const onSwitchToColors = vi.fn();
+
+        handleNormalInputMode({
+            input: '',
+            key: { tab: true },
+            widgets: [{ id: '1', type: 'tokens-input' }],
+            selectedIndex: 0,
+            separatorChars: ['|'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn(),
+            onSwitchToColors
+        });
+
+        expect(onSwitchToColors).toHaveBeenCalledTimes(1);
+    });
+
+    it('does nothing on Tab when no colors switch is available', () => {
+        const onBack = vi.fn();
+        const onUpdate = vi.fn();
+        const openWidgetPicker = vi.fn();
+        const setMoveMode = vi.fn();
+
+        handleNormalInputMode({
+            input: '',
+            key: { tab: true },
+            widgets: [{ id: '1', type: 'tokens-input' }],
+            selectedIndex: 0,
+            separatorChars: ['|'],
+            onBack,
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode,
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker,
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(onBack).not.toHaveBeenCalled();
+        expect(onUpdate).not.toHaveBeenCalled();
+        expect(openWidgetPicker).not.toHaveBeenCalled();
+        expect(setMoveMode).not.toHaveBeenCalled();
+    });
+
     describe('k shortcut - clone widget', () => {
         it('inserts clone after source and moves selection to clone', () => {
             const widgets: WidgetItem[] = [

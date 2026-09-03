@@ -119,4 +119,85 @@ describe('ColorMenu', () => {
             stderr.destroy();
         }
     });
+
+    it('switches to the items editor on Tab', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onSwitchToItems = vi.fn();
+
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets: [{ id: '1', type: 'cache-hit-rate' }],
+                settings: DEFAULT_SETTINGS,
+                onUpdate: vi.fn(),
+                onBack: vi.fn(),
+                onSwitchToItems
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('\t');
+            await flushInk();
+
+            expect(onSwitchToItems).toHaveBeenCalledTimes(1);
+            expect(stdout.getOutput()).toContain('Tab edit items, ESC to go back');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('does not switch to items when a sub-mode is active', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onSwitchToItems = vi.fn();
+
+        const instance = render(
+            React.createElement(ColorMenu, {
+                widgets: [{ id: '1', type: 'cache-hit-rate' }],
+                settings: DEFAULT_SETTINGS,
+                onUpdate: vi.fn(),
+                onBack: vi.fn(),
+                onSwitchToItems
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('c');
+            await flushInk();
+            stdin.write('\t');
+            await flushInk();
+
+            expect(onSwitchToItems).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
