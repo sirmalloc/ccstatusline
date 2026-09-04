@@ -165,6 +165,10 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
 export async function loadSettings(): Promise<Settings> {
     lastLoadError = null;
     const paths = getSettingsPaths();
+    // Project scope loads .claude/ccstatusline.json, and --config accepts any file
+    // name; derive the display name once so error text/console output always names
+    // the file actually in play instead of hard-coding "settings.json".
+    const fileName = path.basename(paths.settingsPath);
 
     try {
         // Check if settings file exists
@@ -177,8 +181,8 @@ export async function loadSettings(): Promise<Settings> {
         try {
             rawData = JSON.parse(content);
         } catch {
-            console.error('Failed to parse settings.json, using defaults (file left unchanged)');
-            lastLoadError = 'settings.json is not valid JSON';
+            console.error(`Failed to parse ${fileName}, using defaults (file left unchanged)`);
+            lastLoadError = `${fileName} is not valid JSON`;
             return inMemoryDefaults();
         }
 
@@ -190,7 +194,7 @@ export async function loadSettings(): Promise<Settings> {
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
                 console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
-                lastLoadError = 'settings.json is not in a valid format';
+                lastLoadError = `${fileName} is not in a valid format`;
                 return inMemoryDefaults();
             }
 
@@ -208,7 +212,7 @@ export async function loadSettings(): Promise<Settings> {
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
             console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
-            lastLoadError = 'settings.json is not in a valid format';
+            lastLoadError = `${fileName} is not in a valid format`;
             return inMemoryDefaults();
         }
 
@@ -224,7 +228,7 @@ export async function loadSettings(): Promise<Settings> {
         };
     } catch (error) {
         console.error('Error loading settings, using defaults:', error);
-        lastLoadError = 'settings.json could not be read';
+        lastLoadError = `${fileName} could not be read`;
         return inMemoryDefaults();
     }
 }
