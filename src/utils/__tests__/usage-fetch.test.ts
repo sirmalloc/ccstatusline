@@ -256,6 +256,20 @@ function parseLockContents(lockContents: string | null): { blockedUntil: number;
     return lockContents ? JSON.parse(lockContents) as { blockedUntil: number; error?: string } : null;
 }
 
+// createTokenHome writes an access-token-only credentials file; these tests
+// need a refresh token alongside it to exercise the account fingerprint.
+function writeUsageCredentials(claudeConfig: string, claudeAiOauth: { accessToken: string; refreshToken?: string }): void {
+    fs.writeFileSync(path.join(claudeConfig, '.credentials.json'), JSON.stringify({ claudeAiOauth }));
+}
+
+function seedUsageCache(home: string, contents: Record<string, unknown>): { cacheFile: string; mtimeMs: number } {
+    const cacheDir = path.join(home, '.cache', 'ccstatusline');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const cacheFile = path.join(cacheDir, 'usage.json');
+    fs.writeFileSync(cacheFile, JSON.stringify(contents));
+    return { cacheFile, mtimeMs: fs.statSync(cacheFile).mtimeMs };
+}
+
 describe('fetchUsageData error handling', () => {
     const nowMs = 2200000000000;
     const successResponseBody = JSON.stringify({
@@ -1053,6 +1067,106 @@ describe('fetchUsageData error handling', () => {
             // Fingerprint matches and the cache is fresh, so it is served with no API call.
             expect(result.requestCount).toBe(0);
             expect(result.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves a fresh cache after the access token was refreshed (same login)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('access-token-refreshed');
+            // The access token was reissued since the cache was written; the
+            // refresh token, which identifies the login, is unchanged.
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'reissued-access-token',
+                refreshToken: 'stable-refresh-token'
+            });
+            const fingerprint = createHash('sha256').update('stable-refresh-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: fingerprint });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: mtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            // A refresh must not look like an account switch: the cache stands
+            // and no request is made.
+            expect(result.requestCount).toBe(0);
+            expect(result.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves a stale cache through a rate-limit backoff after the access token was refreshed', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('access-token-refreshed-rate-limit');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'reissued-access-token',
+                refreshToken: 'stable-refresh-token'
+            });
+            const fingerprint = createHash('sha256').update('stable-refresh-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: fingerprint });
+
+            // Cache is past CACHE_MAX_AGE and a server-issued backoff is active,
+            // so the stale-cache fallback is the only thing standing between the
+            // widgets and error text for the rest of the window.
+            const backedOffNowMs = mtimeMs + 200000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(backedOffNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: backedOffNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 5 });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('refetches when the refresh token changes (account switch)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('refresh-token-switched');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'other-account-access-token',
+                refreshToken: 'other-account-refresh-token'
+            });
+            const previousFingerprint = createHash('sha256').update('previous-refresh-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: previousFingerprint });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            // A different login still invalidates the cache immediately.
+            expect(result.requestCount).toBe(1);
+            expect(result.first.sessionUsage).toBe(42);
         } finally {
             harness.cleanup();
         }
