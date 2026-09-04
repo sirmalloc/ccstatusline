@@ -89,7 +89,7 @@ All widgets must implement:
 - `render()`: Core rendering logic that produces the widget output
 - `supportsRawValue()`: Whether widget supports raw value mode
 - `supportsColors()`: Whether widget supports color customization
-- Optional: `renderEditor()`, `getCustomKeybinds()`, `handleEditorAction()`
+- Optional: `renderEditor()`, `getCustomKeybinds()`, `getHideableStates()`, `supportsNumberFormat()`, `handleEditorAction()`
 
 **Widget Registry Pattern:**
 - Located in src/utils/widgets.ts
@@ -99,7 +99,7 @@ All widgets must implement:
 - `isKnownWidgetType()`: Validates if a type is registered
 
 **Available Widgets:**
-- Model, Version, OutputStyle, VoiceStatus - Claude Code metadata display
+- Model, Version, OutputStyle, VoiceStatus, ClaudeStatus - Claude Code metadata and service-health display
 - GitBranch, GitChanges, GitInsertions, GitDeletions, GitWorktree - Git repository status
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
 - ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5 with [1m] suffix, 200k for all other models)

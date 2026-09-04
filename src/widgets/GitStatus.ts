@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -12,13 +13,10 @@ import {
     isInsideGitWorkTree
 } from '../utils/git';
 
-import { makeModifierText } from './shared/editor-display';
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -38,23 +36,15 @@ export class GitStatusWidget implements Widget {
     getCategory(): string { return 'Git'; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
-
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: makeModifierText(modifiers)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
             return this.formatStatus(item, { staged: true, unstaged: true, untracked: false, conflicts: false });
@@ -89,10 +79,7 @@ export class GitStatusWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            ...getHideNoGitKeybinds(),
-            getSymbolKeybind()
-        ];
+        return [getSymbolKeybind()];
     }
 
     renderEditor(props: WidgetEditorProps) {

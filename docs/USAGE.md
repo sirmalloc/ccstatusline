@@ -29,6 +29,7 @@ ccstatusline --version
 
 - **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version. Model names omit trailing context suffixes like `(1M context)`; use **Context Window** when you want the total window size shown.
 - **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email.
+- **Claude Status** - Show the current Claude/Anthropic service status from `status.claude.com` (`ok` when the indicator is `none`, otherwise the indicator word such as `minor`, `major`, `critical`, or `maintenance`). Press `h` in the editor to add a 48-hour incident-history strip of eight six-hour blocks (oldest to newest), each colored by the worst incident overlapping that block: green (none), yellow (minor), orange (major), red (critical). Responses are cached for about five minutes; on network failure the widget shows stale data when available or degrades to `?`. With the history strip enabled the widget colors itself by severity, so per-widget foreground colors and theme foregrounds are skipped, like Custom Command's preserve-colors mode.
 - **Voice Status** - Show whether Claude Code voice input is enabled. It can render as an icon, icon plus text, plain text, or `voice on/off`, with optional Nerd Font microphone icons.
 - **Sandbox Status** - Show the effective `sandbox.enabled` value from Claude Code's layered project and user settings. It can render as a glyph, `SB: ON/OFF`, or `Sandbox: ON/OFF`, with optional Nerd Font lock icons. The value is refreshed after `/sandbox` changes, but is best effort when managed or CLI settings override files or sandbox initialization fails.
 - **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort reads live status JSON first, then `/model` or `/effort` transcript output, then settings fallback; it supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`. Claude Code reports Ultracode as `xhigh` in status line data; it does not expose Ultracode as a separate effort level.
@@ -107,6 +108,8 @@ Configure global formatting preferences that apply to all widgets:
   - Press **(o)** to toggle
 - **Minimalist Mode** - Force widgets into raw-value rendering globally for a cleaner, label-free status line
   - Press **(m)** to toggle
+- **Number Formatting** - Choose precise, compact, or whole-number output independently for token, speed, percent, memory, and cost values
+  - Press **(n)** to configure each number type; a global choice overrides per-widget formatting for that type
 - **Override Foreground Color** - Force all widgets to use the same text color, or a whole-line **gradient** (see below)
   - Press **(f)** to cycle through colors
   - Press **(g)** to choose a gradient
@@ -194,6 +197,15 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
+## Number Formatting
+
+Numeric widgets support three display styles without changing their underlying values:
+- **Precise** (default) keeps the formatter's normal trailing zeros, such as `1.0M` or `$1.20`
+- **Compact** removes insignificant trailing zeros while preserving real fractions, such as `1M` or `1.1M`
+- **Whole** rounds the displayed value to zero decimal places, such as `1M`
+
+Select a numeric widget in the line editor and press `.` to cycle its style. In **Global Overrides**, press `n` to set a style for all token, speed, percent, memory, or cost widgets; that per-type global setting takes precedence over individual widget styles. Advanced configurations can also set `numberFormat.decimals` from `0` to `6` on a widget or number type in `settings.json`; the style then controls whether those decimal places are retained, trimmed, or suppressed.
+
 ## Widget Editor Keybinds
 
 Common controls in the line editor:
@@ -208,6 +220,7 @@ Common controls in the line editor:
 - `c` clear the current line
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
+- `.` cycle precise/compact/whole number formatting (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back
@@ -220,32 +233,73 @@ Widget picker:
 The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget.
 
 Widget-specific shortcuts:
-- **Git widgets with empty-state toggles**: `h` hide `no git` / empty output where supported
-- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, JJ Bookmarks, JJ Workspace): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status) edit each part in one list
+- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, JJ Bookmarks, JJ Workspace): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status, Conflicts) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted), `w` set a maximum visible width (blank removes the limit)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`), `w` set a maximum visible width (blank removes the limit)
-- **Git PR**: `h` hide empty/no-PR/MR output, `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
-- **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `h` hide when no remote, `l` toggle clickable repo links
+- **Git PR**: `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
+- **Git remote widgets** (`Git Origin*` / `Git Upstream*`): `l` toggle clickable repo links
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
-- **Git Is Fork**: `h` hide when the repo is not a fork
+- **Git Conflicts**: `z` toggles how a visible conflict-free tree renders (`⚠0` or the clean glyph); `g` edits the conflict and clean glyphs
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
-- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Session and weekly usage widgets use `t` to toggle the time cursor in bar modes; Extra Usage Utilization uses `h` to hide itself when extra usage is disabled.
+- **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Session and weekly usage widgets use `t` to toggle the time cursor in bar modes.
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `h` toggle hours-only in time mode or 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only progress bar
-- **Compaction Counter**: `v` cycle value (count/auto/manual/unknown/reclaimed), `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed, `h` hide when zero
-- **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope, `h` hide when empty
-- **Cache Timer**: `t` cycle 5-minute/1-hour TTL, `h` hide when no cache anchor is available, `g` customize the working/fresh/draining/urgent/cold glyphs
+- **Compaction Counter**: `v` cycle value (count/auto/manual/unknown/reclaimed), `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed
+- **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope
+- **Cache Timer**: `t` cycle 5-minute/1-hour TTL, `g` customize the working/fresh/draining/urgent/cold glyphs
 - **Sandbox Status**: `f` cycle glyph/text/word format, `n` toggle Nerd Font lock icons in glyph mode
+- **Claude Status**: `h` toggle the 48-hour incident-history strip
 - **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
 - **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)
-- **Skills**: `v` cycle view mode, `h` hide when empty, `l` edit list limit in list mode
+- **Skills**: `v` cycle view mode, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
 - **Custom Text / Custom Symbol**: `e` edit text or symbol
 - **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
 - **Link**: `u` URL, `e` link text
 - **Vim Mode**: `f` cycle format, `n` toggle Nerd Font icons
+
+## Hiding Widgets Conditionally
+
+Widgets that can hide themselves share a single `h` (`(h)ide…`) keybind in the
+line editor. It opens a checklist of the hideable states the selected widget
+supports; toggle entries with `Space` and confirm with `Enter`. Enabled states
+appear in the editor as `(hide: no-git, zero)`.
+
+Supported states by widget family:
+- **Git widgets**: `no-git` hides the `(no git)` placeholder outside a repo
+- **Git count widgets** (`Git Changes`, `Git Insertions`, `Git Deletions`, `Git Staged/Unstaged/Untracked Files`, `Git Conflicts`): `zero` hides the widget while its count is zero
+- **JJ widgets**: `no-jj` hides the `(no jj)` placeholder outside a jj repo
+- **Git Origin widgets**: `no-remote` hides the `no remote` placeholder
+- **Git Upstream widgets / Git Ahead/Behind**: `no-upstream` hides the `no upstream` placeholder
+- **Git Ahead/Behind**: `zero` hides `↑0↓0` when the branch is not diverged (enabled by default; uncheck it to show zeros)
+- **Git PR** (rendered as "MR" for GitLab origins): `no-data` hides the `(no PR)` placeholder, `status` and `title` hide those segments of the PR display
+- **Git CI Status**: `no-data` hides the `-` placeholder when the branch has no pull request or no readable check rollup
+- **Git Is Fork**: `not-fork` hides the widget when the repo is not a fork
+- **Token widgets**: `zero` hides `0` token counts at session start
+- **Session Cost**: `zero` hides `$0.00`
+- **Session Clock**: `zero` hides durations under one minute
+- **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
+- **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
+- **Output Style**: `default-value` hides the widget when the style is `default`
+- **Compaction Counter**: `zero` hides the counter before any compaction occurs
+- **Skills**: `empty` hides the widget before any skill is used
+- **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable
+- **Session / Weekly / Weekly Sonnet / Weekly Opus / Weekly Fable Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable
+- **Cache widgets** (`Cache Hit Rate`, `Cache Read`, `Cache Write`, `Cache Timer`): `empty` hides the widget when there is no cache activity, and on Cache Timer when no cache anchor is available
+- **Custom Text / Custom Symbol**: `merge-target-hidden` hides the item when the widget it is merged with renders nothing, so icon prefixes/suffixes disappear together with their widget
+
+In `settings.json`, the enabled states are stored as a comma-separated list in
+the item's metadata, e.g. `"metadata": { "hide": "no-git,zero" }`. An empty
+list (`"hide": ""`) opts out of default-enabled states such as Git
+Ahead/Behind's `zero`. Configs from older versions that used per-widget
+boolean keys (`hideNoGit`, `hideNoJj`, `hideNoRemote`, `hideZero`,
+`hideWhenEmpty`, `hideIfDisabled`, `hideStatus`, `hideTitle`,
+`hideWhenNotFork`) are converted to the unified key automatically by the
+settings migration on first load. After that, downgrading to an older
+ccstatusline keeps the config readable, but older versions ignore the `hide`
+key, so previously hidden placeholders show again until you upgrade back.
 
 ## Custom Widgets
 

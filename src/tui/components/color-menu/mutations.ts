@@ -67,12 +67,14 @@ export function resetWidgetStyling(widgets: WidgetItem[], widgetId: string): Wid
             backgroundColor,
             bold,
             dim,
+            numberFormat,
             ...restWidget
         } = widget;
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
         void bold; // Intentionally unused
         void dim; // Intentionally unused
+        void numberFormat; // Intentionally unused
         return restWidget;
     });
 }
@@ -84,12 +86,14 @@ export function clearAllWidgetStyling(widgets: WidgetItem[]): WidgetItem[] {
             backgroundColor,
             bold,
             dim,
+            numberFormat,
             ...restWidget
         } = widget;
         void color; // Intentionally unused
         void backgroundColor; // Intentionally unused
         void bold; // Intentionally unused
         void dim; // Intentionally unused
+        void numberFormat; // Intentionally unused
         return restWidget;
     });
 }

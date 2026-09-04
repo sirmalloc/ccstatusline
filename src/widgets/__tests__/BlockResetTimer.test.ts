@@ -81,6 +81,26 @@ describe('BlockResetTimerWidget', () => {
         expect(render(widget, item, { usageData: {} })).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
+    it('rounds the progress bar fill to the nearest cell', () => {
+        const widget = new BlockResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { display: 'progress-short' }
+        };
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 1800000,
+            remainingMs: 16200000,
+            elapsedPercent: 10,
+            remainingPercent: 90
+        });
+
+        // 10% of 16 cells is 1.6, past the half-cell mark, so the 2nd cell fills.
+        expect(render(widget, item, { usageData: {} })).toBe('Reset [██░░░░░░░░░░░░░░] 10.0%');
+    });
+
     it('returns usage error when no timer data is available', () => {
         const widget = new BlockResetTimerWidget();
 

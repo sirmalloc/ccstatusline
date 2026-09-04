@@ -26,6 +26,16 @@ export interface RenderUsageData {
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
+export interface ClaudeStatusRenderData {
+    indicator?: string;
+    incidents?: {
+        impact: 'minor' | 'major' | 'critical';
+        startMs: number;
+        endMs: number | null;
+    }[];
+    error?: boolean;
+}
+
 export interface CompactionData {
     count: number;
     byTrigger: { auto: number; manual: number; unknown: number };
@@ -38,7 +48,10 @@ export interface RenderContext {
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
+    claudeStatusData?: ClaudeStatusRenderData | null;
     sessionDuration?: string | null;
+    transcriptSessionName?: string | null;
+    transcriptThinkingEffort?: { value: string; known: boolean } | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     compactionData?: CompactionData | null;

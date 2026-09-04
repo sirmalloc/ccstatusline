@@ -47,6 +47,17 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.28 - v2.2.29 - Service health, flexible formatting, and resilient rendering
+
+- **🩺 Claude service health** - Added a `Claude Status` widget with live severity, a cached 48-hour incident-history strip, stale-data fallback, and graceful `?` output when status data is unavailable.
+- **🙈 Unified conditional hiding** - Numeric, Git, JJ, usage, cache, and other widgets now share an `h` checklist for supported hide conditions, with automatic migration of existing settings and optional merge-target hiding for decorative text or symbols.
+- **🔢 Configurable number formatting** - Numeric widgets can use precise, compact, or whole-number styles per widget or globally by token, speed, percent, memory, and cost type, while advanced configs can set decimal precision explicitly.
+- **📜 Faster, reliable large-session rendering** - Transcript-backed token, duration, speed, compaction, effort, and session-name metrics now stream JSONL records through one shared scan instead of loading an entire transcript into a single string, while no-active-block results are briefly cached to avoid repeated full-history scans.
+- **⚠️ Git conflict display controls** - Git Conflicts can hide when the count is zero or show either `⚠0` or a customizable clean glyph when the tree is conflict-free.
+- **🩹 Self-healing usage locks** - Usage widgets ignore impossible fetch-lock deadlines more than 24 hours ahead, allowing poisoned locks caused by clock jumps or old test artifacts to recover on the next render.
+- **🧹 Bounded Git cache cleanup** - Failed persistent Git-cache writes clean up their temporary file and reuse one stable fallback name, preventing Windows file locks from leaking thousands of orphaned temp files.
+- **📊 Consistent timer bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now round progress-bar fill to the nearest cell, matching the other progress widgets.
+
 ### v2.2.27 - Portable configuration import and export
 
 - **📦 Config import/export** - Export the current TUI configuration to JSON, validate and preview imports, then replace all settings or merge only supplied fields while preserving local installation metadata and leaving the result unsaved for review.
@@ -140,6 +151,10 @@
 - **🧹 Cleaner empty-widget separators** - Manual separators now collapse around widgets that render empty, avoiding dangling separators when hide-when-empty widgets disappear.
 - **🧱 More resilient Git helpers** - Git widgets handle missing or unusual git command output more defensively.
 
+<br />
+<details>
+<summary><b>Older updates (v2.2.8 and earlier)</b></summary>
+
 ### v2.2.8 - Git widgets, smarter picker search, and minimalist mode
 
 - **🔀 New Git PR widget** - Added a `Git PR` widget with clickable PR links plus optional status and title display for the current branch.
@@ -149,10 +164,6 @@
 - **🔎 Smarter widget picker search** - The add/change widget picker now supports substring, initialism, and fuzzy matching, with ranked results and live match highlighting.
 - **📏 Better terminal width detection** - Flex separators and right-alignment now work more reliably when ccstatusline is launched through wrapper processes or nested PTYs.
 - **🎨 Powerline theme continuity** - Built-in Powerline themes can now continue colors cleanly across multiple status lines instead of restarting each line.
-
-<br />
-<details>
-<summary><b>Older updates (v2.2.6 and earlier)</b></summary>
 
 ### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
 
@@ -367,6 +378,22 @@ Other supported command values are:
 - `bunx -y ccstatusline@latest`
 - `ccstatusline` (for self-managed/global installs)
 
+The status line command runs once per repaint, so what it costs to invoke is paid over and over. Under
+Bun that cost depends on the specifier: `bunx` re-resolves the `latest` dist-tag against the registry
+on every run, because a dist-tag is not cacheable. Measured on Windows with a warm cache, median of
+five runs of `--version`, which exits before rendering:
+
+| command | median |
+| --- | --- |
+| `bunx -y ccstatusline@latest` | 633 ms |
+| `bunx -y ccstatusline@2.2.27` | 202 ms |
+| `bunx -y ccstatusline` | 207 ms |
+
+Dropping `@latest` is worth about 430 ms per repaint there. npm does not behave this way: `npx -y
+ccstatusline@latest` and `npx -y ccstatusline@2.2.27` measured 1082 ms and 1135 ms, so pinning buys
+nothing under `npx`. A **Pinned global install**, which writes `"command": "ccstatusline"`, avoids the
+resolution entirely on both.
+
 For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI pins the active version by installing it globally and writing `"command": "ccstatusline"` to `settings.json`; afterward, you can run `ccstatusline` directly to open the TUI.
 
 </details>
@@ -424,11 +451,11 @@ If ccstatusline is useful to you, consider buying me a coffee:
 
 ## Star History
 
-<a href="https://www.star-history.com/#sirmalloc/ccstatusline&Timeline">
+<a href="https://star-history.dera.page/#sirmalloc/ccstatusline&Timeline">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=sirmalloc/ccstatusline&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
  </picture>
 </a>
 
