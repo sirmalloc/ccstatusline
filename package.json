@@ -1,6 +1,6 @@
 {
   "name": "ccstatusline",
-  "version": "2.2.27",
+  "version": "2.2.29",
   "bugs": {
     "url": "https://github.com/sirmalloc/ccstatusline/issues"
   },
@@ -56,9 +56,9 @@
     "ink": "6.2.0",
     "ink-gradient": "^4.0.0",
     "pluralize": "^8.0.0",
-    "react": "19.2.7",
+    "react": "19.2.8",
     "react-devtools-core": "^7.0.1",
-    "react-dom": "19.2.7",
+    "react-dom": "19.2.8",
     "remotion": "^4.0.459",
     "strip-ansi": "^7.1.0",
     "tinyglobby": "^0.2.14",

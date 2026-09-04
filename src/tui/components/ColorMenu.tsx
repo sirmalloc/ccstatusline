@@ -210,7 +210,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             return false;
         }
 
-        return editingBackground ? !widget.pinBackgroundColor : !keepsOwnForeground(widget);
+        return editingBackground ? !widget.pinBackgroundColor : !keepsOwnForeground(widget, settings);
     };
 
     /**

@@ -127,12 +127,14 @@ function stripWidgetStyling(widget: WidgetItem, themeActive: boolean): WidgetIte
         backgroundColor,
         bold,
         dim,
+        numberFormat,
         pinColor,
         pinBackgroundColor,
         ...restWidget
     } = widget;
     void bold; // Intentionally unused
     void dim; // Intentionally unused
+    void numberFormat; // Intentionally unused
 
     if (!themeActive) {
         void color; // Intentionally unused

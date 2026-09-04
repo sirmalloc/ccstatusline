@@ -1,6 +1,7 @@
 import { render } from 'ink';
 import { PassThrough } from 'node:stream';
-import React from 'react';
+import React, { useState } from 'react';
+import stripAnsi from 'strip-ansi';
 import {
     describe,
     expect,
@@ -46,7 +47,10 @@ class MockTtyStream extends PassThrough {
     }
 }
 
-interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+interface CapturedWriteStream extends NodeJS.WriteStream {
+    clearOutput: () => void;
+    getOutput: () => string;
+}
 
 function createMockStdin(): NodeJS.ReadStream {
     return new MockTtyStream() as unknown as NodeJS.ReadStream;
@@ -61,6 +65,9 @@ function createMockStdout(): CapturedWriteStream {
     });
 
     return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        clearOutput() {
+            chunks.length = 0;
+        },
         getOutput() {
             return chunks.join('');
         }
@@ -82,6 +89,19 @@ const THEMED_SETTINGS = {
         theme: 'nord-aurora'
     }
 };
+
+function StatefulItemsEditor({ initialWidgets }: { initialWidgets: WidgetItem[] }) {
+    const [widgets, setWidgets] = useState(initialWidgets);
+
+    return React.createElement(ItemsEditor, {
+        widgets,
+        onUpdate: setWidgets,
+        onBack: vi.fn(),
+        lineNumber: 1,
+        settings: DEFAULT_SETTINGS,
+        themeSlotContext: allRendered(widgets)
+    });
+}
 
 async function renderItemsEditor(widgets: WidgetItem[], settings: Settings = DEFAULT_SETTINGS) {
     const stdin = createMockStdin();
@@ -231,6 +251,68 @@ describe('ItemsEditor', () => {
             expect(output).toContain('(merged→)');
             expect(output).toContain('2. Separator |');
             expect(output).toContain('3. Git Branch');
+        } finally {
+            teardown();
+        }
+    });
+
+    it('shows only non-default number styles beside the widget name', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type: 'tokens-input' }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input');
+            expect(stripAnsi(stdout.getOutput())).not.toContain('(compact)');
+
+            stdout.clearOutput();
+            stdin.write('.');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input (compact)');
+
+            stdout.clearOutput();
+            stdin.write('.');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input (whole)');
+
+            stdout.clearOutput();
+            stdin.write('.');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input');
+            expect(stripAnsi(stdout.getOutput())).not.toContain('(compact)');
+            expect(stripAnsi(stdout.getOutput())).not.toContain('(whole)');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('preserves existing widget modifiers before the number style', async () => {
+        const { output, teardown } = await renderItemsEditor([{
+            id: '1',
+            type: 'cache-read',
+            metadata: { cacheScopeSession: 'true' },
+            numberFormat: { style: 'compact' }
+        }]);
+
+        try {
+            expect(stripAnsi(output)).toContain('1. Cache Read (session) (compact)');
         } finally {
             teardown();
         }

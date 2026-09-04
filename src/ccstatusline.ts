@@ -2,20 +2,14 @@
 import chalk from 'chalk';
 
 import { runTUI } from './tui';
-import type {
-    SkillsMetrics,
-    SpeedMetrics,
-    TokenMetrics
-} from './types';
+import type { SkillsMetrics } from './types';
 import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
+import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
 import { updateColorMap } from './utils/colors';
-import {
-    ZERO_COMPACTION_STATS,
-    getCompactionStats
-} from './utils/compaction';
+import { ZERO_COMPACTION_STATS } from './utils/compaction';
 import {
     getConfigLoadError,
     initConfigPath,
@@ -27,11 +21,7 @@ import {
     refreshGitReviewCacheFromCli
 } from './utils/git-review-cache';
 import { handleHookInput } from './utils/hook-handler';
-import {
-    getSessionDuration,
-    getSpeedMetricsCollection,
-    getTokenMetrics
-} from './utils/jsonl';
+import { getTranscriptAnalysis } from './utils/jsonl';
 import { advanceGlobalPowerlineThemeIndex } from './utils/powerline-theme-index';
 import {
     buildConfigWarningBadge,
@@ -117,6 +107,11 @@ async function renderMultipleLines(data: StatusJSON) {
 
     const speedWidgetTypes = new Set(['output-speed', 'input-speed', 'total-speed']);
     const hasSpeedItems = lines.some(line => line.some(item => speedWidgetTypes.has(item.type)));
+    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
+    const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
+    const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
+    const needsTranscriptThinkingEffort = hasThinkingEffortWidget
+        && (!data.effort || !('level' in data.effort));
     const requestedSpeedWindows = new Set<number>();
     for (const line of lines) {
         for (const item of line) {
@@ -126,39 +121,35 @@ async function renderMultipleLines(data: StatusJSON) {
         }
     }
 
-    let tokenMetrics: TokenMetrics | null = null;
-    if (data.transcript_path) {
-        tokenMetrics = await getTokenMetrics(data.transcript_path);
-    }
-
-    let sessionDuration: string | null = null;
-    if (hasSessionClock && !hasSessionDurationInStatusJson(data) && data.transcript_path) {
-        sessionDuration = await getSessionDuration(data.transcript_path);
-    }
-
-    const usageData = await prefetchUsageDataIfNeeded(lines, data);
-
-    let speedMetrics: SpeedMetrics | null = null;
-    let windowedSpeedMetrics: Record<string, SpeedMetrics> | null = null;
-    if (hasSpeedItems && data.transcript_path) {
-        const speedMetricsCollection = await getSpeedMetricsCollection(data.transcript_path, {
+    const transcriptAnalysisPromise = data.transcript_path
+        ? getTranscriptAnalysis(data.transcript_path, {
+            includeSessionDuration: hasSessionClock && !hasSessionDurationInStatusJson(data),
+            includeSpeedMetrics: hasSpeedItems,
             includeSubagents: true,
-            windowSeconds: Array.from(requestedSpeedWindows)
-        });
+            speedWindowSeconds: Array.from(requestedSpeedWindows),
+            includeCompactionStats: hasCompactionWidget,
+            includeThinkingEffort: needsTranscriptThinkingEffort,
+            includeSessionName: hasSessionNameWidget
+        })
+        : Promise.resolve(null);
+    const [transcriptAnalysis, usageData, claudeStatusData] = await Promise.all([
+        transcriptAnalysisPromise,
+        prefetchUsageDataIfNeeded(lines, data),
+        prefetchClaudeStatusIfNeeded(lines)
+    ]);
 
-        speedMetrics = speedMetricsCollection.sessionAverage;
-        windowedSpeedMetrics = speedMetricsCollection.windowed;
-    }
+    const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
+    const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;
+    const speedMetrics = transcriptAnalysis?.speedMetricsCollection?.sessionAverage ?? null;
+    const windowedSpeedMetrics = transcriptAnalysis?.speedMetricsCollection?.windowed ?? null;
 
     let skillsMetrics: SkillsMetrics | null = null;
     if (data.session_id) {
         skillsMetrics = getSkillsMetrics(data.session_id);
     }
 
-    // Compaction stats — parse compact_boundary markers in this session's transcript
-    const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
     const compactionData = hasCompactionWidget
-        ? (data.transcript_path ? await getCompactionStats(data.transcript_path) : ZERO_COMPACTION_STATS)
+        ? (transcriptAnalysis?.compactionData ?? ZERO_COMPACTION_STATS)
         : null;
 
     // Create render context
@@ -168,7 +159,14 @@ async function renderMultipleLines(data: StatusJSON) {
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        claudeStatusData,
         sessionDuration,
+        transcriptSessionName: hasSessionNameWidget
+            ? (transcriptAnalysis?.sessionName ?? null)
+            : undefined,
+        transcriptThinkingEffort: needsTranscriptThinkingEffort
+            ? (transcriptAnalysis?.thinkingEffort ?? null)
+            : undefined,
         skillsMetrics,
         compactionData,
         terminalWidth: getTerminalWidth(),

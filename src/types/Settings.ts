@@ -2,11 +2,12 @@ import { z } from 'zod';
 
 import { ColorLevelSchema } from './ColorLevel';
 import { FlexModeSchema } from './FlexMode';
+import { GlobalNumberFormatSchema } from './NumberFormat';
 import { PowerlineConfigSchema } from './PowerlineConfig';
 import { WidgetItemSchema } from './Widget';
 
 // Current version - bump this when making breaking changes to the schema
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 // Which side(s) of a widget the default padding is applied to
 export const DefaultPaddingSideSchema = z.enum(['both', 'left', 'right']);
@@ -73,6 +74,7 @@ export const SettingsSchema = z.object({
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
     globalBold: z.boolean().default(false),
+    numberFormat: GlobalNumberFormatSchema.optional(),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
     minimalistMode: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({

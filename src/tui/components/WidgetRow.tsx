@@ -19,7 +19,9 @@ import {
     isGradientSpec,
     parseGradientSpec
 } from '../../utils/gradient';
+import { getNumberFormatModifierText } from '../../utils/number-format';
 import { getWidget } from '../../utils/widgets';
+import { getHideModifierText } from '../../widgets/shared/hideable';
 
 export interface WidgetRowProps {
     /** 1-based position of the widget in its line. */
@@ -78,6 +80,20 @@ export function getWidgetRowTags(widgets: WidgetItem[], index: number, settings:
         ? getWidget(widget.type)
         : null;
     const tags: string[] = [];
+
+    if (widgetImpl?.supportsNumberFormat?.()) {
+        const numberFormatModifierText = getNumberFormatModifierText(widget);
+        if (numberFormatModifierText) {
+            tags.push(numberFormatModifierText);
+        }
+    }
+
+    if (widgetImpl) {
+        const hideModifierText = getHideModifierText(widget, widgetImpl.getHideableStates?.() ?? []);
+        if (hideModifierText) {
+            tags.push(hideModifierText);
+        }
+    }
 
     if (widget.rawValue && widgetImpl?.supportsRawValue()) {
         tags.push('(raw value)');

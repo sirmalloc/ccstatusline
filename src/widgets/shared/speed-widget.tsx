@@ -6,14 +6,17 @@ import {
 import React, { useState } from 'react';
 
 import type { RenderContext } from '../../types/RenderContext';
+import type { Settings } from '../../types/Settings';
 import type { SpeedMetrics } from '../../types/SpeedMetrics';
 import type {
     CustomKeybind,
+    HideableState,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../../types/Widget';
 import { shouldInsertInput } from '../../utils/input-guards';
+import { resolveNumberFormat } from '../../utils/number-format';
 import {
     calculateInputSpeed,
     calculateOutputSpeed,
@@ -30,18 +33,21 @@ import {
 } from '../../utils/speed-window';
 
 import { makeModifierText } from './editor-display';
+import { isHidden } from './hideable';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
 
 export type SpeedWidgetKind = 'input' | 'output' | 'total';
 
 const WINDOW_EDITOR_ACTION = 'edit-window';
 
+const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no speed data (—)' };
+
 interface SpeedWidgetKindConfig {
     label: string;
     displayName: string;
     description: string;
-    sessionPreview: string;
-    windowedPreview: string;
+    sessionPreview: number;
+    windowedPreview: number;
 }
 
 const SPEED_WIDGET_CONFIG: Record<SpeedWidgetKind, SpeedWidgetKindConfig> = {
@@ -49,22 +55,22 @@ const SPEED_WIDGET_CONFIG: Record<SpeedWidgetKind, SpeedWidgetKindConfig> = {
         label: 'In: ',
         displayName: 'Input Speed',
         description: 'Shows session-average input token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
-        sessionPreview: '85.2 t/s',
-        windowedPreview: '31.5 t/s'
+        sessionPreview: 85.2,
+        windowedPreview: 31.5
     },
     output: {
         label: 'Out: ',
         displayName: 'Output Speed',
         description: 'Shows session-average output token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
-        sessionPreview: '42.5 t/s',
-        windowedPreview: '26.8 t/s'
+        sessionPreview: 42.5,
+        windowedPreview: 26.8
     },
     total: {
         label: 'Total: ',
         displayName: 'Total Speed',
         description: 'Shows session-average total token speed (tokens/sec). Optional window: 0-120 seconds (0 = full-session average).',
-        sessionPreview: '127.7 t/s',
-        windowedPreview: '58.3 t/s'
+        sessionPreview: 127.7,
+        windowedPreview: 58.3
     }
 };
 
@@ -110,15 +116,15 @@ export function getSpeedWidgetEditorDisplay(kind: SpeedWidgetKind, item: WidgetI
 export function renderSpeedWidgetValue(
     kind: SpeedWidgetKind,
     item: WidgetItem,
-    context: RenderContext
+    context: RenderContext,
+    settings: Settings
 ): string | null {
     const config = SPEED_WIDGET_CONFIG[kind];
-    const previewValue = isWidgetSpeedWindowEnabled(item)
-        ? config.windowedPreview
-        : config.sessionPreview;
+    const format = resolveNumberFormat('speed', item, settings);
 
     if (context.isPreview) {
-        return formatRawOrLabeledValue(item, config.label, previewValue);
+        const previewValue = isWidgetSpeedWindowEnabled(item) ? config.windowedPreview : config.sessionPreview;
+        return formatRawOrLabeledValue(item, config.label, formatSpeed(previewValue, format));
     }
 
     const metrics = getSpeedMetricsForWidget(item, context);
@@ -127,7 +133,15 @@ export function renderSpeedWidgetValue(
     }
 
     const speed = calculateSpeed(kind, metrics);
-    return formatRawOrLabeledValue(item, config.label, formatSpeed(speed));
+    if (speed === null && isHidden(item, NO_DATA_HIDEABLE_STATE.key)) {
+        return null;
+    }
+
+    return formatRawOrLabeledValue(item, config.label, formatSpeed(speed, format));
+}
+
+export function getSpeedWidgetHideableStates(): HideableState[] {
+    return [NO_DATA_HIDEABLE_STATE];
 }
 
 export function getSpeedWidgetCustomKeybinds(): CustomKeybind[] {

@@ -9,6 +9,7 @@ import {
     computeLineThemeStartIndices,
     type PowerlineThemeSlotEntry
 } from './powerline-theme-index';
+import { widgetPreservesColors } from './widgets';
 
 export interface ThemeChannelColors {
     fg?: string;
@@ -85,8 +86,12 @@ export function isPowerlineThemeActive(settings: Settings): boolean {
 }
 
 /** Does the theme leave this widget's foreground alone? */
-export function keepsOwnForeground(widget: WidgetItem): boolean {
-    return Boolean(widget.pinColor) || (widget.type === 'custom-command' && Boolean(widget.preserveColors));
+export function keepsOwnForeground(widget: WidgetItem, settings: Settings): boolean {
+    const hasForegroundOverride = Boolean(
+        settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+    );
+
+    return Boolean(widget.pinColor) || (widgetPreservesColors(widget) && !hasForegroundOverride);
 }
 
 /**
@@ -126,7 +131,7 @@ export function getEffectiveThemeColors(
         }
 
         effective.set(widget.id, {
-            fg: keepsOwnForeground(widget)
+            fg: keepsOwnForeground(widget, settings)
                 ? undefined
                 : themeColors.fg[slot % themeColors.fg.length],
             bg: widget.pinBackgroundColor
