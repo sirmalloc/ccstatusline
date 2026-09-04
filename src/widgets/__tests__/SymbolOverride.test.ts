@@ -11,7 +11,11 @@ import type {
 } from '../../types/Widget';
 import { GitAheadBehindWidget } from '../GitAheadBehind';
 import { GitBranchWidget } from '../GitBranch';
+import { GitChangesWidget } from '../GitChanges';
+import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitConflictsWidget } from '../GitConflicts';
+import { GitDeletionsWidget } from '../GitDeletions';
+import { GitInsertionsWidget } from '../GitInsertions';
 import { GitStagedWidget } from '../GitStaged';
 import { GitStatusWidget } from '../GitStatus';
 import { GitUnstagedWidget } from '../GitUnstaged';
@@ -19,6 +23,10 @@ import { GitUntrackedWidget } from '../GitUntracked';
 import { GitWorktreeWidget } from '../GitWorktree';
 import { GitWorktreeModeWidget } from '../GitWorktreeMode';
 import { JjBookmarksWidget } from '../JjBookmarks';
+import { JjChangesWidget } from '../JjChanges';
+import { JjDeletionsWidget } from '../JjDeletions';
+import { JjInsertionsWidget } from '../JjInsertions';
+import { JjRevisionWidget } from '../JjRevision';
 import { JjWorkspaceWidget } from '../JjWorkspace';
 import {
     formatSymbolPrefix,
@@ -45,6 +53,7 @@ const cases: SymbolCase[] = [
     { name: 'GitStagedWidget', itemType: 'git-staged', widget: new GitStagedWidget(), defaultPreview: '+', overriddenPreview: '★', suppressedPreview: '' },
     { name: 'GitUnstagedWidget', itemType: 'git-unstaged', widget: new GitUnstagedWidget(), defaultPreview: '*', overriddenPreview: '★', suppressedPreview: '' },
     { name: 'GitUntrackedWidget', itemType: 'git-untracked', widget: new GitUntrackedWidget(), defaultPreview: '?', overriddenPreview: '★', suppressedPreview: '' },
+    { name: 'JjRevisionWidget', itemType: 'jj-revision', widget: new JjRevisionWidget(), defaultPreview: ' kkmpptxz', overriddenPreview: '★ kkmpptxz', suppressedPreview: 'kkmpptxz' },
     { name: 'GitWorktreeModeWidget', itemType: 'worktree-mode', widget: new GitWorktreeModeWidget(), defaultPreview: '⎇', overriddenPreview: '★', suppressedPreview: null }
 ];
 
@@ -144,5 +153,46 @@ describe('symbol override helpers', () => {
 
         const suppressed = setSlotSymbol(makeItem('git-branch'), characterSlot, '');
         expect(suppressed.character).toBe('');
+    });
+});
+
+interface SlotCase {
+    name: string;
+    itemType: string;
+    widget: Widget;
+    defaultPreview: string;
+    overrides: Record<string, string>;
+    overriddenPreview: string;
+    clearedPreview: string;
+}
+
+const slotCases: SlotCase[] = [
+    { name: 'GitInsertionsWidget', itemType: 'git-insertions', widget: new GitInsertionsWidget(), defaultPreview: '+42', overrides: { symbolInsertions: '▲' }, overriddenPreview: '▲42', clearedPreview: '42' },
+    { name: 'GitDeletionsWidget', itemType: 'git-deletions', widget: new GitDeletionsWidget(), defaultPreview: '-10', overrides: { symbolDeletions: '▼' }, overriddenPreview: '▼10', clearedPreview: '10' },
+    { name: 'JjInsertionsWidget', itemType: 'jj-insertions', widget: new JjInsertionsWidget(), defaultPreview: '+42', overrides: { symbolInsertions: '▲' }, overriddenPreview: '▲42', clearedPreview: '42' },
+    { name: 'JjDeletionsWidget', itemType: 'jj-deletions', widget: new JjDeletionsWidget(), defaultPreview: '-10', overrides: { symbolDeletions: '▼' }, overriddenPreview: '▼10', clearedPreview: '10' },
+    { name: 'GitChangesWidget', itemType: 'git-changes', widget: new GitChangesWidget(), defaultPreview: '(+42,-10)', overrides: { symbolInsertions: '▲', symbolDeletions: '▼' }, overriddenPreview: '(▲42,▼10)', clearedPreview: '(42,10)' },
+    { name: 'JjChangesWidget', itemType: 'jj-changes', widget: new JjChangesWidget(), defaultPreview: '(+42,-10)', overrides: { symbolInsertions: '▲', symbolDeletions: '▼' }, overriddenPreview: '(▲42,▼10)', clearedPreview: '(42,10)' },
+    { name: 'GitCleanStatusWidget', itemType: 'git-clean-status', widget: new GitCleanStatusWidget(), defaultPreview: '✓', overrides: { symbolClean: '★' }, overriddenPreview: '★', clearedPreview: '' }
+];
+
+describe('named-slot symbol overrides', () => {
+    it.each(slotCases)('$name renders its default symbols', ({ widget, itemType, defaultPreview }) => {
+        expect(widget.render(makeItem(itemType), { isPreview: true }, DEFAULT_SETTINGS)).toBe(defaultPreview);
+    });
+
+    it.each(slotCases)('$name renders slot overrides', ({ widget, itemType, overrides, overriddenPreview }) => {
+        expect(widget.render({ id: itemType, type: itemType, metadata: overrides }, { isPreview: true }, DEFAULT_SETTINGS)).toBe(overriddenPreview);
+    });
+
+    it.each(slotCases)('$name drops the symbol on an empty override', ({ widget, itemType, overrides, clearedPreview }) => {
+        const cleared = Object.fromEntries(Object.keys(overrides).map(key => [key, '']));
+        expect(widget.render({ id: itemType, type: itemType, metadata: cleared }, { isPreview: true }, DEFAULT_SETTINGS)).toBe(clearedPreview);
+    });
+
+    it.each(slotCases)('$name exposes the shared glyph keybind and editor', ({ widget }) => {
+        const keys = (widget.getCustomKeybinds?.() ?? []).map(keybind => keybind.key);
+        expect(keys).toContain('g');
+        expect(typeof widget.renderEditor).toBe('function');
     });
 });
