@@ -196,7 +196,7 @@ async function renderMultipleLines(data: StatusJSON) {
                 globalPowerlineThemeIndex,
                 globalPowerlineStartCapIndex
             };
-            let line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths);
+            let line = renderStatusLine(lineItems, settings, lineContext, preRenderedWidgets, preCalculatedMaxWidths[i] ?? []);
 
             // Only output the line if it has content (not just ANSI codes)
             // Strip ANSI codes to check if there's actual text
