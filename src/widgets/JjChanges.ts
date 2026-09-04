@@ -1,9 +1,11 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     HideableState,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -15,6 +17,15 @@ import {
     NO_JJ_HIDEABLE_STATE,
     isHidden
 } from './shared/hideable';
+import {
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
+
+const INSERTIONS_SLOT: SymbolSlot = { id: 'symbolInsertions', label: 'Insertions', defaultSymbol: '+' };
+const DELETIONS_SLOT: SymbolSlot = { id: 'symbolDeletions', label: 'Deletions', defaultSymbol: '-' };
 
 export class JjChangesWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -33,7 +44,7 @@ export class JjChangesWidget implements Widget {
         const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
-            return '(+42,-10)';
+            return `(${getSlotSymbol(item, INSERTIONS_SLOT)}42,${getSlotSymbol(item, DELETIONS_SLOT)}10)`;
         }
 
         if (!isInsideJjRepo(context)) {
@@ -42,7 +53,7 @@ export class JjChangesWidget implements Widget {
 
         const changes = this.getJjChanges(context);
         if (changes) {
-            return `(+${changes.insertions},-${changes.deletions})`;
+            return `(${getSlotSymbol(item, INSERTIONS_SLOT)}${changes.insertions},${getSlotSymbol(item, DELETIONS_SLOT)}${changes.deletions})`;
         }
 
         return hideNoJj ? null : '(no jj)';
@@ -66,6 +77,14 @@ export class JjChangesWidget implements Widget {
         }
 
         return { insertions: totalInsertions, deletions: totalDeletions };
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [getSymbolKeybind()];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, [INSERTIONS_SLOT, DELETIONS_SLOT]);
     }
 
     supportsRawValue(): boolean { return false; }
