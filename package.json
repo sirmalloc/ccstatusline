@@ -55,7 +55,6 @@
     "https-proxy-agent": "^8.0.0",
     "ink": "6.2.0",
     "ink-gradient": "^4.0.0",
-    "ink-select-input": "^6.2.0",
     "pluralize": "^8.0.0",
     "react": "19.2.8",
     "react-devtools-core": "^7.0.1",
