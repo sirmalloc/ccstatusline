@@ -76,6 +76,7 @@ export const SettingsSchema = z.object({
     globalBold: z.boolean().default(false),
     numberFormat: GlobalNumberFormatSchema.optional(),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
+    customCommandCacheTtlSeconds: z.number().min(0).max(60).default(0),
     minimalistMode: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,
