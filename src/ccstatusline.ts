@@ -36,6 +36,7 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import { readStdin } from './utils/stdin';
 import {
     getPackageVersion,
     getTerminalWidth
@@ -45,35 +46,6 @@ import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
-}
-
-async function readStdin(): Promise<string | null> {
-    // Check if stdin is a TTY (terminal) - if it is, there's no piped data
-    if (process.stdin.isTTY) {
-        return null;
-    }
-
-    const chunks: string[] = [];
-
-    try {
-        // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined') {
-            // Bun environment
-            const decoder = new TextDecoder();
-            for await (const chunk of Bun.stdin.stream()) {
-                chunks.push(decoder.decode(chunk));
-            }
-        } else {
-            // Node.js environment
-            process.stdin.setEncoding('utf8');
-            for await (const chunk of process.stdin) {
-                chunks.push(chunk as string);
-            }
-        }
-        return chunks.join('');
-    } catch {
-        return null;
-    }
 }
 
 async function ensureWindowsUtf8CodePage() {
