@@ -431,7 +431,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [crispy-recall](https://github.com/TheSylvester/crispy-recall) - Searchable memory for your Claude Code and Codex sessions. Local, fast, no daemon.
 - [statuslin.es](https://statuslin.es) - Community gallery of Claude Code status lines with live, sandbox-rendered previews.
 - [claude-carbon](https://github.com/gwittebolle/claude-carbon) - Live CO2 estimate for your Claude Code sessions, next to the cost. Ships a `--segment` mode built to embed as a Custom Command widget.
-- [Meanwhile](https://github.com/heenatrivedi321-max/deadtime) - Disclosed, revenue-sharing status line: shows a labeled sponsor line during idle time and splits what it earns with you.
+- [Meanwhile](https://github.com/heenatrivedi321-max/deadtime) - Disclosed, revenue-sharing status line: shows a labeled sponsor line during idle time and splits what it earns with you. Ships a `segment` mode (`npx trymeanwhile segment`) built to embed as a Custom Command widget.
 
 ## 🙏 Acknowledgments
 
