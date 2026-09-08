@@ -1,0 +1,11 @@
+# Optional building on https://reporoad.org
+# After merging, submit this repository at https://reporoad.org to join.
+version: 1
+style: townhouse
+color: "#718bad"
+roof: gable
+signText: ccstatusline
+garden: true
+support:
+  sponsor: false
+  helpWanted: false
