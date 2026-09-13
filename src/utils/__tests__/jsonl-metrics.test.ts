@@ -70,6 +70,7 @@ function makeUsageLine(params: {
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
     id?: string;
+    model?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
@@ -77,6 +78,7 @@ function makeUsageLine(params: {
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
             id: params.id,
+            model: params.model,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -1614,6 +1616,98 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 0,
             totalTokens: 0,
             requestCount: 0
+        });
+    });
+
+    describe('cost estimate', () => {
+        it('omits costEstimate when it was not requested', async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+            tempRoots.push(root);
+            const transcriptPath = path.join(root, 'no-cost-estimate.jsonl');
+
+            fs.writeFileSync(transcriptPath, makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100,
+                output: 50,
+                model: 'claude-sonnet-5'
+            }));
+
+            const analysis = await getTranscriptAnalysis(transcriptPath);
+            expect(analysis.tokenMetrics.costEstimate).toBeUndefined();
+        });
+
+        it('prices each turn by its own model, weighting a Sonnet-5 turn and a Haiku-4.5 turn differently', async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+            tempRoots.push(root);
+            const transcriptPath = path.join(root, 'per-turn-pricing.jsonl');
+
+            // Same token counts, two different models: a mid-session model
+            // switch must price each turn at the model that actually served it.
+            fs.writeFileSync(transcriptPath, [
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:00.000Z',
+                    input: 1_000_000,
+                    output: 1_000_000,
+                    cacheRead: 1_000_000,
+                    cacheCreate: 1_000_000,
+                    model: 'claude-sonnet-5',
+                    id: 'msg_1'
+                }),
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:01.000Z',
+                    input: 1_000_000,
+                    output: 1_000_000,
+                    cacheRead: 1_000_000,
+                    cacheCreate: 1_000_000,
+                    model: 'claude-haiku-4-5-20251001',
+                    id: 'msg_2'
+                })
+            ].join('\n'));
+
+            const analysis = await getTranscriptAnalysis(transcriptPath, { includeCostEstimate: true });
+
+            // Sonnet 5 ($2/$10/$4/$0.20 per 1M) + Haiku 4.5 ($1/$5/$2/$0.10 per 1M),
+            // one million tokens of each category from each model.
+            expect(analysis.tokenMetrics.costEstimate).toEqual({
+                inputCost: 2 + 1,
+                outputCost: 10 + 5,
+                cacheWriteCost: 4 + 2,
+                cacheReadCost: 0.2 + 0.1
+            });
+        });
+
+        it('collapses duplicate content-block rows before pricing, not after', async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+            tempRoots.push(root);
+            const transcriptPath = path.join(root, 'cost-dedup.jsonl');
+
+            // Same call logged as two content-block rows sharing one id; pricing
+            // the un-deduped sum would double the estimate.
+            fs.writeFileSync(transcriptPath, [
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:00.000Z',
+                    input: 1_000_000,
+                    output: 200_000,
+                    model: 'claude-sonnet-5',
+                    id: 'msg_1'
+                }),
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:01.000Z',
+                    input: 1_000_000,
+                    output: 500_000,
+                    model: 'claude-sonnet-5',
+                    id: 'msg_1'
+                })
+            ].join('\n'));
+
+            const analysis = await getTranscriptAnalysis(transcriptPath, { includeCostEstimate: true });
+
+            expect(analysis.tokenMetrics.costEstimate).toEqual({
+                inputCost: 2,
+                outputCost: 5,
+                cacheWriteCost: 0,
+                cacheReadCost: 0
+            });
         });
     });
 });
