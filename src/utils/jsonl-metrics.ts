@@ -28,6 +28,7 @@ import {
     type ResolvedThinkingEffort
 } from './jsonl-metadata';
 import { getSessionNameFromRecord } from './jsonl-session';
+import { getModelPriceRatios } from './model-pricing';
 
 export interface SpeedMetricsCollection {
     sessionAverage: SpeedMetrics;
@@ -42,6 +43,7 @@ export interface TranscriptAnalysisOptions {
     includeCompactionStats?: boolean;
     includeThinkingEffort?: boolean;
     includeSessionName?: boolean;
+    includeCostEstimate?: boolean;
 }
 
 export interface TranscriptAnalysis {
@@ -84,6 +86,7 @@ interface CollectedSpeedMetrics {
 interface TokenMetricEntry {
     usage: UsageTokens;
     stopReason: string | null | undefined;
+    model: string | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
     messageId: string | null;
@@ -94,6 +97,10 @@ interface TokenMetricAccumulator {
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    inputCost: number;
+    outputCost: number;
+    cacheWriteCost: number;
+    cacheReadCost: number;
     mostRecentMainChainUsage: UsageTokens | null;
     mostRecentTimestampMs: number | null;
     mostRecentPostCompactionUsage: UsageTokens | null;
@@ -110,7 +117,7 @@ interface TokenMetricState {
     lastCompactBoundaryPostTokens: number | null;
 }
 
-function createEmptyTokenMetrics(): TokenMetrics {
+function createEmptyTokenMetrics(includeCostEstimate = false): TokenMetrics {
     return {
         inputTokens: 0,
         outputTokens: 0,
@@ -118,7 +125,10 @@ function createEmptyTokenMetrics(): TokenMetrics {
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
         totalTokens: 0,
-        contextLength: 0
+        contextLength: 0,
+        ...(includeCostEstimate
+            ? { costEstimate: { inputCost: 0, outputCost: 0, cacheWriteCost: 0, cacheReadCost: 0 } }
+            : {})
     };
 }
 
@@ -128,6 +138,10 @@ function createTokenMetricAccumulator(): TokenMetricAccumulator {
         outputTokens: 0,
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
+        inputCost: 0,
+        outputCost: 0,
+        cacheWriteCost: 0,
+        cacheReadCost: 0,
         mostRecentMainChainUsage: null,
         mostRecentTimestampMs: null,
         mostRecentPostCompactionUsage: null,
@@ -150,6 +164,12 @@ function accumulateTokenMetricEntry(
     accumulator.outputTokens += usage.output;
     accumulator.cacheReadTokens += usage.read;
     accumulator.cacheCreationTokens += usage.creation;
+
+    const prices = getModelPriceRatios(entry.model);
+    accumulator.inputCost += (usage.input / 1_000_000) * prices.input;
+    accumulator.outputCost += (usage.output / 1_000_000) * prices.output;
+    accumulator.cacheWriteCost += (usage.creation / 1_000_000) * prices.cacheWrite;
+    accumulator.cacheReadCost += (usage.read / 1_000_000) * prices.cacheRead;
 
     if (!entry.isMainChain || entry.timestampMs === null) {
         return;
@@ -195,6 +215,7 @@ function accumulateCumulativeTokenEntry(
         if (outputDelta > 0) {
             state.countedOutputByMessageId.set(entry.messageId, entry.usage.output);
             state.metrics.outputTokens += outputDelta;
+            state.metrics.outputCost += (outputDelta / 1_000_000) * getModelPriceRatios(entry.model).output;
         }
         return;
     }
@@ -221,6 +242,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
         const entry: TokenMetricEntry = {
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
+            model: message.model,
             timestampMs,
             isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
             messageId: typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null
@@ -240,7 +262,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     }
 }
 
-function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
+function finishTokenMetrics(state: TokenMetricState, includeCostEstimate = false): TokenMetrics {
     if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
         accumulateCumulativeTokenEntry(state, state.lastUsageEntry, !state.boundaryAfterLastUsage);
     }
@@ -260,7 +282,17 @@ function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
         cacheReadTokens: state.metrics.cacheReadTokens,
         cacheCreationTokens: state.metrics.cacheCreationTokens,
         totalTokens: state.metrics.inputTokens + state.metrics.outputTokens + cachedTokens,
-        contextLength
+        contextLength,
+        ...(includeCostEstimate
+            ? {
+                costEstimate: {
+                    inputCost: state.metrics.inputCost,
+                    outputCost: state.metrics.outputCost,
+                    cacheWriteCost: state.metrics.cacheWriteCost,
+                    cacheReadCost: state.metrics.cacheReadCost
+                }
+            }
+            : {})
     };
 }
 
@@ -612,7 +644,7 @@ function normalizeSpeedWindows(windowSeconds: number[] | undefined): number[] {
 
 function createEmptyScanResult(options: TranscriptScanOptions, speedWindows: number[]): TranscriptScanResult {
     return {
-        tokenMetrics: options.includeTokenMetrics ? createEmptyTokenMetrics() : null,
+        tokenMetrics: options.includeTokenMetrics ? createEmptyTokenMetrics(options.includeCostEstimate) : null,
         sessionDuration: null,
         speedMetricsCollection: options.includeSpeedMetrics
             ? {
@@ -703,7 +735,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
         }
 
         return {
-            tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+            tokenMetrics: tokenState ? finishTokenMetrics(tokenState, options.includeCostEstimate) : null,
             sessionDuration: options.includeSessionDuration
                 ? formatSessionDuration(firstTimestampMs, lastTimestampMs)
                 : null,
@@ -778,7 +810,7 @@ export async function getTranscriptAnalysis(
     });
 
     return {
-        tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(),
+        tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(options.includeCostEstimate),
         sessionDuration: result.sessionDuration,
         speedMetricsCollection: result.speedMetricsCollection,
         compactionData: result.compactionData,
