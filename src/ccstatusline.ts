@@ -269,14 +269,7 @@ async function main() {
 
                 await renderMultipleLines(result.data);
                 await flushStdout();
-                // Ensure any dangling async handles do not keep the process alive indefinitely
-                // after stdout has already flushed, while letting the event loop drain naturally.
-                const lingeringTimer = setTimeout(() => {
-                    process.exit(0);
-                }, 1000);
-                if (typeof lingeringTimer.unref === 'function') {
-                    lingeringTimer.unref();
-                }
+                process.exit(0);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);

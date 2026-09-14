@@ -31,7 +31,7 @@ export interface ReadStdinOptions {
 }
 
 export async function readStdinBun(options?: ReadStdinOptions): Promise<string> {
-    const idleTimeoutMs = options?.idleTimeoutMs ?? 1000;
+    const idleTimeoutMs = options?.idleTimeoutMs ?? 3000;
     const stream = options?.stream ?? (typeof Bun !== 'undefined' ? Bun.stdin.stream() : undefined);
     if (!stream) {
         return '';
@@ -89,7 +89,7 @@ export async function readStdinBun(options?: ReadStdinOptions): Promise<string> 
 }
 
 export async function readStdinNode(options?: ReadStdinOptions): Promise<string> {
-    const idleTimeoutMs = options?.idleTimeoutMs ?? 1000;
+    const idleTimeoutMs = options?.idleTimeoutMs ?? 3000;
     const stream: Readable = options?.inputStream ?? process.stdin;
 
     stream.setEncoding('utf8');
@@ -185,18 +185,27 @@ export async function readStdin(options?: ReadStdinOptions): Promise<string | nu
 
 export async function flushStdout(): Promise<void> {
     const stdout = process.stdout;
-    const needsDrain = stdout.writableNeedDrain
-        || stdout.writableLength > 0;
 
-    if (needsDrain) {
+    if (stdout.writableNeedDrain) {
         await new Promise<void>((resolve) => {
-            stdout.once('drain', () => {
+            const timer = setTimeout(() => {
+                stdout.removeListener('drain', onDrain);
                 resolve();
-            });
-            const timer = setTimeout(resolve, 200);
+            }, 200);
+            const onDrain = () => {
+                clearTimeout(timer);
+                resolve();
+            };
+            stdout.once('drain', onDrain);
             if (typeof timer.unref === 'function') {
                 timer.unref();
             }
         });
     }
+
+    await new Promise<void>((resolve) => {
+        stdout.write('', () => {
+            resolve();
+        });
+    });
 }

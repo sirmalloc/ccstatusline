@@ -1,8 +1,12 @@
-import { spawn } from 'node:child_process';
+import {
+    execSync,
+    spawn
+} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
+    beforeAll,
     describe,
     expect,
     it
@@ -233,15 +237,23 @@ describe('subprocess stdin handling and non-truncated output', () => {
         model: { id: 'claude-sonnet-4-5-20250929', display_name: 'Sonnet 4.5' },
         cost: { total_cost_usd: 0.05, total_duration_ms: 12000 }
     });
+    const scriptPath = path.resolve(__dirname, '../../../dist/ccstatusline.js');
+    const nodeBin = process.env.NODE ?? 'node';
+
+    beforeAll(() => {
+        if (!fs.existsSync(scriptPath)) {
+            execSync('bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14', {
+                cwd: path.resolve(__dirname, '../../..'),
+                stdio: 'ignore'
+            });
+        }
+    });
 
     it('renders full output in Node and exits promptly when stdin is held open without EOF', async () => {
-        const scriptPath = path.resolve(__dirname, '../../../dist/ccstatusline.js');
-        if (!fs.existsSync(scriptPath)) {
-            return;
-        }
+        expect(fs.existsSync(scriptPath)).toBe(true);
 
         const start = Date.now();
-        const proc = spawn(process.execPath, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+        const proc = spawn(nodeBin, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
 
         let stdout = '';
         proc.stdout.setEncoding('utf8');
@@ -258,11 +270,11 @@ describe('subprocess stdin handling and non-truncated output', () => {
 
         const elapsed = Date.now() - start;
         expect(exitCode).toBe(0);
-        expect(elapsed).toBeLessThan(1500);
+        expect(elapsed).toBeLessThan(4000);
         expect(stdout.length).toBeGreaterThan(0);
         const normalizedStdout = stdout.replace(/\u00A0/g, ' ');
         expect(normalizedStdout).toContain('Sonnet 4.5');
-    });
+    }, 10000);
 
     it('renders full output in Bun and exits promptly when stdin is held open without EOF', async () => {
         const tsPath = path.resolve(__dirname, '../../ccstatusline.ts');
@@ -284,19 +296,16 @@ describe('subprocess stdin handling and non-truncated output', () => {
 
         const elapsed = Date.now() - start;
         expect(exitCode).toBe(0);
-        expect(elapsed).toBeLessThan(1500);
+        expect(elapsed).toBeLessThan(4000);
         expect(stdout.length).toBeGreaterThan(0);
         const normalizedStdout = stdout.replace(/\u00A0/g, ' ');
         expect(normalizedStdout).toContain('Sonnet 4.5');
-    });
+    }, 10000);
 
     it('does not truncate output when data is piped slowly in chunks', async () => {
-        const scriptPath = path.resolve(__dirname, '../../../dist/ccstatusline.js');
-        if (!fs.existsSync(scriptPath)) {
-            return;
-        }
+        expect(fs.existsSync(scriptPath)).toBe(true);
 
-        const proc = spawn(process.execPath, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+        const proc = spawn(nodeBin, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
 
         let stdout = '';
         proc.stdout.setEncoding('utf8');
@@ -322,5 +331,5 @@ describe('subprocess stdin handling and non-truncated output', () => {
         expect(stdout.length).toBeGreaterThan(0);
         const normalizedStdout = stdout.replace(/\u00A0/g, ' ');
         expect(normalizedStdout).toContain('Sonnet 4.5');
-    });
+    }, 10000);
 });
