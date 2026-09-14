@@ -41,50 +41,15 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import {
+    flushStdout,
+    readStdin
+} from './utils/stdin';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
-}
-
-async function readStdin(): Promise<string | null> {
-    // Check if stdin is a TTY (terminal) - if it is, there's no piped data
-    if (process.stdin.isTTY) {
-        return null;
-    }
-
-    const chunks: string[] = [];
-
-    try {
-        // Use Node.js compatible approach
-        if (typeof Bun !== 'undefined') {
-            // Bun environment
-            const decoder = new TextDecoder();
-            for await (const chunk of Bun.stdin.stream()) {
-                chunks.push(decoder.decode(chunk));
-            }
-        } else {
-            // Node.js environment.
-            // Use event-based reading instead of for-await so we can add a bail
-            // timeout: on Windows, stdin EOF never propagates through the Volta shim
-            // chain (cmd.exe -> bash -> volta -> node), causing for-await to hang
-            // indefinitely. The timeout destroys stdin after 3s of silence; data
-            // already in chunks[] is preserved and returned normally.
-            // See: nodejs/node#32291, volta-cli/volta#1199, ryoppippi/ccusage#459
-            process.stdin.setEncoding('utf8');
-            await new Promise<void>((resolve) => {
-                const bail = setTimeout(() => { process.stdin.destroy(); resolve(); }, 3000);
-                if (typeof (bail as NodeJS.Timeout).unref === 'function') (bail as NodeJS.Timeout).unref();
-                process.stdin.on('data', (chunk: string) => chunks.push(chunk));
-                process.stdin.on('end', () => { clearTimeout(bail); resolve(); });
-                process.stdin.on('error', () => { clearTimeout(bail); resolve(); });
-            });
-        }
-        return chunks.join('');
-    } catch {
-        return null;
-    }
 }
 
 async function ensureWindowsUtf8CodePage() {
@@ -274,6 +239,7 @@ function parseConfigArg(): string | undefined {
 async function handleHook(): Promise<void> {
     const input = await readStdin();
     handleHookInput(input);
+    await flushStdout();
 }
 
 async function main() {
@@ -302,10 +268,15 @@ async function main() {
                 }
 
                 await renderMultipleLines(result.data);
-                // Explicitly exit so the event loop does not linger. Without this,
-                // any residual async handles from rendering keep the process alive,
-                // which accumulates under Claude Code's "abandon not kill" lifecycle.
-                process.exit(0);
+                await flushStdout();
+                // Ensure any dangling async handles do not keep the process alive indefinitely
+                // after stdout has already flushed, while letting the event loop drain naturally.
+                const lingeringTimer = setTimeout(() => {
+                    process.exit(0);
+                }, 1000);
+                if (typeof lingeringTimer.unref === 'function') {
+                    lingeringTimer.unref();
+                }
             } catch (error) {
                 console.error('Error parsing JSON:', error);
                 process.exit(1);
