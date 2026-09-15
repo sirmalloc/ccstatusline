@@ -59,7 +59,6 @@ export class CurrentWorkingDirWidget implements Widget {
             if (newAbbreviateHome) {
                 // When enabling abbreviateHome, disable fishStyle (mutually exclusive)
                 const { fishStyle, ...restMetadata } = item.metadata ?? {};
-                void fishStyle;
                 return {
                     ...item,
                     metadata: {
@@ -70,7 +69,6 @@ export class CurrentWorkingDirWidget implements Widget {
             } else {
                 // When disabling abbreviateHome
                 const { abbreviateHome, ...restMetadata } = item.metadata ?? {};
-                void abbreviateHome;
 
                 return {
                     ...item,
@@ -87,8 +85,6 @@ export class CurrentWorkingDirWidget implements Widget {
             if (newFishStyle) {
                 // When enabling fish-style, clear segments and abbreviateHome (mutually exclusive)
                 const { segments, abbreviateHome, ...restMetadata } = item.metadata ?? {};
-                void segments;
-                void abbreviateHome;
                 return {
                     ...item,
                     metadata: {
@@ -99,7 +95,6 @@ export class CurrentWorkingDirWidget implements Widget {
             } else {
                 // When disabling fish-style
                 const { fishStyle, ...restMetadata } = item.metadata ?? {};
-                void fishStyle;
 
                 return {
                     ...item,
@@ -272,7 +267,6 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
                 } else {
                     // Clear segments if blank or invalid
                     const { segments, ...restMetadata } = widget.metadata ?? {};
-                    void segments; // Intentionally unused
                     onComplete({
                         ...widget,
                         metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined

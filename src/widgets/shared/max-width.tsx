@@ -51,7 +51,6 @@ const MaxWidthEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCan
                 onComplete({ ...widget, maxWidth: width });
             } else {
                 const { maxWidth, ...rest } = widget;
-                void maxWidth; // Intentionally unused
                 onComplete(rest);
             }
         } else if (key.escape) {
