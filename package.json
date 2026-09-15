@@ -44,6 +44,7 @@
     "@types/pluralize": "^0.0.33",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.2.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "chalk": "^5.5.0",
     "eslint": "^10.0.0",
     "eslint-import-resolver-typescript": "^4.4.4",
@@ -64,7 +65,7 @@
     "strip-ansi": "^7.1.0",
     "tinyglobby": "^0.2.14",
     "typedoc": "^0.28.12",
-    "typescript": "^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.39.1",
     "vitest": "^4.0.18",
     "zod": "^4.0.17"
