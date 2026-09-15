@@ -44,7 +44,6 @@ function cycleGlobalNumberStyle(settings: Settings, kind: NumberKind): Settings 
     }
 
     const { [kind]: removedKind, ...restGlobal } = settings.numberFormat ?? {};
-    void removedKind; // Intentionally unused
     const nextGlobal: GlobalNumberFormat = Object.keys(kindFormat).length > 0
         ? { ...restGlobal, [kind]: kindFormat }
         : restGlobal;
