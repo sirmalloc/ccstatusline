@@ -45,7 +45,7 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.2.3",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "chalk": "^5.5.0",
+    "chalk": "^6.0.0",
     "eslint": "^10.0.0",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import-newlines": "^2.0.0",
