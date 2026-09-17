@@ -112,6 +112,26 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
+    it('rounds the progress bar fill to the nearest cell', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'progress-short' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 211680000,
+            remainingMs: 393120000,
+            elapsedPercent: 35,
+            remainingPercent: 65
+        });
+
+        // 35% of 16 cells is 5.6, past the half-cell mark, so the 6th cell fills.
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset [██████░░░░░░░░░░] 35.0%');
+    });
+
     it('returns usage error when no weekly reset data is available', () => {
         const widget = new WeeklyResetTimerWidget();
 
@@ -128,6 +148,34 @@ describe('WeeklyResetTimerWidget', () => {
 
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: {} })).toBe('Weekly Reset: [Loading]');
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
+    });
+
+    it('declares the no-data hideable state', () => {
+        expect(new WeeklyResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data']);
+    });
+
+    // One state covers both placeholders, since either means the same thing to
+    // a reader: the widget has nothing to report yet.
+    it.each([
+        ['a usage error', { error: 'timeout' as const }],
+        ['no data at all', {}]
+    ])('hides %s when the no-data state is enabled', (_label, usageData) => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue(null);
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { hide: 'no-data' } }, { usageData })).toBeNull();
+    });
+
+    it('keeps both placeholders when the no-data state is off', () => {
+        const widget = new WeeklyResetTimerWidget();
+
+        mockResolveWeeklyUsageWindow.mockReturnValue(null);
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { hide: '' } }, { usageData: {} })).toBe('Weekly Reset: [Loading]');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
     it('shows raw value without label in time mode', () => {
@@ -314,7 +362,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 't', label: '(t)imestamp', action: 'toggle-date' },
-            { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' },
+            { key: 'f', label: '12/24 (f)ormat', action: 'toggle-hour-format' },
             { key: 'w', label: '(w)eekday', action: 'toggle-weekday' },
             { key: 'z', label: 'time(z)one', action: 'edit-timezone' },
             { key: 'l', label: '(l)ocale', action: 'edit-locale' }
@@ -424,7 +472,7 @@ describe('WeeklyResetTimerWidget', () => {
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 't', label: '(t)imestamp', action: 'toggle-date' },
-            { key: 'h', label: '(h)ours only', action: 'toggle-hours' }
+            { key: 'o', label: '(o)nly hours', action: 'toggle-hours' }
         ],
         supportsDateMode: true,
         supportsSliderMode: true,

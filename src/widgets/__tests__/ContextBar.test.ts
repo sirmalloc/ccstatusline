@@ -12,6 +12,8 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
 import { ContextBarWidget } from '../ContextBar';
+import { ContextLengthWidget } from '../ContextLength';
+import { ContextWindowWidget } from '../ContextWindow';
 
 describe('ContextBarWidget', () => {
     beforeEach(() => {
@@ -164,5 +166,25 @@ describe('ContextBarWidget', () => {
         expect(second?.metadata?.display).toBe('slider');
         expect(third?.metadata?.display).toBe('slider-only');
         expect(fourth?.metadata?.display).toBe('progress-short');
+    });
+
+    it('formats context preview samples with the selected styles', () => {
+        const context: RenderContext = { isPreview: true };
+
+        expect(new ContextLengthWidget().render({
+            id: 'length',
+            type: 'context-length',
+            numberFormat: { style: 'whole' }
+        }, context, DEFAULT_SETTINGS)).toBe('Ctx: 19k');
+        expect(new ContextWindowWidget().render({
+            id: 'window',
+            type: 'context-window',
+            numberFormat: { decimals: 2 }
+        }, context, DEFAULT_SETTINGS)).toBe('Win: 200.00k');
+        expect(new ContextBarWidget().render({
+            id: 'bar',
+            type: 'context-bar',
+            numberFormat: { decimals: 2 }
+        }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:25.0:16] 50.00k/200.00k (25.00%)');
     });
 });

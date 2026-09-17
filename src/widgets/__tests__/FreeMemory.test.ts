@@ -79,6 +79,17 @@ describe('FreeMemoryWidget', () => {
 
             expect(result).toBe('12.4G/16.0G');
         });
+
+        it('should format mock data with the selected memory style', () => {
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = {
+                id: 'mem',
+                type: 'free-memory',
+                numberFormat: { style: 'whole' }
+            };
+
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Mem: 12G/16G');
+        });
     });
 
     describe('render on macOS (vm_stat)', () => {

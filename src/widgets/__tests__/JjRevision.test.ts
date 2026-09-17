@@ -36,7 +36,7 @@ function render(options: {
         id: 'jj-revision',
         type: 'jj-revision',
         rawValue: options.rawValue,
-        metadata: options.hideNoJj ? { hideNoJj: 'true' } : undefined
+        metadata: options.hideNoJj ? { hide: 'no-jj' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);

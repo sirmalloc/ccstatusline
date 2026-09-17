@@ -301,6 +301,31 @@ describe('git utils', () => {
             expect(runGit('symbolic-ref --short HEAD', context)).toBe('new-value');
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
         });
+
+        it('leaves no temp file behind when the cache write cannot be renamed into place', () => {
+            vi.spyOn(Date, 'now').mockReturnValue(1000);
+            const home = useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockReturnValueOnce('feature/leak\n');
+
+            expect(runGit('symbolic-ref --short HEAD', context)).toBe('feature/leak');
+
+            // Make the cache path a directory so the final rename always fails,
+            // exercising the cleanup-on-error path in writePersistentCache.
+            const cachePath = getOnlyGitCachePath(home);
+            fs.rmSync(cachePath);
+            fs.mkdirSync(cachePath);
+
+            clearGitCache();
+            mockExecFileSync.mockReturnValueOnce('feature/leak\n');
+
+            expect(runGit('symbolic-ref --short HEAD', context)).toBe('feature/leak');
+            // The blocking directory is still in place and no temp file leaked.
+            expect(fs.statSync(cachePath).isDirectory()).toBe(true);
+            const cacheDir = path.dirname(cachePath);
+            expect(fs.readdirSync(cacheDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
+        });
     });
 
     describe('isInsideGitWorkTree', () => {

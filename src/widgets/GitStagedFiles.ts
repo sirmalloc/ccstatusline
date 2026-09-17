@@ -1,7 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
-    CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -12,11 +12,11 @@ import {
 } from '../utils/git';
 
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
+
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when the staged file count is zero' };
 
 export class GitStagedFilesWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -24,18 +24,15 @@ export class GitStagedFilesWidget implements Widget {
     getDisplayName(): string { return 'Git Staged Files'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE, ZERO_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
             return item.rawValue ? '3' : 'S:3';
@@ -46,11 +43,11 @@ export class GitStagedFilesWidget implements Widget {
         }
 
         const counts = getGitFileStatusCounts(context);
-        return item.rawValue ? `${counts.staged}` : `S:${counts.staged}`;
-    }
+        if (counts.staged === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+            return null;
+        }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
+        return item.rawValue ? `${counts.staged}` : `S:${counts.staged}`;
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {

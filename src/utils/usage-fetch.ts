@@ -26,6 +26,13 @@ const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
+// Upper bound on how far ahead a lock may block fetching. The longest
+// legitimate lock is a 429 Retry-After, which servers keep far below a day.
+// The JSON lock stores an absolute deadline, so unlike the legacy mtime lock
+// it cannot age out on its own: one bogus timestamp (a mocked clock, a system
+// clock jump) otherwise wedges usage fetching permanently, with every widget
+// stuck on [Timeout] and no code path able to recover.
+const MAX_LOCK_HORIZON = 24 * 60 * 60; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 
@@ -148,7 +155,18 @@ function findUsageApiLimit(limits: UsageApiLimit[] | null | undefined, kind: str
 // Mirrors the null-bucket placeholder guard for #343 above: a limits[] entry
 // reporting 0% with no resets_at is not a real usage window, so the
 // limits[] fallback below must not resurrect it as a phantom 0% reading.
+//
+// weekly_scoped entries naming a concrete model are exempt: accounts with a
+// per-model quota report that entry as percent 0 / resets_at null until the
+// model is first used in the current window (resets_at fills in on first use,
+// percent stays 0), so for those the zero reading is real data - the same
+// state a null legacy per-model bucket already reports as 0 via
+// getUsageApiBucketUtilization. Accounts without the quota omit the entry
+// entirely, so this cannot resurrect a phantom window.
 function isPlaceholderUsageApiLimit(limit: UsageApiLimit): boolean {
+    if (limit.scope?.model?.display_name) {
+        return false;
+    }
     return (limit.percent ?? 0) === 0 && (limit.resets_at ?? null) === null;
 }
 
@@ -591,7 +609,10 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
         const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
         if (parsed) {
             hasValidJsonLock = true;
-            if (parsed.blockedUntil > now) {
+            // Past deadline, or one implausibly far ahead: treat as no lock and
+            // fetch. The fetch rewrites the file with a sane deadline, so a
+            // poisoned lock self-heals on the very next render.
+            if (parsed.blockedUntil > now && parsed.blockedUntil <= now + MAX_LOCK_HORIZON) {
                 return {
                     blockedUntil: parsed.blockedUntil,
                     error: parsed.error ?? 'timeout'

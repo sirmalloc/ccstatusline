@@ -268,7 +268,7 @@ describe('fetchUsageData error handling', () => {
             resets_at: '2030-01-07T00:00:00.000Z'
         }
     });
-    const placeholderFableResponseBody = JSON.stringify({
+    const unusedFableQuotaResponseBody = JSON.stringify({
         five_hour: {
             utilization: 42,
             resets_at: '2030-01-01T00:00:00.000Z'
@@ -759,11 +759,11 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
-    it('treats a placeholder fable window as conclusive when core usage fields are present', () => {
+    it('parses an unused fable quota (0%, no resets_at) as real zero usage and serves it from cache', () => {
         const harness = createProbeHarness();
 
         try {
-            const home = harness.createTokenHome('placeholder-fable-conclusive');
+            const home = harness.createTokenHome('unused-fable-quota');
             const requiredFields = ['fableUsage'];
             const result = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
@@ -772,7 +772,51 @@ describe('fetchUsageData error handling', () => {
                 nowMs,
                 pathDir: home.bin,
                 requiredFields,
-                responseBody: placeholderFableResponseBody
+                responseBody: unusedFableQuotaResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                fableUsage: 0
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats a missing fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('missing-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: successResponseBody
             });
 
             expect(result.first).toEqual({
@@ -824,6 +868,71 @@ describe('fetchUsageData error handling', () => {
             expect(result.cacheExists).toBe(true);
             expect(result.lockExists).toBe(false);
             expect(result.lockContents).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('ignores a lock whose deadline is implausibly far in the future', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('lock-beyond-horizon');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(path.join(cacheDir, 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + (10 * 365 * 24 * 60 * 60),
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            // The JSON lock stores an absolute deadline and so cannot age out.
+            // Honoring a bogus one strands every usage widget on [Timeout] with
+            // no way back; the fetch must run and overwrite the poisoned file.
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.lockExists).toBe(false);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('honors a long but plausible rate-limit lock', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('lock-within-horizon');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(path.join(cacheDir, 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + (12 * 60 * 60),
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs,
+                pathDir: home.bin
+            });
+
+            // The horizon must not undercut a genuine Retry-After backoff.
+            expect(result.requestCount).toBe(0);
+            expect(result.first).toEqual({ error: 'rate-limited' });
         } finally {
             harness.cleanup();
         }
@@ -1717,6 +1826,26 @@ describe('parseUsageApiResponse limits[] fallback (#503)', () => {
         expect(parseUsageApiResponse(placeholderLimitResponseBody)).toEqual({});
     });
 
+    it('treats a model-scoped weekly limit at 0% with no resets_at as real zero usage, not a placeholder', () => {
+        // Live payloads show a weekly_scoped entry sitting at percent 0 /
+        // resets_at null until the scoped model is first used in the current
+        // window (resets_at then fills in while percent stays 0), so unlike
+        // the unscoped case above this is a real 0% reading. The reset field
+        // stays unset until the window actually starts.
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    group: 'weekly',
+                    percent: 0,
+                    resets_at: null,
+                    scope: { model: { id: null, display_name: 'Fable' }, surface: null },
+                    is_active: false
+                }
+            ]
+        }))).toEqual({ fableUsage: 0 });
+    });
+
     it('ignores unknown limits[] kinds but consumes fable weekly_scoped entries', () => {
         expect(parseUsageApiResponse(unknownKindsAndScopedResponseBody)).toEqual({
             sessionUsage: 10,
@@ -1758,19 +1887,6 @@ describe('parseUsageApiResponse limits[] fallback (#503)', () => {
             weeklySonnetUsage: 99,
             weeklySonnetResetAt: '2030-05-08T00:00:00.000Z'
         });
-    });
-
-    it('absent when fable placeholder (percent 0, no resets_at)', () => {
-        expect(parseUsageApiResponse(JSON.stringify({
-            limits: [
-                {
-                    kind: 'weekly_scoped',
-                    percent: 0,
-                    resets_at: null,
-                    scope: { model: { display_name: 'Fable' } }
-                }
-            ]
-        }))).toEqual({});
     });
 
     it('ignores weekly_scoped when no scope -> no crash', () => {
