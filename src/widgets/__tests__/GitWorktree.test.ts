@@ -43,7 +43,7 @@ function render(options: {
         id: 'git-worktree',
         type: 'git-worktree',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hideNoGit ? { hide: 'no-git' } : undefined
     };
 
     return widget.render(item, context);

@@ -1,7 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
-    CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -11,41 +11,26 @@ import {
     runJjArgs
 } from '../utils/jj';
 
+import {
+    NO_JJ_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
+
 export class JjRevisionWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows the current jujutsu change ID (short)'; }
     getDisplayName(): string { return 'JJ Revision'; }
     getCategory(): string { return 'Jujutsu'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const hideNoJj = item.metadata?.hideNoJj === 'true';
-        const modifiers: string[] = [];
-
-        if (hideNoJj) {
-            modifiers.push('hide \'no jj\'');
-        }
-
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
-        };
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-nojj') {
-            const currentState = item.metadata?.hideNoJj === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    hideNoJj: (!currentState).toString()
-                }
-            };
-        }
-        return null;
+    getHideableStates(): HideableState[] {
+        return [NO_JJ_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = item.metadata?.hideNoJj === 'true';
+        const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
             return item.rawValue ? 'kkmpptxz' : ' kkmpptxz';
@@ -72,12 +57,6 @@ export class JjRevisionWidget implements Widget {
             '-T',
             'change_id.shortest()'
         ], context);
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
-        ];
     }
 
     supportsRawValue(): boolean { return true; }

@@ -1,4 +1,7 @@
+import type { NumberFormat } from '../types/NumberFormat';
 import type { SpeedMetrics } from '../types/SpeedMetrics';
+
+import { renderMagnitude } from './number-format';
 
 /**
  * Calculates output tokens per second from speed metrics.
@@ -46,17 +49,17 @@ export function calculateTotalSpeed(metrics: SpeedMetrics): number | null {
  * Formats a tokens per second value for display.
  *
  * @param tokensPerSec Tokens per second value, or null if unavailable
+ * @param format Optional precision override (style/decimals); empty = unchanged
  * @returns Formatted string (e.g., "42.5 t/s", "1.2k t/s", or "—" for null)
  */
-export function formatSpeed(tokensPerSec: number | null): string {
+export function formatSpeed(tokensPerSec: number | null, format: NumberFormat = {}): string {
     if (tokensPerSec === null) {
         return '—';
     }
 
     if (tokensPerSec >= 1000) {
-        const kValue = tokensPerSec / 1000;
-        return `${kValue.toFixed(1)}k t/s`;
+        return `${renderMagnitude(tokensPerSec / 1000, format, 1)}k t/s`;
     }
 
-    return `${tokensPerSec.toFixed(1)} t/s`;
+    return `${renderMagnitude(tokensPerSec, format, 1)} t/s`;
 }
