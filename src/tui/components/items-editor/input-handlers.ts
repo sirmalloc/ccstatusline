@@ -455,7 +455,6 @@ export function handleNormalInputMode({
 
             if (nextMergeState === undefined) {
                 const { merge, ...rest } = currentWidget;
-                void merge; // Intentionally unused
                 newWidgets[selectedIndex] = rest;
             } else {
                 newWidgets[selectedIndex] = { ...currentWidget, merge: nextMergeState };
@@ -468,7 +467,6 @@ export function handleNormalInputMode({
             const newWidgets = [...widgets];
             if (currentWidget.excludeFromAutoAlign) {
                 const { excludeFromAutoAlign, ...rest } = currentWidget;
-                void excludeFromAutoAlign; // Intentionally unused
                 newWidgets[selectedIndex] = rest;
             } else {
                 newWidgets[selectedIndex] = { ...currentWidget, excludeFromAutoAlign: true };

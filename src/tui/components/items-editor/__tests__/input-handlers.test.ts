@@ -646,14 +646,14 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.metadata?.absolute).toBe('true');
     });
 
-    it('uses h to toggle reset timer hour format in timestamp mode', () => {
+    it('uses f to toggle reset timer hour format in timestamp mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'reset-timer', metadata: { absolute: 'true' } }
         ];
         const onUpdate = vi.fn();
 
         handleNormalInputMode({
-            input: 'h',
+            input: 'f',
             key: {},
             widgets,
             selectedIndex: 0,

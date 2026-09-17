@@ -47,6 +47,13 @@
 
 ## 🆕 Recent Updates
 
+### Unreleased - Terminal width probing no longer spawns 100+ processes per render
+
+- **⚡ Zero-subprocess width detection** - On Linux the terminal width is now read from `/proc` and `TIOCGWINSZ` instead of shelling out. A render went from **122 spawned processes to 1** (`node` itself) and from **4.37 CPU-seconds to 1.08** on the benchmark payload. macOS/BSD keep the portable `ps`/`stty`/`tput` walk, now invoked without a `/bin/sh` wrapper.
+- **🎯 Correct width, not just faster** - The old `tput cols` fallback reported its no-TTY default of 80 columns on terminals that were actually 209 wide. The new probe finds the real pty and reports the true width.
+- **♻️ The "no TTY" case is cached** - Claude Code spawns the status line without a TTY, so the probe returned `null`; because callers read it as `context.terminalWidth ?? getTerminalWidth()`, that `null` re-ran the whole ancestor walk **once per configured line, on every render**. That `null` result is now memoized in-process for the render, and persisted per-session via `~/.cache/ccstatusline/terminal-width.json` so later renders in the same session skip the walk entirely. A *discovered* width is deliberately never persisted across processes (only kept in-process for that one render), so a terminal resize — or resuming the same session in a differently-sized terminal — is always reflected on the next render rather than delayed by a stale cross-process cache entry.
+- **⏱️ `terminalWidthCacheTtlSeconds`** - New setting, default `5`, range 0–300. Controls how long a cached "no TTY" result is trusted before re-probing, in case a session moves from a non-interactive context into one with a real terminal. Set to `0` to always re-probe. (Note: unlike `gitCacheTtlSeconds`, where `0` means "never expire", `0` here disables the cache.)
+
 ### v2.2.28 - v2.2.29 - Service health, flexible formatting, and resilient rendering
 
 - **🩺 Claude service health** - Added a `Claude Status` widget with live severity, a cached 48-hour incident-history strip, stale-data fallback, and graceful `?` output when status data is unavailable.
@@ -318,15 +325,6 @@ bunx -y ccstatusline@latest
 
 Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
 
-### Build from source (for custom/forked versions):
-
-```bash
-git clone git@github.com:godlockin/ccstatusline.git
-cd ccstatusline
-./install.sh
-```
-
-`install.sh` builds the project with Bun and automatically wires the local binary into `~/.claude/settings.json`. Restart Claude Code after running it.
 <br />
 <details>
 <summary><b>Configure ccstatusline</b></summary>
@@ -440,6 +438,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [crispy-recall](https://github.com/TheSylvester/crispy-recall) - Searchable memory for your Claude Code and Codex sessions. Local, fast, no daemon.
 - [statuslin.es](https://statuslin.es) - Community gallery of Claude Code status lines with live, sandbox-rendered previews.
 - [claude-carbon](https://github.com/gwittebolle/claude-carbon) - Live CO2 estimate for your Claude Code sessions, next to the cost. Ships a `--segment` mode built to embed as a Custom Command widget.
+- [claudenews](https://github.com/bhpark1013/claudenews) - Developer news in your status line while the agent works: Hacker News, GitHub Trending, and per-language sources, with optional translation and short summaries. Ships a `--segment` mode built to embed as a Custom Command widget.
 
 ## 🙏 Acknowledgments
 

@@ -50,7 +50,7 @@ function renderLine(
     const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
     const preRenderedWidgets = preRenderedLines[0] ?? [];
 
-    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths[0] ?? []);
+    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
 }
 
 describe('renderer flex width behavior', () => {
@@ -293,7 +293,7 @@ describe('flex-separator widget', () => {
             settings,
             context,
             preRenderedWidgets,
-            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? []
+            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
         );
         const plainLine = stripSgrCodes(line);
 
@@ -324,7 +324,7 @@ describe('flex-separator widget', () => {
             settings,
             context,
             preRenderedWidgets,
-            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)[0] ?? []
+            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
         );
         const plainLine = stripSgrCodes(line);
 
@@ -417,7 +417,7 @@ describe('flex-separator widget', () => {
                 globalSeparatorIndex: advanceGlobalSeparatorIndex(0, firstLineWidgets, firstPreRenderedWidgets)
             },
             preRenderedLines[1] ?? [],
-            preCalculatedMaxWidths[1] ?? []
+            preCalculatedMaxWidths
         );
         const plainSecondLine = stripSgrCodes(secondLine);
 
@@ -455,7 +455,7 @@ describe('flex-separator widget', () => {
                 globalSeparatorIndex: advanceGlobalSeparatorIndex(0, firstLineWidgets, firstPreRenderedWidgets)
             },
             preRenderedLines[1] ?? [],
-            preCalculatedMaxWidths[1] ?? []
+            preCalculatedMaxWidths
         );
         const plainSecondLine = stripSgrCodes(secondLine);
 
@@ -495,7 +495,7 @@ describe('flex-separator widget', () => {
             settings,
             context,
             firstPreRenderedWidgets,
-            preCalculatedMaxWidths[0] ?? []
+            preCalculatedMaxWidths
         );
         const nextStartCapIndex = countPowerlineStartCapSlots(firstLineWidgets, firstPreRenderedWidgets);
         const secondLine = renderStatusLine(
@@ -507,7 +507,7 @@ describe('flex-separator widget', () => {
                 globalPowerlineStartCapIndex: nextStartCapIndex
             },
             secondPreRenderedWidgets,
-            preCalculatedMaxWidths[1] ?? []
+            preCalculatedMaxWidths
         );
         const firstPlainLine = stripSgrCodes(firstLine);
         const secondPlainLine = stripSgrCodes(secondLine);
@@ -618,7 +618,7 @@ describe('flex-separator widget', () => {
         };
         const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
 
-        expect(calculateMaxWidthsFromPreRendered(preRenderedLines, settings)).toEqual([[6, 7]]);
+        expect(calculateMaxWidthsFromPreRendered(preRenderedLines, settings)).toEqual([6, 7]);
     });
 
     it('still works in non-powerline mode (no regression)', () => {
