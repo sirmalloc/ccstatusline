@@ -2,6 +2,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -13,6 +14,7 @@ import {
     getSpeedWidgetDescription,
     getSpeedWidgetDisplayName,
     getSpeedWidgetEditorDisplay,
+    getSpeedWidgetHideableStates,
     renderSpeedWidgetEditor,
     renderSpeedWidgetValue
 } from './shared/speed-widget';
@@ -27,12 +29,15 @@ export class OutputSpeedWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
-        return renderSpeedWidgetValue('output', item, context);
+        return renderSpeedWidgetValue('output', item, context, settings);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return getSpeedWidgetCustomKeybinds();
+    }
+
+    getHideableStates(): HideableState[] {
+        return getSpeedWidgetHideableStates();
     }
 
     renderEditor(props: WidgetEditorProps) {
@@ -41,4 +46,5 @@ export class OutputSpeedWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

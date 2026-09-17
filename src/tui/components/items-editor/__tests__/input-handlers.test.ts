@@ -5,8 +5,17 @@ import {
     vi
 } from 'vitest';
 
-import type { WidgetItem } from '../../../../types/Widget';
+import type {
+    CustomKeybind,
+    Widget,
+    WidgetItem
+} from '../../../../types/Widget';
+import { getNumberFormatKeybind } from '../../../../utils/number-format';
 import type { WidgetCatalogEntry } from '../../../../utils/widgets';
+import {
+    EDIT_HIDE_STATES_ACTION,
+    getHideKeybind
+} from '../../../../widgets/shared/hideable';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -777,6 +786,40 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.metadata?.metric).toBe('auto');
     });
 
+    it('opens the shared hide-states editor for the injected hide keybind', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setCustomEditorWidget = vi.fn();
+
+        handleNormalInputMode({
+            input: 'h',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => [
+                ...(widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : []),
+                getHideKeybind()
+            ],
+            setCustomEditorWidget
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+        const customEditorState = setCustomEditorWidget.mock.calls[0]?.[0] as
+            | { action?: string; widget?: WidgetItem }
+            | undefined;
+        expect(customEditorState?.action).toBe(EDIT_HIDE_STATES_ACTION);
+        expect(customEditorState?.widget?.type).toBe('git-branch');
+    });
+
     it('opens custom editor for skills list limit action', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'skills', metadata: { mode: 'list' } }
@@ -1001,6 +1044,49 @@ describe('items-editor input handlers', () => {
 
             expect(onUpdate).not.toHaveBeenCalled();
             expect(setSelectedIndex).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('precision keybind', () => {
+        // The items editor injects this bind for numeric widgets, so the handler
+        // applies it itself rather than delegating to handleEditorAction.
+        const injectPrecisionKeybind = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
+            const keybinds = widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [];
+            return widgetImpl.supportsNumberFormat?.() ? [...keybinds, getNumberFormatKeybind()] : keybinds;
+        };
+
+        const pressPrecision = (widgets: WidgetItem[], onUpdate: (widgets: WidgetItem[]) => void) => {
+            handleNormalInputMode({
+                input: '.',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: injectPrecisionKeybind,
+                setCustomEditorWidget: vi.fn()
+            });
+        };
+
+        it('cycles the number style of a numeric widget that has no keybinds of its own', () => {
+            const onUpdate = vi.fn();
+            pressPrecision([{ id: '1', type: 'tokens-input' }], onUpdate);
+
+            expect(onUpdate).toHaveBeenCalledWith([
+                { id: '1', type: 'tokens-input', numberFormat: { style: 'compact' } }
+            ]);
+        });
+
+        it('leaves a non-numeric widget untouched', () => {
+            const onUpdate = vi.fn();
+            pressPrecision([{ id: '1', type: 'custom-text' }], onUpdate);
+
+            expect(onUpdate).not.toHaveBeenCalled();
         });
     });
 });

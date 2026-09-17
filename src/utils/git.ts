@@ -38,6 +38,11 @@ interface PersistentGitCache {
 
 const DEFAULT_GIT_CACHE_TTL_SECONDS = 5;
 const GIT_CACHE_SCHEMA_VERSION = 1 as const;
+
+// Matches the timeout used by every other external CLI call site: a git
+// invocation that blocks (slow network filesystem, hung credential helper)
+// must not freeze the statusline process - the error path below caches null
+// and the widget renders empty instead.
 const GIT_COMMAND_TIMEOUT_MS = 5_000;
 
 // In-process cache keeps cwd in the key; the persistent cache stores cwd once
@@ -210,14 +215,25 @@ function readPersistentCache(cachePath: string): PersistentGitCache | null {
 }
 
 function writePersistentCache(cachePath: string, cache: PersistentGitCache): void {
+    // Stable temp name: a held handle (e.g. a Windows virus scanner or sync
+    // client) can make the rename and the cleanup unlink both fail with
+    // EPERM, so a unique name would leak one file per write. Reusing one
+    // name bounds that to a single orphan per repo that the next write
+    // truncates. Costs: while the handle is held, writes for that repo fail
+    // (just extra cache misses), and a concurrent writer can tear the
+    // renamed-over cache file - readPersistentCache treats malformed JSON
+    // as a miss either way.
+    const tempPath = `${cachePath}.tmp`;
     try {
-        const cacheDir = path.dirname(cachePath);
-        fs.mkdirSync(cacheDir, { recursive: true });
-        const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
         fs.writeFileSync(tempPath, JSON.stringify(cache), 'utf-8');
         fs.renameSync(tempPath, cachePath);
     } catch {
-        // Best-effort cache; statusline rendering should never fail because of it.
+        // Best-effort cache; statusline rendering should never fail because
+        // of it, so unlike config.ts:writeSettingsJson we do not rethrow.
+        try {
+            fs.unlinkSync(tempPath);
+        } catch { /* best-effort cleanup; ignore */ }
     }
 }
 

@@ -1,11 +1,12 @@
 import * as fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
     afterEach,
     beforeEach,
     describe,
     expect,
-    it,
-    vi
+    it
 } from 'vitest';
 
 import type {
@@ -15,12 +16,16 @@ import type {
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import { SessionNameWidget } from '../SessionName';
 
-let mockReadFileSync: { mockImplementation: (fn: () => string | never) => void };
+let tempDir: string;
 
 function render(transcriptPath: string | undefined, fileContent: string | null, rawValue = false, isPreview = false) {
     const widget = new SessionNameWidget();
+    const resolvedTranscriptPath = transcriptPath ? path.join(tempDir, 'session.jsonl') : undefined;
+    if (resolvedTranscriptPath && fileContent !== null) {
+        fs.writeFileSync(resolvedTranscriptPath, fileContent);
+    }
     const context: RenderContext = {
-        data: transcriptPath ? { transcript_path: transcriptPath } : undefined,
+        data: resolvedTranscriptPath ? { transcript_path: resolvedTranscriptPath } : undefined,
         isPreview
     };
     const item: WidgetItem = {
@@ -29,25 +34,16 @@ function render(transcriptPath: string | undefined, fileContent: string | null, 
         rawValue
     };
 
-    if (fileContent !== null) {
-        mockReadFileSync.mockImplementation(() => fileContent);
-    } else {
-        mockReadFileSync.mockImplementation(() => {
-            throw new Error('File not found');
-        });
-    }
-
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
 describe('SessionNameWidget', () => {
     beforeEach(() => {
-        vi.restoreAllMocks();
-        mockReadFileSync = vi.spyOn(fs, 'readFileSync');
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-session-name-'));
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        fs.rmSync(tempDir, { recursive: true, force: true });
     });
 
     it('should have session category', () => {
@@ -99,9 +95,53 @@ describe('SessionNameWidget', () => {
         expect(result).toBe('Session: New Name');
     });
 
+    it('uses a session name precomputed by the shared transcript analysis', () => {
+        const widget = new SessionNameWidget();
+        const result = widget.render(
+            { id: 'session-name', type: 'session-name' },
+            {
+                data: { transcript_path: path.join(tempDir, 'missing.jsonl') },
+                transcriptSessionName: 'Precomputed Session'
+            },
+            DEFAULT_SETTINGS
+        );
+
+        expect(result).toBe('Session: Precomputed Session');
+    });
+
     it('should skip malformed JSON lines', () => {
         const content = 'not valid json\n{"type":"custom-title","customTitle":"Valid Title"}';
         const result = render('/some/path/session.jsonl', content);
         expect(result).toBe('Session: Valid Title');
+    });
+
+    it('reads the latest title from a transcript larger than Node maximum string length', () => {
+        const transcriptPath = path.join(tempDir, 'huge-session.jsonl');
+        const handle = fs.openSync(transcriptPath, 'w');
+        try {
+            fs.writeSync(
+                handle,
+                '\n{"type":"custom-title","customTitle":"Huge Session"}',
+                undefined,
+                'utf8'
+            );
+            fs.writeSync(
+                handle,
+                '\n{"type":"custom-title","customTitle":"Latest Huge Session"}',
+                0x1fffffe8 + 1024,
+                'utf8'
+            );
+        } finally {
+            fs.closeSync(handle);
+        }
+
+        const widget = new SessionNameWidget();
+        const result = widget.render(
+            { id: 'session-name', type: 'session-name' },
+            { data: { transcript_path: transcriptPath } },
+            DEFAULT_SETTINGS
+        );
+
+        expect(result).toBe('Session: Latest Huge Session');
     });
 });

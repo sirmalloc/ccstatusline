@@ -2,10 +2,12 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 
 import {
     formatTokensWithPercentage,
@@ -13,12 +15,13 @@ import {
     getCacheWritePercentage
 } from './shared/cache-metrics';
 import {
+    CACHE_EMPTY_HIDEABLE_STATE,
     getCacheKeybinds,
     getCacheModifierText,
     handleCacheOptionsAction,
-    isCacheHideWhenEmptyEnabled,
     isCacheSessionScope
 } from './shared/cache-scope';
+import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class CacheWriteWidget implements Widget {
@@ -30,16 +33,23 @@ export class CacheWriteWidget implements Widget {
         return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
 
+    getHideableStates(): HideableState[] {
+        return [CACHE_EMPTY_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         return handleCacheOptionsAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const tokenFormat = resolveNumberFormat('token', item, settings);
+        const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Write: ', '3k (16.0%)');
+            const value = formatTokensWithPercentage(3000, 16, tokenFormat, percentFormat);
+            return formatRawOrLabeledValue(item, 'Cache Write: ', value);
         }
 
-        const hideWhenEmpty = isCacheHideWhenEmptyEnabled(item);
+        const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
             return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Write: ', 'n/a');
@@ -49,7 +59,7 @@ export class CacheWriteWidget implements Widget {
             return null;
         }
 
-        const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens));
+        const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens), tokenFormat, percentFormat);
         return formatRawOrLabeledValue(item, 'Cache Write: ', value);
     }
 
@@ -59,4 +69,5 @@ export class CacheWriteWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

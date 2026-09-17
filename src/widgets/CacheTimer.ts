@@ -4,18 +4,17 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 
+import { CACHE_EMPTY_HIDEABLE_STATE } from './shared/cache-scope';
 import { makeModifierText } from './shared/editor-display';
-import {
-    isMetadataFlagEnabled,
-    removeMetadataKeys,
-    toggleMetadataFlag
-} from './shared/metadata';
+import { isHidden } from './shared/hideable';
+import { removeMetadataKeys } from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getSlotSymbol,
@@ -23,9 +22,6 @@ import {
     renderSymbolSlotsEditor,
     type SymbolSlot
 } from './shared/symbol-override';
-
-const HIDE_WHEN_EMPTY_KEY = 'hideWhenEmpty';
-const TOGGLE_HIDE_ACTION = 'toggle-hide';
 
 // Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
 // also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
@@ -75,8 +71,7 @@ function hasCacheActivity(entry: TranscriptEntry): boolean {
 // A single transcript record can exceed the initial tail read (pasted prompts
 // and tool results reach hundreds of KiB), leaving only an unparseable
 // fragment in view, so the read doubles until the state resolves or the whole
-// file has been scanned — the same worst case as the full-file transcript
-// reads the token widgets already do every render.
+// file has been scanned.
 const INITIAL_TAIL_BYTES = 32768;
 
 /**
@@ -250,21 +245,17 @@ export class CacheTimerWidget implements Widget {
         if (ttlSeconds !== DEFAULT_TTL_SECONDS) {
             modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
         }
-        if (isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY)) {
-            modifiers.push('hide when empty');
-        }
-
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
         };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === TOGGLE_HIDE_ACTION) {
-            return toggleMetadataFlag(item, HIDE_WHEN_EMPTY_KEY);
-        }
+    getHideableStates(): HideableState[] {
+        return [CACHE_EMPTY_HIDEABLE_STATE];
+    }
 
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_TTL_ACTION) {
             return cycleTtl(item);
         }
@@ -273,7 +264,7 @@ export class CacheTimerWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideWhenEmpty = isMetadataFlagEnabled(item, HIDE_WHEN_EMPTY_KEY);
+        const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
             return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
@@ -305,7 +296,6 @@ export class CacheTimerWidget implements Widget {
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
-            { key: 'h', label: '(h)ide when empty', action: TOGGLE_HIDE_ACTION },
             getSymbolKeybind()
         ];
     }

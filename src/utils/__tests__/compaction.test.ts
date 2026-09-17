@@ -9,11 +9,29 @@ import {
     it
 } from 'vitest';
 
+import type { CompactionData } from '../../types/RenderContext';
 import {
     ZERO_COMPACTION_STATS,
-    computeCompactionStats,
-    getCompactionStats
+    accumulateCompactionStats,
+    createCompactionStats
 } from '../compaction';
+import { parseJsonlLine } from '../jsonl-lines';
+import { getTranscriptAnalysis } from '../jsonl-metrics';
+
+/** Folds raw records through the same accumulator the transcript scan uses. */
+function computeCompactionStats(lines: readonly string[]): CompactionData {
+    const stats = createCompactionStats();
+    for (const line of lines) {
+        accumulateCompactionStats(stats, parseJsonlLine(line));
+    }
+
+    return stats;
+}
+
+async function compactionStatsFor(transcriptPath: string): Promise<CompactionData | null> {
+    const analysis = await getTranscriptAnalysis(transcriptPath, { includeCompactionStats: true });
+    return analysis.compactionData;
+}
 
 describe('computeCompactionStats', () => {
     it('returns zeroed stats for no compaction markers', () => {
@@ -122,7 +140,7 @@ describe('computeCompactionStats', () => {
     });
 });
 
-describe('getCompactionStats', () => {
+describe('compaction stats over a transcript', () => {
     let dir: string;
 
     beforeEach(() => {
@@ -134,7 +152,7 @@ describe('getCompactionStats', () => {
     });
 
     it('returns zeroed stats when the transcript file does not exist', async () => {
-        await expect(getCompactionStats(path.join(dir, 'missing.jsonl'))).resolves.toEqual(ZERO_COMPACTION_STATS);
+        await expect(compactionStatsFor(path.join(dir, 'missing.jsonl'))).resolves.toEqual(ZERO_COMPACTION_STATS);
     });
 
     it('computes stats from a real-shaped transcript', async () => {
@@ -146,7 +164,7 @@ describe('getCompactionStats', () => {
             JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 912661, postTokens: 30026 }, version: '2.1.161' })
         ].join('\n') + '\n';
         fs.writeFileSync(file, content);
-        await expect(getCompactionStats(file)).resolves.toEqual({
+        await expect(compactionStatsFor(file)).resolves.toEqual({
             count: 2,
             byTrigger: { auto: 1, manual: 1, unknown: 0 },
             tokensReclaimed: (837327 - 25443) + (912661 - 30026)
@@ -154,6 +172,6 @@ describe('getCompactionStats', () => {
     });
 
     it('returns zeroed stats when the transcript path is not a readable file', async () => {
-        await expect(getCompactionStats(dir)).resolves.toEqual(ZERO_COMPACTION_STATS);
+        await expect(compactionStatsFor(dir)).resolves.toEqual(ZERO_COMPACTION_STATS);
     });
 });

@@ -112,6 +112,26 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
+    it('rounds the progress bar fill to the nearest cell', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'weekly-reset',
+            type: 'weekly-reset-timer',
+            metadata: { display: 'progress-short' }
+        };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 604800000,
+            elapsedMs: 211680000,
+            remainingMs: 393120000,
+            elapsedPercent: 35,
+            remainingPercent: 65
+        });
+
+        // 35% of 16 cells is 5.6, past the half-cell mark, so the 6th cell fills.
+        expect(render(widget, item, { usageData: {} })).toBe('Weekly Reset [██████░░░░░░░░░░] 35.0%');
+    });
+
     it('returns usage error when no weekly reset data is available', () => {
         const widget = new WeeklyResetTimerWidget();
 
