@@ -4,11 +4,16 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 import {
     formatUsageDuration,
     formatUsageResetAt,
@@ -16,6 +21,7 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import { isHidden } from './shared/hideable';
 import {
     LOCALE_EDITOR_ACTION,
     renderUsageLocaleEditor
@@ -27,6 +33,7 @@ import {
     renderUsageTimezoneEditor
 } from './shared/timezone-editor';
 import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -63,6 +70,10 @@ export class BlockResetTimerWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [USAGE_NO_DATA_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === 'toggle-progress') {
             return cycleUsageDisplayMode(item, ['compact', 'absolute'], true);
@@ -92,6 +103,7 @@ export class BlockResetTimerWidget implements Widget {
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
         const dateMode = isUsageDateMode(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 90.0 : 10.0;
@@ -99,13 +111,13 @@ export class BlockResetTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(previewPercent);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    ? `${slider} ${formatPercent(previewPercent, format)}`
                     : slider;
                 return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
             }
@@ -128,6 +140,10 @@ export class BlockResetTimerWidget implements Widget {
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {
+            if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {
+                return null;
+            }
+
             if (usageData.error) {
                 return getUsageErrorMessage(usageData.error);
             }
@@ -139,15 +155,14 @@ export class BlockResetTimerWidget implements Widget {
             const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
-            const percentage = percent.toFixed(1);
-            return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${percentage}%`);
+            return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const slider = makeSliderBar(percent);
             const sliderDisplay = displayMode === 'slider'
-                ? `${slider} ${percent.toFixed(1)}%`
+                ? `${slider} ${formatPercent(percent, format)}`
                 : slider;
             return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
         }
@@ -188,4 +203,5 @@ export class BlockResetTimerWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

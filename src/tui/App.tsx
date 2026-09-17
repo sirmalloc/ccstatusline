@@ -305,7 +305,6 @@ function clearInstallationMetadata(settings: Settings | null): Settings | null {
     }
 
     const { installation, ...next } = settings;
-    void installation;
     return next;
 }
 

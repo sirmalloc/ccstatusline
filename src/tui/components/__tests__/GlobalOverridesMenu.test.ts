@@ -1,6 +1,7 @@
 import { render } from 'ink';
 import { PassThrough } from 'node:stream';
 import React from 'react';
+import stripAnsi from 'strip-ansi';
 import {
     afterEach,
     describe,
@@ -95,6 +96,49 @@ describe('GlobalOverridesMenu', () => {
             await flushInk();
             expect(stdout.getOutput()).toContain('Minimalist Mode:');
             expect(stdout.getOutput()).toContain('✗ Disabled');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('right-aligns number kind labels on their colons', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+
+        const instance = render(
+            React.createElement(GlobalOverridesMenu, {
+                settings: DEFAULT_SETTINGS,
+                onUpdate: vi.fn(),
+                onBack: vi.fn()
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdout.clearOutput();
+            stdin.write('n');
+            await flushInk();
+
+            const numberRows = stripAnsi(stdout.getOutput())
+                .split('\n')
+                .filter(line => /(?:token|speed|percent|memory|cost): precise/.test(line));
+            const colonColumns = new Set(numberRows.map(line => line.indexOf(':')));
+
+            expect(numberRows).toHaveLength(5);
+            expect(colonColumns.size).toBe(1);
         } finally {
             instance.unmount();
             instance.cleanup();

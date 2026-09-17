@@ -8,6 +8,7 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../types/Settings';
+import { getHideKeybind } from '../../widgets/shared/hideable';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
@@ -148,6 +149,51 @@ describe('legacy widget type aliases', () => {
         const types = new Set(catalog.map(entry => entry.type));
         expect(types.has('git-review')).toBe(true);
         expect(types.has('git-pr')).toBe(false);
+    });
+});
+
+describe('hideable state keybind reservation', () => {
+    // Widgets vary their keybinds by display mode, so an item-free call sees
+    // only one branch. These cover the metadata the usage and timer widgets
+    // branch on, so a bind offered in just one mode still gets caught.
+    const KEYBIND_MODE_PROBES: (Record<string, string> | undefined)[] = [
+        undefined,
+        {},
+        { absolute: 'true' },
+        { display: 'progress' },
+        { display: 'progress-short' },
+        { display: 'slider' },
+        { display: 'slider-only' },
+        { hours: 'true' },
+        { absolute: 'true', hours: 'true' }
+    ];
+
+    it('widgets declaring hideable states leave the shared hide key free in every mode', () => {
+        const reservedKey = getHideKeybind().key;
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+        const runtimeTypes = getAllWidgetTypes(settings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            if ((widget?.getHideableStates?.().length ?? 0) === 0) {
+                continue;
+            }
+
+            for (const metadata of KEYBIND_MODE_PROBES) {
+                // The items editor appends the shared hide keybind last and
+                // keybind matching takes the first hit, so a widget-level
+                // binding would shadow the hide editor
+                const item = metadata === undefined ? undefined : { id: '1', type, metadata };
+                const keys = (widget?.getCustomKeybinds?.(item) ?? []).map(keybind => keybind.key);
+                expect(`${type}/${JSON.stringify(metadata)} binds ${keys.includes(reservedKey) ? reservedKey : 'nothing reserved'}`)
+                    .toBe(`${type}/${JSON.stringify(metadata)} binds nothing reserved`);
+            }
+        }
     });
 });
 

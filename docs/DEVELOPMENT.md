@@ -54,6 +54,7 @@ bun run docs
 - `~/.cache/ccstatusline/git-cache/git-*.json` - persistent git widget command cache
 - `~/.cache/ccstatusline/git-review/git-review-*.json` - cached Git PR/MR lookup results
 - `~/.cache/ccstatusline/usage.json` and `~/.cache/ccstatusline/usage.lock` - usage API data cache and fetch backoff lock
+- `~/.cache/ccstatusline/claude-status.json` and `~/.cache/ccstatusline/claude-status.lock` - Claude service-status cache and failed-fetch backoff lock
 
 If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
 
@@ -67,9 +68,10 @@ Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignore
 
 ## Widget Data Sources
 
-- **Transcript-backed widgets** share a bounded in-process cache of up to eight transcript files, keyed by file identity, size, and modification time. This lets token, duration, speed, compaction, and thinking-effort calculations reuse one read per unchanged transcript; full multi-transcript block scans opt out so one-off reads are not retained.
+- **Transcript-backed widgets** stream the active JSONL transcript once per render through `getTranscriptAnalysis()`, collecting token, duration, speed, compaction, thinking-effort, and session-name data in one pass without materializing the whole file. Referenced subagent transcripts are streamed separately only when speed metrics include subagents.
 - **Block Timer** caches a detected block until its five-hour window expires. When a full scan finds no active block, that empty result is cached for one minute so subsequent repaints do not repeatedly walk and read the entire transcript history.
 - **Cache Timer** reads the transcript tail directly on every render. It expands the read backward when a trailing JSONL record exceeds the initial window, ignores sidechain and synthetic API-error rows, and anchors the countdown only on assistant requests with cache activity. It does not create a separate cache file.
+- **Claude Status** reads `status.claude.com` through HTTPS, honors `HTTPS_PROXY`, and caches successful responses for five minutes. It requests incident data only when at least one configured Claude Status widget enables history, applies a 30-second backoff after failed fetches, and serves a usable stale cache when available.
 - **Local Git widgets** cache command results in memory and under `~/.cache/ccstatusline/git-cache`. Persistent writes use one stable `.tmp` path per cache file and attempt best-effort cleanup on failure, bounding orphaned files when Windows virus scanners or sync clients temporarily hold a handle.
 - **Git PR and Git CI Status** render from the versioned disk cache under `~/.cache/ccstatusline/git-review`. Missing or stale entries are refreshed in a detached helper so network-bound `gh` or `glab` calls do not block rendering. Git CI Status adds GitHub's `statusCheckRollup`; if the authenticated `gh` token cannot read checks, the refresh retries with PR metadata only so Git PR still works.
 - **Usage widgets** merge Claude Code's stdin `rate_limits` with `/api/oauth/usage` only for fields required by the active widgets. Session and aggregate weekly fields prefer the flat API buckets and fall back to `limits[]`; per-model weekly fields prefer `weekly_scoped` entries. `WEEKLY_MODEL_USAGE_BUCKETS` in `src/utils/usage-types.ts` is the shared registry for Sonnet, Opus, and Fable widget wiring, field requirements, reset fields, and scoped-limit matching.

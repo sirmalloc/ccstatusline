@@ -7,6 +7,7 @@ import type { RenderContext } from './types/RenderContext';
 import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
+import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
 import { updateColorMap } from './utils/colors';
 import { ZERO_COMPACTION_STATS } from './utils/compaction';
 import {
@@ -131,9 +132,10 @@ async function renderMultipleLines(data: StatusJSON) {
             includeSessionName: hasSessionNameWidget
         })
         : Promise.resolve(null);
-    const [transcriptAnalysis, usageData] = await Promise.all([
+    const [transcriptAnalysis, usageData, claudeStatusData] = await Promise.all([
         transcriptAnalysisPromise,
-        prefetchUsageDataIfNeeded(lines, data)
+        prefetchUsageDataIfNeeded(lines, data),
+        prefetchClaudeStatusIfNeeded(lines)
     ]);
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
@@ -157,6 +159,7 @@ async function renderMultipleLines(data: StatusJSON) {
         speedMetrics,
         windowedSpeedMetrics,
         usageData,
+        claudeStatusData,
         sessionDuration,
         transcriptSessionName: hasSessionNameWidget
             ? (transcriptAnalysis?.sessionName ?? null)
@@ -244,7 +247,6 @@ async function renderMultipleLines(data: StatusJSON) {
         if (newRemaining <= 0) {
             // Remove the entire updatemessage block
             const { updatemessage, ...newSettings } = settings;
-            void updatemessage;
             await saveSettings(newSettings);
         } else {
             // Update the remaining count
@@ -346,7 +348,6 @@ async function main() {
         const settings = await loadSettings();
         if (settings.updatemessage) {
             const { updatemessage, ...newSettings } = settings;
-            void updatemessage;
             await saveSettings(newSettings);
         }
         runTUI();

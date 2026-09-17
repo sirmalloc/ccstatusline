@@ -106,6 +106,10 @@ export class CustomCommandWidget implements Widget {
         return <CustomCommandEditor {...props} />;
     }
 
+    preservesRenderedColors(item: WidgetItem): boolean {
+        return item.preserveColors === true;
+    }
+
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean {
         // Only supports colors if preserveColors is false
@@ -160,7 +164,6 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                     onComplete({ ...widget, maxWidth: width });
                 } else {
                     const { maxWidth, ...rest } = widget;
-                    void maxWidth; // Intentionally unused
                     onComplete(rest);
                 }
             } else if (key.escape) {
@@ -177,7 +180,6 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                     onComplete({ ...widget, timeout });
                 } else {
                     const { timeout, ...rest } = widget;
-                    void timeout; // Intentionally unused
                     onComplete(rest);
                 }
             } else if (key.escape) {

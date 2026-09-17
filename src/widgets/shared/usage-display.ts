@@ -1,5 +1,6 @@
 import type {
     CustomKeybind,
+    HideableState,
     WidgetItem
 } from '../../types/Widget';
 import {
@@ -16,6 +17,10 @@ import {
 
 export type UsageDisplayMode = 'time' | 'progress' | 'progress-short' | 'slider' | 'slider-only';
 
+// Shared by the usage percentage widgets and the reset timers, which render the
+// same error placeholders
+export const USAGE_NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when usage data is unavailable' };
+
 const SLIDER_WIDTH = 10;
 
 const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
@@ -23,7 +28,10 @@ const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill',
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
 const CURSOR_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' };
 const DATE_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)imestamp', action: 'toggle-date' };
-const HOUR_FORMAT_TOGGLE_KEYBIND: CustomKeybind = { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' };
+// 'h' opens the shared hide checklist, and the items editor appends that bind
+// last while matching takes the first hit, so a widget-level 'h' would make the
+// checklist unreachable in the modes that offer this toggle.
+const HOUR_FORMAT_TOGGLE_KEYBIND: CustomKeybind = { key: 'f', label: '12/24 (f)ormat', action: 'toggle-hour-format' };
 const WEEKDAY_TOGGLE_KEYBIND: CustomKeybind = { key: 'w', label: '(w)eekday', action: 'toggle-weekday' };
 const TIMEZONE_KEYBIND: CustomKeybind = { key: 'z', label: 'time(z)one', action: 'edit-timezone' };
 const LOCALE_KEYBIND: CustomKeybind = { key: 'l', label: '(l)ocale', action: 'edit-locale' };

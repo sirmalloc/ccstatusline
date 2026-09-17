@@ -2,15 +2,21 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 import {
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
+import {
     formatUsageDuration,
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
@@ -27,6 +33,8 @@ import {
     toggleUsageCompact,
     toggleUsageInverted
 } from './shared/usage-display';
+
+const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no active block' };
 
 export class BlockTimerWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -61,6 +69,7 @@ export class BlockTimerWidget implements Widget {
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const compact = isUsageCompact(item);
+        const format = resolveNumberFormat('percent', item, settings);
 
         if (context.isPreview) {
             const previewPercent = inverted ? 26.1 : 73.9;
@@ -68,13 +77,13 @@ export class BlockTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${previewPercent.toFixed(1)}%`);
+                return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(previewPercent);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${slider} ${previewPercent.toFixed(1)}%`
+                    ? `${slider} ${formatPercent(previewPercent, format)}`
                     : slider;
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }
@@ -86,16 +95,21 @@ export class BlockTimerWidget implements Widget {
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {
+            if (isHidden(item, NO_DATA_HIDEABLE_STATE.key)) {
+                return null;
+            }
+
+            const emptyPercent = formatPercent(0, format);
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const emptyBar = '░'.repeat(barWidth);
-                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] 0.0%`);
+                return formatRawOrLabeledValue(item, 'Block ', `[${emptyBar}] ${emptyPercent}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const emptySlider = makeSliderBar(0);
                 const sliderDisplay = displayMode === 'slider'
-                    ? `${emptySlider} 0.0%`
+                    ? `${emptySlider} ${emptyPercent}`
                     : emptySlider;
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }
@@ -107,15 +121,14 @@ export class BlockTimerWidget implements Widget {
             const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
-            const percentage = percent.toFixed(1);
-            return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${percentage}%`);
+            return formatRawOrLabeledValue(item, 'Block ', `[${progressBar}] ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const slider = makeSliderBar(percent);
             const sliderDisplay = displayMode === 'slider'
-                ? `${slider} ${percent.toFixed(1)}%`
+                ? `${slider} ${formatPercent(percent, format)}`
                 : slider;
             return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
         }
@@ -128,6 +141,11 @@ export class BlockTimerWidget implements Widget {
         return getUsageTimerCustomKeybinds(item);
     }
 
+    getHideableStates(): HideableState[] {
+        return [NO_DATA_HIDEABLE_STATE];
+    }
+
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }
