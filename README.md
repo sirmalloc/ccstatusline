@@ -47,12 +47,16 @@
 
 ## 🆕 Recent Updates
 
-### Unreleased - Terminal width probing no longer spawns 100+ processes per render
+### v2.2.29 - v2.2.30 - Faster rendering, command caching, and reliable usage
 
-- **⚡ Zero-subprocess width detection** - On Linux the terminal width is now read from `/proc` and `TIOCGWINSZ` instead of shelling out. A render went from **122 spawned processes to 1** (`node` itself) and from **4.37 CPU-seconds to 1.08** on the benchmark payload. macOS/BSD keep the portable `ps`/`stty`/`tput` walk, now invoked without a `/bin/sh` wrapper.
-- **🎯 Correct width, not just faster** - The old `tput cols` fallback reported its no-TTY default of 80 columns on terminals that were actually 209 wide. The new probe finds the real pty and reports the true width.
-- **♻️ The "no TTY" case is cached** - Claude Code spawns the status line without a TTY, so the probe returned `null`; because callers read it as `context.terminalWidth ?? getTerminalWidth()`, that `null` re-ran the whole ancestor walk **once per configured line, on every render**. That `null` result is now memoized in-process for the render, and persisted per-session via `~/.cache/ccstatusline/terminal-width.json` so later renders in the same session skip the walk entirely. A *discovered* width is deliberately never persisted across processes (only kept in-process for that one render), so a terminal resize — or resuming the same session in a differently-sized terminal — is always reflected on the next render rather than delayed by a stale cross-process cache entry.
-- **⏱️ `terminalWidthCacheTtlSeconds`** - New setting, default `5`, range 0–300. Controls how long a cached "no TTY" result is trusted before re-probing, in case a session moves from a non-interactive context into one with a real terminal. Set to `0` to always re-probe. (Note: unlike `gitCacheTtlSeconds`, where `0` means "never expire", `0` here disables the cache.)
+- **⚡ Faster terminal width detection** - Linux can probe the terminal directly without subprocesses, portable fallbacks skip shell wrappers, and configurable caching reuses failed width probes across renders while detected widths refresh on the next render.
+- **🔧 Custom command caching and timeouts** - Opt into output caching for up to 60 seconds from Configure Status Line, and enforce command timeouts even when descendants retain output pipes.
+- **🔣 More customizable Git/JJ symbols** - Press `g` to edit insertion/deletion signs, Git clean/dirty markers, and the JJ Revision prefix, including empty glyphs for compact layouts.
+- **🙈 Hide reset-timer placeholders** - Block Reset Timer and Weekly Reset Timer can hide loading and error output through `h`; use `f` for 12/24-hour format and `o` for weekly hours-only display.
+- **👤 Reliable usage account selection** - macOS usage lookup respects the active config profile's Keychain credentials, and access-token refreshes preserve cached usage when the refresh token is unchanged.
+- **📊 Unused model quotas show zero** - Weekly model usage widgets recognize an explicit 0% quota even before the API supplies a reset timestamp.
+- **↔️ Full-width layouts by default** - New configurations and settings without an explicit flex mode now use Full width always.
+- **⏱️ Bounded Git commands** - Cached Git commands have a five-second timeout so a stalled Git invocation cannot block the status line indefinitely.
 
 ### v2.2.28 - v2.2.29 - Service health, flexible formatting, and resilient rendering
 
@@ -138,6 +142,10 @@
 - **📉 Timer short bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now support compact short-bar progress displays.
 - **🔕 Quieter hook output** - Hook handling now suppresses no-op JSON output so non-status updates stay silent.
 
+<br />
+<details>
+<summary><b>Older updates (v2.2.12 and earlier)</b></summary>
+
 ### v2.2.9 - v2.2.12 - GitLab support, reset timers, context, compaction, and git widgets
 
 - **🦊 GitLab PR/MR support** - `Git Branch` and `Git PR/MR` now support GitHub, GitLab, and compatible self-hosted remotes, using `gh` or `glab` as appropriate.
@@ -157,10 +165,6 @@
 - **🏷️ Cleaner model display** - The Model widget strips trailing context suffixes like `(1M context)`; use `Context Window` when you want the total window size shown.
 - **🧹 Cleaner empty-widget separators** - Manual separators now collapse around widgets that render empty, avoiding dangling separators when hide-when-empty widgets disappear.
 - **🧱 More resilient Git helpers** - Git widgets handle missing or unusual git command output more defensively.
-
-<br />
-<details>
-<summary><b>Older updates (v2.2.8 and earlier)</b></summary>
 
 ### v2.2.8 - Git widgets, smarter picker search, and minimalist mode
 
