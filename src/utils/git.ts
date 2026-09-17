@@ -304,6 +304,12 @@ export function resolveGitCwd(context: RenderContext): string | undefined {
     return undefined;
 }
 
+// Matches the timeout used by every other external CLI call site: a git
+// invocation that blocks (slow network filesystem, hung credential helper)
+// must not freeze the statusline process - the error path below caches null
+// and the widget renders empty instead.
+const GIT_EXEC_TIMEOUT = 5_000;
+
 export function runGit(command: string, context: RenderContext): string | null {
     const args = command.trim().split(/\s+/).filter(Boolean);
     return runGitArgs(args, context, command);
@@ -342,6 +348,7 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+            timeout: GIT_EXEC_TIMEOUT,
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
