@@ -31,12 +31,12 @@ interface SpawnOptions {
     timeout?: number;
     maxBuffer?: number;
     input?: string;
-    stdio?: (string | number)[];
+    stdio?: string[];
 }
 
 const mockSpawnSync = spawnSync as unknown as {
-    mock: { calls: [string, SpawnOptions][] };
-    mockImplementation: (impl: (command: string, options: SpawnOptions) => SpawnSyncReturns<string>) => void;
+    mock: { calls: [string, string[], SpawnOptions][] };
+    mockImplementation: (impl: (command: string, args: string[], options: SpawnOptions) => SpawnSyncReturns<string>) => void;
 };
 
 /** One scripted command run: what it prints, and how it terminated. */
@@ -49,7 +49,6 @@ const CHILD_PID = 4242;
 const ORIGINAL_HOME = process.env.HOME;
 const ORIGINAL_USERPROFILE = process.env.USERPROFILE;
 const tempPaths: string[] = [];
-let platformDescriptor: PropertyDescriptor | undefined;
 let responses: CommandResponse[] = [];
 let fallbackResponse: CommandResponse = {};
 
@@ -83,7 +82,7 @@ function lastSpawnOptions(): SpawnOptions {
     const call = mockSpawnSync.mock.calls[mockSpawnSync.mock.calls.length - 1];
     if (!call)
         throw new Error('expected a spawn call');
-    return call[1];
+    return call[2];
 }
 
 function useTempHome(): string {
@@ -100,35 +99,6 @@ function useFixedCwd(): string {
     tempPaths.push(cwd);
     vi.spyOn(process, 'cwd').mockReturnValue(cwd);
     return cwd;
-}
-
-function useTempDir(): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-cmd-tmp-'));
-    tempPaths.push(dir);
-    vi.spyOn(os, 'tmpdir').mockReturnValue(dir);
-    return dir;
-}
-
-// process.kill must never run for real here: the tests feed it a pid that this
-// machine may well have assigned to something unrelated.
-function useKillSpy() {
-    return vi.spyOn(process, 'kill').mockImplementation(() => true);
-}
-
-/** Runs the rest of the test as if it were on the given platform. */
-function usePlatform(platform: NodeJS.Platform): void {
-    platformDescriptor ??= Object.getOwnPropertyDescriptor(process, 'platform');
-    Object.defineProperty(process, 'platform', {
-        value: platform,
-        configurable: true
-    });
-}
-
-function restorePlatform(): void {
-    if (platformDescriptor) {
-        Object.defineProperty(process, 'platform', platformDescriptor);
-        platformDescriptor = undefined;
-    }
 }
 
 function getCacheDir(home: string): string {
@@ -167,24 +137,18 @@ describe('runCustomCommand', () => {
         responses = [];
         fallbackResponse = {};
 
-        // Stand in for the command itself: write the scripted output to whichever
-        // stdout the caller handed over, then report how the process ended.
-        mockSpawnSync.mockImplementation((_command, options) => {
+        mockSpawnSync.mockImplementation(() => {
             const response = responses.shift() ?? fallbackResponse;
-            const target = options.stdio?.[1];
-
-            if (typeof target === 'number' && response.stdout !== undefined) {
-                fs.writeSync(target, response.stdout);
-            }
-
-            return spawnResult({ stdout: response.stdout ?? '', ...response.result });
+            return spawnResult({
+                stdout: JSON.stringify({ status: 'ok', stdout: (response.stdout ?? '').slice(0, 16_384).trim() }),
+                ...response.result
+            });
         });
     });
 
     afterEach(() => {
         clearCustomCommandCache();
         vi.restoreAllMocks();
-        restorePlatform();
         if (ORIGINAL_HOME === undefined) {
             delete process.env.HOME;
         } else {
@@ -262,14 +226,10 @@ describe('runCustomCommand', () => {
             const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
             useTempHome();
             useFixedCwd();
-            mockSpawnSync.mockImplementation((_command, options) => {
+            mockSpawnSync.mockImplementation(() => {
                 // The command occupies 2s, twice the TTL under test.
                 nowSpy.mockReturnValue(3000);
-                const target = options.stdio?.[1];
-                if (typeof target === 'number') {
-                    fs.writeSync(target, 'slow');
-                }
-                return spawnResult({ stdout: 'slow' });
+                return spawnResult({ stdout: JSON.stringify({ status: 'ok', stdout: 'slow' }) });
             });
 
             expect(runCustomCommand(createRequest({ ttlSeconds: 1 }))).toEqual({ status: 'ok', stdout: 'slow' });
@@ -322,7 +282,6 @@ describe('runCustomCommand', () => {
         it('caches per timeout, so a longer-lived widget runs on its own terms', () => {
             useTempHome();
             useFixedCwd();
-            useKillSpy();
             queueRuns(
                 { result: { error: errnoError('ETIMEDOUT'), signal: 'SIGTERM' } },
                 { stdout: 'finished in time' }
@@ -482,143 +441,22 @@ describe('runCustomCommand', () => {
     });
 
     describe('process handling', () => {
-        it('runs the command line through a shell with a pinned output ceiling', () => {
-            useTempHome();
-            useFixedCwd();
+        it('runs the bounded capture helper in the current runtime', () => {
+            runCustomCommand(createRequest({ command: 'my-widget', ttlSeconds: 0 }));
 
-            runCustomCommand(createRequest({ command: 'curl -s example | jq -r .x' }));
-
-            expect(mockSpawnSync.mock.calls[0]?.[0]).toBe('curl -s example | jq -r .x');
-            expect(lastSpawnOptions().shell).toBe(true);
-            expect(lastSpawnOptions().timeout).toBe(1000);
+            expect(mockSpawnSync.mock.calls[0]?.[0]).toBe(process.execPath);
+            expect(mockSpawnSync.mock.calls[0]?.[1][0]).toBe('-e');
+            expect(lastSpawnOptions().timeout).toBe(2000);
             expect(lastSpawnOptions().windowsHide).toBe(true);
             expect(lastSpawnOptions().maxBuffer).toBe(1024 * 1024);
+            expect(lastSpawnOptions().stdio).toEqual(['pipe', 'pipe', 'ignore']);
+            expect(JSON.parse(lastSpawnOptions().input ?? '{}')).toEqual(createRequest({ command: 'my-widget', ttlSeconds: 0 }));
         });
 
-        // Every process in the shell tree inherits the pipe handles, and spawnSync
-        // waits for all of them to close. One backgrounded descendant would hold
-        // the render open past the timeout, so neither stream is a pipe.
-        it('gives the command files for stdin and stdout rather than pipes', () => {
-            useTempHome();
-            useFixedCwd();
-            let deliveredPayload: string | null = null;
-            mockSpawnSync.mockImplementation((_command, options) => {
-                const stdin = options.stdio?.[0];
-                deliveredPayload = typeof stdin === 'number' ? fs.readFileSync(stdin, 'utf-8') : null;
-                const target = options.stdio?.[1];
-                if (typeof target === 'number') {
-                    fs.writeSync(target, 'from the file');
-                }
-                return spawnResult();
-            });
+        it('reports a malformed capture response as an error', () => {
+            mockSpawnSync.mockImplementation(() => spawnResult({ stdout: 'invalid json' }));
 
-            const result = runCustomCommand(createRequest({ input: '{"session_id":"s1","terminal_width":120}' }));
-
-            expect(deliveredPayload).toBe('{"session_id":"s1","terminal_width":120}');
-            expect(result).toEqual({ status: 'ok', stdout: 'from the file' });
-            expect(lastSpawnOptions().input).toBeUndefined();
-            expect(typeof lastSpawnOptions().stdio?.[1]).toBe('number');
-            expect(lastSpawnOptions().stdio?.[2]).toBe('ignore');
-        });
-
-        it('removes the working directory once the command returns', () => {
-            useTempHome();
-            useFixedCwd();
-            const tempDir = useTempDir();
-
-            runCustomCommand(createRequest());
-
-            expect(fs.readdirSync(tempDir)).toEqual([]);
-        });
-
-        it('removes the working directory even when the command times out', () => {
-            useTempHome();
-            useFixedCwd();
-            const tempDir = useTempDir();
-            useKillSpy();
-            alwaysRespond({ result: { error: errnoError('ETIMEDOUT'), signal: 'SIGTERM' } });
-
-            expect(runCustomCommand(createRequest())).toEqual({ status: 'failed', marker: '[Timeout]' });
-            expect(fs.readdirSync(tempDir)).toEqual([]);
-        });
-
-        // A predictable path could be pre-created as a symlink, or swapped between
-        // being written and being opened. mkdtemp rules both out.
-        it('uses a fresh unguessable directory for every run', () => {
-            useTempHome();
-            useFixedCwd();
-            const tempDir = useTempDir();
-            const seen: string[] = [];
-            mockSpawnSync.mockImplementation(() => {
-                seen.push(fs.readdirSync(tempDir)[0] ?? '');
-                return spawnResult();
-            });
-
-            runCustomCommand(createRequest({ ttlSeconds: 0 }));
-            runCustomCommand(createRequest({ ttlSeconds: 0 }));
-
-            expect(seen).toHaveLength(2);
-            expect(seen[0]).not.toBe(seen[1]);
-            expect(seen[0]).toMatch(/^ccstatusline-cmd-/);
-        });
-
-        it.skipIf(process.platform === 'win32')('keeps the working directory owner-only', () => {
-            useTempHome();
-            useFixedCwd();
-            const tempDir = useTempDir();
-            let mode: number | null = null;
-            mockSpawnSync.mockImplementation(() => {
-                const entry = fs.readdirSync(tempDir)[0];
-                mode = entry ? fs.statSync(path.join(tempDir, entry)).mode & 0o777 : null;
-                return spawnResult();
-            });
-
-            runCustomCommand(createRequest());
-
-            expect(mode).toBe(0o700);
-        });
-
-        // Killing the shell alone leaves a pipeline's other members running. The
-        // shell leads its own process group, so the negated pid reaches all of them.
-        it('kills the whole process group when a command times out on POSIX', () => {
-            useTempHome();
-            useFixedCwd();
-            usePlatform('linux');
-            const killSpy = useKillSpy();
-            alwaysRespond({ result: { error: errnoError('ETIMEDOUT'), signal: 'SIGTERM' } });
-
-            expect(runCustomCommand(createRequest())).toEqual({ status: 'failed', marker: '[Timeout]' });
-
-            expect(lastSpawnOptions().detached).toBe(true);
-            expect(killSpy.mock.calls).toEqual([[-CHILD_PID, 'SIGKILL']]);
-        });
-
-        // detached would give the child its own console on Windows, and spawnSync
-        // has already terminated the shell by the time it returns, so there is no
-        // live pid for taskkill /T to walk down from.
-        it('does not detach or group-kill on Windows', () => {
-            useTempHome();
-            useFixedCwd();
-            usePlatform('win32');
-            const killSpy = useKillSpy();
-            alwaysRespond({ result: { error: errnoError('ETIMEDOUT'), signal: 'SIGTERM' } });
-
-            expect(runCustomCommand(createRequest())).toEqual({ status: 'failed', marker: '[Timeout]' });
-
-            expect(lastSpawnOptions().detached).toBe(false);
-            expect(killSpy.mock.calls).toEqual([]);
-        });
-
-        // A command that exited on its own may have deliberately left a background
-        // job running, so only a timeout justifies tearing the group down.
-        it('leaves the process group alone when the command exits on its own', () => {
-            useTempHome();
-            useFixedCwd();
-            const killSpy = useKillSpy();
-            alwaysRespond({ result: { status: 7 } });
-
-            expect(runCustomCommand(createRequest())).toEqual({ status: 'failed', marker: '[Exit: 7]' });
-            expect(killSpy.mock.calls).toEqual([]);
+            expect(runCustomCommand(createRequest({ ttlSeconds: 0 }))).toEqual({ status: 'failed', marker: '[Error]' });
         });
     });
 
@@ -637,7 +475,6 @@ describe('runCustomCommand', () => {
             it(`reports ${testCase.name} as ${testCase.marker}`, () => {
                 useTempHome();
                 useFixedCwd();
-                useKillSpy();
                 alwaysRespond({ result: testCase.result });
 
                 expect(runCustomCommand(createRequest())).toEqual({ status: 'failed', marker: testCase.marker });

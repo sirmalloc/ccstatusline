@@ -1,12 +1,11 @@
-import type {
-    SpawnSyncOptionsWithStringEncoding,
-    SpawnSyncReturns
-} from 'child_process';
+import type { SpawnSyncReturns } from 'child_process';
 import { spawnSync } from 'child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+import { captureCustomCommand } from './custom-command-capture';
 
 /** Outcome of one custom command invocation. */
 export type CustomCommandResult
@@ -43,22 +42,6 @@ interface PersistentCustomCommandCache {
     entries: Record<string, CustomCommandCacheEntry>;
 }
 
-/** Owner-only temp directory holding the command's stdin payload and its stdout. */
-interface CommandIo {
-    dir: string;
-    payloadFd: number;
-    stdoutFd: number;
-    stdoutPath: string;
-}
-
-/**
- * Spawn options plus `detached`, which @types/node lists only for the async
- * spawn. Node honors it for spawnSync too, and the POSIX tree kill depends on
- * it: without it the shell shares our process group and no group exists to
- * signal.
- */
-interface SyncShellOptions extends SpawnSyncOptionsWithStringEncoding { detached?: boolean }
-
 const DEFAULT_CUSTOM_COMMAND_CACHE_TTL_SECONDS = 0;
 const MAX_CUSTOM_COMMAND_CACHE_TTL_SECONDS = 60;
 const CUSTOM_COMMAND_CACHE_SCHEMA_VERSION = 1 as const;
@@ -68,12 +51,8 @@ const CUSTOM_COMMAND_CACHE_SCHEMA_VERSION = 1 as const;
 // widget in the render pass rewrites in full.
 const MAX_CACHED_OUTPUT_CHARS = 16_384;
 
-// Only reachable on the fallback path, where stdout is still a pipe.
-const MAX_PIPED_STDOUT_BYTES = 1024 * 1024;
-
-function isWindows(): boolean {
-    return process.platform === 'win32';
-}
+// Bound capture itself, even when caching is disabled. No stdout is spooled to disk.
+const MAX_STDOUT_BYTES = 1024 * 1024;
 
 // In-process cache keeps cwd in the key. The persistent cache stores cwd once at
 // the file level and keys entries by command, session and terminal width.
@@ -270,166 +249,34 @@ function getFailureMarker(result: SpawnSyncReturns<string>): string | null {
     return null;
 }
 
-function closeDescriptor(fd: number): void {
-    try {
-        fs.closeSync(fd);
-    } catch {
-        // Already closed, so there is nothing left to release.
-    }
-}
-
-function removeDirectory(dir: string): void {
-    try {
-        fs.rmSync(dir, { recursive: true, force: true });
-    } catch {
-        // A descendant can still hold a handle here on Windows. The directory
-        // lives under the temp root and is safe to leave for the OS to reap.
-    }
-}
-
-/**
- * Give the command both of its stdio streams as files rather than pipes.
- *
- * @remarks
- * Every process in the shell tree inherits the pipe handles, and spawnSync
- * returns only once every inheritor has closed them. One backgrounded
- * descendant therefore holds the render open for as long as it lives, whatever
- * the configured timeout says. Measured on Linux, `( sleep 3 ; echo LATE ) &`
- * held a piped spawnSync for 3006ms and delivered output written after the
- * shell had exited. The same command against files returns in 3ms.
- *
- * mkdtemp is what makes the paths safe to use: it creates an owner-only
- * directory with an unguessable name in one atomic step, so neither file can be
- * pre-created as a symlink or swapped between being written and being opened.
- */
-function openCommandIo(input: string): CommandIo | null {
-    let dir: string | undefined;
-    let payloadFd: number | undefined;
-    let stdoutFd: number | undefined;
-
-    try {
-        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-cmd-'));
-        const payloadPath = path.join(dir, 'stdin.json');
-        const stdoutPath = path.join(dir, 'stdout.txt');
-
-        fs.writeFileSync(payloadPath, input, { encoding: 'utf-8', flag: 'wx', mode: 0o600 });
-        payloadFd = fs.openSync(payloadPath, 'r');
-        stdoutFd = fs.openSync(stdoutPath, 'wx', 0o600);
-
-        return {
-            dir,
-            payloadFd,
-            stdoutFd,
-            stdoutPath
-        };
-    } catch {
-        if (payloadFd !== undefined) {
-            closeDescriptor(payloadFd);
-        }
-        if (stdoutFd !== undefined) {
-            closeDescriptor(stdoutFd);
-        }
-        if (dir !== undefined) {
-            removeDirectory(dir);
-        }
-
-        return null;
-    }
-}
-
-function closeCommandIo(io: CommandIo): void {
-    closeDescriptor(io.payloadFd);
-    closeDescriptor(io.stdoutFd);
-    removeDirectory(io.dir);
-}
-
-function readCapturedStdout(io: CommandIo): string {
-    try {
-        return fs.readFileSync(io.stdoutPath, 'utf-8');
-    } catch {
-        return '';
-    }
-}
-
-/**
- * Kill everything the shell started, not just the shell.
- *
- * @remarks
- * A timeout signals the shell alone, so a pipeline such as `curl ... | jq ...`
- * leaves its remaining members running. On POSIX `detached: true` gives the shell
- * its own process group, and that group outlives its leader, so a negated pid
- * still reaches every member.
- *
- * Windows has no equivalent here: spawnSync returns only after terminating the
- * shell, and `taskkill /T` needs a live pid to walk down from, so descendants
- * there run until they exit on their own.
- */
-function killProcessGroup(pid: number | undefined): void {
-    if (isWindows() || typeof pid !== 'number') {
-        return;
-    }
-
-    try {
-        process.kill(-pid, 'SIGKILL');
-    } catch {
-        // ESRCH once the group has already exited, which is the common case.
-    }
-}
-
 function executeCommand(request: CustomCommandRequest): CustomCommandResult {
-    const io = openCommandIo(request.input);
-
     try {
-        const options: SyncShellOptions = {
-            shell: true,
+        // Only the capture runtime owns this pipe. The command's descendants
+        // cannot inherit it and keep spawnSync waiting after their shell exits.
+        const script = `(${captureCustomCommand.toString()})(
+            require('child_process').spawn,
+            JSON.parse(require('fs').readFileSync(0, 'utf8')),
+            ${MAX_STDOUT_BYTES}, ${MAX_CACHED_OUTPUT_CHARS}
+        )`;
+        const result = spawnSync(process.execPath, ['-e', script], {
             encoding: 'utf8',
-            timeout: request.timeoutMs,
-            stdio: io ? [io.payloadFd, io.stdoutFd, 'ignore'] : ['pipe', 'pipe', 'ignore'],
-            // Pinned rather than inherited, so a change to Node's default cannot
-            // silently turn large output into a failure marker.
-            maxBuffer: MAX_PIPED_STDOUT_BYTES,
+            input: JSON.stringify(request),
+            stdio: ['pipe', 'pipe', 'ignore'],
+            maxBuffer: MAX_STDOUT_BYTES,
+            // The child enforces the command deadline. Allow runtime startup and
+            // result delivery here, with a backstop if the helper fails to reply.
+            timeout: request.timeoutMs > 0 ? request.timeoutMs + 1000 : 0,
+            killSignal: 'SIGKILL',
             env: process.env,
-            windowsHide: true,
-            detached: !isWindows()
-        };
-
-        // Falling back to pipes keeps a temp directory problem from blanking the
-        // widget, at the cost of the timing guarantee above.
-        if (!io) {
-            options.input = request.input;
-        }
-
-        const result = spawnSync(request.command, options);
-
+            windowsHide: true
+        });
         const marker = getFailureMarker(result);
         if (marker !== null) {
-            // Only a timeout can leave the tree running. A command that exited on
-            // its own may have deliberately left a background job behind.
-            if (marker === '[Timeout]') {
-                killProcessGroup(result.pid);
-            }
-
-            return {
-                status: 'failed',
-                marker
-            };
+            return { status: 'failed', marker };
         }
-
-        const stdout = io ? readCapturedStdout(io) : result.stdout;
-
-        return {
-            status: 'ok',
-            stdout: stdout.slice(0, MAX_CACHED_OUTPUT_CHARS).trim()
-        };
+        return JSON.parse(result.stdout) as CustomCommandResult;
     } catch {
-        return {
-            status: 'failed',
-            marker: '[Error]'
-        };
-    } finally {
-        if (io) {
-            closeCommandIo(io);
-        }
+        return { status: 'failed', marker: '[Error]' };
     }
 }
 

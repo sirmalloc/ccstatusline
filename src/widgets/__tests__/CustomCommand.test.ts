@@ -15,6 +15,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import type { CustomCommandRequest } from '../../utils/custom-command';
 import { clearCustomCommandCache } from '../../utils/custom-command';
 import { CustomCommandWidget } from '../CustomCommand';
 
@@ -29,7 +30,7 @@ vi.mock('child_process', () => ({
 
 const mockSpawnSync = spawnSync as unknown as {
     mock: { calls: unknown[][] };
-    mockImplementation: (impl: (command: string, options: { stdio?: (string | number)[] }) => SpawnSyncReturns<string>) => void;
+    mockImplementation: (impl: (command: string, args: string[], options: { input?: string }) => SpawnSyncReturns<string>) => void;
 };
 
 const ORIGINAL_HOME = process.env.HOME;
@@ -37,19 +38,13 @@ const ORIGINAL_USERPROFILE = process.env.USERPROFILE;
 const tempPaths: string[] = [];
 
 function echoStdin(): void {
-    mockSpawnSync.mockImplementation((_command, options) => {
-        const stdin = options.stdio?.[0];
-        const stdout = options.stdio?.[1];
-        const payload = typeof stdin === 'number' ? fs.readFileSync(stdin, 'utf-8') : '';
-
-        if (typeof stdout === 'number') {
-            fs.writeSync(stdout, payload);
-        }
+    mockSpawnSync.mockImplementation((_command, _args, options) => {
+        const request = JSON.parse(options.input ?? '{}') as CustomCommandRequest;
 
         return {
             pid: 4242,
             output: [],
-            stdout: payload,
+            stdout: JSON.stringify({ status: 'ok', stdout: request.input }),
             stderr: '',
             status: 0,
             signal: null
