@@ -1120,6 +1120,150 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it.each([
+        ['fresh', 5000],
+        ['stale', 200000]
+    ])('serves a %s legacy cache during backoff without rewriting the cache or lock', (_state, cacheAgeMs) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('legacy-cache-backoff');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'current-access-token',
+                refreshToken: 'current-refresh-token'
+            });
+            const legacyHash = createHash('sha256').update('current-access-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: legacyHash });
+            const cacheContents = fs.readFileSync(cacheFile, 'utf8');
+            const probeNowMs = mtimeMs + cacheAgeMs;
+            const lockFile = path.join(home.home, '.cache', 'ccstatusline', 'usage.lock');
+            const lockContents = JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            });
+            fs.writeFileSync(lockFile, lockContents);
+            const lockMtimeMs = fs.statSync(lockFile).mtimeMs;
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 5 });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+            expect(result.lockContents).toBe(lockContents);
+            expect(fs.statSync(lockFile).mtimeMs).toBe(lockMtimeMs);
+            expect(fs.readFileSync(cacheFile, 'utf8')).toBe(cacheContents);
+            expect(fs.statSync(cacheFile).mtimeMs).toBe(mtimeMs);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['other-access-token', 'other-refresh-token', undefined])('rejects a cache fingerprint from %s when both current tokens are available', (cachedToken) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('unrelated-cache-backoff');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'current-access-token',
+                refreshToken: 'current-refresh-token'
+            });
+            const tokenHash = cachedToken === undefined
+                ? undefined
+                : createHash('sha256').update(cachedToken).digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash });
+            const probeNowMs = mtimeMs + 5000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ error: 'rate-limited' });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['current-refresh-token', ''])('writes the preferred fingerprint after a successful fetch with refresh token %j', (refreshToken) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('legacy-cache-migration');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'current-access-token', refreshToken });
+            const legacyHash = createHash('sha256').update('current-access-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: legacyHash });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs + 200000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.requestCount).toBe(1);
+            const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')) as Record<string, unknown>;
+            const expectedToken = refreshToken || 'current-access-token';
+            expect(cache.tokenHash).toBe(createHash('sha256').update(expectedToken).digest('hex').slice(0, 16));
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['current-access-token', { sessionUsage: 5 }],
+        ['', { error: 'rate-limited' }]
+    ])('uses only the access-token fingerprint when the refresh token is empty (cached token %j)', (cachedToken, expected) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('empty-refresh-token');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'current-access-token', refreshToken: '' });
+            const tokenHash = createHash('sha256').update(cachedToken).digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash });
+            const probeNowMs = mtimeMs + 5000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual(expected);
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('serves a fresh cache after the access token was refreshed (same login)', () => {
         const harness = createProbeHarness();
 

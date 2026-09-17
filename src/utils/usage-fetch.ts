@@ -39,10 +39,15 @@ const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
 // The access token is what the API is called with; the refresh token is kept
-// alongside it only to fingerprint the account (see fingerprintUsageCredentials).
+// alongside it only to fingerprint the account (see getUsageCacheIdentity).
 interface UsageCredentials {
     accessToken: string;
     refreshToken?: string;
+}
+
+interface UsageCacheIdentity {
+    preferredHash: string;
+    accessTokenHash: string;
 }
 
 const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
@@ -259,34 +264,28 @@ function fingerprintUsageToken(token: string): string {
     return createHash('sha256').update(token).digest('hex').slice(0, 16);
 }
 
-// The access token is reissued on a short cycle (observed: ~8h expiry), so
-// hashing it makes the fingerprint change on an ordinary refresh of the very
-// same account. That is indistinguishable from a login switch here, and it
-// discards an otherwise valid cache - which matters most exactly when the
-// cache is load-bearing, i.e. while a fetch failure is being backed off: the
-// widgets then degrade to error text for the whole window (up to the server's
-// Retry-After) even though the cached reading is the user's own and current.
-//
-// The refresh token identifies the login rather than the session (observed:
-// ~13 day expiry, two orders of magnitude longer), so fingerprinting it keeps
-// the account-switch guard intact without churning on every refresh. It falls
-// back to the access token when absent, which keeps older credential files and
-// any keychain entry that only stores an access token working as before.
-function fingerprintUsageCredentials(credentials: UsageCredentials): string {
-    return fingerprintUsageToken(credentials.refreshToken ?? credentials.accessToken);
+// Prefer the refresh token so access-token rotation preserves the cache when
+// the refresh token is unchanged. Also accept the current access-token hash
+// from older caches; the next successful fetch writes the preferred hash.
+function getUsageCacheIdentity(credentials: UsageCredentials): UsageCacheIdentity {
+    const accessTokenHash = fingerprintUsageToken(credentials.accessToken);
+    return {
+        preferredHash: credentials.refreshToken ? fingerprintUsageToken(credentials.refreshToken) : accessTokenHash,
+        accessTokenHash
+    };
 }
 
 function readCachedTokenHash(rawJson: string): string | undefined {
     return parseJsonWithSchema(rawJson, CachedTokenHashSchema)?.tokenHash;
 }
 
-function tokenHashMatches(cachedHash: string | undefined, currentHash: string | null): boolean {
+function tokenHashMatches(cachedHash: string | undefined, identity: UsageCacheIdentity | null): boolean {
     // With no current token we cannot fingerprint-gate, so fall through to the
     // existing no-token handling rather than discarding an otherwise usable cache.
-    if (currentHash === null) {
+    if (identity === null) {
         return true;
     }
-    return cachedHash === currentHash;
+    return cachedHash === identity.preferredHash || cachedHash === identity.accessTokenHash;
 }
 
 // parsed is a UsageApiResponseSchema-derived looseObject: declared keys (like
@@ -411,11 +410,11 @@ function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageD
 function getStaleUsageOrError(
     error: UsageError,
     now: number,
-    currentTokenHash: string | null,
+    cacheIdentity: UsageCacheIdentity | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache(currentTokenHash);
+    const stale = readStaleUsageCache(cacheIdentity);
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
@@ -614,10 +613,10 @@ export function getUsageToken(): string | null {
     return getUsageCredentials()?.accessToken ?? null;
 }
 
-function readStaleUsageCache(currentTokenHash: string | null): UsageData | null {
+function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageData | null {
     try {
         const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
-        if (!tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)) {
+        if (!tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)) {
             return null;
         }
         return parseCachedUsageData(rawCache);
@@ -814,7 +813,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     // logout/login, no longer matches the cached fingerprint.
     const credentials = getUsageCredentials();
     const token = credentials?.accessToken ?? null;
-    const currentTokenHash = credentials ? fingerprintUsageCredentials(credentials) : null;
+    const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
 
     // Check file cache
     try {
@@ -824,7 +823,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
-                && tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)
+                && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
                 && hasRequiredUsageFields(fileData, requiredFields)) {
                 return cacheUsageData(fileData, now);
             }
@@ -834,7 +833,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     }
 
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('no-credentials', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -842,7 +841,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return getStaleUsageOrError(
             activeLock.error,
             now,
-            currentTokenHash,
+            cacheIdentity,
             Math.max(1, activeLock.blockedUntil - now),
             requiredFields
         );
@@ -856,29 +855,29 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, currentTokenHash, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError('rate-limited', now, cacheIdentity, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('api-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: currentTokenHash ?? undefined }));
+            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: cacheIdentity?.preferredHash }));
         } catch {
             // Ignore cache write errors
         }
@@ -893,6 +892,6 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return cacheUsageData(usageData, now);
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
 }
