@@ -10,7 +10,8 @@
 
 ## Configuration
 
-- [Claude Code settings.json format](https://github.com/sirmalloc/ccstatusline#-quick-start): ccstatusline writes a `statusLine` command object (`type`, `command`, `padding`, `refreshInterval`) to Claude Code's settings, supporting `npx`, `bunx`, or a pinned global `ccstatusline` command; settings are stored at `~/.config/ccstatusline/settings.json` (overridable via `CLAUDE_CONFIG_DIR`).
+- [ccstatusline settings](https://github.com/sirmalloc/ccstatusline#-quick-start): Widget and appearance settings are stored at `~/.config/ccstatusline/settings.json` by default. Use `--config <path>` to load and save these settings at a custom file path.
+- [Claude Code settings.json format](https://github.com/sirmalloc/ccstatusline#-quick-start): ccstatusline writes a `statusLine` command object (`type`, `command`, `padding`, and `refreshInterval` when supported) to Claude Code's `~/.claude/settings.json`, supporting `npx`, `bunx`, or a pinned global `ccstatusline` command. Set `CLAUDE_CONFIG_DIR` to override the Claude Code configuration directory; the file is then `<CLAUDE_CONFIG_DIR>/settings.json`.
 
 ## Development
 
