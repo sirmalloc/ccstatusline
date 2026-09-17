@@ -1,0 +1,61 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/sirmalloc/ccstatusline.git
+          git fetch upstream main
+
+      - name: Merge upstream/main
+        id: merge
+        continue-on-error: true
+        run: |
+          git merge upstream/main -m "chore: sync upstream/main"
+          echo "conflict=false" >> $GITHUB_OUTPUT
+
+      - name: Push to origin
+        if: steps.merge.outcome == 'success'
+        run: git push origin main
+
+      - name: Handle conflict
+        if: steps.merge.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: ['sync-conflict'],
+            });
+            if (issues.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '⚠️ Upstream sync conflict',
+                body: 'Merge conflict from `sirmalloc/ccstatusline`. Resolve:\n```bash\ngit checkout main\ngit pull upstream main\n# fix conflicts\ngit push origin main\n```',
+                labels: ['sync-conflict'],
+              });
+            }

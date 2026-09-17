@@ -158,21 +158,21 @@ describe('defaultPaddingSide', () => {
             const lines = [[pre('AB')]];
             const settings = createSettings({ defaultPadding: '..' });
             // 'AB' (2) + 2 leading + 2 trailing = 6
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([6]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[6]]);
         });
 
         it('counts padding only once when side is "left"', () => {
             const lines = [[pre('AB')]];
             const settings = createSettings({ defaultPadding: '..', defaultPaddingSide: 'left' });
             // 'AB' (2) + 2 leading + 0 trailing = 4
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([4]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[4]]);
         });
 
         it('counts padding only once when side is "right"', () => {
             const lines = [[pre('AB')]];
             const settings = createSettings({ defaultPadding: '..', defaultPaddingSide: 'right' });
             // 'AB' (2) + 0 leading + 2 trailing = 4
-            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([4]);
+            expect(calculateMaxWidthsFromPreRendered(lines, settings)).toEqual([[4]]);
         });
     });
 });

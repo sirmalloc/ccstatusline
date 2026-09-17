@@ -130,7 +130,7 @@ describe('ImportPreviewDialog helpers', () => {
 
         try {
             await flushInk();
-            expect(stdout.getOutput()).toContain('flexMode: full → full-minus-40');
+            expect(stdout.getOutput()).toContain('globalBold: false → true');
 
             stdout.clearOutput();
             stdin.write('\u001B[B');

@@ -46,7 +46,7 @@ function renderLine(settings: Settings, globalPowerlineThemeIndex: number): stri
     const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
     const preRenderedWidgets = preRenderedLines[0] ?? [];
 
-    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
+    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths[0] ?? []);
 }
 
 describe('renderer powerline theme carry-over', () => {
