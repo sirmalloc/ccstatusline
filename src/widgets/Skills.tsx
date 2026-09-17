@@ -41,7 +41,6 @@ function parseListLimit(item: WidgetItem): number {
 function setListLimit(item: WidgetItem, limit: number): WidgetItem {
     if (limit <= 0) {
         const { [LIST_LIMIT_KEY]: removedLimit, ...restMetadata } = item.metadata ?? {};
-        void removedLimit;
         return {
             ...item,
             metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined

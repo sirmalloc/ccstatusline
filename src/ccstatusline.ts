@@ -173,6 +173,7 @@ async function renderMultipleLines(data: StatusJSON) {
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
+        customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds,
         gitReviewNeedsChecks: lines.some(line => line.some(item => item.type === 'git-ci-status'))
     };
 
@@ -246,7 +247,6 @@ async function renderMultipleLines(data: StatusJSON) {
         if (newRemaining <= 0) {
             // Remove the entire updatemessage block
             const { updatemessage, ...newSettings } = settings;
-            void updatemessage;
             await saveSettings(newSettings);
         } else {
             // Update the remaining count
@@ -348,7 +348,6 @@ async function main() {
         const settings = await loadSettings();
         if (settings.updatemessage) {
             const { updatemessage, ...newSettings } = settings;
-            void updatemessage;
             await saveSettings(newSettings);
         }
         runTUI();

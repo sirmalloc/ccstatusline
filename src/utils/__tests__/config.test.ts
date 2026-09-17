@@ -102,6 +102,9 @@ describe('config utilities', () => {
         expect(Array.isArray(onDisk.lines)).toBe(true);
         expect(settings.gitCacheTtlSeconds).toBe(5);
         expect((onDisk as { gitCacheTtlSeconds?: number }).gitCacheTtlSeconds).toBe(5);
+        // Custom command caching is opt-in, so an untouched install keeps running
+        // the command on every repaint.
+        expect(settings.customCommandCacheTtlSeconds).toBe(0);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
             expect.stringContaining('Default settings written to')
         );
