@@ -85,7 +85,7 @@ export default ts.config([
                 items: 1,
                 semi: true
             }],
-            '@typescript-eslint/no-unused-vars': ['error', { 'args': 'none' }],
+            '@typescript-eslint/no-unused-vars': ['error', { 'args': 'none', 'ignoreRestSiblings': true }],
             '@typescript-eslint/no-empty-function': ['error', { 'allow': ['private-constructors'] }],
             '@typescript-eslint/array-type': 'error',
             '@typescript-eslint/consistent-type-imports': 'error',

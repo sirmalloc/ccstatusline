@@ -58,9 +58,6 @@ function toggleLink(item: WidgetItem): WidgetItem {
         ...restMetadata
     } = item.metadata ?? {};
 
-    void removedLink;
-    void removedLegacyLink;
-
     const nextMetadata = nextEnabled
         ? { ...restMetadata, [LINK_KEY]: 'true' }
         : restMetadata;
@@ -102,7 +99,6 @@ export class GitBranchWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
         const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const isLink = isLinkEnabled(item);
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
