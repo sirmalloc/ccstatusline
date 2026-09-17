@@ -28,6 +28,7 @@ import {
     type ResolvedThinkingEffort
 } from './jsonl-metadata';
 import { getSessionNameFromRecord } from './jsonl-session';
+import { getModelPriceRatios } from './model-pricing';
 
 export interface SpeedMetricsCollection {
     sessionAverage: SpeedMetrics;
@@ -42,6 +43,7 @@ export interface TranscriptAnalysisOptions {
     includeCompactionStats?: boolean;
     includeThinkingEffort?: boolean;
     includeSessionName?: boolean;
+    includeCostEstimate?: boolean;
 }
 
 export interface TranscriptAnalysis {
@@ -83,9 +85,43 @@ interface CollectedSpeedMetrics {
 
 interface TokenMetricEntry {
     usage: UsageTokens;
-    stopReason: string | null | undefined;
+    model: string | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
+    includePostCompactionUsage: boolean;
+}
+
+interface MessageGroup<T> {
+    id: string;
+    entry: T;
+    outputTokens: number;
+}
+
+/**
+ * Claude Code writes one JSONL entry per content block (thinking / text / each
+ * tool_use) in a single API response. Every entry for one call shares a
+ * message.id and repeats identical prompt-side usage; only output_tokens
+ * differs, growing as blocks stream in, and the last entry carries the
+ * complete value (ties, e.g. byte-identical duplicates, keep whichever is
+ * held). Holding entries by id and keeping the highest output_tokens collapses
+ * each call back to one row, which also covers the older shape where only the
+ * final entry of a still-streaming call carried a non-null stop_reason.
+ */
+function advanceMessageGroup<T>(
+    pending: MessageGroup<T> | null,
+    messageId: string,
+    entry: T,
+    outputTokens: number
+): { flushed: T | null; pending: MessageGroup<T> } {
+    if (pending?.id === messageId) {
+        return outputTokens >= pending.outputTokens
+            ? { flushed: null, pending: { id: messageId, entry, outputTokens } }
+            : { flushed: null, pending };
+    }
+    return {
+        flushed: pending?.entry ?? null,
+        pending: { id: messageId, entry, outputTokens }
+    };
 }
 
 interface TokenMetricAccumulator {
@@ -93,6 +129,10 @@ interface TokenMetricAccumulator {
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    inputCost: number;
+    outputCost: number;
+    cacheWriteCost: number;
+    cacheReadCost: number;
     mostRecentMainChainUsage: UsageTokens | null;
     mostRecentTimestampMs: number | null;
     mostRecentPostCompactionUsage: UsageTokens | null;
@@ -101,14 +141,12 @@ interface TokenMetricAccumulator {
 
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
-    hasStopReasonField: boolean;
-    lastUsageEntry: TokenMetricEntry | null;
+    pendingGroup: MessageGroup<TokenMetricEntry> | null;
     sawCompactBoundary: boolean;
-    boundaryAfterLastUsage: boolean;
     lastCompactBoundaryPostTokens: number | null;
 }
 
-function createEmptyTokenMetrics(): TokenMetrics {
+function createEmptyTokenMetrics(includeCostEstimate = false): TokenMetrics {
     return {
         inputTokens: 0,
         outputTokens: 0,
@@ -116,7 +154,10 @@ function createEmptyTokenMetrics(): TokenMetrics {
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
         totalTokens: 0,
-        contextLength: 0
+        contextLength: 0,
+        ...(includeCostEstimate
+            ? { costEstimate: { inputCost: 0, outputCost: 0, cacheWriteCost: 0, cacheReadCost: 0 } }
+            : {})
     };
 }
 
@@ -126,6 +167,10 @@ function createTokenMetricAccumulator(): TokenMetricAccumulator {
         outputTokens: 0,
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
+        inputCost: 0,
+        outputCost: 0,
+        cacheWriteCost: 0,
+        cacheReadCost: 0,
         mostRecentMainChainUsage: null,
         mostRecentTimestampMs: null,
         mostRecentPostCompactionUsage: null,
@@ -149,6 +194,12 @@ function accumulateTokenMetricEntry(
     accumulator.cacheReadTokens += usage.read;
     accumulator.cacheCreationTokens += usage.creation;
 
+    const prices = getModelPriceRatios(entry.model);
+    accumulator.inputCost += (usage.input / 1_000_000) * prices.input;
+    accumulator.outputCost += (usage.output / 1_000_000) * prices.output;
+    accumulator.cacheWriteCost += (usage.creation / 1_000_000) * prices.cacheWrite;
+    accumulator.cacheReadCost += (usage.read / 1_000_000) * prices.cacheRead;
+
     if (!entry.isMainChain || entry.timestampMs === null) {
         return;
     }
@@ -168,10 +219,8 @@ function accumulateTokenMetricEntry(
 function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
-        hasStopReasonField: false,
-        lastUsageEntry: null,
+        pendingGroup: null,
         sawCompactBoundary: false,
-        boundaryAfterLastUsage: false,
         lastCompactBoundaryPostTokens: null
     };
 }
@@ -180,37 +229,41 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const compactBoundary = isCompactBoundary(data);
     if (compactBoundary) {
         state.sawCompactBoundary = true;
-        state.boundaryAfterLastUsage = true;
         state.lastCompactBoundaryPostTokens = getCompactBoundaryPostTokens(data);
         resetPostCompactionUsage(state.metrics);
     }
 
     const message = data?.message;
     const usage = message?.usage;
-    if (usage) {
-        const entry: TokenMetricEntry = {
-            usage: parseUsageTokens(usage),
-            stopReason: message.stop_reason,
-            timestampMs,
-            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
-        };
+    if (!usage) {
+        return;
+    }
 
-        const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
-        if (hasStopReason && !state.hasStopReasonField) {
-            state.hasStopReasonField = true;
-            state.metrics = createTokenMetricAccumulator();
-        }
-        if (!state.hasStopReasonField || entry.stopReason) {
-            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
-        }
-        state.lastUsageEntry = entry;
-        state.boundaryAfterLastUsage = compactBoundary;
+    const entry: TokenMetricEntry = {
+        usage: parseUsageTokens(usage),
+        model: message.model,
+        timestampMs,
+        isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+        includePostCompactionUsage: !compactBoundary
+    };
+
+    const messageId = typeof message.id === 'string' && message.id.length > 0 ? message.id : null;
+    if (messageId === null) {
+        accumulateTokenMetricEntry(state.metrics, entry, entry.includePostCompactionUsage);
+        return;
+    }
+
+    const { flushed, pending } = advanceMessageGroup(state.pendingGroup, messageId, entry, entry.usage.output);
+    state.pendingGroup = pending;
+    if (flushed) {
+        accumulateTokenMetricEntry(state.metrics, flushed, flushed.includePostCompactionUsage);
     }
 }
 
-function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
-    if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
-        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+function finishTokenMetrics(state: TokenMetricState, includeCostEstimate = false): TokenMetrics {
+    if (state.pendingGroup) {
+        const { entry } = state.pendingGroup;
+        accumulateTokenMetricEntry(state.metrics, entry, entry.includePostCompactionUsage);
     }
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
@@ -228,7 +281,17 @@ function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
         cacheReadTokens: state.metrics.cacheReadTokens,
         cacheCreationTokens: state.metrics.cacheCreationTokens,
         totalTokens: state.metrics.inputTokens + state.metrics.outputTokens + cachedTokens,
-        contextLength
+        contextLength,
+        ...(includeCostEstimate
+            ? {
+                costEstimate: {
+                    inputCost: state.metrics.inputCost,
+                    outputCost: state.metrics.outputCost,
+                    cacheWriteCost: state.metrics.cacheWriteCost,
+                    cacheReadCost: state.metrics.cacheReadCost
+                }
+            }
+            : {})
     };
 }
 
@@ -317,14 +380,28 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
+    lastUserTimestampMs: number | null;
+    pendingGroup: MessageGroup<SpeedRequest> | null;
+}
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
     return {
         requests: [],
         latestTimestampMs: null,
-        lastUserTimestampMs: null
+        lastUserTimestampMs: null,
+        pendingGroup: null
     };
+}
+
+// Flushes a still-open message-id group at end of stream, same as
+// finishTokenMetrics; without this the last call in a transcript would never
+// be counted if it has more than one content block.
+function finishSpeedMetrics(state: SpeedMetricCollectorState): void {
+    if (state.pendingGroup) {
+        state.requests.push(state.pendingGroup.entry);
+        state.pendingGroup = null;
+    }
 }
 
 function collectSpeedMetricRecord(
@@ -356,12 +433,24 @@ function collectSpeedMetricRecord(
     }
 
     const usage = parseUsageTokens(data.message.usage);
-    state.requests.push({
+    const request: SpeedRequest = {
         inputTokens: usage.input,
         outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
         interval
-    });
+    };
+
+    const messageId = typeof data.message.id === 'string' && data.message.id.length > 0 ? data.message.id : null;
+    if (messageId === null) {
+        state.requests.push(request);
+        return;
+    }
+
+    const { flushed, pending } = advanceMessageGroup(state.pendingGroup, messageId, request, usage.output);
+    state.pendingGroup = pending;
+    if (flushed) {
+        state.requests.push(flushed);
+    }
 }
 
 async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
@@ -370,6 +459,7 @@ async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: bo
         const data = parseJsonlLine(line) as TranscriptLine | null;
         collectSpeedMetricRecord(state, data, parseTimestampMs(data?.timestamp), ignoreSidechain);
     }
+    finishSpeedMetrics(state);
 
     return state;
 }
@@ -508,7 +598,7 @@ function normalizeSpeedWindows(windowSeconds: number[] | undefined): number[] {
 
 function createEmptyScanResult(options: TranscriptScanOptions, speedWindows: number[]): TranscriptScanResult {
     return {
-        tokenMetrics: options.includeTokenMetrics ? createEmptyTokenMetrics() : null,
+        tokenMetrics: options.includeTokenMetrics ? createEmptyTokenMetrics(options.includeCostEstimate) : null,
         sessionDuration: null,
         speedMetricsCollection: options.includeSpeedMetrics
             ? {
@@ -577,6 +667,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
 
         let speedMetricsCollection: SpeedMetricsCollection | null = null;
         if (speedState) {
+            finishSpeedMetrics(speedState);
             const collected: CollectedSpeedMetrics[] = [speedState];
             if (referencedAgentIds) {
                 const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedAgentIds);
@@ -597,7 +688,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
         }
 
         return {
-            tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+            tokenMetrics: tokenState ? finishTokenMetrics(tokenState, options.includeCostEstimate) : null,
             sessionDuration: options.includeSessionDuration
                 ? formatSessionDuration(firstTimestampMs, lastTimestampMs)
                 : null,
@@ -672,7 +763,7 @@ export async function getTranscriptAnalysis(
     });
 
     return {
-        tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(),
+        tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(options.includeCostEstimate),
         sessionDuration: result.sessionDuration,
         speedMetricsCollection: result.speedMetricsCollection,
         compactionData: result.compactionData,
