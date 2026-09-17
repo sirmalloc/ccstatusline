@@ -15,6 +15,7 @@ import {
 import * as claudeSettings from '../claude-settings';
 import {
     getMacKeychainConfigDirService,
+    getUsageCredentials,
     getUsageToken,
     parseMacKeychainCredentialCandidates
 } from '../usage-fetch';
@@ -52,8 +53,8 @@ function makeConfigDirService(configDir: string): string {
     return `Claude Code-credentials-${createHash('sha256').update(configDir).digest('hex').slice(0, 8)}`;
 }
 
-function makeTokenPayload(token: string): string {
-    return JSON.stringify({ claudeAiOauth: { accessToken: token } });
+function makeTokenPayload(token: string, refreshToken?: string): string {
+    return JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken } });
 }
 
 function encodeAsciiAsHex(value: string): string {
@@ -258,14 +259,19 @@ describe('getUsageToken', () => {
         mockCredentialsFile();
         mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
             if (command === 'security' && args?.[0] === 'find-generic-password' && args[2] === configDirService) {
-                return makeTokenPayload('profile-token');
+                return makeTokenPayload('profile-token', 'profile-refresh-token');
             }
 
             throw new Error(`Unexpected security args: ${args?.join(' ')}`);
         });
 
         expect(getUsageToken()).toBe('profile-token');
+        expect(getUsageCredentials()).toEqual({
+            accessToken: 'profile-token',
+            refreshToken: 'profile-refresh-token'
+        });
         expect(getSecurityCallLog()).toEqual([
+            `find-generic-password -s ${configDirService} -w`,
             `find-generic-password -s ${configDirService} -w`
         ]);
     });
@@ -275,7 +281,7 @@ describe('getUsageToken', () => {
 
         process.env.CLAUDE_CONFIG_DIR = '/fake/claude';
         vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
-        mockCredentialsFile(makeTokenPayload('file-token'));
+        mockCredentialsFile(makeTokenPayload('file-token', 'file-refresh-token'));
         mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
             if (command === 'security' && args?.[0] === 'find-generic-password' && args[2] === configDirService) {
                 throw new Error('missing profile credential');
@@ -285,7 +291,12 @@ describe('getUsageToken', () => {
         });
 
         expect(getUsageToken()).toBe('file-token');
+        expect(getUsageCredentials()).toEqual({
+            accessToken: 'file-token',
+            refreshToken: 'file-refresh-token'
+        });
         expect(getSecurityCallLog()).toEqual([
+            `find-generic-password -s ${configDirService} -w`,
             `find-generic-password -s ${configDirService} -w`
         ]);
     });
