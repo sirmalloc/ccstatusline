@@ -12,7 +12,7 @@ import {
     type ListEntry
 } from './List';
 
-type TtlField = 'gitCacheTtl' | 'customCommandCacheTtl';
+type TtlField = 'gitCacheTtl' | 'customCommandCacheTtl' | 'terminalWidthCacheTtl';
 type ConfigureStatusLineValue = 'refreshInterval' | TtlField;
 
 function getRefreshInputValue(interval: number | null): string {
@@ -37,7 +37,7 @@ function getGitCacheTtlSublabel(ttlSeconds: number): string {
         : `(${ttlSeconds}s)`;
 }
 
-function getCustomCommandCacheTtlSublabel(ttlSeconds: number): string {
+function getCacheTtlSublabel(ttlSeconds: number): string {
     return ttlSeconds === 0
         ? '(disabled)'
         : `(${ttlSeconds}s)`;
@@ -47,7 +47,8 @@ export function buildConfigureStatusLineItems(
     refreshInterval: number | null,
     supportsRefreshInterval: boolean,
     gitCacheTtlSeconds: number,
-    customCommandCacheTtlSeconds: number
+    customCommandCacheTtlSeconds: number,
+    terminalWidthCacheTtlSeconds: number
 ): ListEntry<ConfigureStatusLineValue>[] {
     return [
         {
@@ -67,9 +68,15 @@ export function buildConfigureStatusLineItems(
         },
         {
             label: '🔧 Custom Command Cache TTL',
-            sublabel: getCustomCommandCacheTtlSublabel(customCommandCacheTtlSeconds),
+            sublabel: getCacheTtlSublabel(customCommandCacheTtlSeconds),
             value: 'customCommandCacheTtl',
             description: 'How long custom command output is reused before the command runs again. Enter 0-60 seconds;\n0 disables caching, so every status line render spawns the command.'
+        },
+        {
+            label: '🖥️  Terminal Width Cache TTL',
+            sublabel: getCacheTtlSublabel(terminalWidthCacheTtlSeconds),
+            value: 'terminalWidthCacheTtl',
+            description: 'How long a cached "no TTY detected" result is trusted before re-probing the terminal width. Enter 0-300 seconds;\n0 disables the cache (always re-probes). A detected width is never cached across renders, only this no-TTY result is.'
         }
     ];
 }
@@ -96,7 +103,7 @@ export function validateRefreshIntervalInput(value: string): string | null {
     return null;
 }
 
-function validateTtlInput(value: string, label: string): string | null {
+function validateTtlInput(value: string, label: string, maximum = 60): string | null {
     const parsed = parseInt(value, 10);
 
     if (value === '' || isNaN(parsed)) {
@@ -107,8 +114,8 @@ function validateTtlInput(value: string, label: string): string | null {
         return `Minimum ${label} is 0s (you entered ${parsed}s)`;
     }
 
-    if (parsed > 60) {
-        return `Maximum ${label} is 60s (you entered ${parsed}s)`;
+    if (parsed > maximum) {
+        return `Maximum ${label} is ${maximum}s (you entered ${parsed}s)`;
     }
 
     return null;
@@ -122,8 +129,13 @@ export function validateCustomCommandCacheTtlInput(value: string): string | null
     return validateTtlInput(value, 'custom command cache TTL');
 }
 
+export function validateTerminalWidthCacheTtlInput(value: string): string | null {
+    return validateTtlInput(value, 'Terminal Width cache TTL', 300);
+}
+
 interface TtlFieldConfig {
     currentValue: number;
+    maxInputLength: number;
     prompt: string;
     helperText: string;
     hint: string;
@@ -136,9 +148,11 @@ export interface RefreshIntervalMenuProps {
     supportsRefreshInterval: boolean;
     gitCacheTtlSeconds: number;
     customCommandCacheTtlSeconds: number;
+    terminalWidthCacheTtlSeconds: number;
     onUpdate: (interval: number | null) => void;
     onGitCacheTtlUpdate: (ttlSeconds: number) => void;
     onCustomCommandCacheTtlUpdate: (ttlSeconds: number) => void;
+    onTerminalWidthCacheTtlUpdate: (ttlSeconds: number) => void;
     onBack: () => void;
 }
 
@@ -147,9 +161,11 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     supportsRefreshInterval,
     gitCacheTtlSeconds,
     customCommandCacheTtlSeconds,
+    terminalWidthCacheTtlSeconds,
     onUpdate,
     onGitCacheTtlUpdate,
     onCustomCommandCacheTtlUpdate,
+    onTerminalWidthCacheTtlUpdate,
     onBack
 }) => {
     const [editingRefreshInterval, setEditingRefreshInterval] = useState(false);
@@ -161,6 +177,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     const ttlFields: Record<TtlField, TtlFieldConfig> = {
         gitCacheTtl: {
             currentValue: gitCacheTtlSeconds,
+            maxInputLength: 2,
             prompt: 'Enter Git cache TTL in seconds (0-60):',
             helperText: 'This affects how quickly git widgets notice unstaged and untracked working-tree changes.',
             hint: '0 disables age-based expiry; cache validity uses .git/HEAD and .git/index mtimes only.',
@@ -169,11 +186,21 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
         },
         customCommandCacheTtl: {
             currentValue: customCommandCacheTtlSeconds,
+            maxInputLength: 2,
             prompt: 'Enter custom command cache TTL in seconds (0-60):',
             helperText: 'This affects how quickly custom command widgets show new output, and how often they spawn a shell.',
             hint: '0 disables caching; every status line render spawns the command again.',
             validate: validateCustomCommandCacheTtlInput,
             onSave: onCustomCommandCacheTtlUpdate
+        },
+        terminalWidthCacheTtl: {
+            currentValue: terminalWidthCacheTtlSeconds,
+            maxInputLength: 3,
+            prompt: 'Enter Terminal Width cache TTL in seconds (0-300):',
+            helperText: 'Controls how long a "no TTY detected" result is cached. A detected width is always re-probed on the next render so resizes take effect immediately.',
+            hint: '0 disables the cache (always re-probes).',
+            validate: validateTerminalWidthCacheTtlInput,
+            onSave: onTerminalWidthCacheTtlUpdate
         }
     };
 
@@ -241,7 +268,7 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                 // No cursor position in simple input
             } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
                 const newValue = ttlInput + input;
-                if (newValue.length <= 2) {
+                if (newValue.length <= field.maxInputLength) {
                     setTtlInput(newValue);
                     setValidationError(null);
                 }
@@ -301,7 +328,8 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                         currentInterval,
                         supportsRefreshInterval,
                         gitCacheTtlSeconds,
-                        customCommandCacheTtlSeconds
+                        customCommandCacheTtlSeconds,
+                        terminalWidthCacheTtlSeconds
                     )}
                     onSelect={(value) => {
                         if (value === 'back') {
