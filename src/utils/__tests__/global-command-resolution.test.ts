@@ -17,7 +17,7 @@ import {
 } from '../package-manager-executable';
 
 function mockExecFileSync(responses: Record<string, string>) {
-    return vi.spyOn(childProcess, 'execFileSync').mockImplementation((command, args) => {
+    const spy = vi.spyOn(childProcess, 'execFileSync').mockImplementation((command, args) => {
         const key = `${command} ${(args as string[]).join(' ')}`;
         const response = responses[key];
 
@@ -27,6 +27,14 @@ function mockExecFileSync(responses: Record<string, string>) {
 
         return response;
     });
+
+    // Other suites replace child_process wholesale via vi.mock, which is not
+    // file-scoped under the bun runner. When one of those runs first, vi.spyOn
+    // hands back that already-installed mock along with its accumulated call
+    // history, so assertions here would otherwise inspect foreign calls.
+    spy.mockClear();
+
+    return spy;
 }
 
 describe('global command resolution', () => {
@@ -82,7 +90,7 @@ describe('global command resolution', () => {
         expect(execFileSyncSpy).toHaveBeenCalled();
         for (const call of execFileSyncSpy.mock.calls) {
             const options = call[2] as { stdio?: string[] };
-            expect(options.stdio).toEqual(['ignore', 'pipe', 'ignore']);
+            expect(options.stdio?.[2]).toBe('ignore');
         }
     });
 

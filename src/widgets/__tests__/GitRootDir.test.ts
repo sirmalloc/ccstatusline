@@ -41,7 +41,7 @@ function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolea
         id: 'git-root-dir',
         type: 'git-root-dir',
         maxWidth: options.maxWidth,
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hideNoGit ? { hide: 'no-git' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);

@@ -61,7 +61,6 @@ export function setSlotSymbol(item: WidgetItem, slot: SymbolSlot, value: string)
     if (slot.id === 'character') {
         if (value === slot.defaultSymbol) {
             const { character, ...rest } = item;
-            void character;
             return rest;
         }
 

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { z } from 'zod';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
+import type { RenderContext } from '../types/RenderContext';
 import {
     SettingsSchema,
     type InstallationMetadata,
@@ -516,6 +517,22 @@ function getLayeredSettingsCandidatePathsByPriority(cwd: string): string[] {
         path.join(userDir, 'settings.json')
     ];
     return Array.from(new Set(candidates));
+}
+
+/**
+ * Picks the directory whose `.claude` layer `getVoiceConfig` and `getSandboxConfig` read.
+ *
+ * The project directory is tried first because that is where the project settings
+ * layers live; the session cwd can sit anywhere beneath it.
+ */
+export function resolveClaudeConfigCwd(context: RenderContext): string | undefined {
+    const candidates = [
+        context.data?.workspace?.project_dir,
+        context.data?.cwd,
+        context.data?.workspace?.current_dir
+    ];
+
+    return candidates.find(candidate => typeof candidate === 'string' && candidate.trim().length > 0);
 }
 
 interface VoiceLayerResult {

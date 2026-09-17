@@ -26,6 +26,13 @@ const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
+// Upper bound on how far ahead a lock may block fetching. The longest
+// legitimate lock is a 429 Retry-After, which servers keep far below a day.
+// The JSON lock stores an absolute deadline, so unlike the legacy mtime lock
+// it cannot age out on its own: one bogus timestamp (a mocked clock, a system
+// clock jump) otherwise wedges usage fetching permanently, with every widget
+// stuck on [Timeout] and no code path able to recover.
+const MAX_LOCK_HORIZON = 24 * 60 * 60; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 
@@ -160,7 +167,18 @@ function findUsageApiLimit(limits: UsageApiLimit[] | null | undefined, kind: str
 // Mirrors the null-bucket placeholder guard for #343 above: a limits[] entry
 // reporting 0% with no resets_at is not a real usage window, so the
 // limits[] fallback below must not resurrect it as a phantom 0% reading.
+//
+// weekly_scoped entries naming a concrete model are exempt: accounts with a
+// per-model quota report that entry as percent 0 / resets_at null until the
+// model is first used in the current window (resets_at fills in on first use,
+// percent stays 0), so for those the zero reading is real data - the same
+// state a null legacy per-model bucket already reports as 0 via
+// getUsageApiBucketUtilization. Accounts without the quota omit the entry
+// entirely, so this cannot resurrect a phantom window.
 function isPlaceholderUsageApiLimit(limit: UsageApiLimit): boolean {
+    if (limit.scope?.model?.display_name) {
+        return false;
+    }
     return (limit.percent ?? 0) === 0 && (limit.resets_at ?? null) === null;
 }
 
@@ -552,9 +570,39 @@ function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
     }
 }
 
+// Claude Code stores each non-default profile's credential under its own
+// keychain service: the plain name plus `-<sha256(configDir)[:8]>`, added
+// whenever CLAUDE_CONFIG_DIR is set. CLAUDE_SECURESTORAGE_CONFIG_DIR, when
+// present, replaces the hash input (an empty value forces the plain name).
+// The hash input is the raw environment value, NFC-normalized but not
+// resolved — the goal is to reproduce the exact string Claude Code's own
+// service-name builder hashes, not to locate a directory (#521). Returns
+// null for the default profile.
+export function getMacKeychainConfigDirService(): string | null {
+    const rawConfigDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? '';
+    if (rawConfigDir === '') {
+        return null;
+    }
+
+    const configDir = rawConfigDir.normalize('NFC');
+    const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8);
+    return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
+}
+
 export function getUsageCredentials(): UsageCredentials | null {
     if (process.platform !== 'darwin') {
         return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const configDirService = getMacKeychainConfigDirService();
+    if (configDirService !== null) {
+        // A non-default profile owns exactly one keychain service name. On a
+        // miss, the plain service and the other suffixed items all belong to
+        // other profiles (or MCP servers), so fall through only to the
+        // profile's own .credentials.json rather than surface another
+        // account's usage.
+        return readUsageCredentialsFromMacKeychainService(configDirService)
+            ?? readUsageCredentialsFromCredentialsFile();
     }
 
     return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
@@ -602,7 +650,10 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
         const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
         if (parsed) {
             hasValidJsonLock = true;
-            if (parsed.blockedUntil > now) {
+            // Past deadline, or one implausibly far ahead: treat as no lock and
+            // fetch. The fetch rewrites the file with a sane deadline, so a
+            // poisoned lock self-heals on the very next render.
+            if (parsed.blockedUntil > now && parsed.blockedUntil <= now + MAX_LOCK_HORIZON) {
                 return {
                     blockedUntil: parsed.blockedUntil,
                     error: parsed.error ?? 'timeout'

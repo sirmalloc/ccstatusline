@@ -125,14 +125,14 @@ describe('CompactionCounterWidget', () => {
         it('returns null when count is 0 and hide zero is enabled', () => {
             expect(render({
                 compactionData: { count: 0 },
-                item: { ...ITEM, metadata: { hideZero: 'true' } }
+                item: { ...ITEM, metadata: { hide: 'zero' } }
             })).toBeNull();
         });
 
         it('renders positive counts when hide zero is enabled', () => {
             expect(render({
                 compactionData: { count: 3 },
-                item: { ...ITEM, metadata: { hideZero: 'true' } }
+                item: { ...ITEM, metadata: { hide: 'zero' } }
             })).toBe('↻ 3');
         });
 
@@ -259,7 +259,6 @@ describe('CompactionCounterWidget', () => {
                 { key: 'n', label: '(n)erd font', action: 'toggle-nerd-font' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
                 { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
@@ -273,7 +272,6 @@ describe('CompactionCounterWidget', () => {
                 { key: 'f', label: '(f)ormat', action: 'cycle-format' },
                 { key: 's', label: '(s)plit by trigger', action: 'toggle-triggers' },
                 { key: 't', label: '(t)okens reclaimed', action: 'toggle-reclaimed' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' },
                 { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
             ]);
         });
@@ -305,14 +303,8 @@ describe('CompactionCounterWidget', () => {
             });
         });
 
-        it('shows hide zero in the editor display when enabled', () => {
-            expect(new CompactionCounterWidget().getEditorDisplay({
-                ...ITEM,
-                metadata: { hideZero: 'true' }
-            })).toEqual({
-                displayText: 'Compaction Counter',
-                modifierText: '(icon-space-number, hide zero)'
-            });
+        it('declares the zero hideable state', () => {
+            expect(new CompactionCounterWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
         });
 
         it('ignores stale icon-number format metadata in the editor display', () => {
@@ -352,15 +344,6 @@ describe('CompactionCounterWidget', () => {
 
             expect(enabled?.metadata?.nerdFont).toBe('true');
             expect(disabled?.metadata?.nerdFont).toBeUndefined();
-        });
-
-        it('toggles hide zero metadata on and off', () => {
-            const widget = new CompactionCounterWidget();
-            const enabled = widget.handleEditorAction('toggle-hide-zero', ITEM);
-            const disabled = widget.handleEditorAction('toggle-hide-zero', enabled ?? ITEM);
-
-            expect(enabled?.metadata?.hideZero).toBe('true');
-            expect(disabled?.metadata?.hideZero).toBe('false');
         });
 
         it('does not enable nerd font for non-default formats', () => {
@@ -449,10 +432,10 @@ describe('CompactionCounterWidget', () => {
             })).toBe('3');
         });
 
-        it('hides a zero metric value when hide zero is enabled', () => {
+        it('hides a zero metric value when the zero hideable state is enabled', () => {
             expect(render({
                 compactionData: { count: 4, byTrigger: { auto: 0, manual: 4, unknown: 0 } },
-                item: { ...ITEM, metadata: { metric: 'auto', hideZero: 'true' } }
+                item: { ...ITEM, metadata: { metric: 'auto', hide: 'zero' } }
             })).toBeNull();
         });
 
@@ -466,7 +449,7 @@ describe('CompactionCounterWidget', () => {
         it('shows the sample metric value in preview mode, ignoring hide zero', () => {
             expect(render({
                 isPreview: true,
-                item: { ...ITEM, metadata: { metric: 'unknown', hideZero: 'true' } }
+                item: { ...ITEM, metadata: { metric: 'unknown', hide: 'zero' } }
             })).toBe('0');
             expect(render({
                 isPreview: true,
@@ -477,20 +460,19 @@ describe('CompactionCounterWidget', () => {
         it('shows the metric in the editor display', () => {
             expect(new CompactionCounterWidget().getEditorDisplay({
                 ...ITEM,
-                metadata: { metric: 'reclaimed', hideZero: 'true' }
+                metadata: { metric: 'reclaimed', hide: 'zero' }
             })).toEqual({
                 displayText: 'Compaction Counter',
-                modifierText: '(reclaimed value, hide zero)'
+                modifierText: '(reclaimed value)'
             });
         });
 
-        it('uses only metric and hide-zero keybinds in metric mode', () => {
+        it('uses only the metric keybind in metric mode, since hiding moves to the shared checklist', () => {
             expect(new CompactionCounterWidget().getCustomKeybinds({
                 ...ITEM,
                 metadata: { metric: 'auto' }
             })).toEqual([
-                { key: 'v', label: '(v)alue', action: 'cycle-metric' },
-                { key: 'h', label: '(h)ide when zero', action: 'toggle-hide-zero' }
+                { key: 'v', label: '(v)alue', action: 'cycle-metric' }
             ]);
         });
 
