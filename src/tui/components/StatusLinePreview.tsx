@@ -102,7 +102,7 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
                     globalPowerlineThemeIndex,
                     globalPowerlineStartCapIndex,
                     preRenderedWidgets,
-                    preCalculatedMaxWidths[i] ?? []
+                    preCalculatedMaxWidths
                 );
                 result.push(renderResult.line);
                 if (renderResult.wasTruncated) {

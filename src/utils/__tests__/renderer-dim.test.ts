@@ -56,7 +56,7 @@ function renderLine(
     const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
     const preRenderedWidgets = preRenderedLines[0] ?? [];
 
-    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths[0] ?? []);
+    return renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
 }
 
 describe('applyColors dim handling', () => {
