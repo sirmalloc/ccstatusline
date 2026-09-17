@@ -39,7 +39,6 @@ describe('SessionUsageWidget', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
-        // makeUsageProgressBar no longer used; SessionUsage uses makeTimerProgressBar directly
     });
 
     afterEach(() => {
@@ -76,6 +75,7 @@ describe('SessionUsageWidget', () => {
         expectedRawProgress: '[████████░░░░░░░░░░░░░░░░░░░░░░░░] 23.4%',
         expectedRawTime: '23.4%',
         expectedTime: 'Session: 23.4%',
+        expectedWholePercentTime: 'Session: 23%',
         modifierItem: {
             id: 'session',
             type: 'session-usage',
