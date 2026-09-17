@@ -22,14 +22,29 @@ const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
 const mockedExecFileSync = childProcess.execFileSync as Mock;
 
+const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
+const ORIGINAL_SECURESTORAGE_CONFIG_DIR = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+
 describe('getUsageToken dump-keychain behavior', () => {
     beforeEach(() => {
+        // The candidate scan under test only runs for the default profile, so
+        // shed any config-dir variables leaking in from the environment.
+        delete process.env.CLAUDE_CONFIG_DIR;
+        delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
         mockedExecFileSync.mockReset();
         mockedExecFileSync.mockImplementation(realExecFileSync);
         vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
     });
 
     afterEach(() => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+        delete process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR;
+        if (ORIGINAL_CLAUDE_CONFIG_DIR !== undefined) {
+            process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+        }
+        if (ORIGINAL_SECURESTORAGE_CONFIG_DIR !== undefined) {
+            process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR = ORIGINAL_SECURESTORAGE_CONFIG_DIR;
+        }
         vi.restoreAllMocks();
         mockedExecFileSync.mockReset();
         mockedExecFileSync.mockImplementation(realExecFileSync);
