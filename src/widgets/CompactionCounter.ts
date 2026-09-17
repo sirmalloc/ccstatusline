@@ -84,7 +84,6 @@ function getMetric(item: WidgetItem): CompactionMetric {
 function setMetric(item: WidgetItem, metric: CompactionMetric): WidgetItem {
     if (metric === DEFAULT_METRIC) {
         const { [METRIC_METADATA_KEY]: removedMetric, ...restMetadata } = item.metadata ?? {};
-        void removedMetric;
 
         return {
             ...item,
