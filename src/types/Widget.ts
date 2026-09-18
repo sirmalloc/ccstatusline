@@ -69,6 +69,12 @@ export interface Widget {
      * still take precedence (see custom-command's preserve-colors mode).
      */
     preservesRenderedColors?(item: WidgetItem): boolean;
+
+    // Lets a widget override its foreground color from live data (e.g. budget
+    // severity). Returns a color to use instead of the configured one, or
+    // undefined to keep the static color. Resolved at the renderer's per-widget
+    // color sites; the global overrideForegroundColor still takes precedence.
+    getDynamicColor?(item: WidgetItem, context: RenderContext): string | undefined;
 }
 
 export interface WidgetEditorProps {
