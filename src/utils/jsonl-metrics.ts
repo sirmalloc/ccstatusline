@@ -38,6 +38,8 @@ export interface TranscriptAnalysisOptions {
     includeSessionDuration?: boolean;
     includeSpeedMetrics?: boolean;
     includeSubagents?: boolean;
+    /** Also fold sub-agent transcripts into `sessionTokenMetrics`. */
+    includeSubagentTokens?: boolean;
     speedWindowSeconds?: number[];
     includeCompactionStats?: boolean;
     includeThinkingEffort?: boolean;
@@ -46,6 +48,8 @@ export interface TranscriptAnalysisOptions {
 
 export interface TranscriptAnalysis {
     tokenMetrics: TokenMetrics;
+    /** Token metrics including the session's sub-agents; only set when `includeSubagents` is requested. */
+    sessionTokenMetrics?: TokenMetrics;
     sessionDuration: string | null;
     speedMetricsCollection: SpeedMetricsCollection | null;
     compactionData: CompactionData | null;
@@ -57,6 +61,7 @@ interface TranscriptScanOptions extends TranscriptAnalysisOptions { includeToken
 
 interface TranscriptScanResult {
     tokenMetrics: TokenMetrics | null;
+    sessionTokenMetrics: TokenMetrics | null;
     sessionDuration: string | null;
     speedMetricsCollection: SpeedMetricsCollection | null;
     compactionData: CompactionData | null;
@@ -86,6 +91,7 @@ interface TokenMetricEntry {
     stopReason: string | null | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
+    isSidechain: boolean;
 }
 
 interface TokenMetricAccumulator {
@@ -101,6 +107,10 @@ interface TokenMetricAccumulator {
 
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
+    // Sidechain rows counted inside `metrics`. Older transcripts inline
+    // sub-agent turns here instead of writing separate files; when both exist
+    // this is subtracted so a sub-agent turn is never counted twice.
+    sidechainMetrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
     lastUsageEntry: TokenMetricEntry | null;
     sawCompactBoundary: boolean;
@@ -168,6 +178,7 @@ function accumulateTokenMetricEntry(
 function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
+        sidechainMetrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
         lastUsageEntry: null,
         sawCompactBoundary: false,
@@ -192,16 +203,21 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
-            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
+            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+            isSidechain: data?.isSidechain === true
         };
 
         const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
+            state.sidechainMetrics = createTokenMetricAccumulator();
         }
         if (!state.hasStopReasonField || entry.stopReason) {
             accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+            if (entry.isSidechain) {
+                accumulateTokenMetricEntry(state.sidechainMetrics, entry, !compactBoundary);
+            }
         }
         state.lastUsageEntry = entry;
         state.boundaryAfterLastUsage = compactBoundary;
@@ -211,6 +227,9 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
 function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
     if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
         accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+        if (state.lastUsageEntry.isSidechain) {
+            accumulateTokenMetricEntry(state.sidechainMetrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+        }
     }
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
@@ -229,6 +248,52 @@ function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
         cacheCreationTokens: state.metrics.cacheCreationTokens,
         totalTokens: state.metrics.inputTokens + state.metrics.outputTokens + cachedTokens,
         contextLength
+    };
+}
+
+/**
+ * Folds sub-agent transcripts into the session's token counts.
+ *
+ * Sub-agent turns reach the metrics one of two ways: inlined into the main
+ * transcript as `isSidechain` rows (older format), or written to their own
+ * `subagents/agent-*.jsonl` files. When the files exist they are authoritative,
+ * so the inlined rows are taken back out first and a turn is never counted
+ * twice. `contextLength` stays a main-chain concept and is carried over as-is.
+ */
+function buildSessionTokenMetrics(
+    mainMetrics: TokenMetrics,
+    sidechainMetrics: TokenMetricAccumulator,
+    subagentMetrics: TokenMetrics[]
+): TokenMetrics {
+    const hasSubagentFiles = subagentMetrics.length > 0;
+    let inputTokens = mainMetrics.inputTokens;
+    let outputTokens = mainMetrics.outputTokens;
+    let cacheReadTokens = mainMetrics.cacheReadTokens ?? 0;
+    let cacheCreationTokens = mainMetrics.cacheCreationTokens ?? 0;
+
+    if (hasSubagentFiles) {
+        inputTokens -= sidechainMetrics.inputTokens;
+        outputTokens -= sidechainMetrics.outputTokens;
+        cacheReadTokens -= sidechainMetrics.cacheReadTokens;
+        cacheCreationTokens -= sidechainMetrics.cacheCreationTokens;
+    }
+
+    for (const metrics of subagentMetrics) {
+        inputTokens += metrics.inputTokens;
+        outputTokens += metrics.outputTokens;
+        cacheReadTokens += metrics.cacheReadTokens ?? 0;
+        cacheCreationTokens += metrics.cacheCreationTokens ?? 0;
+    }
+
+    const cachedTokens = cacheReadTokens + cacheCreationTokens;
+    return {
+        inputTokens,
+        outputTokens,
+        cachedTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        totalTokens: inputTokens + outputTokens + cachedTokens,
+        contextLength: mainMetrics.contextLength
     };
 }
 
@@ -364,14 +429,34 @@ function collectSpeedMetricRecord(
     });
 }
 
-async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
-    const state = createSpeedMetricCollector();
+interface SubagentScanResult {
+    tokenMetrics: TokenMetrics | null;
+    speedMetrics: CollectedSpeedMetrics | null;
+}
+
+/** One read of a sub-agent transcript, feeding whichever collectors were asked for. */
+async function scanSubagentFile(
+    filePath: string,
+    options: { includeTokenMetrics: boolean; includeSpeedMetrics: boolean }
+): Promise<SubagentScanResult> {
+    const tokenState = options.includeTokenMetrics ? createTokenMetricState() : null;
+    const speedState = options.includeSpeedMetrics ? createSpeedMetricCollector() : null;
+
     for await (const line of iterateJsonlLines(filePath)) {
         const data = parseJsonlLine(line) as TranscriptLine | null;
-        collectSpeedMetricRecord(state, data, parseTimestampMs(data?.timestamp), ignoreSidechain);
+        const timestampMs = parseTimestampMs(data?.timestamp);
+        if (tokenState) {
+            collectTokenMetricRecord(tokenState, data, timestampMs);
+        }
+        if (speedState) {
+            collectSpeedMetricRecord(speedState, data, timestampMs, false);
+        }
     }
 
-    return state;
+    return {
+        tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+        speedMetrics: speedState
+    };
 }
 
 function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSpeedMetrics {
@@ -509,6 +594,9 @@ function normalizeSpeedWindows(windowSeconds: number[] | undefined): number[] {
 function createEmptyScanResult(options: TranscriptScanOptions, speedWindows: number[]): TranscriptScanResult {
     return {
         tokenMetrics: options.includeTokenMetrics ? createEmptyTokenMetrics() : null,
+        sessionTokenMetrics: options.includeTokenMetrics && options.includeSubagentTokens === true
+            ? createEmptyTokenMetrics()
+            : null,
         sessionDuration: null,
         speedMetricsCollection: options.includeSpeedMetrics
             ? {
@@ -532,7 +620,9 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
     const tokenState = options.includeTokenMetrics ? createTokenMetricState() : null;
     const speedState = options.includeSpeedMetrics ? createSpeedMetricCollector() : null;
     const compactionData = options.includeCompactionStats ? createCompactionStats() : null;
-    const referencedAgentIds = options.includeSpeedMetrics && options.includeSubagents
+    const needsSubagentTokens = options.includeSubagentTokens === true && options.includeTokenMetrics === true;
+    const needsSubagentSpeed = options.includeSubagents === true && options.includeSpeedMetrics === true;
+    const referencedAgentIds = needsSubagentTokens || needsSubagentSpeed
         ? new Set<string>()
         : null;
     let firstTimestampMs: number | null = null;
@@ -575,29 +665,46 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
             }
         }
 
-        let speedMetricsCollection: SpeedMetricsCollection | null = null;
-        if (speedState) {
-            const collected: CollectedSpeedMetrics[] = [speedState];
-            if (referencedAgentIds) {
-                const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedAgentIds);
-                const subagentMetrics = await Promise.all(subagentPaths.map(async (subagentPath) => {
+        const subagentResults = referencedAgentIds
+            ? await Promise.all(
+                getSubagentTranscriptPaths(transcriptPath, referencedAgentIds).map(async (subagentPath) => {
                     try {
-                        return await collectSpeedMetricsFromFile(subagentPath, false);
+                        return await scanSubagentFile(subagentPath, {
+                            includeTokenMetrics: needsSubagentTokens,
+                            includeSpeedMetrics: needsSubagentSpeed
+                        });
                     } catch {
                         return null;
                     }
-                }));
-                for (const metrics of subagentMetrics) {
-                    if (metrics) {
-                        collected.push(metrics);
-                    }
+                })
+            )
+            : [];
+
+        const mainTokenMetrics = tokenState ? finishTokenMetrics(tokenState) : null;
+        const sessionTokenMetrics = tokenState && needsSubagentTokens
+            ? buildSessionTokenMetrics(
+                mainTokenMetrics ?? createEmptyTokenMetrics(),
+                tokenState.sidechainMetrics,
+                subagentResults
+                    .map(result => result?.tokenMetrics ?? null)
+                    .filter((metrics): metrics is TokenMetrics => metrics !== null)
+            )
+            : null;
+
+        let speedMetricsCollection: SpeedMetricsCollection | null = null;
+        if (speedState) {
+            const collected: CollectedSpeedMetrics[] = [speedState];
+            for (const result of subagentResults) {
+                if (result?.speedMetrics) {
+                    collected.push(result.speedMetrics);
                 }
             }
             speedMetricsCollection = buildSpeedMetricsCollection(collected, speedWindows);
         }
 
         return {
-            tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+            tokenMetrics: mainTokenMetrics,
+            sessionTokenMetrics,
             sessionDuration: options.includeSessionDuration
                 ? formatSessionDuration(firstTimestampMs, lastTimestampMs)
                 : null,
@@ -673,6 +780,7 @@ export async function getTranscriptAnalysis(
 
     return {
         tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(),
+        ...result.sessionTokenMetrics ? { sessionTokenMetrics: result.sessionTokenMetrics } : {},
         sessionDuration: result.sessionDuration,
         speedMetricsCollection: result.speedMetricsCollection,
         compactionData: result.compactionData,

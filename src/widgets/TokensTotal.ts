@@ -1,6 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     HideableState,
     Widget,
     WidgetEditorDisplay,
@@ -8,6 +9,12 @@ import type {
 } from '../types/Widget';
 import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
+import {
+    SUBAGENTS_MARKER,
+    isWidgetSubagentsEnabled,
+    tokenMetricsForWidget,
+    withWidgetSubagentsEnabled
+} from '../utils/token-subagents';
 
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -20,7 +27,9 @@ export class TokensTotalWidget implements Widget {
     getDisplayName(): string { return 'Tokens Total'; }
     getCategory(): string { return 'Tokens'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+        return isWidgetSubagentsEnabled(item)
+            ? { displayText: this.getDisplayName(), modifierText: '[+sub]' }
+            : { displayText: this.getDisplayName() };
     }
 
     getHideableStates(): HideableState[] {
@@ -29,17 +38,32 @@ export class TokensTotalWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
+        const label = isWidgetSubagentsEnabled(item) ? `${SUBAGENTS_MARKER}Total: ` : 'Total: ';
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(30600, format));
+            return formatRawOrLabeledValue(item, label, formatTokens(30600, format));
         }
 
-        if (context.tokenMetrics) {
-            if (context.tokenMetrics.totalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+        // Subagent-inclusive metrics when the widget opts in, main-only otherwise.
+        const metrics = tokenMetricsForWidget(item, context);
+        if (metrics) {
+            if (metrics.totalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, 'Total: ', formatTokens(context.tokenMetrics.totalTokens, format));
+            return formatRawOrLabeledValue(item, label, formatTokens(metrics.totalTokens, format));
         }
         return null;
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [{ key: 's', label: '(s)ubagents', action: 'toggle-subagents' }];
+    }
+
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action !== 'toggle-subagents') {
+            return null;
+        }
+
+        return withWidgetSubagentsEnabled(item, !isWidgetSubagentsEnabled(item));
     }
 
     supportsRawValue(): boolean { return true; }
