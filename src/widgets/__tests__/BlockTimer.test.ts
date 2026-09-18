@@ -72,6 +72,26 @@ describe('BlockTimerWidget', () => {
         expect(render(widget, item, { usageData: {} })).toBe('Block [████░░░░░░░░░░░░] 25.0%');
     });
 
+    it('rounds the progress bar fill to the nearest cell', () => {
+        const widget = new BlockTimerWidget();
+        const item: WidgetItem = {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'progress' }
+        };
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 13302000,
+            remainingMs: 4698000,
+            elapsedPercent: 73.9,
+            remainingPercent: 26.1
+        });
+
+        // 73.9% of 32 cells is 23.648, past the half-cell mark, so the 24th cell fills.
+        expect(render(widget, item, { usageData: {} })).toBe(`Block [${'█'.repeat(24)}${'░'.repeat(8)}] 73.9%`);
+    });
+
     it('renders empty values when no usage or fallback data exists', () => {
         const widget = new BlockTimerWidget();
 
@@ -83,6 +103,30 @@ describe('BlockTimerWidget', () => {
             type: 'block-timer',
             metadata: { display: 'progress' }
         }, { usageData: { error: 'timeout' } })).toBe(`Block [${'░'.repeat(32)}] 0.0%`);
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'progress' },
+            numberFormat: { style: 'compact' }
+        }, { usageData: { error: 'timeout' } })).toBe(`Block [${'░'.repeat(32)}] 0%`);
+    });
+
+    it('hides empty values when the no-data hide state is enabled', () => {
+        const widget = new BlockTimerWidget();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['no-data']);
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { hide: 'no-data' }
+        }, { usageData: { error: 'timeout' } })).toBeNull();
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'progress', hide: 'no-data' }
+        }, { usageData: { error: 'timeout' } })).toBeNull();
     });
 
     it('shows raw value without label in time mode', () => {
@@ -167,6 +211,12 @@ describe('BlockTimerWidget', () => {
             type: 'block-timer',
             metadata: { display: 'slider' }
         }, { usageData: { error: 'timeout' } })).toBe('Block ░░░░░░░░░░ 0.0%');
+        expect(render(widget, {
+            id: 'block',
+            type: 'block-timer',
+            metadata: { display: 'slider' },
+            numberFormat: { style: 'whole' }
+        }, { usageData: { error: 'timeout' } })).toBe('Block ░░░░░░░░░░ 0%');
         expect(render(widget, {
             id: 'block',
             type: 'block-timer',

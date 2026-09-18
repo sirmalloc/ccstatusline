@@ -5,7 +5,6 @@ import {
 } from 'vitest';
 
 import type {
-    CustomKeybind,
     Widget,
     WidgetItem
 } from '../../types';
@@ -17,13 +16,9 @@ import { JjInsertionsWidget } from '../JjInsertions';
 import { JjRevisionWidget } from '../JjRevision';
 import { JjRootDirWidget } from '../JjRootDir';
 import { JjWorkspaceWidget } from '../JjWorkspace';
+import { getEnabledHideStates } from '../shared/hideable';
 
-type JjWidget = Widget & {
-    getCustomKeybinds: () => CustomKeybind[];
-    handleEditorAction: (action: string, item: WidgetItem) => WidgetItem | null;
-};
-
-const cases: { name: string; itemType: string; widget: JjWidget }[] = [
+const cases: { name: string; itemType: string; widget: Widget }[] = [
     { name: 'JjBookmarksWidget', itemType: 'jj-bookmarks', widget: new JjBookmarksWidget() },
     { name: 'JjWorkspaceWidget', itemType: 'jj-workspace', widget: new JjWorkspaceWidget() },
     { name: 'JjRootDirWidget', itemType: 'jj-root-dir', widget: new JjRootDirWidget() },
@@ -35,28 +30,23 @@ const cases: { name: string; itemType: string; widget: JjWidget }[] = [
 ];
 
 describe('JJ widget shared behavior', () => {
-    it.each(cases)('$name should expose hide-no-jj keybind', ({ widget }) => {
-        expect(widget.getCustomKeybinds()).toContainEqual(
-            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
-        );
+    it.each(cases)('$name should declare the no-jj hideable state', ({ widget }) => {
+        const states = widget.getHideableStates?.() ?? [];
+        expect(states.map(state => state.key)).toContain('no-jj');
     });
 
-    it.each(cases)('$name should toggle hideNoJj metadata', ({ widget, itemType }) => {
-        const base: WidgetItem = { id: itemType, type: itemType };
-        const toggledOn = widget.handleEditorAction('toggle-nojj', base);
-        const toggledOff = widget.handleEditorAction('toggle-nojj', toggledOn ?? base);
-
-        expect(toggledOn?.metadata?.hideNoJj).toBe('true');
-        expect(toggledOff?.metadata?.hideNoJj).toBe('false');
+    it.each(cases)('$name should not declare per-widget hide keybinds', ({ widget }) => {
+        const keybinds = widget.getCustomKeybinds?.() ?? [];
+        expect(keybinds.find(kb => kb.key === 'h')).toBeUndefined();
     });
 
-    it.each(cases)('$name should show hide-no-jj modifier in editor display', ({ widget, itemType }) => {
-        const display = widget.getEditorDisplay({
+    it.each(cases)('$name should enable no-jj via the unified hide metadata', ({ widget, itemType }) => {
+        const item: WidgetItem = {
             id: itemType,
             type: itemType,
-            metadata: { hideNoJj: 'true' }
-        });
+            metadata: { hide: 'no-jj' }
+        };
 
-        expect(display.modifierText).toBe('(hide \'no jj\')');
+        expect(getEnabledHideStates(item, widget.getHideableStates?.() ?? [])).toContain('no-jj');
     });
 });

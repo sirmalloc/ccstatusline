@@ -2,11 +2,13 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 import { getContextWindowOutputTotalTokens } from '../utils/context-window';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 import {
     SUBAGENTS_MARKER,
@@ -15,7 +17,10 @@ import {
     withWidgetSubagentsEnabled
 } from '../utils/token-subagents';
 
+import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when token count is zero' };
 
 export class TokensOutputWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -28,30 +33,32 @@ export class TokensOutputWidget implements Widget {
             : { displayText: this.getDisplayName() };
     }
 
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
+    }
+
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
         const subagents = isWidgetSubagentsEnabled(item);
         const label = subagents ? `${SUBAGENTS_MARKER}Out: ` : 'Out: ';
-
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, label, '3.4k');
+            return formatRawOrLabeledValue(item, label, formatTokens(3400, format));
         }
 
-        // Prefer the cumulative token metrics (subagent-inclusive when opted in).
-        const metrics = tokenMetricsForWidget(item, context);
-        if (metrics) {
-            return formatRawOrLabeledValue(item, label, formatTokens(metrics.outputTokens));
+        // The status JSON's context_window is main-agent only, so it is only a
+        // fallback while this widget counts the main agent.
+        const outputTotalTokens = tokenMetricsForWidget(item, context)?.outputTokens
+            ?? (subagents ? null : getContextWindowOutputTotalTokens(context.data))
+            ?? null;
+        if (outputTotalTokens === null) {
+            return null;
         }
 
-        // Fall back to the stdin context_window payload, which is main-only —
-        // skip it when subagents are on.
-        if (!subagents) {
-            const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
-            if (outputTotalTokens !== null) {
-                return formatRawOrLabeledValue(item, label, formatTokens(outputTotalTokens));
-            }
+        if (outputTotalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+            return null;
         }
 
-        return null;
+        return formatRawOrLabeledValue(item, label, formatTokens(outputTotalTokens, format));
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -62,9 +69,11 @@ export class TokensOutputWidget implements Widget {
         if (action !== 'toggle-subagents') {
             return null;
         }
+
         return withWidgetSubagentsEnabled(item, !isWidgetSubagentsEnabled(item));
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

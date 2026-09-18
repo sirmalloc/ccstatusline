@@ -2,10 +2,12 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 import {
     SUBAGENTS_MARKER,
@@ -14,7 +16,10 @@ import {
     withWidgetSubagentsEnabled
 } from '../utils/token-subagents';
 
+import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when token count is zero' };
 
 export class TokensCachedWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -27,17 +32,24 @@ export class TokensCachedWidget implements Widget {
             : { displayText: this.getDisplayName() };
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const subagents = isWidgetSubagentsEnabled(item);
-        const label = subagents ? `${SUBAGENTS_MARKER}Cached: ` : 'Cached: ';
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
+    }
 
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
+        const label = isWidgetSubagentsEnabled(item) ? `${SUBAGENTS_MARKER}Cached: ` : 'Cached: ';
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, label, '12k');
+            return formatRawOrLabeledValue(item, label, formatTokens(12000, format));
         }
 
+        // Subagent-inclusive metrics when the widget opts in, main-only otherwise.
         const metrics = tokenMetricsForWidget(item, context);
         if (metrics) {
-            return formatRawOrLabeledValue(item, label, formatTokens(metrics.cachedTokens));
+            if (metrics.cachedTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+                return null;
+            }
+            return formatRawOrLabeledValue(item, label, formatTokens(metrics.cachedTokens, format));
         }
         return null;
     }
@@ -50,9 +62,11 @@ export class TokensCachedWidget implements Widget {
         if (action !== 'toggle-subagents') {
             return null;
         }
+
         return withWidgetSubagentsEnabled(item, !isWidgetSubagentsEnabled(item));
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

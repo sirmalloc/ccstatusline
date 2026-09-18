@@ -2,19 +2,27 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 import { SUBAGENTS_MARKER } from '../utils/token-subagents';
 
+import { isHidden } from './shared/hideable';
+import {
+    isMetadataFlagEnabled,
+    removeMetadataKeys
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 const BREAKDOWN_METADATA_KEY = 'breakdown';
+const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when token count is zero' };
 
 function isBreakdownEnabled(item: WidgetItem): boolean {
-    return item.metadata?.[BREAKDOWN_METADATA_KEY] === 'true';
+    return isMetadataFlagEnabled(item, BREAKDOWN_METADATA_KEY);
 }
 
 export class SessionTotalTokensWidget implements Widget {
@@ -28,11 +36,17 @@ export class SessionTotalTokensWidget implements Widget {
             : { displayText: this.getDisplayName() };
     }
 
+    getHideableStates(): HideableState[] {
+        return [ZERO_HIDEABLE_STATE];
+    }
+
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const format = resolveNumberFormat('token', item, settings);
+        const label = `${SUBAGENTS_MARKER}Total: `;
         if (context.isPreview) {
-            const preview = formatRawOrLabeledValue(item, `${SUBAGENTS_MARKER}Total: `, '152k');
+            const preview = formatRawOrLabeledValue(item, label, formatTokens(152000, format));
             return isBreakdownEnabled(item) && !item.rawValue
-                ? `${preview} (in 90k/out 40k/cache 22k)`
+                ? `${preview} (in ${formatTokens(90000, format)}/out ${formatTokens(40000, format)}/cache ${formatTokens(22000, format)})`
                 : preview;
         }
 
@@ -41,10 +55,15 @@ export class SessionTotalTokensWidget implements Widget {
             return null;
         }
 
-        const base = formatRawOrLabeledValue(item, `${SUBAGENTS_MARKER}Total: `, formatTokens(metrics.totalTokens));
-        if (isBreakdownEnabled(item) && !item.rawValue) {
-            return `${base} (in ${formatTokens(metrics.inputTokens)}/out ${formatTokens(metrics.outputTokens)}/cache ${formatTokens(metrics.cachedTokens)})`;
+        if (metrics.totalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
+            return null;
         }
+
+        const base = formatRawOrLabeledValue(item, label, formatTokens(metrics.totalTokens, format));
+        if (isBreakdownEnabled(item) && !item.rawValue) {
+            return `${base} (in ${formatTokens(metrics.inputTokens, format)}/out ${formatTokens(metrics.outputTokens, format)}/cache ${formatTokens(metrics.cachedTokens, format)})`;
+        }
+
         return base;
     }
 
@@ -58,18 +77,13 @@ export class SessionTotalTokensWidget implements Widget {
         }
 
         if (isBreakdownEnabled(item)) {
-            const { [BREAKDOWN_METADATA_KEY]: _removed, ...restMetadata } = item.metadata ?? {};
-            void _removed;
-            return {
-                ...item,
-                metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-            };
+            return removeMetadataKeys(item, [BREAKDOWN_METADATA_KEY]);
         }
 
         return {
             ...item,
             metadata: {
-                ...(item.metadata ?? {}),
+                ...item.metadata,
                 [BREAKDOWN_METADATA_KEY]: 'true'
             }
         };
@@ -80,5 +94,6 @@ export class SessionTotalTokensWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }

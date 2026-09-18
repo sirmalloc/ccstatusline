@@ -8,6 +8,13 @@ import type {
 } from '../types/Widget';
 import { getRemoteControlStatus } from '../utils/claude-settings';
 
+import {
+    isNerdFontEnabled,
+    setNerdFontFormat,
+    toggleNerdFont,
+    type NerdFontFormats
+} from './shared/metadata';
+
 const SATELLITE_EMOJI = '📡';
 const SATELLITE_NERD_FONT = '';
 const SATELLITE_SLASH_NERD_FONT = '';
@@ -24,7 +31,6 @@ type RemoteFormat = typeof FORMATS[number];
 const DEFAULT_FORMAT: RemoteFormat = 'icon';
 const CYCLE_FORMAT_ACTION = 'cycle-format';
 const TOGGLE_NERD_FONT_ACTION = 'toggle-nerd-font';
-const NERD_FONT_METADATA_KEY = 'nerdFont';
 
 function getFormat(item: WidgetItem): RemoteFormat {
     const f = item.metadata?.format;
@@ -36,61 +42,10 @@ function canUseNerdFont(item: WidgetItem): boolean {
     return format === 'icon' || (format === 'icon-text' && !item.rawValue);
 }
 
-function removeNerdFont(item: WidgetItem): WidgetItem {
-    const { [NERD_FONT_METADATA_KEY]: removedNerdFont, ...restMetadata } = item.metadata ?? {};
-    void removedNerdFont;
-
-    return {
-        ...item,
-        metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-    };
-}
-
-function setFormat(item: WidgetItem, format: RemoteFormat): WidgetItem {
-    let updatedItem: WidgetItem;
-
-    if (format === DEFAULT_FORMAT) {
-        const { format: removedFormat, ...restMetadata } = item.metadata ?? {};
-        void removedFormat;
-
-        updatedItem = {
-            ...item,
-            metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
-        };
-    } else {
-        updatedItem = {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                format
-            }
-        };
-    }
-
-    return canUseNerdFont(updatedItem) ? updatedItem : removeNerdFont(updatedItem);
-}
-
-function isNerdFontEnabled(item: WidgetItem): boolean {
-    return canUseNerdFont(item) && item.metadata?.[NERD_FONT_METADATA_KEY] === 'true';
-}
-
-function toggleNerdFont(item: WidgetItem): WidgetItem {
-    if (!canUseNerdFont(item)) {
-        return removeNerdFont(item);
-    }
-
-    if (!isNerdFontEnabled(item)) {
-        return {
-            ...item,
-            metadata: {
-                ...(item.metadata ?? {}),
-                [NERD_FONT_METADATA_KEY]: 'true'
-            }
-        };
-    }
-
-    return removeNerdFont(item);
-}
+const NERD_FONT_FORMATS: NerdFontFormats<RemoteFormat> = {
+    defaultFormat: DEFAULT_FORMAT,
+    canUseNerdFont
+};
 
 function formatStatus(enabled: boolean, format: RemoteFormat, nerdFont: boolean, rawValue: boolean): string {
     const stateText = enabled ? 'on' : 'off';
@@ -123,7 +78,7 @@ export class RemoteControlStatusWidget implements Widget {
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [getFormat(item)];
-        if (isNerdFontEnabled(item)) {
+        if (isNerdFontEnabled(item, NERD_FONT_FORMATS)) {
             modifiers.push('nerd font');
         }
 
@@ -138,11 +93,11 @@ export class RemoteControlStatusWidget implements Widget {
             const currentFormat = getFormat(item);
             const nextFormat = FORMATS[(FORMATS.indexOf(currentFormat) + 1) % FORMATS.length] ?? DEFAULT_FORMAT;
 
-            return setFormat(item, nextFormat);
+            return setNerdFontFormat(item, nextFormat, NERD_FONT_FORMATS);
         }
 
         if (action === TOGGLE_NERD_FONT_ACTION) {
-            return toggleNerdFont(item);
+            return toggleNerdFont(item, NERD_FONT_FORMATS);
         }
 
         return null;
@@ -150,7 +105,7 @@ export class RemoteControlStatusWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const format = getFormat(item);
-        const nerdFont = isNerdFontEnabled(item);
+        const nerdFont = isNerdFontEnabled(item, NERD_FONT_FORMATS);
 
         if (context.isPreview) {
             return formatStatus(true, format, nerdFont, item.rawValue ?? false);

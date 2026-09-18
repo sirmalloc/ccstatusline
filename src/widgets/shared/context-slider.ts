@@ -1,7 +1,9 @@
+import type { NumberFormat } from '../../types/NumberFormat';
 import type {
     CustomKeybind,
     WidgetItem
 } from '../../types/Widget';
+import { formatPercent } from '../../utils/number-format';
 
 import { makeSliderBar } from './usage-display';
 
@@ -43,13 +45,13 @@ export function cycleContextSliderMode(item: WidgetItem): WidgetItem {
     };
 }
 
-export function renderContextSlider(mode: ContextSliderMode, percent: number): string | null {
+export function renderContextSlider(mode: ContextSliderMode, percent: number, format: NumberFormat = {}): string | null {
     if (mode === 'none') {
         return null;
     }
     const slider = makeSliderBar(percent);
     if (mode === 'slider') {
-        return `${slider} ${percent.toFixed(1)}%`;
+        return `${slider} ${formatPercent(percent, format)}`;
     }
     return slider;
 }

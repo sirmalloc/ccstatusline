@@ -108,7 +108,7 @@ describe('ImportPreviewDialog helpers', () => {
         const stderr = createMockStdout();
         const current: Settings = {
             ...DEFAULT_SETTINGS,
-            flexMode: 'full'
+            flexMode: 'full-minus-40'
         };
         const instance = render(React.createElement(ImportPreviewDialog, {
             validation: {
@@ -130,7 +130,7 @@ describe('ImportPreviewDialog helpers', () => {
 
         try {
             await flushInk();
-            expect(stdout.getOutput()).toContain('flexMode: full → full-minus-40');
+            expect(stdout.getOutput()).toContain('flexMode: full-minus-40 → full');
 
             stdout.clearOutput();
             stdin.write('\u001B[B');
@@ -138,7 +138,7 @@ describe('ImportPreviewDialog helpers', () => {
 
             const output = stdout.getOutput();
             const lastFlexModeRow = output.slice(output.lastIndexOf('flexMode:')).split('\n')[0];
-            expect(lastFlexModeRow).toBe('flexMode: full');
+            expect(lastFlexModeRow).toBe('flexMode: full-minus-40');
         } finally {
             instance.unmount();
             instance.cleanup();
