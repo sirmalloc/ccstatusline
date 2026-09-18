@@ -104,7 +104,8 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
     { type: 'worktree-original-branch', create: () => new widgets.GitWorktreeOriginalBranchWidget() },
     { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() },
-    { type: 'cache-timer', create: () => new widgets.CacheTimerWidget() }
+    { type: 'cache-timer', create: () => new widgets.CacheTimerWidget() },
+    { type: 'rclone-queue', create: () => new widgets.RCloneQueueWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [
