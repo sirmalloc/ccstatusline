@@ -69,12 +69,16 @@ function makeUsageLine(params: {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
+    messageId?: string;
+    apiBlockIndex?: number;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
+        apiBlockIndex: params.apiBlockIndex,
         message: {
+            id: params.messageId,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -93,14 +97,18 @@ function makeTranscriptLine(params: {
     output?: number;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    messageId?: string;
+    apiBlockIndex?: number;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         type: params.type,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
+        apiBlockIndex: params.apiBlockIndex,
         message: typeof params.input === 'number' || typeof params.output === 'number'
             ? {
+                id: params.messageId,
                 usage: {
                     input_tokens: params.input ?? 0,
                     output_tokens: params.output ?? 0
@@ -465,6 +473,161 @@ describe('jsonl transcript metrics', () => {
             cacheCreationTokens: 30,
             totalTokens: 510,
             contextLength: 250
+        });
+    });
+
+    it('counts one API response once when it is logged per content block', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'api-blocks.jsonl');
+
+        // Claude Code writes one line per content block of a single API
+        // response - here a thinking block and a tool_use block - and repeats
+        // the same usage on both.
+        const blocks = {
+            timestamp: '2026-01-01T10:00:00.000Z',
+            input: 100,
+            output: 50,
+            cacheRead: 20,
+            cacheCreate: 10,
+            stopReason: 'tool_use',
+            messageId: 'msg_1'
+        };
+        const lines = [
+            makeUsageLine({ ...blocks, apiBlockIndex: 0 }),
+            makeUsageLine({ ...blocks, apiBlockIndex: 1 }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 5,
+                output: 7,
+                stopReason: 'end_turn',
+                messageId: 'msg_2',
+                apiBlockIndex: 0
+            })
+        ];
+        fs.writeFileSync(transcriptPath, `${lines.join('\n')}\n`);
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 105,
+            outputTokens: 57,
+            cachedTokens: 30,
+            cacheReadTokens: 20,
+            cacheCreationTokens: 10,
+            totalTokens: 192,
+            contextLength: 5
+        });
+    });
+
+    it('falls back to the repeated message id when the transcript has no apiBlockIndex', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'repeated-message-id.jsonl');
+
+        const blocks = {
+            timestamp: '2026-01-01T10:00:00.000Z',
+            input: 10,
+            output: 20,
+            stopReason: 'end_turn',
+            messageId: 'msg_1'
+        };
+        fs.writeFileSync(transcriptPath, `${[
+            makeUsageLine(blocks),
+            makeUsageLine(blocks)
+        ].join('\n')}\n`);
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(10);
+        expect(metrics.outputTokens).toBe(20);
+    });
+
+    it('keeps counting distinct responses that carry no message id', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'no-message-id.jsonl');
+
+        // Without an id or a block index there is nothing to tell a repeat from
+        // a separate response, so both are counted as before.
+        fs.writeFileSync(transcriptPath, `${[
+            makeUsageLine({ timestamp: '2026-01-01T10:00:00.000Z', input: 10, output: 20, stopReason: 'end_turn' }),
+            makeUsageLine({ timestamp: '2026-01-01T10:01:00.000Z', input: 10, output: 20, stopReason: 'end_turn' })
+        ].join('\n')}\n`);
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(20);
+        expect(metrics.outputTokens).toBe(40);
+    });
+
+    it('still counts the final line of a streamed response that repeats its message id', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'streamed-response.jsonl');
+
+        // In-flight lines carry `stop_reason: null` and a partial usage; the
+        // final line of the same message holds the real count. Skipping repeats
+        // must not swallow that final line.
+        fs.writeFileSync(transcriptPath, `${[
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100,
+                output: 5,
+                stopReason: null,
+                messageId: 'msg_1'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                input: 100,
+                output: 50,
+                stopReason: 'end_turn',
+                messageId: 'msg_1'
+            })
+        ].join('\n')}\n`);
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(100);
+        expect(metrics.outputTokens).toBe(50);
+    });
+
+    it('treats a per-block logged response as one request in speed metrics', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'api-blocks-speed.jsonl');
+
+        const lines = [
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:00.000Z', type: 'user' }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50,
+                messageId: 'msg_1',
+                apiBlockIndex: 0
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:20.000Z',
+                type: 'assistant',
+                input: 100,
+                output: 50,
+                messageId: 'msg_1',
+                apiBlockIndex: 1
+            })
+        ];
+        fs.writeFileSync(transcriptPath, `${lines.join('\n')}\n`);
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        // One request, counted once, over the span from the prompt to the last
+        // block of the response.
+        expect(metrics).toEqual({
+            totalDurationMs: 20000,
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            requestCount: 1
         });
     });
 
