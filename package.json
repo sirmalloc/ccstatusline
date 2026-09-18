@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "start": "bun run src/ccstatusline.ts",
-    "build": "rm -rf dist/* ; bun build src/ccstatusline.ts --target=node --outfile=dist/ccstatusline.js --target-version=14",
+    "build": "rm -rf dist/* ; bun build src/ccstatusline.ts --target=node --splitting --format=esm --outdir=dist --target-version=14",
     "postbuild": "bun run scripts/replace-version.ts",
     "example": "cat scripts/payload.example.json | bun start",
     "video:studio": "remotion studio remotion/index.ts",
