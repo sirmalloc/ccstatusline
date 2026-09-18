@@ -1,9 +1,11 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     HideableState,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
@@ -15,6 +17,13 @@ import {
     NO_JJ_HIDEABLE_STATE,
     isHidden
 } from './shared/hideable';
+import {
+    formatSymbolPrefix,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
+
+const DEFAULT_SYMBOL = '';
 
 export class JjRevisionWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -31,21 +40,22 @@ export class JjRevisionWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
+        const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            return item.rawValue ? 'kkmpptxz' : ' kkmpptxz';
+            return item.rawValue ? 'kkmpptxz' : `${prefix}kkmpptxz`;
         }
 
         if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : ' no jj';
+            return hideNoJj ? null : `${prefix}no jj`;
         }
 
         const changeId = this.getJjRevision(context);
         if (changeId) {
-            return item.rawValue ? changeId : ` ${changeId}`;
+            return item.rawValue ? changeId : `${prefix}${changeId}`;
         }
 
-        return hideNoJj ? null : ' no jj';
+        return hideNoJj ? null : `${prefix}no jj`;
     }
 
     private getJjRevision(context: RenderContext): string | null {
@@ -57,6 +67,14 @@ export class JjRevisionWidget implements Widget {
             '-T',
             'change_id.shortest()'
         ], context);
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [getSymbolKeybind()];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     supportsRawValue(): boolean { return true; }

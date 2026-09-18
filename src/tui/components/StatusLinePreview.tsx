@@ -48,6 +48,7 @@ const renderSingleLine = (
         isPreview: true,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
+        customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds,
         lineIndex,
         globalSeparatorIndex,
         globalPowerlineThemeIndex,
@@ -77,7 +78,8 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             terminalWidth,
             isPreview: true,
             minimalist: settings.minimalistMode,
-            gitCacheTtlSeconds: settings.gitCacheTtlSeconds
+            gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
+            customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds
         });
         const preCalculatedMaxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
 

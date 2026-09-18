@@ -38,6 +38,18 @@ const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
+// The access token is what the API is called with; the refresh token is kept
+// alongside it only to fingerprint the account (see getUsageCacheIdentity).
+interface UsageCredentials {
+    accessToken: string;
+    refreshToken?: string;
+}
+
+interface UsageCacheIdentity {
+    preferredHash: string;
+    accessTokenHash: string;
+}
+
 const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageLimit',
     'extraUsageUsed',
@@ -62,7 +74,12 @@ const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataFiel
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.resetField, bucket.usageField]))
 };
 
-const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
+const UsageCredentialsSchema = z.object({
+    claudeAiOauth: z.object({
+        accessToken: z.string().nullable().optional(),
+        refreshToken: z.string().nullable().optional()
+    }).optional()
+});
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
     blockedUntil: z.number(),
@@ -155,7 +172,18 @@ function findUsageApiLimit(limits: UsageApiLimit[] | null | undefined, kind: str
 // Mirrors the null-bucket placeholder guard for #343 above: a limits[] entry
 // reporting 0% with no resets_at is not a real usage window, so the
 // limits[] fallback below must not resurrect it as a phantom 0% reading.
+//
+// weekly_scoped entries naming a concrete model are exempt: accounts with a
+// per-model quota report that entry as percent 0 / resets_at null until the
+// model is first used in the current window (resets_at fills in on first use,
+// percent stays 0), so for those the zero reading is real data - the same
+// state a null legacy per-model bucket already reports as 0 via
+// getUsageApiBucketUtilization. Accounts without the quota omit the entry
+// entirely, so this cannot resurrect a phantom window.
 function isPlaceholderUsageApiLimit(limit: UsageApiLimit): boolean {
+    if (limit.scope?.model?.display_name) {
+        return false;
+    }
     return (limit.percent ?? 0) === 0 && (limit.resets_at ?? null) === null;
 }
 
@@ -187,9 +215,16 @@ function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null
     }
 }
 
-function parseUsageAccessToken(rawJson: string): string | null {
-    const parsed = parseJsonWithSchema(rawJson, UsageCredentialsSchema);
-    return parsed?.claudeAiOauth?.accessToken ?? null;
+function parseUsageCredentials(rawJson: string): UsageCredentials | null {
+    const oauth = parseJsonWithSchema(rawJson, UsageCredentialsSchema)?.claudeAiOauth;
+    if (!oauth?.accessToken) {
+        return null;
+    }
+
+    return {
+        accessToken: oauth.accessToken,
+        refreshToken: oauth.refreshToken ?? undefined
+    };
 }
 
 function parseCachedUsageData(rawJson: string): UsageData | null {
@@ -220,25 +255,37 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
     };
 }
 
-// One-way fingerprint of the usage token, persisted alongside the cache so a
-// login switch (e.g. enterprise<->personal, a different token) invalidates the
-// cache immediately instead of waiting out the TTL. A truncated SHA-256 is a
-// stable identifier, not the token itself, so it is safe to write to disk.
+// One-way fingerprint of the usage credentials, persisted alongside the cache
+// so a login switch (e.g. enterprise<->personal, a different account)
+// invalidates the cache immediately instead of waiting out the TTL. A
+// truncated SHA-256 is a stable identifier, not the token itself, so it is
+// safe to write to disk.
 function fingerprintUsageToken(token: string): string {
     return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+// Prefer the refresh token so access-token rotation preserves the cache when
+// the refresh token is unchanged. Also accept the current access-token hash
+// from older caches; the next successful fetch writes the preferred hash.
+function getUsageCacheIdentity(credentials: UsageCredentials): UsageCacheIdentity {
+    const accessTokenHash = fingerprintUsageToken(credentials.accessToken);
+    return {
+        preferredHash: credentials.refreshToken ? fingerprintUsageToken(credentials.refreshToken) : accessTokenHash,
+        accessTokenHash
+    };
 }
 
 function readCachedTokenHash(rawJson: string): string | undefined {
     return parseJsonWithSchema(rawJson, CachedTokenHashSchema)?.tokenHash;
 }
 
-function tokenHashMatches(cachedHash: string | undefined, currentHash: string | null): boolean {
+function tokenHashMatches(cachedHash: string | undefined, identity: UsageCacheIdentity | null): boolean {
     // With no current token we cannot fingerprint-gate, so fall through to the
     // existing no-token handling rather than discarding an otherwise usable cache.
-    if (currentHash === null) {
+    if (identity === null) {
         return true;
     }
-    return cachedHash === currentHash;
+    return cachedHash === identity.preferredHash || cachedHash === identity.accessTokenHash;
 }
 
 // parsed is a UsageApiResponseSchema-derived looseObject: declared keys (like
@@ -363,11 +410,11 @@ function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageD
 function getStaleUsageOrError(
     error: UsageError,
     now: number,
-    currentTokenHash: string | null,
+    cacheIdentity: UsageCacheIdentity | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache(currentTokenHash);
+    const stale = readStaleUsageCache(cacheIdentity);
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
@@ -476,9 +523,9 @@ function readMacKeychainSecret(service: string): string | null {
     }
 }
 
-function readUsageTokenFromMacKeychainService(service: string): string | null {
+function readUsageCredentialsFromMacKeychainService(service: string): UsageCredentials | null {
     const secret = readMacKeychainSecret(service);
-    return secret ? parseUsageAccessToken(secret) : null;
+    return secret ? parseUsageCredentials(secret) : null;
 }
 
 function listMacKeychainCredentialCandidates(): string[] {
@@ -500,42 +547,76 @@ function listMacKeychainCredentialCandidates(): string[] {
     }
 }
 
-function readUsageTokenFromMacKeychainCandidates(): string | null {
+function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | null {
     const candidates = listMacKeychainCredentialCandidates();
 
     for (const service of candidates) {
-        const token = readUsageTokenFromMacKeychainService(service);
-        if (token) {
-            return token;
+        const credentials = readUsageCredentialsFromMacKeychainService(service);
+        if (credentials) {
+            return credentials;
         }
     }
 
     return null;
 }
 
-function readUsageTokenFromCredentialsFile(): string | null {
+function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
     try {
         const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
-        return parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
+        return parseUsageCredentials(fs.readFileSync(credFile, 'utf8'));
     } catch {
         return null;
     }
 }
 
-export function getUsageToken(): string | null {
-    if (process.platform !== 'darwin') {
-        return readUsageTokenFromCredentialsFile();
+// Claude Code stores each non-default profile's credential under its own
+// keychain service: the plain name plus `-<sha256(configDir)[:8]>`, added
+// whenever CLAUDE_CONFIG_DIR is set. CLAUDE_SECURESTORAGE_CONFIG_DIR, when
+// present, replaces the hash input (an empty value forces the plain name).
+// The hash input is the raw environment value, NFC-normalized but not
+// resolved — the goal is to reproduce the exact string Claude Code's own
+// service-name builder hashes, not to locate a directory (#521). Returns
+// null for the default profile.
+export function getMacKeychainConfigDirService(): string | null {
+    const rawConfigDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? '';
+    if (rawConfigDir === '') {
+        return null;
     }
 
-    return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageTokenFromMacKeychainCandidates()
-        ?? readUsageTokenFromCredentialsFile();
+    const configDir = rawConfigDir.normalize('NFC');
+    const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8);
+    return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
 }
 
-function readStaleUsageCache(currentTokenHash: string | null): UsageData | null {
+export function getUsageCredentials(): UsageCredentials | null {
+    if (process.platform !== 'darwin') {
+        return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const configDirService = getMacKeychainConfigDirService();
+    if (configDirService !== null) {
+        // A non-default profile owns exactly one keychain service name. On a
+        // miss, the plain service and the other suffixed items all belong to
+        // other profiles (or MCP servers), so fall through only to the
+        // profile's own .credentials.json rather than surface another
+        // account's usage.
+        return readUsageCredentialsFromMacKeychainService(configDirService)
+            ?? readUsageCredentialsFromCredentialsFile();
+    }
+
+    return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageCredentialsFromMacKeychainCandidates()
+        ?? readUsageCredentialsFromCredentialsFile();
+}
+
+export function getUsageToken(): string | null {
+    return getUsageCredentials()?.accessToken ?? null;
+}
+
+function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageData | null {
     try {
         const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
-        if (!tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)) {
+        if (!tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)) {
             return null;
         }
         return parseCachedUsageData(rawCache);
@@ -726,12 +807,13 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
     }
 
-    // Resolve the token up front (before lock/rate-limit checks so auth
-    // failures are not masked as timeout) and fingerprint it so the file cache
-    // can be invalidated on an account switch: a different token, written by a
+    // Resolve the credentials up front (before lock/rate-limit checks so auth
+    // failures are not masked as timeout) and fingerprint them so the file cache
+    // can be invalidated on an account switch: a different login, written by a
     // logout/login, no longer matches the cached fingerprint.
-    const token = getUsageToken();
-    const currentTokenHash = token ? fingerprintUsageToken(token) : null;
+    const credentials = getUsageCredentials();
+    const token = credentials?.accessToken ?? null;
+    const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
 
     // Check file cache
     try {
@@ -741,7 +823,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
-                && tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)
+                && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
                 && hasRequiredUsageFields(fileData, requiredFields)) {
                 return cacheUsageData(fileData, now);
             }
@@ -751,7 +833,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     }
 
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('no-credentials', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -759,7 +841,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return getStaleUsageOrError(
             activeLock.error,
             now,
-            currentTokenHash,
+            cacheIdentity,
             Math.max(1, activeLock.blockedUntil - now),
             requiredFields
         );
@@ -773,29 +855,29 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, currentTokenHash, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError('rate-limited', now, cacheIdentity, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('api-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: currentTokenHash ?? undefined }));
+            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: cacheIdentity?.preferredHash }));
         } catch {
             // Ignore cache write errors
         }
@@ -810,6 +892,6 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return cacheUsageData(usageData, now);
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
 }
