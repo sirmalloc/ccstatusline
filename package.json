@@ -23,8 +23,9 @@
   ],
   "scripts": {
     "start": "bun run src/ccstatusline.ts",
-    "build": "rm -rf dist/* ; bun build src/ccstatusline.ts --target=node --splitting --format=esm --outdir=dist --target-version=14",
+    "build": "bun run scripts/build.ts",
     "postbuild": "bun run scripts/replace-version.ts",
+    "test:runtimes": "bun run scripts/test-package-runtimes.ts",
     "example": "cat scripts/payload.example.json | bun start",
     "video:studio": "remotion studio remotion/index.ts",
     "video:still": "remotion still remotion/index.ts ccstatusline-tui-demo out/ccstatusline-tui-demo.png --frame=700 --scale=0.5",
@@ -84,7 +85,7 @@
     "url": "git+https://github.com/sirmalloc/ccstatusline.git"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=22.0.0"
   },
   "trustedDependencies": [
     "unrs-resolver"

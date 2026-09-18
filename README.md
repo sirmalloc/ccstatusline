@@ -317,6 +317,8 @@ The localizations in this section are third-party forks maintained outside this 
 
 ## 🚀 Quick Start
 
+**Requirements:** Node.js **22.0.0 or newer**, or Bun. On Node.js 14–21, the packaged launcher displays an [upgrade guide](docs/NODE-UPGRADE.md) instead of loading the status-line renderer or configuration TUI. Your saved configuration is preserved.
+
 ### No installation needed! Use directly with npx or bunx:
 
 ```bash

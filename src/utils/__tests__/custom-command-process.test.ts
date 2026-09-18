@@ -28,7 +28,6 @@ beforeAll(() => {
         'build',
         fileURLToPath(new URL('../custom-command.ts', import.meta.url)),
         '--target=node',
-        '--target-version=14',
         `--outfile=${bundlePath}`
     ], { stdio: 'pipe' });
     fs.writeFileSync(probePath, `

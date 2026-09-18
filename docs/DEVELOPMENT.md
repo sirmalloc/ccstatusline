@@ -8,7 +8,7 @@ If you want the main project overview, return to [README.md](../README.md).
 
 - [Bun](https://bun.sh) (v1.0+)
 - Git
-- Node.js 14+ (optional, for running the built `dist/ccstatusline.js` binary or npm publishing)
+- Node.js 22.0.0+ (optional, for running the built `dist/ccstatusline.js` binary; publishing CI uses Node.js 24)
 
 ## Setup
 
@@ -88,10 +88,32 @@ Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignore
 
 ## Build Notes
 
-- Build target is Node.js 14+ (`dist/ccstatusline.js`)
-- `postbuild` replaces the bundled `__PACKAGE_VERSION__` placeholder from `package.json`; `ccstatusline --version` reads that value and exits before mode detection
+- The renderer and TUI require Node.js 22.0.0+ or Bun. Node.js 14–21 only runs the upgrade launcher; it does not run the application.
+- `scripts/build.ts` bundles `src/ccstatusline.ts` as `dist/ccstatusline-app.js` with ESM code splitting, then copies `scripts/launcher.js` verbatim to the public `dist/ccstatusline.js` entry point. Keep the launcher dependency-free, compatible with Node.js 14.0.0, and outside the bundler: generated helpers may use newer syntax. It checks the runtime before dynamically importing the application, and explicitly allows Bun.
+- `postbuild` replaces `__PACKAGE_VERSION__` in every emitted JavaScript file, including the launcher and shared chunks. `ccstatusline --version` works without loading the application on every launcher-supported runtime.
+- On older Node versions, piped calls print a clickable upgrade notice to stdout and exit successfully. Interactive calls show a plain upgrade-guide URL. Hook and internal cache-refresh calls remain silent. The fallback does not read or modify configuration files.
 - During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
 - React and React DOM are exact-version pins; dependency refreshes should update `package.json` and `bun.lock` together
+
+### Packaged runtime checks
+
+Runtime compatibility checks are manual; they do not run on pushes or pull requests. To run them on GitHub, select **Actions → Runtime Compatibility (Manual) → Run workflow**. The workflow runs the same command as the local checks below.
+
+The checks install the actual npm tarball into fresh, network-disabled Docker containers on Node.js 14.0.0, 14.21.3, 16, 18, 20, 21, 22.0.0, current 22, and 24. They cover version output, status-line output, and interactive startup under a real PTY. Supported runtimes also navigate the TUI, edit and save a widget, and reload that setting in the renderer. Unsupported runtimes must show the guide, preserve settings, keep hooks silent, and work even when all application chunks are removed.
+
+After installing dependencies, run locally on macOS or Linux (or WSL) with Bun, npm, Python 3, and a running Docker daemon:
+
+```bash
+# Build, pack, and run the full matrix
+bun run test:runtimes
+
+# Build, pack, and check selected runtimes
+bun run test:runtimes node:14.0.0-buster-slim node:22.0.0-bookworm-slim
+```
+
+The command rebuilds `dist/`, then keeps the tarball, isolated test settings, logs, and `results.json` summary in a temporary directory whose path it prints. Nothing is published. Pass `--output-dir <directory>` to choose where test logs and settings are stored. To test an existing tarball without rebuilding, use `python3 scripts/test-package-runtimes.py <tarball> [image ...]`.
+
+These are packaged runtime checks; development dependencies and the Bun test runner do not need to run on old Node versions.
 
 ## API Documentation
 

@@ -24,13 +24,16 @@ echo '{"model":{"id":"claude-sonnet-4-5-20250929[1m]"},"transcript_path":"test.j
 bun run example
 
 # Build for npm distribution
-bun run build   # Creates dist/ccstatusline.js with Node.js 14+ compatibility
+bun run build   # Creates a Node.js 22+ app and a Node.js 14+ upgrade launcher
 
 # Run tests
 bun test
 
 # Run tests in watch mode
 bun test --watch
+
+# Manually build, pack, and verify runtimes in Docker
+bun run test:runtimes
 
 # Lint and type check
 bun run lint      # Runs TypeScript type checking and ESLint without modifying files
@@ -47,6 +50,7 @@ The project has dual runtime compatibility - works with both Bun and Node.js:
 - **src/ccstatusline.ts**: Main entry point that detects piped vs interactive mode
   - Piped mode: Parses JSON from stdin and renders formatted status line
   - Interactive mode: Launches React/Ink TUI for configuration
+- **scripts/launcher.js**: Dependency-free public launcher, copied verbatim to `dist/ccstatusline.js`. Supports Node.js 14+ for version/upgrade messages; dynamically loads the application only on Node.js 22+ or Bun. Do not bundle it or add static application imports.
 
 ### TUI Components (src/tui/)
 - **index.tsx**: Main TUI entry point that handles React/Ink initialization
@@ -135,10 +139,11 @@ Default to using Bun instead of Node.js:
   - Applied automatically during `bun install` via `patchedDependencies` in package.json
   - Patch file: `patches/ink@6.2.0.patch`
 - **Build process**: Two-step build using `bun run build`
-  1. `bun build`: Bundles src/ccstatusline.ts into dist/ccstatusline.js targeting Node.js 14+
-  2. `postbuild`: Runs scripts/replace-version.ts to replace `__PACKAGE_VERSION__` placeholder with actual version from package.json
+  1. `scripts/build.ts`: Bundles src/ccstatusline.ts into dist/ccstatusline-app.js with code splitting for Node.js 22+ and copies the Node.js 14-compatible launcher to dist/ccstatusline.js
+  2. `postbuild`: Runs scripts/replace-version.ts to replace `__PACKAGE_VERSION__` in the launcher and all emitted chunks with the actual version from package.json
 - **ESLint configuration**: Uses flat config format (eslint.config.js) with TypeScript and React plugins
-- **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
+- **Dependencies**: Runtime dependencies are bundled into the npm package; the standalone launcher has no dependencies
+- **Runtime compatibility**: Use `bun run test:runtimes` to build, pack into a temporary directory, and run Docker checks of packaged rendering and interactive behavior on old and supported Node versions. Optional image tags select a smaller matrix. These checks are manual only (locally or via the Runtime Compatibility workflow), never part of push/PR CI. Use `python3 scripts/test-package-runtimes.py <npm-pack-tarball>` to check an existing artifact. Old Node versions should display upgrade guidance, not load the application.
 - **Type checking and linting**: Run checks via `bun run lint` and use `bun run lint:fix` only when you intentionally want ESLint auto-fixes. Never use `npx eslint`, `eslint`, `tsx`, `bun tsc`, or any other variation directly
 - **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
 - **Testing**: Uses Vitest (via Bun) with 6 test files and ~40 test cases covering:

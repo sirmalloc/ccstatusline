@@ -6,6 +6,8 @@ If you want the main project overview, return to [README.md](../README.md).
 
 Once configured, `ccstatusline` automatically formats your Claude Code status line. The status line appears at the bottom of your terminal during Claude Code sessions.
 
+The renderer and configuration TUI require **Node.js 22.0.0 or newer**, or Bun. The packaged launcher can run on Node.js 14–21 to display upgrade instructions: a clickable guide in the status line, or a plain guide URL when launched interactively. It does not load the TUI or render your configured widgets on those older runtimes. See the [Node.js upgrade guide](NODE-UPGRADE.md).
+
 ## Runtime Modes
 
 - **Interactive mode (TUI)**: Launches when there is no stdin input

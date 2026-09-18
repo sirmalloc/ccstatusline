@@ -18,6 +18,8 @@ bunx -y ccstatusline@latest
 
 ### Option 2: Using Node.js
 
+Install **Node.js 22.0.0 or newer**. If ccstatusline reports an older runtime, follow the [Node.js upgrade guide](NODE-UPGRADE.md), then restart the terminal and Claude Code.
+
 ```powershell
 # Using npm
 npx -y ccstatusline@latest

@@ -4,6 +4,8 @@
 
 ## Getting Started
 
+- Runtime requirement: Node.js 22.0.0+ or Bun. The packaged launcher runs on Node.js 14–21 only to display upgrade guidance.
+- [Node.js upgrade guide](https://github.com/sirmalloc/ccstatusline/blob/main/docs/NODE-UPGRADE.md): upgrade Node, restart Claude Code with the new runtime, or explicitly run ccstatusline with Bun.
 - [Quick Start](https://github.com/sirmalloc/ccstatusline#-quick-start): Run with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest` — no installation required. Launches an interactive TUI to configure and install the status line into Claude Code's `settings.json`.
 - [Windows Support](https://github.com/sirmalloc/ccstatusline/blob/main/docs/WINDOWS.md): PowerShell setup, fonts, and WSL/Windows Terminal notes.
 - [Usage](https://github.com/sirmalloc/ccstatusline/blob/main/docs/USAGE.md): Full widget reference and configuration behavior.
