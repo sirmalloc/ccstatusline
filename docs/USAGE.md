@@ -273,7 +273,7 @@ Widget picker:
 The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget. Plain-letter shortcuts ignore Ctrl and Alt/Option modifiers, so combinations such as `Ctrl+S` do not also trigger the letter action.
 
 Widget-specific shortcuts:
-- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, Git Is Fork, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status) edit each part in one list
+- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, Git Is Fork, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, Shift+Tab toggles every symbol between none and default, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted), `w` set a maximum visible width (blank removes the limit)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`), `w` set a maximum visible width (blank removes the limit)
 - **Git PR**: `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
