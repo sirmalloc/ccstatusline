@@ -8,7 +8,7 @@ import type {
 import { getTerminalWidth } from '../utils/terminal';
 
 export class TerminalWidthWidget implements Widget {
-    getDefaultColor(): string { return 'gray'; }
+    getDefaultColor(): string { return 'brightBlack'; }
     getDescription(): string { return 'Shows current terminal width in columns'; }
     getDisplayName(): string { return 'Terminal Width'; }
     getCategory(): string { return 'Environment'; }

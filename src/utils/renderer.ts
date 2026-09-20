@@ -1126,7 +1126,7 @@ export function renderStatusLine(
             const formattedSep = formatSeparator(sepChar);
 
             // Check if we should inherit colors from the previous widget
-            let separatorColor = widget.color ?? 'gray';
+            let separatorColor = widget.color ?? 'brightBlack';
             let separatorBg = widget.backgroundColor;
             let separatorBold = widget.bold;
             let separatorDim = widget.dim;

@@ -17,7 +17,7 @@ import {
 } from './shared/hideable';
 
 export class GitShaWidget implements Widget {
-    getDefaultColor(): string { return 'gray'; }
+    getDefaultColor(): string { return 'brightBlack'; }
     getDescription(): string { return 'Shows short commit hash (SHA)'; }
     getDisplayName(): string { return 'Git SHA'; }
     getCategory(): string { return 'Git'; }
