@@ -69,12 +69,14 @@ function makeUsageLine(params: {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
+    messageId?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
+            id: params.messageId,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -93,6 +95,7 @@ function makeTranscriptLine(params: {
     output?: number;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    messageId?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
@@ -101,6 +104,7 @@ function makeTranscriptLine(params: {
         isApiErrorMessage: params.isApiErrorMessage,
         message: typeof params.input === 'number' || typeof params.output === 'number'
             ? {
+                id: params.messageId,
                 usage: {
                     input_tokens: params.input ?? 0,
                     output_tokens: params.output ?? 0
@@ -325,6 +329,68 @@ describe('jsonl transcript metrics', () => {
             totalTokens: 47052,       // 2 + 550 + 46500
             contextLength: 23501      // last main-chain final entry: 1 + 23000 + 500
         });
+    });
+
+    it('counts one API response once when its content blocks are written as separate rows', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'content-blocks.jsonl');
+
+        // Claude Code writes one row per content block (thinking, text, tool_use)
+        // of the same response: same message.id, same finalized stop_reason,
+        // identical prompt-side usage, non-decreasing output_tokens.
+        const call1 = { input: 3, cacheRead: 20000, cacheCreate: 5000, stopReason: 'tool_use', messageId: 'msg_1' };
+        const call2 = { input: 4, cacheRead: 25000, cacheCreate: 0, stopReason: 'end_turn', messageId: 'msg_2' };
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({ timestamp: '2026-01-01T10:00:00.000Z', output: 40, ...call1 }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:01.000Z', output: 90, ...call1 }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:02.000Z', output: 120, ...call1 }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:10.000Z', output: 15, ...call2 }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:11.000Z', output: 60, ...call2 })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(7);
+        expect(metrics.outputTokens).toBe(180);
+        expect(metrics.cacheReadTokens).toBe(45000);
+        expect(metrics.cacheCreationTokens).toBe(5000);
+        expect(metrics.cachedTokens).toBe(50000);
+        expect(metrics.totalTokens).toBe(50187);
+        expect(metrics.contextLength).toBe(25004);
+    });
+
+    it('still counts every row when messages carry no id', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'no-ids.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({ timestamp: '2026-01-01T10:00:00.000Z', input: 1, output: 10, stopReason: 'end_turn' }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:01.000Z', input: 1, output: 10, stopReason: 'end_turn' })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(2);
+        expect(metrics.outputTokens).toBe(20);
+    });
+
+    it('keeps counting a still-streaming response once while its rows share an id', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'live-blocks.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({ timestamp: '2026-01-01T10:00:00.000Z', input: 2, output: 50, stopReason: 'end_turn', messageId: 'msg_done' }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:05.000Z', input: 3, output: 10, stopReason: null, messageId: 'msg_live' }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:06.000Z', input: 3, output: 30, stopReason: null, messageId: 'msg_live' })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(5);
+        expect(metrics.outputTokens).toBe(80);
     });
 
     it('counts the latest in-progress streaming entry once when no finalized row exists yet', async () => {
@@ -828,6 +894,30 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 300,
             totalTokens: 900,
             requestCount: 3
+        });
+    });
+
+    it('counts one speed request per API response, not per content-block row', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-blocks.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:00.000Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:03.000Z', type: 'assistant', input: 200, output: 40, messageId: 'msg_a' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:05.000Z', type: 'assistant', input: 200, output: 100, messageId: 'msg_a' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:20.000Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:24.000Z', type: 'assistant', input: 300, output: 150, messageId: 'msg_b' })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 9000,
+            inputTokens: 500,
+            outputTokens: 250,
+            totalTokens: 750,
+            requestCount: 2
         });
     });
 
