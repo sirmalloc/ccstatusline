@@ -5,6 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
+import { getFriendlyModelName } from '../utils/model-friendly-name';
 
 export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
@@ -21,9 +22,10 @@ export class ModelWidget implements Widget {
         }
 
         const model = context.data?.model;
-        const modelDisplayName = typeof model === 'string'
+        const rawName = typeof model === 'string'
             ? model
-            : (model?.display_name ?? model?.id);
+            : (model?.display_name ?? model?.id ?? '');
+        const modelDisplayName = getFriendlyModelName(rawName);
 
         if (modelDisplayName) {
             const shortName = modelDisplayName.replace(/\s*\(.*\)$/, '');
