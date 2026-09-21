@@ -6,7 +6,10 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { buildEnabledPowerlineSettings } from '../powerline-settings';
+import {
+    arePerLineColorsThemeManaged,
+    buildEnabledPowerlineSettings
+} from '../powerline-settings';
 
 describe('powerline settings helpers', () => {
     it('enables powerline with default theme and default padding', () => {
@@ -69,5 +72,30 @@ describe('powerline settings helpers', () => {
 
         const updated = buildEnabledPowerlineSettings(settings, false);
         expect(updated.lines[0]?.map(item => item.type)).toEqual(['model', 'separator', 'context-length']);
+    });
+});
+
+function withPowerline(enabled: boolean, theme: string | undefined) {
+    return {
+        ...DEFAULT_SETTINGS,
+        powerline: { ...DEFAULT_SETTINGS.powerline, enabled, theme }
+    };
+}
+
+describe('arePerLineColorsThemeManaged', () => {
+    it('is true when powerline is enabled with a preset theme', () => {
+        expect(arePerLineColorsThemeManaged(withPowerline(true, 'nord'))).toBe(true);
+    });
+
+    it('is false for the custom theme', () => {
+        expect(arePerLineColorsThemeManaged(withPowerline(true, 'custom'))).toBe(false);
+    });
+
+    it('is false when the theme is undefined (the default)', () => {
+        expect(arePerLineColorsThemeManaged(withPowerline(true, undefined))).toBe(false);
+    });
+
+    it('is false when powerline is disabled', () => {
+        expect(arePerLineColorsThemeManaged(withPowerline(false, 'nord'))).toBe(false);
     });
 });
