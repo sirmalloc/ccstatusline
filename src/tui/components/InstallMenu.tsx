@@ -9,7 +9,7 @@ import type { InstallationMetadata } from '../../types/Settings';
 import {
     CCSTATUSLINE_COMMANDS,
     PINNED_INSTALL_COMMANDS,
-    getClaudeSettingsPath,
+    getInstallTargetPath,
     type PackageCommandAvailability,
     type StatusLineCommandMode
 } from '../../utils/claude-settings';
@@ -227,7 +227,7 @@ export const InstallMenu: React.FC<InstallMenuProps> = ({
                 <Text dimColor>
                     The selected command will be written to
                     {' '}
-                    {getClaudeSettingsPath()}
+                    {getInstallTargetPath()}
                 </Text>
             </Box>
 
