@@ -168,6 +168,8 @@ describe('WeeklyResetTimerWidget', () => {
         mockFormatUsageDuration.mockReturnValue('4hr');
 
         expect(render(widget, item, { usageData: { weeklyUsage: 0 } })).toBeNull();
+        // A null bucket pins usage to 0 while limits[] still supplies the reset time
+        expect(render(widget, item, { usageData: { weeklyUsage: 0, weeklyResetAt: '2030-07-01T00:00:00.000Z' } })).toBe('Weekly Reset: 4hr');
         expect(render(widget, item, { usageData: { weeklyUsage: 5 } })).toBe('Weekly Reset: 4hr');
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: { weeklyUsage: 0 } })).toBe('Weekly Reset: 4hr');
     });

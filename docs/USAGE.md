@@ -310,7 +310,7 @@ Supported states by widget family:
 - **Session Cost**: `zero` hides `$0.00`
 - **Session Clock**: `zero` hides durations under one minute
 - **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
-- **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available, `zero` hides the timer while its period's usage (session or weekly) is 0%
+- **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available, `zero` hides the timer while its period's usage (session or weekly) is 0% and no reset window has started
 - **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
 - **Output Style**: `default-value` hides the widget when the style is `default`
 - **Compaction Counter**: `zero` hides the counter before any compaction occurs

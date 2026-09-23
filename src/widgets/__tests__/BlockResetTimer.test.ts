@@ -137,6 +137,8 @@ describe('BlockResetTimerWidget', () => {
         mockFormatUsageDuration.mockReturnValue('4hr');
 
         expect(render(widget, item, { usageData: { sessionUsage: 0 } })).toBeNull();
+        // A null bucket pins usage to 0 while limits[] still supplies the reset time
+        expect(render(widget, item, { usageData: { sessionUsage: 0, sessionResetAt: '2030-07-01T00:00:00.000Z' } })).toBe('Reset: 4hr');
         expect(render(widget, item, { usageData: { sessionUsage: 5 } })).toBe('Reset: 4hr');
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { sessionUsage: 0 } })).toBe('Reset: 4hr');
     });

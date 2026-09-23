@@ -222,7 +222,7 @@ export class WeeklyResetTimerWidget implements Widget {
         }
 
         const usageData = context.usageData ?? {};
-        if (usageData.weeklyUsage === 0 && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+        if (usageData.weeklyUsage === 0 && !usageData.weeklyResetAt && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
 
