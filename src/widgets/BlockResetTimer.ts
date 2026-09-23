@@ -151,7 +151,7 @@ export class BlockResetTimerWidget implements Widget {
             return null;
         }
 
-        if (usageData.sessionUsage === 0 && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
+        if (usageData.sessionUsage === 0 && !usageData.sessionResetAt && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
 
