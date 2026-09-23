@@ -12,6 +12,7 @@ import { isHidden } from './shared/hideable';
 import {
     SESSION_AT_LIMIT_HIDEABLE_STATE,
     USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_ZERO_HIDEABLE_STATE,
     getUsagePercentCustomKeybinds,
     isAtSessionLimit
 } from './shared/usage-display';
@@ -36,7 +37,7 @@ export class SessionUsageWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE, SESSION_AT_LIMIT_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, USAGE_ZERO_HIDEABLE_STATE, SESSION_AT_LIMIT_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
