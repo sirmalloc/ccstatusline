@@ -20,6 +20,7 @@ export type UsageDisplayMode = 'time' | 'progress' | 'progress-short' | 'slider'
 // Shared by the usage percentage widgets and the reset timers, which render the
 // same error placeholders
 export const USAGE_NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when usage data is unavailable' };
+export const USAGE_ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when usage is zero' };
 
 const SLIDER_WIDTH = 10;
 
