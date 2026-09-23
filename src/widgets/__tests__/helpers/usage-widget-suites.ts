@@ -166,7 +166,9 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
     it('renders zero usage when the zero state is off', () => {
         const widget = config.createWidget();
 
-        expect(config.render(widget, config.baseItem, getUsageContext(config.usageField, 0))).not.toBeNull();
+        const expectedZeroTime = config.expectedTime.replace(config.expectedRawTime, '0.0%');
+
+        expect(config.render(widget, config.baseItem, getUsageContext(config.usageField, 0))).toBe(expectedZeroTime);
     });
 
     it('renders non-zero usage when the zero state is enabled', () => {
