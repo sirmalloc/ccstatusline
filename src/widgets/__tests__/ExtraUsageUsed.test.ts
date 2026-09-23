@@ -95,11 +95,20 @@ describe('ExtraUsageUsedWidget', () => {
         expect(widget.supportsNumberFormat()).toBe(true);
     });
 
-    it('declares the disabled and no-data hideable states', () => {
+    it('declares the disabled, no-data and zero hideable states', () => {
         const widget = new ExtraUsageUsedWidget();
 
-        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data', 'zero']);
         expect(widget.getEditorDisplay({ id: 'extra', type: 'extra-usage-used' }).modifierText).toBeUndefined();
+    });
+
+    it('hides zero spend only when the zero state is enabled', () => {
+        const widget = new ExtraUsageUsedWidget();
+        const hideZeroItem: WidgetItem = { id: 'extra', type: 'extra-usage-used', metadata: { hide: 'zero' } };
+
+        expect(render(widget, hideZeroItem, { usageData: { extraUsageEnabled: true, extraUsageUsed: 0 } })).toBeNull();
+        expect(render(widget, hideZeroItem, { usageData: { extraUsageEnabled: true, extraUsageUsed: 10600 } })).toBe('Overage Used: $106.00');
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, { usageData: { extraUsageEnabled: true, extraUsageUsed: 0 } })).toBe('Overage Used: $0.00');
     });
 
     it('renders available used budget before unrelated usage errors', () => {
