@@ -310,13 +310,13 @@ Supported states by widget family:
 - **Session Cost**: `zero` hides `$0.00`
 - **Session Clock**: `zero` hides durations under one minute
 - **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
-- **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available
+- **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available, `zero` hides the timer while its period's usage (session or weekly) is 0%
 - **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
 - **Output Style**: `default-value` hides the widget when the style is `default`
 - **Compaction Counter**: `zero` hides the counter before any compaction occurs
 - **Skills**: `empty` hides the widget before any skill is used
-- **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable
-- **Session / Weekly / Weekly Sonnet / Weekly Opus / Weekly Fable Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable
+- **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable; on Extra Usage Used and Extra Usage Utilization, `zero` hides the widget while nothing has been spent (Extra Usage Remaining has no `zero` state)
+- **Session / Weekly / Weekly Sonnet / Weekly Opus / Weekly Fable Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable, `zero` hides the widget while usage is 0% (also when showing remaining)
 - **Cache widgets** (`Cache Hit Rate`, `Cache Read`, `Cache Write`, `Cache Timer`): `empty` hides the widget when there is no cache activity, and on Cache Timer when no cache anchor is available
 - **Custom Text / Custom Symbol**: `merge-target-hidden` hides the item when the widget it is merged with renders nothing, so icon prefixes/suffixes disappear together with their widget
 
