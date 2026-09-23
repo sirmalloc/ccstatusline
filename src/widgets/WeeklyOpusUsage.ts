@@ -10,6 +10,7 @@ import type {
 
 import {
     USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_ZERO_HIDEABLE_STATE,
     getUsagePercentCustomKeybinds
 } from './shared/usage-display';
 import {
@@ -31,7 +32,7 @@ export class WeeklyOpusUsageWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, USAGE_ZERO_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {

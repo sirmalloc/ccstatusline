@@ -8,6 +8,7 @@ import {
 import type { RenderContext } from '../../../types/RenderContext';
 import type {
     CustomKeybind,
+    HideableState,
     WidgetEditorDisplay,
     WidgetItem
 } from '../../../types/Widget';
@@ -15,6 +16,7 @@ import type {
 interface UsageWidgetLike {
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[];
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay;
+    getHideableStates(): HideableState[];
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null;
     supportsRawValue(): boolean;
 }
@@ -147,6 +149,31 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
             ...config.baseItem,
             metadata: { hide: 'no-data' }
         }, { usageData: { error: 'timeout' } })).toBeNull();
+    });
+
+    it('declares the no-data and zero hideable states', () => {
+        expect(config.createWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'zero']);
+    });
+
+    it('hides zero usage when the zero state is enabled, regardless of invert', () => {
+        const widget = config.createWidget();
+        const context = getUsageContext(config.usageField, 0);
+
+        expect(config.render(widget, { ...config.baseItem, metadata: { hide: 'zero' } }, context)).toBeNull();
+        expect(config.render(widget, { ...config.baseItem, metadata: { hide: 'zero', invert: 'true' } }, context)).toBeNull();
+    });
+
+    it('renders zero usage when the zero state is off', () => {
+        const widget = config.createWidget();
+
+        expect(config.render(widget, config.baseItem, getUsageContext(config.usageField, 0))).not.toBeNull();
+    });
+
+    it('renders non-zero usage when the zero state is enabled', () => {
+        const widget = config.createWidget();
+        const context = getUsageContext(config.usageField, config.usageValue);
+
+        expect(config.render(widget, { ...config.baseItem, metadata: { hide: 'zero' } }, context)).toBe(config.expectedTime);
     });
 
     it('renders available usage data before unrelated usage errors', () => {

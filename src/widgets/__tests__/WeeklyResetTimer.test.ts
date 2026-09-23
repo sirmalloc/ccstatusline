@@ -150,8 +150,26 @@ describe('WeeklyResetTimerWidget', () => {
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
     });
 
-    it('declares the no-data hideable state', () => {
-        expect(new WeeklyResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data']);
+    it('declares the no-data and zero hideable states', () => {
+        expect(new WeeklyResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'zero']);
+    });
+
+    it('hides when weeklyUsage is zero and the zero state is enabled', () => {
+        const widget = new WeeklyResetTimerWidget();
+        const item: WidgetItem = { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { hide: 'zero' } };
+
+        mockResolveWeeklyUsageWindow.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 3600000,
+            remainingMs: 14400000,
+            elapsedPercent: 20,
+            remainingPercent: 80
+        });
+        mockFormatUsageDuration.mockReturnValue('4hr');
+
+        expect(render(widget, item, { usageData: { weeklyUsage: 0 } })).toBeNull();
+        expect(render(widget, item, { usageData: { weeklyUsage: 5 } })).toBe('Weekly Reset: 4hr');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: { weeklyUsage: 0 } })).toBe('Weekly Reset: 4hr');
     });
 
     // One state covers both placeholders, since either means the same thing to

@@ -119,8 +119,26 @@ describe('BlockResetTimerWidget', () => {
         expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
     });
 
-    it('declares the no-data hideable state', () => {
-        expect(new BlockResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data']);
+    it('declares the no-data and zero hideable states', () => {
+        expect(new BlockResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'zero']);
+    });
+
+    it('hides when sessionUsage is zero and the zero state is enabled', () => {
+        const widget = new BlockResetTimerWidget();
+        const item: WidgetItem = { id: 'reset', type: 'reset-timer', metadata: { hide: 'zero' } };
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 3600000,
+            remainingMs: 14400000,
+            elapsedPercent: 20,
+            remainingPercent: 80
+        });
+        mockFormatUsageDuration.mockReturnValue('4hr');
+
+        expect(render(widget, item, { usageData: { sessionUsage: 0 } })).toBeNull();
+        expect(render(widget, item, { usageData: { sessionUsage: 5 } })).toBe('Reset: 4hr');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { sessionUsage: 0 } })).toBe('Reset: 4hr');
     });
 
     // One state covers both placeholders, since either means the same thing to
