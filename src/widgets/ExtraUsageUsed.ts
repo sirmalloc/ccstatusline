@@ -13,7 +13,10 @@ import { formatUsageCurrency } from './shared/currency';
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
-import { USAGE_NO_DATA_HIDEABLE_STATE } from './shared/usage-display';
+import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_ZERO_HIDEABLE_STATE
+} from './shared/usage-display';
 
 export class ExtraUsageUsedWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
@@ -26,7 +29,7 @@ export class ExtraUsageUsedWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
+        return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE, USAGE_ZERO_HIDEABLE_STATE];
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -47,6 +50,10 @@ export class ExtraUsageUsedWidget implements Widget {
                     ? null
                     : getUsageErrorMessage(data.error);
             }
+            return null;
+        }
+
+        if (data.extraUsageUsed === 0 && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
 

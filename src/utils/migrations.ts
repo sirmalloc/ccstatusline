@@ -161,6 +161,8 @@ const GIT_REVIEW_HIDE_RULE: HideFlagRule = {
 // placeholder. hideIfDisabled never covered that placeholder, so it stays mapped
 // to 'disabled' alone and only a hand-written list can enable it.
 const EXTRA_USAGE_HIDE_RULE: HideFlagRule = { legacy: { hideIfDisabled: ['disabled'] }, stateOrder: ['disabled', 'no-data'] };
+// Used and Utilization also offer `zero`, which a hand-written hide list can carry in.
+const EXTRA_USAGE_ZERO_HIDE_RULE: HideFlagRule = { legacy: { hideIfDisabled: ['disabled'] }, stateOrder: ['disabled', 'no-data', 'zero'] };
 const CACHE_HIDE_RULE: HideFlagRule = { legacy: { hideWhenEmpty: ['empty'] }, stateOrder: ['empty'] };
 
 export const V4_HIDE_FLAG_RULES: Record<string, HideFlagRule> = {
@@ -209,9 +211,9 @@ export const V4_HIDE_FLAG_RULES: Record<string, HideFlagRule> = {
     'cache-write': CACHE_HIDE_RULE,
     'cache-hit-rate': CACHE_HIDE_RULE,
     'cache-timer': CACHE_HIDE_RULE,
-    'extra-usage-utilization': EXTRA_USAGE_HIDE_RULE,
+    'extra-usage-utilization': EXTRA_USAGE_ZERO_HIDE_RULE,
     'extra-usage-remaining': EXTRA_USAGE_HIDE_RULE,
-    'extra-usage-used': EXTRA_USAGE_HIDE_RULE
+    'extra-usage-used': EXTRA_USAGE_ZERO_HIDE_RULE
 };
 
 const V4_LEGACY_HIDE_KEYS = [
