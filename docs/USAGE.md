@@ -226,6 +226,8 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
+To keep a label but change it, select the widget and press `b` (`la(b)el…`) instead. The label is replaced verbatim, so include any trailing space or colon yourself (e.g. `M ` renders `M Claude 3.5 Sonnet`); an empty label drops it, and Tab in the editor restores the default. Widgets whose label changes with their mode (e.g. `Ctx Used:`/`Ctx Left:`, or `Block:` vs `Block ` before a progress bar) use the one custom label in every mode. The editor row shows `(label: "M ")` while a custom label is set; `b` is hidden while raw value is on, since the label isn't rendered then.
+
 ## Number Formatting
 
 Numeric widgets support three display styles without changing their underlying values:
@@ -249,6 +251,7 @@ Common controls in the line editor:
 - `c` clear the current line
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
+- `b` edit the label shown before the value when raw value is off (labeled widgets)
 - `.` cycle precise/compact/whole number formatting (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
