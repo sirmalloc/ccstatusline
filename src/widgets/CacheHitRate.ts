@@ -26,11 +26,14 @@ import {
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Cache Hit: ';
+
 export class CacheHitRateWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows prompt cache hit rate (cache reads vs cache writes)'; }
     getDisplayName(): string { return 'Cache Hit Rate'; }
     getCategory(): string { return 'Cache'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
@@ -46,25 +49,25 @@ export class CacheHitRateWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(87, format));
+            return formatRawOrLabeledValue(item, LABEL, formatPercent(87, format));
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, LABEL, 'n/a');
         }
 
         const hitRate = getCacheHitRate(tokens);
         if (hitRate === null) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(0, format));
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, LABEL, formatPercent(0, format));
         }
 
         if (hitRate === 0 && hideWhenEmpty) {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, 'Cache Hit: ', formatPercent(hitRate, format));
+        return formatRawOrLabeledValue(item, LABEL, formatPercent(hitRate, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

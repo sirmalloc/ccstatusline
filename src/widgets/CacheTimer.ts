@@ -23,6 +23,8 @@ import {
     type SymbolSlot
 } from './shared/symbol-override';
 
+const LABEL = 'Cache: ';
+
 // Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
 // also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
 // The expiry itself is never exposed (the transcript only records token counts),
@@ -237,6 +239,7 @@ export class CacheTimerWidget implements Widget {
     getDescription(): string { return 'Shows time remaining on the prompt cache TTL (5m by default, 1h configurable)'; }
     getDisplayName(): string { return 'Cache Timer'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
@@ -267,30 +270,30 @@ export class CacheTimerWidget implements Widget {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
+            return formatRawOrLabeledValue(item, LABEL, withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
         }
 
         const transcriptPath = context.data?.transcript_path;
         if (!transcriptPath) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, LABEL, 'n/a');
         }
 
         const state = getTranscriptState(transcriptPath);
 
         if (state.isWorking) {
-            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
+            return formatRawOrLabeledValue(item, LABEL, withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
         }
 
         const { lastAssistant } = state;
         if (!lastAssistant) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, LABEL, 'n/a');
         }
 
         const ttlSeconds = getTtlSeconds(item);
         const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
         const glyph = getStateSymbol(item, remaining, ttlSeconds);
 
-        return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(glyph, formatCountdown(remaining)));
+        return formatRawOrLabeledValue(item, LABEL, withGlyph(glyph, formatCountdown(remaining)));
     }
 
     getCustomKeybinds(): CustomKeybind[] {

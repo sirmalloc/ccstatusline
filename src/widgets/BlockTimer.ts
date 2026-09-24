@@ -34,6 +34,8 @@ import {
     toggleUsageInverted
 } from './shared/usage-display';
 
+const LABEL = 'Block: ';
+
 const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no active block' };
 
 export class BlockTimerWidget implements Widget {
@@ -41,6 +43,7 @@ export class BlockTimerWidget implements Widget {
     getDescription(): string { return 'Shows current 5hr block elapsed time or progress'; }
     getDisplayName(): string { return 'Block Timer'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
@@ -88,7 +91,7 @@ export class BlockTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Block: ', compact ? '3h45m' : '3hr 45m');
+            return formatRawOrLabeledValue(item, LABEL, compact ? '3h45m' : '3hr 45m');
         }
 
         const usageData = context.usageData ?? {};
@@ -114,7 +117,7 @@ export class BlockTimerWidget implements Widget {
                 return formatRawOrLabeledValue(item, 'Block ', sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, 'Block: ', compact ? '0h' : '0hr 0m');
+            return formatRawOrLabeledValue(item, LABEL, compact ? '0h' : '0hr 0m');
         }
 
         if (isUsageProgressMode(displayMode)) {
@@ -134,7 +137,7 @@ export class BlockTimerWidget implements Widget {
         }
 
         const elapsedTime = formatUsageDuration(window.elapsedMs, compact);
-        return formatRawOrLabeledValue(item, 'Block: ', elapsedTime);
+        return formatRawOrLabeledValue(item, LABEL, elapsedTime);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

@@ -9,6 +9,10 @@ import type {
 } from '../types/Widget';
 import { getClaudeJsonPath } from '../utils/claude-settings';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const LABEL = 'Account: ';
+
 interface ClaudeJson { oauthAccount?: { emailAddress?: string } }
 
 export class ClaudeAccountEmailWidget implements Widget {
@@ -16,13 +20,14 @@ export class ClaudeAccountEmailWidget implements Widget {
     getDescription(): string { return 'Displays the email of the currently logged-in Claude account'; }
     getDisplayName(): string { return 'Claude Account Email'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'you@example.com' : 'Account: you@example.com';
+            return formatRawOrLabeledValue(item, LABEL, 'you@example.com');
         }
 
         try {
@@ -34,7 +39,7 @@ export class ClaudeAccountEmailWidget implements Widget {
                 return null;
             }
 
-            return item.rawValue ? email : `Account: ${email}`;
+            return formatRawOrLabeledValue(item, LABEL, email);
         } catch {
             return null;
         }

@@ -17,6 +17,7 @@ import type {
 } from '../types/Widget';
 import { shouldInsertInput } from '../utils/input-guards';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     SYMBOL_OVERRIDE_ACTION,
     formatSymbolPrefix,
@@ -24,11 +25,14 @@ import {
     renderSymbolOverrideEditor
 } from './shared/symbol-override';
 
+const LABEL = 'cwd: ';
+
 export class CurrentWorkingDirWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows the current working directory'; }
     getDisplayName(): string { return 'Current Working Dir'; }
     getCategory(): string { return 'Environment'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
         const fishStyle = item.metadata?.fishStyle === 'true';
@@ -135,7 +139,7 @@ export class CurrentWorkingDirWidget implements Widget {
                 previewPath = '/Users/example/Documents/Projects/my-project';
             }
 
-            return item.rawValue ? `${symbolPrefix}${previewPath}` : `${symbolPrefix}cwd: ${previewPath}`;
+            return `${symbolPrefix}${formatRawOrLabeledValue(item, LABEL, previewPath)}`;
         }
 
         const cwd = context.data?.cwd;
@@ -172,7 +176,7 @@ export class CurrentWorkingDirWidget implements Widget {
             }
         }
 
-        return item.rawValue ? `${symbolPrefix}${displayPath}` : `${symbolPrefix}cwd: ${displayPath}`;
+        return `${symbolPrefix}${formatRawOrLabeledValue(item, LABEL, displayPath)}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

@@ -13,6 +13,10 @@ import {
     type TranscriptThinkingEffort
 } from '../utils/jsonl';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const LABEL = 'Thinking: ';
+
 export type ThinkingEffortLevel = TranscriptThinkingEffort;
 
 function resolveThinkingEffortFromStatusJson(context: RenderContext): ResolvedThinkingEffort | null | undefined {
@@ -62,17 +66,18 @@ export class ThinkingEffortWidget implements Widget {
     getDescription(): string { return 'Displays the current thinking effort level (low, medium, high, xhigh, max).\nClaude Code reports Ultracode as xhigh in status line data; Ultracode is not exposed as a separate effort level.\nUnknown levels are shown with a trailing "?" (e.g. "super-max?").\nMay be incorrect when multiple Claude Code sessions are running due to current Claude Code limitations.'; }
     getDisplayName(): string { return 'Thinking Effort'; }
     getCategory(): string { return 'Core'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'high' : 'Thinking: high';
+            return formatRawOrLabeledValue(item, LABEL, 'high');
         }
 
         const effort = formatEffort(resolveThinkingEffort(context));
-        return item.rawValue ? effort : `Thinking: ${effort}`;
+        return formatRawOrLabeledValue(item, LABEL, effort);
     }
 
     supportsRawValue(): boolean { return true; }

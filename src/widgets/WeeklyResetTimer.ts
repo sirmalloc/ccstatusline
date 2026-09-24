@@ -62,6 +62,8 @@ import {
     toggleUsageWeekday
 } from './shared/usage-display';
 
+const LABEL = 'Weekly Reset: ';
+
 const WEEKLY_PREVIEW_DURATION_MS = 36.5 * 60 * 60 * 1000;
 const WEEKLY_RESET_PREVIEW_AT = '2026-03-15T08:30:00.000Z';
 const USAGE_TIMER_LOADING_MESSAGE = '[Loading]';
@@ -132,6 +134,7 @@ export class WeeklyResetTimerWidget implements Widget {
     getDescription(): string { return 'Shows time remaining until weekly usage reset'; }
     getDisplayName(): string { return 'Weekly Reset Timer'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
@@ -214,10 +217,10 @@ export class WeeklyResetTimerWidget implements Widget {
                 const fallback = weekday
                     ? (compact ? 'Sun 08:30Z' : 'Sun 08:30 UTC')
                     : (compact ? '03-15 08:30Z' : '2026-03-15 08:30 UTC');
-                return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt ?? fallback);
+                return formatRawOrLabeledValue(item, LABEL, resetAt ?? fallback);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly Reset: ', formatUsageDuration(WEEKLY_PREVIEW_DURATION_MS, compact, useDays));
+            return formatRawOrLabeledValue(item, LABEL, formatUsageDuration(WEEKLY_PREVIEW_DURATION_MS, compact, useDays));
         }
 
         const usageData = context.usageData ?? {};
@@ -232,7 +235,7 @@ export class WeeklyResetTimerWidget implements Widget {
                 return getUsageErrorMessage(usageData.error);
             }
 
-            return formatRawOrLabeledValue(item, 'Weekly Reset: ', USAGE_TIMER_LOADING_MESSAGE);
+            return formatRawOrLabeledValue(item, LABEL, USAGE_TIMER_LOADING_MESSAGE);
         }
 
         if (isUsageProgressMode(displayMode)) {
@@ -256,12 +259,12 @@ export class WeeklyResetTimerWidget implements Widget {
             const locale = getUsageLocale(item);
             const resetAt = formatUsageResetAt(usageData.weeklyResetAt, compact, timezone, locale, isUsage12HourClock(item), isUsageWeekdayEnabled(item));
             if (resetAt) {
-                return formatRawOrLabeledValue(item, 'Weekly Reset: ', resetAt);
+                return formatRawOrLabeledValue(item, LABEL, resetAt);
             }
         }
 
         const remainingTime = formatUsageDuration(window.remainingMs, compact, useDays);
-        return formatRawOrLabeledValue(item, 'Weekly Reset: ', remainingTime);
+        return formatRawOrLabeledValue(item, LABEL, remainingTime);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

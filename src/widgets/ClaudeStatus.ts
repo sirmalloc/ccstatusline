@@ -52,6 +52,7 @@ export class ClaudeStatusWidget implements Widget {
     getDescription(): string { return 'Shows Claude service status from status.claude.com with an optional 48h incident history strip'; }
     getDisplayName(): string { return 'Claude Status'; }
     getCategory(): string { return 'Core'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {

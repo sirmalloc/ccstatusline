@@ -24,11 +24,14 @@ import {
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Cache Write: ';
+
 export class CacheWriteWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows cache write tokens written to cache, with context share'; }
     getDisplayName(): string { return 'Cache Write'; }
     getCategory(): string { return 'Cache'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
@@ -46,13 +49,13 @@ export class CacheWriteWidget implements Widget {
         const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
             const value = formatTokensWithPercentage(3000, 16, tokenFormat, percentFormat);
-            return formatRawOrLabeledValue(item, 'Cache Write: ', value);
+            return formatRawOrLabeledValue(item, LABEL, value);
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Write: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, LABEL, 'n/a');
         }
 
         if (tokens.creation === 0 && hideWhenEmpty) {
@@ -60,7 +63,7 @@ export class CacheWriteWidget implements Widget {
         }
 
         const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens), tokenFormat, percentFormat);
-        return formatRawOrLabeledValue(item, 'Cache Write: ', value);
+        return formatRawOrLabeledValue(item, LABEL, value);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

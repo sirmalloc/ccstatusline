@@ -163,4 +163,57 @@ describe('ItemsEditor', () => {
             stderr.destroy();
         }
     });
+    it('edits a widget label and hides the label keybind in raw value mode', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type: 'model' }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('la(b)el…');
+
+            stdout.clearOutput();
+            stdin.write('b');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('(default: "Model: ")');
+
+            // Trim "Model: " down to "M", one backspace per keypress
+            for (const key of Array.from('odel: ', () => '\x7f')) {
+                stdin.write(key);
+                await flushInk();
+            }
+            stdin.write(' ');
+            await flushInk();
+            stdout.clearOutput();
+            stdin.write('\r');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "M ")');
+
+            stdout.clearOutput();
+            stdin.write('r');
+            await flushInk();
+            const rawOutput = stripAnsi(stdout.getOutput());
+            expect(rawOutput).toContain('(raw value)');
+            expect(rawOutput).not.toContain('la(b)el…');
+            expect(rawOutput).not.toContain('(label:');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
