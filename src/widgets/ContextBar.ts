@@ -18,6 +18,7 @@ import {
 import { formatTokens } from '../utils/renderer';
 import { makeUsageProgressBar } from '../utils/usage';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import { makeSliderBar } from './shared/usage-display';
 
 type DisplayMode = 'progress' | 'progress-short' | 'slider' | 'slider-only';
@@ -93,11 +94,11 @@ export class ContextBarWidget implements Widget {
             if (isBarSliderMode(displayMode)) {
                 const slider = makeSliderBar(25);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${percentDisplay})` : slider;
-                return item.rawValue ? sliderDisplay : `Context: ${sliderDisplay}`;
+                return formatRawOrLabeledValue(item, 'Context: ', sliderDisplay);
             }
             const barWidth = displayMode === 'progress' ? 32 : 16;
             const previewDisplay = `${makeUsageProgressBar(25, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
-            return item.rawValue ? previewDisplay : `Context: ${previewDisplay}`;
+            return formatRawOrLabeledValue(item, 'Context: ', previewDisplay);
         }
 
         const contextWindowMetrics = getContextWindowMetrics(context.data);
@@ -127,13 +128,13 @@ export class ContextBarWidget implements Widget {
         if (isBarSliderMode(displayMode)) {
             const slider = makeSliderBar(clampedPercent);
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${percentDisplay})` : slider;
-            return item.rawValue ? sliderDisplay : `Context: ${sliderDisplay}`;
+            return formatRawOrLabeledValue(item, 'Context: ', sliderDisplay);
         }
 
         const barWidth = displayMode === 'progress' ? 32 : 16;
         const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
 
-        return item.rawValue ? display : `Context: ${display}`;
+        return formatRawOrLabeledValue(item, 'Context: ', display);
     }
 
     getCustomKeybinds(): CustomKeybind[] {

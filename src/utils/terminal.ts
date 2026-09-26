@@ -54,25 +54,27 @@ function probeTerminalWidth(): number | null {
 
     // Claude Code can spawn ccstatusline with piped stdio, leaving the immediate
     // parent process without a controlling TTY. Walk up a few ancestors until we
-    // find the shell process that owns the real PTY.
-    let pid = process.pid;
+    // find the shell process that owns the real PTY. process.ppid starts the walk
+    // at generation 1 for free, matching the old two-spawn walk's generation
+    // coverage (1..8).
+    let pid = process.ppid;
     for (let depth = 0; depth < 8; depth += 1) {
-        const parentPid = getParentProcessId(pid);
-        if (parentPid === null) {
+        const ancestor = getProcessAncestorInfo(pid);
+
+        // Try this generation's TTY even when the PPID looks terminal: a PPID of
+        // 0 must not hide a perfectly good width on the same ps row.
+        if (ancestor.tty !== null) {
+            const width = getWidthForTTY(ancestor.tty);
+            if (width !== null) {
+                return width;
+            }
+        }
+
+        if (ancestor.parentPid === null) {
             break;
         }
 
-        pid = parentPid;
-
-        const tty = getTTYForProcess(pid);
-        if (tty === null) {
-            continue;
-        }
-
-        const width = getWidthForTTY(tty);
-        if (width !== null) {
-            return width;
-        }
+        pid = ancestor.parentPid;
     }
 
     // Fallback: try tput cols which might work in some environments
@@ -100,35 +102,35 @@ function parsePositiveInteger(value: string): number | null {
     return parsed;
 }
 
-function getParentProcessId(pid: number): number | null {
+interface ProcessAncestorInfo {
+    parentPid: number | null;
+    tty: string | null;
+}
+
+function getProcessAncestorInfo(pid: number): ProcessAncestorInfo {
+    // One ps spawn answers both questions of the ancestor walk: the parent pid
+    // and the controlling TTY. The probe re-runs per render on macOS (numeric
+    // widths are deliberately not persisted across processes), and under
+    // several concurrent sessions each saved subprocess is saved per repaint
+    // (see #397). Two -o flags rather than one comma list: FreeBSD's parser
+    // treats everything after the first '=' as a single header, so the comma
+    // form collapses into one bogus column.
     try {
-        const parentPidOutput = execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
+        const output = execFileSync('ps', ['-o', 'ppid=', '-o', 'tty=', '-p', String(pid)], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             windowsHide: true
         }).trim();
 
-        return parsePositiveInteger(parentPidOutput);
+        const fields = output.split(/\s+/);
+        const tty = fields[1] ?? '';
+
+        return {
+            parentPid: parsePositiveInteger(fields[0] ?? ''),
+            tty: !tty || tty === '?' || tty === '??' ? null : tty
+        };
     } catch {
-        return null;
-    }
-}
-
-function getTTYForProcess(pid: number): string | null {
-    try {
-        const tty = execFileSync('ps', ['-o', 'tty=', '-p', String(pid)], {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            windowsHide: true
-        }).replace(/\s+/g, '');
-
-        if (!tty || tty === '??' || tty === '?') {
-            return null;
-        }
-
-        return tty;
-    } catch {
-        return null;
+        return { parentPid: null, tty: null };
     }
 }
 

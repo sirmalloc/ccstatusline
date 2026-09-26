@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import path from 'node:path';
 
 import type {
+    LastTurnTokens,
     SpeedMetrics,
     TokenMetrics,
     TranscriptLine
@@ -42,6 +43,7 @@ export interface TranscriptAnalysisOptions {
     includeCompactionStats?: boolean;
     includeThinkingEffort?: boolean;
     includeSessionName?: boolean;
+    includeLastTurnTokens?: boolean;
 }
 
 export interface TranscriptAnalysis {
@@ -86,6 +88,7 @@ interface TokenMetricEntry {
     stopReason: string | null | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
+    messageId: string | null;
 }
 
 interface TokenMetricAccumulator {
@@ -102,10 +105,14 @@ interface TokenMetricAccumulator {
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
+    countedMessageId: string | null;
+    countedOutputTokens: number;
     lastUsageEntry: TokenMetricEntry | null;
     sawCompactBoundary: boolean;
     boundaryAfterLastUsage: boolean;
     lastCompactBoundaryPostTokens: number | null;
+    lastTurnMessageId: string | null;
+    lastTurnTokens: LastTurnTokens | null;
 }
 
 function createEmptyTokenMetrics(): TokenMetrics {
@@ -169,11 +176,71 @@ function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
+        countedMessageId: null,
+        countedOutputTokens: 0,
         lastUsageEntry: null,
         sawCompactBoundary: false,
         boundaryAfterLastUsage: false,
-        lastCompactBoundaryPostTokens: null
+        lastCompactBoundaryPostTokens: null,
+        lastTurnMessageId: null,
+        lastTurnTokens: null
     };
+}
+
+function createLastTurnTokens(usage: UsageTokens): LastTurnTokens {
+    const cachedTokens = usage.read + usage.creation;
+    return {
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+        cachedTokens,
+        totalTokens: usage.input + usage.output + cachedTokens
+    };
+}
+
+// Claude Code writes one JSONL entry per content block (thinking / text / each
+// tool_use) of a single API call, all sharing one message.id and repeating
+// identical prompt-side usage; only output_tokens grows entry to entry.
+// Grouping consecutive counted entries by id keeps one usage per call instead
+// of one per content block (see sirmalloc/ccstatusline#549). Entries without
+// an id each start a new group.
+function accumulateCumulativeTokenEntry(
+    state: TokenMetricState,
+    entry: TokenMetricEntry,
+    includePostCompactionUsage: boolean
+): void {
+    if (state.countedMessageId !== null
+        && entry.messageId !== null
+        && entry.messageId === state.countedMessageId) {
+        // Duplicates only grow output_tokens, so the recency snapshots taken by
+        // the group's first counted entry stay valid: per-block entries repeat
+        // identical prompt-side usage and contextLength never reads output.
+        // Divergent prompt-side usage within one id would need re-snapshotting.
+        const outputDelta = entry.usage.output - state.countedOutputTokens;
+        if (outputDelta > 0) {
+            state.countedOutputTokens = entry.usage.output;
+            state.metrics.outputTokens += outputDelta;
+        }
+        return;
+    }
+
+    state.countedMessageId = entry.messageId;
+    state.countedOutputTokens = entry.usage.output;
+    accumulateTokenMetricEntry(state.metrics, entry, includePostCompactionUsage);
+}
+
+function trackLastTurnTokens(state: TokenMetricState, entry: TokenMetricEntry): void {
+    const { messageId } = entry;
+    if (state.lastTurnTokens !== null
+        && messageId !== null
+        && messageId === state.lastTurnMessageId) {
+        const lastTurn = state.lastTurnTokens;
+        lastTurn.outputTokens = Math.max(lastTurn.outputTokens, entry.usage.output);
+        lastTurn.totalTokens = lastTurn.inputTokens + lastTurn.outputTokens + lastTurn.cachedTokens;
+        return;
+    }
+
+    state.lastTurnMessageId = messageId;
+    state.lastTurnTokens = createLastTurnTokens(entry.usage);
 }
 
 function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
@@ -188,29 +255,38 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const message = data?.message;
     const usage = message?.usage;
     if (usage) {
+        const rawMessageId = message.id;
         const entry: TokenMetricEntry = {
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
-            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
+            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+            messageId: typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null
         };
 
         const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
+            state.countedMessageId = null;
+            state.countedOutputTokens = 0;
         }
         if (!state.hasStopReasonField || entry.stopReason) {
-            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+            accumulateCumulativeTokenEntry(state, entry, !compactBoundary);
+        }
+        // Sidechain (subagent) and API-error rows never form the user's turn,
+        // matching the recency rule used for context length above.
+        if (entry.isMainChain) {
+            trackLastTurnTokens(state, entry);
         }
         state.lastUsageEntry = entry;
         state.boundaryAfterLastUsage = compactBoundary;
     }
 }
 
-function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
+function finishTokenMetrics(state: TokenMetricState, includeLastTurnTokens: boolean): TokenMetrics {
     if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
-        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+        accumulateCumulativeTokenEntry(state, state.lastUsageEntry, !state.boundaryAfterLastUsage);
     }
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
@@ -228,7 +304,10 @@ function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
         cacheReadTokens: state.metrics.cacheReadTokens,
         cacheCreationTokens: state.metrics.cacheCreationTokens,
         totalTokens: state.metrics.inputTokens + state.metrics.outputTokens + cachedTokens,
-        contextLength
+        contextLength,
+        lastTurnTokens: includeLastTurnTokens && state.lastTurnTokens
+            ? state.lastTurnTokens
+            : undefined
     };
 }
 
@@ -597,7 +676,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
         }
 
         return {
-            tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+            tokenMetrics: tokenState ? finishTokenMetrics(tokenState, options.includeLastTurnTokens === true) : null,
             sessionDuration: options.includeSessionDuration
                 ? formatSessionDuration(firstTimestampMs, lastTimestampMs)
                 : null,

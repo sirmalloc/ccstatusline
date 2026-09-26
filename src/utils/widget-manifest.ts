@@ -58,6 +58,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'tokens-output', create: () => new widgets.TokensOutputWidget() },
     { type: 'tokens-cached', create: () => new widgets.TokensCachedWidget() },
     { type: 'tokens-total', create: () => new widgets.TokensTotalWidget() },
+    { type: 'tokens-last-turn', create: () => new widgets.TokensLastTurnWidget() },
     { type: 'cache-hit-rate', create: () => new widgets.CacheHitRateWidget() },
     { type: 'cache-read', create: () => new widgets.CacheReadWidget() },
     { type: 'cache-write', create: () => new widgets.CacheWriteWidget() },

@@ -53,10 +53,16 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
-    });
+async function flushInk(stdout?: CapturedWriteStream) {
+    // The first render loads the editor's lazy chunk. Wait for its content,
+    // not a fixed first-frame delay, before sending keyboard input.
+    for (let attempt = 0; attempt < 40; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+        if (!stdout || getPlainOutput(stdout.getOutput()).includes('Glyphs')) {
+            return;
+        }
+    }
+    expect(getPlainOutput(stdout?.getOutput() ?? '')).toContain('Glyphs');
 }
 
 const gitStatusSlots: SymbolSlot[] = [
@@ -114,7 +120,7 @@ describe('SymbolSlotsEditor', () => {
         const rendered = renderEditor({ id: 'git-status', type: 'git-status' });
 
         try {
-            await flushInk();
+            await flushInk(rendered.stdout);
 
             const lines = getPlainOutput(rendered.stdout.getOutput())
                 .split('\n')
@@ -136,7 +142,7 @@ describe('SymbolSlotsEditor', () => {
         });
 
         try {
-            await flushInk();
+            await flushInk(rendered.stdout);
             rendered.stdin.write('\t');
             await flushInk();
             rendered.stdin.write('\r');

@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import type { HttpsProxyAgent } from 'https-proxy-agent';
 import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
@@ -719,10 +719,19 @@ function getUsageApiProxyUrl(): string | null {
     return proxyUrl ?? null;
 }
 
-function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
+async function getUsageApiRequestOptions(token: string): Promise<https.RequestOptions | null> {
     const proxyUrl = getUsageApiProxyUrl();
 
     try {
+        let agent: InstanceType<typeof HttpsProxyAgent> | undefined;
+        if (proxyUrl) {
+            // Loaded on demand: the agent (and its transitive module graph) only
+            // matters when a proxy is actually configured, and the statusline
+            // entry point is re-run on every repaint (#397).
+            const { HttpsProxyAgent: ProxyAgent } = await import('https-proxy-agent');
+            agent = new ProxyAgent(proxyUrl);
+        }
+
         return {
             hostname: USAGE_API_HOST,
             path: USAGE_API_PATH,
@@ -732,7 +741,7 @@ function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
                 'anthropic-beta': 'oauth-2025-04-20'
             },
             timeout: USAGE_API_TIMEOUT_MS,
-            ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
+            ...(agent ? { agent } : {})
         };
     } catch {
         return null;
@@ -740,6 +749,11 @@ function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
 }
 
 async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
+    const requestOptions = await getUsageApiRequestOptions(token);
+    if (!requestOptions) {
+        return { kind: 'error' };
+    }
+
     return new Promise((resolve) => {
         let settled = false;
 
@@ -750,12 +764,6 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
             settled = true;
             resolve(value);
         };
-
-        const requestOptions = getUsageApiRequestOptions(token);
-        if (!requestOptions) {
-            finish({ kind: 'error' });
-            return;
-        }
 
         const request = https.request(requestOptions, (response) => {
             let data = '';

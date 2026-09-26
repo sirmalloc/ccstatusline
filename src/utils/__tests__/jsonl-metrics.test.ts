@@ -29,6 +29,11 @@ async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
     return analysis.tokenMetrics;
 }
 
+async function getLastTurnTokens(transcriptPath: string): Promise<TokenMetrics['lastTurnTokens']> {
+    const analysis = await getTranscriptAnalysis(transcriptPath, { includeLastTurnTokens: true });
+    return analysis.tokenMetrics.lastTurnTokens;
+}
+
 async function getSpeedMetricsCollection(
     transcriptPath: string,
     options: { includeSubagents?: boolean; windowSeconds?: number[] } = {}
@@ -69,12 +74,14 @@ function makeUsageLine(params: {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
+    messageId?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
+            id: params.messageId,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -690,6 +697,386 @@ describe('jsonl transcript metrics', () => {
             totalTokens: 30,
             contextLength: 14
         });
+    });
+
+    it('deduplicates last-turn usage across one API call’s per-content-block entries', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'last-turn-dedup.jsonl');
+
+        // sirmalloc/ccstatusline#549: one JSONL entry per content block, all
+        // sharing a message.id and the final non-null stop_reason. The last
+        // turn must read as one API call, not three entries.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 5,
+                cacheRead: 100,
+                cacheCreate: 0,
+                stopReason: 'end_turn',
+                messageId: 'msg_00'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 1,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 100,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 2,
+                output: 287,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            })
+        ].join('\n'));
+
+        const lastTurn = await getLastTurnTokens(transcriptPath);
+
+        expect(lastTurn).toEqual({
+            inputTokens: 2,
+            outputTokens: 287,
+            cachedTokens: 16256,
+            totalTokens: 16545
+        });
+    });
+
+    it('deduplicates cumulative token totals across one API call’s per-content-block entries', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-dedup.jsonl');
+
+        // The same #549-shaped transcript as the last-turn dedup case above:
+        // msg_01 writes three per-content-block entries with identical
+        // prompt-side usage and growing output_tokens, so the cumulative
+        // widgets must count the call once, not once per block.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 5,
+                cacheRead: 100,
+                cacheCreate: 0,
+                stopReason: 'end_turn',
+                messageId: 'msg_00'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 1,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 100,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 2,
+                output: 287,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 12,            // 10 + 2 (msg_01 counted once)
+            outputTokens: 292,          // 5 + 287 (finalized output wins)
+            cachedTokens: 16356,        // (100 + 0) + (3978 + 12278)
+            cacheReadTokens: 4078,      // 100 + 3978
+            cacheCreationTokens: 12278, // 0 + 12278
+            totalTokens: 16660,         // 12 + 292 + 16356
+            contextLength: 16258        // 2 + 3978 + 12278
+        });
+    });
+
+    it('resolves streaming partials to their finalized values in cumulative totals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-streaming-dedup.jsonl');
+
+        // Same shape as the live-update case, but every entry carries a
+        // message.id: msg_a's partials must collapse into its finalized entry,
+        // and msg_b's in-flight partials must count once, not per partial.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 25,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: null,
+                messageId: 'msg_a'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 2,
+                output: 80,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: 'end_turn',
+                messageId: 'msg_a'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 3,
+                output: 30,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null,
+                messageId: 'msg_b'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                input: 3,
+                output: 120,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null,
+                messageId: 'msg_b'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 5,          // 2 + 3, one call each
+            outputTokens: 200,       // 80 + 120, not 25+80 or 30+120
+            cachedTokens: 375,
+            cacheReadTokens: 300,
+            cacheCreationTokens: 75,
+            totalTokens: 580,
+            contextLength: 228
+        });
+    });
+
+    it('counts a sidechain call’s per-content-block entries once in cumulative totals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-sidechain-dedup.jsonl');
+
+        // Sidechain rows keep today's treatment in the cumulative sums (still
+        // included, still excluded from context length); grouping by their own
+        // message.id must not count one subagent call per content block.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 50,
+                cacheRead: 20,
+                cacheCreate: 10,
+                stopReason: 'end_turn',
+                messageId: 'msg_main'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 900,
+                output: 400,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 900,
+                output: 650,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 910,          // 10 + 900 (sidechain call counted once)
+            outputTokens: 700,         // 50 + 650
+            cachedTokens: 5130,        // (20 + 10) + (5000 + 100)
+            cacheReadTokens: 5020,     // 20 + 5000
+            cacheCreationTokens: 110,  // 10 + 100
+            totalTokens: 6740,         // 910 + 700 + 5130
+            contextLength: 40          // main-chain msg_main only
+        });
+    });
+
+    it('does not report sidechain or API-error usage as the last turn', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'last-turn-main-chain.jsonl');
+
+        // While a Task subagent runs, its entries are the newest usage rows in
+        // the file; the last turn must stay on the user's own API call, and a
+        // synthetic API-error row with usage must not displace it either.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 50,
+                cacheRead: 20,
+                cacheCreate: 10,
+                stopReason: 'end_turn',
+                messageId: 'msg_main'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 900,
+                output: 400,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 999,
+                output: 1,
+                cacheRead: 1,
+                cacheCreate: 1,
+                stopReason: null,
+                messageId: 'msg_err',
+                isApiErrorMessage: true
+            })
+        ].join('\n'));
+
+        const lastTurn = await getLastTurnTokens(transcriptPath);
+
+        expect(lastTurn).toEqual({
+            inputTokens: 10,
+            outputTokens: 50,
+            cachedTokens: 30,
+            totalTokens: 90
+        });
+    });
+
+    it('keeps the completed output across streaming partials of the same API call', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'last-turn-streaming.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 4,
+                output: 40,
+                cacheRead: 1000,
+                cacheCreate: 200,
+                stopReason: null,
+                messageId: 'msg_live'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 4,
+                output: 90,
+                cacheRead: 1000,
+                cacheCreate: 200,
+                stopReason: null,
+                messageId: 'msg_live'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 4,
+                output: 140,
+                cacheRead: 1000,
+                cacheCreate: 200,
+                stopReason: 'end_turn',
+                messageId: 'msg_live'
+            })
+        ].join('\n'));
+
+        const lastTurn = await getLastTurnTokens(transcriptPath);
+
+        expect(lastTurn).toEqual({
+            inputTokens: 4,
+            outputTokens: 140,
+            cachedTokens: 1200,
+            totalTokens: 1344
+        });
+    });
+
+    it('treats each id-less usage entry as its own last turn', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'last-turn-no-id.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100,
+                output: 50,
+                cacheRead: 20,
+                cacheCreate: 10
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 200,
+                output: 80,
+                cacheRead: 30,
+                cacheCreate: 20
+            })
+        ].join('\n'));
+
+        const lastTurn = await getLastTurnTokens(transcriptPath);
+
+        expect(lastTurn).toEqual({
+            inputTokens: 200,
+            outputTokens: 80,
+            cachedTokens: 50,
+            totalTokens: 330
+        });
+    });
+
+    it('omits lastTurnTokens unless the scan option requests it', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'last-turn-opt-in.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 3,
+                cacheRead: 4,
+                cacheCreate: 1,
+                stopReason: 'end_turn',
+                messageId: 'msg_00'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.lastTurnTokens).toBeUndefined();
     });
 
     it('collects configured transcript metrics in one combined analysis', async () => {

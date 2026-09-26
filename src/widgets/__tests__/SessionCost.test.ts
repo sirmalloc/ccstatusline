@@ -36,6 +36,12 @@ describe('SessionCostWidget', () => {
         }, { isPreview: true })).toBe('Cost: $2');
     });
 
+    it('compact labels render the $ glyph prefix', () => {
+        const item = { id: 'session-cost', type: 'session-cost', metadata: { compactLabel: 'true' } };
+        expect(render(item, { data: { cost: { total_cost_usd: 2.456 } } })).toBe('$2.46');
+        expect(render(item, { isPreview: true })).toBe('$2.45');
+    });
+
     it('declares the zero hideable state', () => {
         expect(new SessionCostWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
     });

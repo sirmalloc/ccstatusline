@@ -80,6 +80,16 @@ describe('PowerlineThemeSelector helpers', () => {
         });
     });
 
+    it('labels the none entry for regular mode', () => {
+        const items = buildPowerlineThemeItems(['none'], 'none');
+
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({
+            label: 'None (no theme)',
+            value: 'none'
+        });
+    });
+
     it('copies a built-in theme into widget colors and switches to custom mode', () => {
         const settings = {
             ...DEFAULT_SETTINGS,
@@ -160,6 +170,94 @@ describe('PowerlineThemeSelector helpers', () => {
             });
 
             expect(maximumUpdateDepthWarnings).toHaveLength(0);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('writes settings.theme when navigating in regular mode', async () => {
+        const firstTheme = getPowerlineThemes().filter((name) => name !== 'custom')[0];
+        expect(firstTheme).toBeDefined();
+
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineThemeSelector, {
+                settings: { ...DEFAULT_SETTINGS },
+                onUpdate,
+                onBack,
+                mode: 'regular'
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(onUpdate).not.toHaveBeenCalled();
+
+            // Regular list starts at 'none' (no theme); one step down picks
+            // the first real theme and must write the top-level setting.
+            stdin.write('\u001B[B');
+            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
+            await flushInk();
+
+            expect(onUpdate.mock.calls[0]?.[0]?.theme).toBe(firstTheme);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('clears settings.theme when None is selected in regular mode', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineThemeSelector, {
+                settings: { ...DEFAULT_SETTINGS, theme: 'nord' },
+                onUpdate,
+                onBack,
+                mode: 'regular'
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(onUpdate).not.toHaveBeenCalled();
+
+            // 'nord' sits one slot below 'none' in the regular list.
+            stdin.write('\u001B[A');
+            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
+            await flushInk();
+
+            expect(onUpdate.mock.calls[0]?.[0]?.theme).toBeUndefined();
         } finally {
             instance.unmount();
             instance.cleanup();

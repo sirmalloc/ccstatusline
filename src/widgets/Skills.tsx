@@ -1,9 +1,4 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import React from 'react';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -16,21 +11,21 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import type { WidgetHookDef } from '../utils/hooks';
-import { shouldInsertInput } from '../utils/input-guards';
 
 import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
+import { lazyEditor } from './shared/lazy-editor';
 import { removeMetadataKeys } from './shared/metadata';
 
 type Mode = 'current' | 'count' | 'list';
 const MODES: Mode[] = ['current', 'count', 'list'];
 const MODE_LABELS: Record<Mode, string> = { current: 'last used', count: 'total count', list: 'unique list' };
 const LIST_LIMIT_KEY = 'listLimit';
-const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
+export const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
 
 const EMPTY_HIDEABLE_STATE: HideableState = { key: 'empty', label: 'when no skills have been used' };
 
-function parseListLimit(item: WidgetItem): number {
+export function parseListLimit(item: WidgetItem): number {
     const parsed = parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
     if (Number.isNaN(parsed) || parsed < 0) {
         return 0;
@@ -38,7 +33,7 @@ function parseListLimit(item: WidgetItem): number {
     return parsed;
 }
 
-function setListLimit(item: WidgetItem, limit: number): WidgetItem {
+export function setListLimit(item: WidgetItem, limit: number): WidgetItem {
     if (limit <= 0) {
         const { [LIST_LIMIT_KEY]: removedLimit, ...restMetadata } = item.metadata ?? {};
         return {
@@ -164,39 +159,4 @@ export class SkillsWidget implements Widget {
     }
 }
 
-const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
-    const [limitInput, setLimitInput] = useState(() => parseListLimit(widget).toString());
-
-    useInput((input, key) => {
-        if (action !== EDIT_LIST_LIMIT_ACTION) {
-            return;
-        }
-
-        if (key.return) {
-            const parsed = parseInt(limitInput, 10);
-            const limit = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
-            onComplete(setListLimit(widget, limit));
-        } else if (key.escape) {
-            onCancel();
-        } else if (key.backspace) {
-            setLimitInput(limitInput.slice(0, -1));
-        } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
-            setLimitInput(limitInput + input);
-        }
-    });
-
-    if (action === EDIT_LIST_LIMIT_ACTION) {
-        return (
-            <Box flexDirection='column'>
-                <Box>
-                    <Text>Enter max skills to show (0 for unlimited): </Text>
-                    <Text>{limitInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
-                </Box>
-                <Text dimColor>Press Enter to save, ESC to cancel</Text>
-            </Box>
-        );
-    }
-
-    return <Text>Unknown editor mode</Text>;
-};
+const SkillsEditor = lazyEditor(() => import('./editors/SkillsEditor'));

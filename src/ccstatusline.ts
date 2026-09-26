@@ -7,6 +7,10 @@ import type { StatusJSON } from './types/StatusJSON';
 import { StatusJSONSchema } from './types/StatusJSON';
 import { getVisibleText } from './utils/ansi';
 import { prefetchClaudeStatusIfNeeded } from './utils/claude-service-status';
+import {
+    isCliMode,
+    runCli
+} from './utils/cli';
 import { updateColorMap } from './utils/colors';
 import { ZERO_COMPACTION_STATS } from './utils/compaction';
 import {
@@ -109,6 +113,7 @@ async function renderMultipleLines(data: StatusJSON) {
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
     const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
     const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
+    const hasLastTurnTokensWidget = lines.some(line => line.some(item => item.type === 'tokens-last-turn'));
     const needsTranscriptThinkingEffort = hasThinkingEffortWidget
         && (!data.effort || !('level' in data.effort));
     const requestedSpeedWindows = new Set<number>();
@@ -128,7 +133,8 @@ async function renderMultipleLines(data: StatusJSON) {
             speedWindowSeconds: Array.from(requestedSpeedWindows),
             includeCompactionStats: hasCompactionWidget,
             includeThinkingEffort: needsTranscriptThinkingEffort,
-            includeSessionName: hasSessionNameWidget
+            includeSessionName: hasSessionNameWidget,
+            includeLastTurnTokens: hasLastTurnTokensWidget
         })
         : Promise.resolve(null);
     const [transcriptAnalysis, usageData, claudeStatusData] = await Promise.all([
@@ -318,6 +324,13 @@ async function main() {
     if (process.argv.includes('--hook')) {
         await handleHook();
         return;
+    }
+
+    // Non-interactive CLI subcommands (#602): args present + TTY stdin means an
+    // agent or human is configuring the tool, not rendering a status line.
+    // Piped stdin (Claude Code) keeps the render path regardless of args.
+    if (isCliMode(process.argv.slice(2), process.stdin.isTTY)) {
+        await runCli(process.argv.slice(2));
     }
 
     // Check if we're in a piped/non-TTY environment first

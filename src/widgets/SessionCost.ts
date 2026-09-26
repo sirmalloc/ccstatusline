@@ -12,6 +12,7 @@ import {
 } from '../utils/number-format';
 
 import { isHidden } from './shared/hideable';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when cost is $0.00' };
 
@@ -31,8 +32,7 @@ export class SessionCostWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            const value = formatCost(2.45, format);
-            return item.rawValue ? value : `Cost: ${value}`;
+            return formatRawOrLabeledValue(item, 'Cost: ', formatCost(2.45, format));
         }
 
         const totalCost = context.data?.cost?.total_cost_usd;
@@ -48,7 +48,7 @@ export class SessionCostWidget implements Widget {
         }
 
         const formattedCost = formatCost(totalCost, format);
-        return item.rawValue ? formattedCost : `Cost: ${formattedCost}`;
+        return formatRawOrLabeledValue(item, 'Cost: ', formattedCost);
     }
 
     supportsRawValue(): boolean { return true; }

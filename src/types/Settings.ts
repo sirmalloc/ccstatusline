@@ -73,7 +73,17 @@ export const SettingsSchema = z.object({
     inheritSeparatorColors: z.boolean().default(false),
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
+    // Theme name from POWERLINE_THEMES applied in regular (non-powerline)
+    // mode: cycles the theme's segment palette across widgets as foreground
+    // colors. Additive optional key, no version bump needed; unset, 'custom',
+    // or an unknown name disables theming. Explicit per-widget colors win.
+    theme: z.string().optional(),
     globalBold: z.boolean().default(false),
+    // Compact label presets (Model: -> M:, Context: -> Ctx:, Cost: -> $) for
+    // labeled widgets. Additive v4 key with an off default, so configs written
+    // before it render identically without a version bump; per-widget
+    // metadata.compactLabel overrides the global setting either way.
+    compactLabels: z.boolean().default(false),
     numberFormat: GlobalNumberFormatSchema.optional(),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
     // How long a "no TTY" result is reused for the same session, in seconds.

@@ -186,6 +186,45 @@ describe('GlobalOverridesMenu', () => {
         }
     });
 
+    it('toggles compact labels on when (j) is pressed', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn();
+        const onBack = vi.fn();
+
+        const instance = render(
+            React.createElement(GlobalOverridesMenu, {
+                settings: { ...DEFAULT_SETTINGS, compactLabels: false },
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stdout.getOutput()).toContain('Compact Labels:');
+            stdin.write('j');
+            await flushInk();
+
+            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ compactLabels: true }));
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
     it('toggles minimalist mode off when (m) is pressed while enabled', async () => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();

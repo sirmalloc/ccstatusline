@@ -1,10 +1,13 @@
 import type { Settings } from '../types/Settings';
+import { DEFAULT_SETTINGS } from '../types/Settings';
 import type {
     Widget,
     WidgetItem,
     WidgetItemType
 } from '../types/Widget';
+import { startsWithCompactLabel } from '../widgets/shared/raw-or-labeled';
 
+import { getVisibleText } from './ansi';
 import {
     filterFuzzySearchRecords,
     type FuzzySearchRecord
@@ -140,4 +143,36 @@ export function isKnownWidgetType(type: string): boolean {
     const resolved = resolveLegacyWidgetType(type);
     return widgetRegistry.has(resolved)
         || layoutWidgetTypes.has(resolved);
+}
+
+// Widget types whose preview output opens with a label that has a compact
+// preset; these get the shared compact-label editor keybind. The probe runs
+// once and is cached — preview renders are static and cheap, but the scan
+// still touches every registered widget. ponytail: preview-probe heuristic;
+// if a widget ever stops emitting its label first in preview output it drops
+// out of the keybind, and the fix is an explicit capability flag per widget.
+let compactLabelCapableTypes: Set<WidgetItemType> | null = null;
+
+export function getCompactLabelCapableTypes(): Set<WidgetItemType> {
+    if (compactLabelCapableTypes === null) {
+        const capable = new Set<WidgetItemType>();
+        for (const entry of WIDGET_MANIFEST) {
+            const widget = widgetRegistry.get(entry.type);
+            if (!widget) {
+                continue;
+            }
+            try {
+                const probeItem: WidgetItem = { id: 'compact-label-probe', type: entry.type };
+                const output = widget.render(probeItem, { isPreview: true }, DEFAULT_SETTINGS);
+                if (output && startsWithCompactLabel(getVisibleText(output))) {
+                    capable.add(entry.type);
+                }
+            } catch {
+                // A widget that cannot render without live data is simply not
+                // compact-label capable.
+            }
+        }
+        compactLabelCapableTypes = capable;
+    }
+    return compactLabelCapableTypes;
 }

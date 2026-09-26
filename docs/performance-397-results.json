@@ -1,0 +1,308 @@
+{
+  "aggregates": {
+    "base-node": {
+      "batches": 3,
+      "renders": 240,
+      "cpu_ms": 253.76999999999998,
+      "pooled_p50_ms": 240.19275000318885,
+      "batch_cpu_ms": [
+        246.321,
+        246.197,
+        268.792
+      ],
+      "batch_p50_ms": [
+        231.993,
+        220.007,
+        283.665
+      ]
+    },
+    "pr-node": {
+      "batches": 4,
+      "renders": 320,
+      "cpu_ms": 256.7125,
+      "pooled_p50_ms": 243.43347904505208,
+      "batch_cpu_ms": [
+        245.566,
+        260.781,
+        272.594,
+        247.909
+      ],
+      "batch_p50_ms": [
+        225.165,
+        235.287,
+        258.215,
+        239.932
+      ]
+    },
+    "lazy-node": {
+      "batches": 3,
+      "renders": 240,
+      "cpu_ms": 219.515,
+      "pooled_p50_ms": 210.23656299803406,
+      "batch_cpu_ms": [
+        211.795,
+        217.841,
+        228.909
+      ],
+      "batch_p50_ms": [
+        199.623,
+        190.829,
+        244.28
+      ]
+    },
+    "pr-bun": {
+      "batches": 2,
+      "renders": 160,
+      "cpu_ms": 171.86,
+      "pooled_p50_ms": 153.23652152437717,
+      "batch_cpu_ms": [
+        172.445,
+        171.275
+      ],
+      "batch_p50_ms": [
+        150.541,
+        153.675
+      ]
+    },
+    "lazy-bun": {
+      "batches": 2,
+      "renders": 160,
+      "cpu_ms": 144.7725,
+      "pooled_p50_ms": 123.54808300733566,
+      "batch_cpu_ms": [
+        140.06,
+        149.485
+      ],
+      "batch_p50_ms": [
+        112.039,
+        132.893
+      ]
+    }
+  },
+  "runs": [
+    {
+      "label": "base13-a",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/base/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 19.7057,
+      "cpu_per_render_ms": 246.321,
+      "wall_s": 4.81,
+      "p50_ms": 231.993,
+      "p95_ms": 334.335,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "base13-b",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/base/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 19.6957,
+      "cpu_per_render_ms": 246.197,
+      "wall_s": 4.523,
+      "p50_ms": 220.007,
+      "p95_ms": 270.82,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "final-base-node",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/base/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 21.5033,
+      "cpu_per_render_ms": 268.792,
+      "wall_s": 5.728,
+      "p50_ms": 283.665,
+      "p95_ms": 429.653,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "pr13-a",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/pr/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 19.6453,
+      "cpu_per_render_ms": 245.566,
+      "wall_s": 4.719,
+      "p50_ms": 225.165,
+      "p95_ms": 309.623,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "pr13-b",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/pr/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 20.8624,
+      "cpu_per_render_ms": 260.781,
+      "wall_s": 5.43,
+      "p50_ms": 235.287,
+      "p95_ms": 421.339,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "pr13-c",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/pr/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 21.8075,
+      "cpu_per_render_ms": 272.594,
+      "wall_s": 5.458,
+      "p50_ms": 258.215,
+      "p95_ms": 362.965,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "final-pr-node",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/pr/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 19.8328,
+      "cpu_per_render_ms": 247.909,
+      "wall_s": 4.826,
+      "p50_ms": 239.932,
+      "p95_ms": 309.555,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "lazy13-a",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/lazy/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 16.9436,
+      "cpu_per_render_ms": 211.795,
+      "wall_s": 4.174,
+      "p50_ms": 199.623,
+      "p95_ms": 294.081,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "lazy13-b",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/private/tmp/ccstatusline-perf-4/lazy/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 17.4273,
+      "cpu_per_render_ms": 217.841,
+      "wall_s": 4.353,
+      "p50_ms": 190.829,
+      "p95_ms": 336.969,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "final-lazy-node",
+      "runtime": "/opt/homebrew/bin/node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-4/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 18.3127,
+      "cpu_per_render_ms": 228.909,
+      "wall_s": 5.099,
+      "p50_ms": 244.28,
+      "p95_ms": 352.927,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "pr-bun13",
+      "runtime": "/opt/homebrew/bin/bun",
+      "entry": "/private/tmp/ccstatusline-perf-4/pr/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 13.7956,
+      "cpu_per_render_ms": 172.445,
+      "wall_s": 3.102,
+      "p50_ms": 150.541,
+      "p95_ms": 182.732,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "final-pr-bun",
+      "runtime": "/opt/homebrew/bin/bun",
+      "entry": "/private/tmp/ccstatusline-perf-4/pr/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 13.702,
+      "cpu_per_render_ms": 171.275,
+      "wall_s": 3.312,
+      "p50_ms": 153.675,
+      "p95_ms": 226.265,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "lazy-bun13",
+      "runtime": "/opt/homebrew/bin/bun",
+      "entry": "/private/tmp/ccstatusline-perf-4/lazy/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 11.2048,
+      "cpu_per_render_ms": 140.06,
+      "wall_s": 2.383,
+      "p50_ms": 112.039,
+      "p95_ms": 158.231,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    },
+    {
+      "label": "final-lazy-bun",
+      "runtime": "/opt/homebrew/bin/bun",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-4/dist/ccstatusline.js",
+      "bytes": 13009445,
+      "renders": 80,
+      "width_override": false,
+      "cpu_total_s": 11.9588,
+      "cpu_per_render_ms": 149.485,
+      "wall_s": 2.809,
+      "p50_ms": 132.893,
+      "p95_ms": 186.214,
+      "hashes": [
+        "454f8606b708708a4afd72598c1493889cacba100fc86da1f418f1977c044f86"
+      ]
+    }
+  ]
+}

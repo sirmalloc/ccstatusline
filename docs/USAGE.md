@@ -55,6 +55,7 @@ ccstatusline --version
 ### Tokens, Usage & Context
 
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts. Input/output prefer cumulative transcript metrics and fall back to `context_window.total_input_tokens` / `context_window.total_output_tokens` when transcript metrics are unavailable; cached/total use transcript metrics.
+- **Tokens Last Turn** - Show token usage (input + output + cache) for the most recent main-chain assistant API call only, instead of the cumulative session total. Claude Code transcripts record one entry per content block of a call sharing a single `message.id`, so entries are deduplicated per call rather than summed. Sidechain (subagent) and API-error entries are ignored, so the widget keeps reporting your last turn while a subagent runs.
 - **Cache Hit Rate** / **Cache Read** / **Cache Write** - Show prompt-cache efficiency. Cache Hit Rate uses cache reads divided by cache reads plus cache writes; Cache Read and Cache Write include each value's share of prompt context. They default to the latest turn from `context_window.current_usage`, can switch to cumulative session totals, and can hide when empty.
 - **Cache Timer** - Estimate time remaining before the current prompt-cache entry expires. It shows `HOT` while a main-chain turn is active, then counts down from the latest assistant request with cache activity and becomes `COLD` just before expiry. The default TTL is 5 minutes; it can switch to 1 hour, hide when no cache anchor is available, and customize the glyph for each state. Because Claude Code transcripts expose cache token activity rather than the actual expiry timestamp, the countdown is best effort.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
@@ -113,6 +114,17 @@ Configure global formatting preferences that apply to all widgets:
 - Manual separators look past widgets that render empty, so the intended separator remains between visible neighbors without duplicating an earlier visible boundary. Inherited separator colors come from the actual preceding visible widget.
 
 <details>
+<summary><b>Per-widget width overhead (audit)</b></summary>
+
+- **Default padding is empty** (`defaultPadding` unset), so widgets add no padding unless you configure it. A non-empty padding of N characters adds up to 2N columns per widget (one per enabled side).
+- **Manual `|` separators render as ` | `** (3 columns); in Powerline mode separator widgets are ignored and replaced by the powerline separators.
+- **Labels are the dominant fixed cost** of labeled widgets. Defaults: `Model: ` (7), `Ctx: ` (5), `Cost: ` (6), token widgets `In: `/`Out: `/`Total: `/`Cached: ` (4–8), cache widgets `Cache Read: `/`Cache Write: `/`Cache Hit: ` (10–12), timers `Block: `/`Reset: `/`Cache: ` (7) and `Weekly Reset: ` (13), usage widgets `Session: `/`Weekly: `/`Weekly Sonnet: `/`Weekly Opus: `/`Weekly Fable: ` (8–15).
+- **Compact Labels** (above) trims the presets it covers (`Model:` −4, `Context:` −4, `Cost:` −6, label gone — the value's own `$` remains); Minimalist Mode strips labels entirely.
+- **Unbounded-content widgets** (paths, names, URLs) can overflow a narrow terminal: Git Branch, Git Root Dir, Current Working Dir, and Session Name support a per-widget max-width cap — select the widget in the line editor and press **(w)idth**. The line renderer truncates the whole line with an ellipsis regardless.
+
+</details>
+
+<details>
 <summary><b>Global Formatting Options</b></summary>
 
 - **Inherit Colors** - Default separators inherit foreground and background colors from the preceding widget
@@ -121,6 +133,10 @@ Configure global formatting preferences that apply to all widgets:
   - Press **(o)** to toggle
 - **Minimalist Mode** - Force widgets into raw-value rendering globally for a cleaner, label-free status line
   - Press **(m)** to toggle
+- **Compact Labels** - Use short label presets on labeled widgets: `Model:` → `M:`, `Context:` → `Ctx:`, `Cost:` → `$`
+  - Press **(j)** to toggle; off by default, so existing configs render exactly as before
+  - Per-widget override: select a labeled widget in the line editor and press **(j) compact label** to force it on/off regardless of the global setting
+  - Labels without a preset (e.g. `In:`, `Cached:`) keep their default form; presets live in `COMPACT_LABELS` in `src/widgets/shared/raw-or-labeled.ts`
 - **Number Formatting** - Choose precise, compact, or whole-number output independently for token, speed, percent, memory, and cost values
   - Press **(n)** to configure each number type; a global choice overrides per-widget formatting for that type
 - **Override Foreground Color** - Force all widgets to use the same text color, or a whole-line **gradient** (see below)
@@ -250,6 +266,7 @@ Common controls in the line editor:
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
 - `.` cycle precise/compact/whole number formatting (supported widgets)
+- `j` toggle the compact label preset for labeled widgets (Model → `M:`, Context → `Ctx:`, Cost → `$`)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back

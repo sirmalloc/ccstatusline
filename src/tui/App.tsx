@@ -103,6 +103,7 @@ import {
     List,
     type ListEntry
 } from './components/List';
+import { PowerlineThemeSelector } from './components/PowerlineThemeSelector';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -116,6 +117,7 @@ type AppScreen = 'main'
     | 'items'
     | 'colorLines'
     | 'colors'
+    | 'theme'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -987,6 +989,9 @@ export const App: React.FC = () => {
             case 'colors':
                 setScreen('colorLines');
                 break;
+            case 'theme':
+                setScreen('theme');
+                break;
             case 'terminalConfig':
                 setScreen('terminalConfig');
                 break;
@@ -1412,6 +1417,18 @@ export const App: React.FC = () => {
                                 color: 'green'
                             });
                             setScreen('main');
+                        }}
+                        onBack={() => {
+                            setScreen('main');
+                        }}
+                    />
+                )}
+                {screen === 'theme' && (
+                    <PowerlineThemeSelector
+                        mode='regular'
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
                         }}
                         onBack={() => {
                             setScreen('main');

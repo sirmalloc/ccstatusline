@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
@@ -282,55 +281,76 @@ type StatusPageRequestFn = (
 
 const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.request(options, onResponse);
 
+async function getStatusPageRequestOptions(): Promise<https.RequestOptions | null> {
+    const proxyUrl = getStatusPageProxyUrl();
+
+    try {
+        let agent: https.RequestOptions['agent'] | undefined;
+        if (proxyUrl) {
+            // Loaded on demand: the agent (and its transitive module graph) is
+            // only needed when a proxy is actually configured, and the
+            // statusline entry point re-runs on every repaint (#397).
+            const { HttpsProxyAgent: ProxyAgent } = await import('https-proxy-agent');
+            agent = new ProxyAgent(proxyUrl);
+        }
+
+        return {
+            hostname: STATUS_HOST,
+            path: '',
+            method: 'GET',
+            timeout: STATUS_TIMEOUT_MS,
+            ...(agent ? { agent } : {})
+        };
+    } catch {
+        return null;
+    }
+}
+
 function fetchStatusPagePath(
     pathName: string,
     requestFn: StatusPageRequestFn = requestStatusPage
 ): Promise<string | null> {
-    return new Promise((resolve) => {
-        let settled = false;
-
-        const finish = (value: string | null) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            resolve(value);
-        };
-
-        let requestOptions: https.RequestOptions;
-        try {
-            const proxyUrl = getStatusPageProxyUrl();
-            requestOptions = {
-                hostname: STATUS_HOST,
-                path: pathName,
-                method: 'GET',
-                timeout: STATUS_TIMEOUT_MS,
-                ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
-            };
-        } catch {
-            finish(null);
-            return;
+    return getStatusPageRequestOptions().then((baseOptions) => {
+        if (!baseOptions) {
+            return null;
         }
 
-        const request = requestFn(requestOptions, (response) => {
-            let data = '';
-            response.setEncoding('utf8');
-            response.on('data', (chunk: string) => {
-                data += chunk;
-            });
-            response.on('end', () => {
-                finish(response.statusCode === 200 && data ? data : null);
-            });
-            response.on('aborted', () => { finish(null); });
-            response.on('error', () => { finish(null); });
-        });
+        return new Promise<string | null>((resolve) => {
+            let settled = false;
 
-        request.on('error', () => { finish(null); });
-        request.on('timeout', () => {
-            request.destroy();
-            finish(null);
+            const finish = (value: string | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(value);
+            };
+
+            const requestOptions: https.RequestOptions = {
+                ...baseOptions,
+                path: pathName
+            };
+
+            const request = requestFn(requestOptions, (response) => {
+                let data = '';
+                response.setEncoding('utf8');
+                response.on('data', (chunk: string) => {
+                    data += chunk;
+                });
+                response.on('end', () => {
+                    finish(response.statusCode === 200 && data ? data : null);
+                });
+                response.on('aborted', () => { finish(null); });
+                response.on('error', () => { finish(null); });
+            });
+
+            request.on('error', () => { finish(null); });
+            request.on('timeout', () => {
+                request.destroy();
+                finish(null);
+            });
+            request.end();
         });
-        request.end();
     });
 }
 

@@ -6,11 +6,21 @@ export interface TokenUsage {
 }
 
 export interface TranscriptLine {
-    message?: { usage?: TokenUsage; stop_reason?: string | null };
+    message?: { id?: string; usage?: TokenUsage; stop_reason?: string | null };
     isSidechain?: boolean;
     timestamp?: string;
     isApiErrorMessage?: boolean;
     type?: 'user' | 'assistant' | 'system' | 'progress' | 'file-history-snapshot';
+}
+
+// Token usage of a single assistant API call (one message id). Claude Code
+// writes one JSONL entry per content block sharing that id, so the values are
+// deduplicated, not summed across entries.
+export interface LastTurnTokens {
+    inputTokens: number;
+    outputTokens: number;
+    cachedTokens: number;
+    totalTokens: number;
 }
 
 export interface TokenMetrics {
@@ -23,4 +33,6 @@ export interface TokenMetrics {
     cacheCreationTokens?: number;
     totalTokens: number;
     contextLength: number;
+    // Only populated when the scan option includeLastTurnTokens is set.
+    lastTurnTokens?: LastTurnTokens;
 }

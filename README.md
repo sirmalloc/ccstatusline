@@ -36,6 +36,7 @@
 - [Features](#-features)
 - [Localizations](#-localizations)
 - [Quick Start](#-quick-start)
+- [Non-Interactive CLI (for agents & scripts)](#-non-interactive-cli-for-agents--scripts)
 - [Windows Support](docs/WINDOWS.md)
 - [Usage](docs/USAGE.md)
 - [Development](docs/DEVELOPMENT.md)
@@ -399,6 +400,37 @@ resolution entirely on both.
 For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI pins the active version by installing it globally and writing `"command": "ccstatusline"` to `settings.json`; afterward, you can run `ccstatusline` directly to open the TUI.
 
 </details>
+
+## 🤖 Non-Interactive CLI (for agents & scripts)
+
+Every TUI setting is also scriptable without launching the interactive UI. All
+subcommands operate on the same `settings.json` (honor `--config <path>`),
+refuse to modify an unreadable/invalid config, and validate every change
+before writing. Errors are single-line; add `--json` to any command for a
+machine-readable single-line payload.
+
+```bash
+ccstatusline get [--json]                     # print the effective (post-migration) config
+ccstatusline widget add <line> <widget> [--index N] [--option value ...]
+ccstatusline widget remove <line> <index-or-type>
+ccstatusline widget move <line> <index> --to <index>
+ccstatusline set <option-path> <value>        # global options; value is JSON or a plain string
+ccstatusline validate [--file <path>]         # exit 0/1 with a machine-readable report
+ccstatusline help
+```
+
+Indices are 0-based. `widget add` accepts the widget options the TUI exposes
+(`--color`, `--customText`, `--bold`, `--maxWidth`, `--metadata key=value`, …).
+
+`set theme <name>` applies one of the built-in powerline themes (`nord`,
+`dracula`, `tokyonight`, …) to regular (non-powerline) mode as foreground
+colors only, cycling the theme's segment palette across widgets. Explicit
+per-widget colors win; separators are left untouched; `custom` or an unknown
+name disables theming.
+
+> **Note:** `get` and `validate` read through the same loader the TUI uses, so
+> on a missing `settings.json` they write the default config on that first run
+> (the file is never overwritten when it exists but is unreadable or invalid).
 
 ## 🤝 Contributing
 

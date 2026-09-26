@@ -1,9 +1,4 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import React from 'react';
 
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
@@ -15,7 +10,6 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../../types/Widget';
-import { shouldInsertInput } from '../../utils/input-guards';
 import { resolveNumberFormat } from '../../utils/number-format';
 import {
     calculateInputSpeed,
@@ -24,21 +18,18 @@ import {
     formatSpeed
 } from '../../utils/speed-metrics';
 import {
-    DEFAULT_SPEED_WINDOW_SECONDS,
-    MAX_SPEED_WINDOW_SECONDS,
-    MIN_SPEED_WINDOW_SECONDS,
     getWidgetSpeedWindowSeconds,
-    isWidgetSpeedWindowEnabled,
-    withWidgetSpeedWindowSeconds
+    isWidgetSpeedWindowEnabled
 } from '../../utils/speed-window';
 
 import { makeModifierText } from './editor-display';
 import { isHidden } from './hideable';
+import { lazyEditor } from './lazy-editor';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
 
 export type SpeedWidgetKind = 'input' | 'output' | 'total';
 
-const WINDOW_EDITOR_ACTION = 'edit-window';
+export const WINDOW_EDITOR_ACTION = 'edit-window';
 
 const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no speed data (—)' };
 
@@ -156,58 +147,4 @@ export function renderSpeedWidgetEditor(props: WidgetEditorProps): React.ReactEl
     return <SpeedWindowEditor {...props} />;
 }
 
-const SpeedWindowEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
-    const [windowInput, setWindowInput] = useState(getWidgetSpeedWindowSeconds(widget).toString());
-
-    useInput((input, key) => {
-        if (action !== WINDOW_EDITOR_ACTION) {
-            return;
-        }
-
-        if (key.return) {
-            const parsedWindow = Number.parseInt(windowInput, 10);
-            const nextWindow = Number.isFinite(parsedWindow)
-                ? parsedWindow
-                : DEFAULT_SPEED_WINDOW_SECONDS;
-
-            onComplete(withWidgetSpeedWindowSeconds(widget, nextWindow));
-            return;
-        }
-
-        if (key.escape) {
-            onCancel();
-            return;
-        }
-
-        if (key.backspace) {
-            setWindowInput(windowInput.slice(0, -1));
-            return;
-        }
-
-        if (shouldInsertInput(input, key) && /\d/.test(input)) {
-            setWindowInput(windowInput + input);
-        }
-    });
-
-    if (action !== WINDOW_EDITOR_ACTION) {
-        return <Text>Unknown editor mode</Text>;
-    }
-
-    return (
-        <Box flexDirection='column'>
-            <Box>
-                <Text>
-                    Enter window in seconds (
-                    {MIN_SPEED_WINDOW_SECONDS}
-                    -
-                    {MAX_SPEED_WINDOW_SECONDS}
-                    ):
-                    {' '}
-                </Text>
-                <Text>{windowInput}</Text>
-                <Text backgroundColor='gray' color='black'>{' '}</Text>
-            </Box>
-            <Text dimColor>0 disables window mode and averages the full session. Press Enter to save, ESC to cancel.</Text>
-        </Box>
-    );
-};
+const SpeedWindowEditor = lazyEditor(() => import('../editors/SpeedWindowEditor'));

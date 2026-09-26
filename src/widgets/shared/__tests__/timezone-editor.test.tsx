@@ -54,10 +54,16 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
-    });
+async function flushInk(stdout?: CapturedWriteStream) {
+    // The first render loads the editor's lazy chunk. Wait for its content,
+    // not a fixed first-frame delay, before sending keyboard input.
+    for (let attempt = 0; attempt < 40; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+        if (!stdout || getPlainOutput(stdout.getOutput()).includes('IANA timezone')) {
+            return;
+        }
+    }
+    expect(getPlainOutput(stdout?.getOutput() ?? '')).toContain('IANA timezone');
 }
 
 function renderEditor(widget: WidgetItem, onComplete = vi.fn(), onCancel = vi.fn()) {
@@ -108,7 +114,7 @@ describe('UsageTimezoneEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
+            await flushInk(rendered.stdout);
 
             const output = getPlainOutput(rendered.stdout.getOutput());
             expect(output).toMatch(/IANA timezone\n\nShowing \d+-\d+ of \d+/);
@@ -125,7 +131,7 @@ describe('UsageTimezoneEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
+            await flushInk(rendered.stdout);
             rendered.stdin.write('tokyo');
             await flushInk();
 
@@ -149,7 +155,7 @@ describe('UsageTimezoneEditor', () => {
         });
 
         try {
-            await flushInk();
+            await flushInk(rendered.stdout);
             rendered.stdin.write('utc');
             await flushInk();
             rendered.stdin.write('\r');
@@ -166,7 +172,7 @@ describe('UsageTimezoneEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
+            await flushInk(rendered.stdout);
             rendered.stdin.write('\u001B');
             await flushInk();
 

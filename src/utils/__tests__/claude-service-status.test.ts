@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import {
+    afterEach,
     describe,
     expect,
     it
@@ -179,6 +180,54 @@ describe('status page response handling', () => {
         ]);
 
         expect(result).toBeNull();
+    });
+});
+
+describe('proxy agent wiring', () => {
+    const ORIGINAL_HTTPS_PROXY = process.env.HTTPS_PROXY;
+
+    afterEach(() => {
+        if (ORIGINAL_HTTPS_PROXY === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = ORIGINAL_HTTPS_PROXY;
+        }
+    });
+
+    function captureRequest(captured: { agent: unknown }): StatusPageRequestFn {
+        return (options, onResponse) => {
+            captured.agent = (options as { agent?: unknown }).agent;
+            const response = Object.assign(new EventEmitter(), {
+                statusCode: 200,
+                setEncoding: () => undefined
+            });
+            const request = Object.assign(new EventEmitter(), {
+                destroy: () => undefined,
+                end() {
+                    onResponse(response);
+                    response.emit('data', 'status body');
+                    response.emit('end');
+                }
+            });
+
+            return request;
+        };
+    }
+
+    it('attaches a proxy agent when HTTPS_PROXY is set', async () => {
+        process.env.HTTPS_PROXY = 'http://proxy.example.test:8080';
+        const captured: { agent: unknown } = { agent: undefined };
+
+        await expect(__testing.fetchStatusPagePath('/test', captureRequest(captured))).resolves.toBe('status body');
+        expect(captured.agent).toBeTruthy();
+    });
+
+    it('sends no proxy agent without HTTPS_PROXY', async () => {
+        delete process.env.HTTPS_PROXY;
+        const captured: { agent: unknown } = { agent: undefined };
+
+        await expect(__testing.fetchStatusPagePath('/test', captureRequest(captured))).resolves.toBe('status body');
+        expect(captured.agent).toBeUndefined();
     });
 });
 

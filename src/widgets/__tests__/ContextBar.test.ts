@@ -44,6 +44,27 @@ describe('ContextBarWidget', () => {
         expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:15.0:16] 30k/200k (15%)');
     });
 
+    it('shortens the Context label to Ctx when the compact preset is on', () => {
+        const context: RenderContext = {
+            data: {
+                context_window: {
+                    context_window_size: 200000,
+                    current_usage: {
+                        input_tokens: 20000,
+                        output_tokens: 10000,
+                        cache_creation_input_tokens: 5000,
+                        cache_read_input_tokens: 5000
+                    }
+                }
+            }
+        };
+        const widget = new ContextBarWidget();
+        const item = { id: 'ctx', type: 'context-bar', metadata: { compactLabel: 'true' } };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Ctx: [bar:15.0:16] 30k/200k (15%)');
+        expect(widget.render({ ...item, rawValue: true }, context, DEFAULT_SETTINGS)).toBe('[bar:15.0:16] 30k/200k (15%)');
+    });
+
     it('falls back to token metrics and model context size', () => {
         const context: RenderContext = {
             data: { model: { id: 'claude-3-5-sonnet-20241022' } },
