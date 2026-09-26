@@ -33,7 +33,7 @@ export function buildPowerlineThemeItems(
         const theme = getPowerlineTheme(themeName);
 
         return {
-            label: theme?.name ?? themeName,
+            label: theme?.name ?? (themeName === 'none' ? 'None (no theme)' : themeName),
             sublabel: themeName === originalTheme ? '(original)' : undefined,
             value: themeName,
             description: theme?.description ?? ''
@@ -97,19 +97,31 @@ export function applyCustomPowerlineTheme(
     };
 }
 
+export type ThemeSelectorMode = 'powerline' | 'regular';
+
 export interface PowerlineThemeSelectorProps {
     settings: Settings;
     onUpdate: (settings: Settings) => void;
     onBack: () => void;
+    // 'regular' targets the top-level theme applied in non-powerline mode
+    // (settings.theme); defaults to the powerline theme picker behavior.
+    mode?: ThemeSelectorMode;
 }
 
 export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     settings,
     onUpdate,
-    onBack
+    onBack,
+    mode = 'powerline'
 }) => {
-    const themes = useMemo(() => getPowerlineThemes(), []);
-    const currentTheme = settings.powerline.theme ?? 'custom';
+    const isRegular = mode === 'regular';
+    const themes = useMemo(
+        () => (isRegular ? ['none', ...getPowerlineThemes().filter(name => name !== 'custom')] : getPowerlineThemes()),
+        [isRegular]
+    );
+    const currentTheme = isRegular
+        ? settings.theme ?? 'none'
+        : settings.powerline.theme ?? 'custom';
     const [selectedIndex, setSelectedIndex] = useState(Math.max(0, themes.indexOf(currentTheme)));
     const [showCustomizeConfirm, setShowCustomizeConfirm] = useState(false);
     const originalThemeRef = useRef(currentTheme);
@@ -137,12 +149,16 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
 
         latestOnUpdateRef.current({
             ...latestSettingsRef.current,
-            powerline: {
-                ...latestSettingsRef.current.powerline,
-                theme: themeName
-            }
+            ...(isRegular
+                ? { theme: themeName === 'none' ? undefined : themeName }
+                : {
+                    powerline: {
+                        ...latestSettingsRef.current.powerline,
+                        theme: themeName
+                    }
+                })
         });
-    }, [selectedIndex, themes]);
+    }, [selectedIndex, themes, isRegular]);
 
     useInput((input, key) => {
         const shortcut = getPlainInput(input, key);
@@ -153,7 +169,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
         if (key.escape) {
             onUpdate(originalSettingsRef.current);
             onBack();
-        } else if (shortcut === 'c' || shortcut === 'C') {
+        } else if (!isRegular && (shortcut === 'c' || shortcut === 'C')) {
             const currentThemeName = themes[selectedIndex];
             if (currentThemeName && currentThemeName !== 'custom') {
                 setShowCustomizeConfirm(true);
@@ -204,14 +220,14 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
     return (
         <Box flexDirection='column'>
             <Text bold>
-                {`Powerline Theme Selection  |  `}
+                {`${isRegular ? 'Theme Selection (regular mode)' : 'Powerline Theme Selection'}  |  `}
                 <Text dimColor>
                     {`Original: ${originalThemeRef.current}`}
                 </Text>
             </Text>
             <Box>
                 <Text dimColor>
-                    {`↑↓ navigate, Enter apply${selectedThemeName && selectedThemeName !== 'custom' ? ', (c)ustomize theme' : ''}, ESC cancel`}
+                    {`↑↓ navigate, Enter apply${!isRegular && selectedThemeName && selectedThemeName !== 'custom' ? ', (c)ustomize theme' : ''}, ESC cancel`}
                 </Text>
             </Box>
 
@@ -231,7 +247,7 @@ export const PowerlineThemeSelector: React.FC<PowerlineThemeSelectorProps> = ({
                 initialSelection={selectedIndex}
             />
 
-            {selectedThemeName && selectedThemeName !== 'custom' && (
+            {!isRegular && selectedThemeName && selectedThemeName !== 'custom' && (
                 <Box marginTop={1}>
                     <Text dimColor>Press (c) to customize this theme - copies colors to widgets</Text>
                 </Box>

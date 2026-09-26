@@ -15,7 +15,10 @@ import {
 } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
+    bgToFg,
     getColorAnsiCode,
+    getPowerlineTheme,
+    getPowerlineThemes,
     updateColorMap
 } from '../colors';
 import {
@@ -146,5 +149,43 @@ describe('renderer regular-mode theme', () => {
     it('parses the theme key without a version bump', () => {
         expect(SettingsSchema.parse({ theme: 'dracula' }).theme).toBe('dracula');
         expect(SettingsSchema.parse({}).theme).toBeUndefined();
+    });
+
+    // Every shipped theme must behave identically in regular mode: same slot
+    // rule, same bg[]-as-foreground palette, at all three color levels.
+    describe('uniform cycle across all themes and levels', () => {
+        const themeNames = getPowerlineThemes().filter(name => name !== 'custom');
+        const levelName = (colorLevel: 1 | 2 | 3): 'ansi16' | 'ansi256' | 'truecolor' => (colorLevel === 1 ? 'ansi16' : colorLevel === 2 ? 'ansi256' : 'truecolor');
+
+        it('has a non-empty bg palette at every level for every theme', () => {
+            for (const name of themeNames) {
+                const theme = getPowerlineTheme(name);
+                expect(theme).toBeDefined();
+                for (const level of ['1', '2', '3'] as const) {
+                    expect(theme?.[level]?.bg.length ?? 0).toBeGreaterThan(0);
+                }
+            }
+        });
+
+        it.each(themeNames.flatMap(name => ([1, 2, 3] as const).map(colorLevel => ({ name, colorLevel }))))(
+            'cycles $name uniformly at colorLevel $colorLevel',
+            ({ name, colorLevel }) => {
+                const theme = getPowerlineTheme(name);
+                expect(theme).toBeDefined();
+                const palette = (theme?.[String(colorLevel) as '1' | '2' | '3']?.bg ?? []).map(bgToFg);
+                const first = palette[0];
+                const second = palette[1];
+                expect(first).toBeDefined();
+                expect(second).toBeDefined();
+
+                const line = renderWidgets(themedSettings(name, colorLevel), [
+                    { id: '1', type: 'custom-text', customText: 'A' },
+                    { id: '2', type: 'custom-text', customText: 'B' }
+                ]);
+
+                expect(line).toContain(fg(first ?? '', levelName(colorLevel)));
+                expect(line).toContain(fg(second ?? '', levelName(colorLevel)));
+            }
+        );
     });
 });
