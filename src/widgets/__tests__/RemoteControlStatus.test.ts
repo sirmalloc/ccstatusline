@@ -195,9 +195,9 @@ describe('RemoteControlStatusWidget', () => {
     describe('render() - format icon, Nerd Font', () => {
         const NERD_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true' } };
 
-        it('renders disconnected glyph (U+F6AC) when OFF', () => {
+        it('renders nf-md-wifi_off (U+F05AA) when OFF', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
-            expect(new RemoteControlStatusWidget().render(NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('\uF6AC');
+            expect(new RemoteControlStatusWidget().render(NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('\u{F05AA}');
         });
 
         it('renders connected glyph (U+F1EB) when ON', () => {
@@ -317,7 +317,7 @@ describe('RemoteControlStatusWidget', () => {
             {
                 name: 'icon with Nerd Font',
                 item: { ...RAW_ITEM, metadata: { nerdFont: 'true' } },
-                off: '\uF6AC',
+                off: '\u{F05AA}',
                 on: '\uF1EB'
             },
             {
