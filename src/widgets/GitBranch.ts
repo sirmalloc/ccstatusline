@@ -80,6 +80,8 @@ export class GitBranchWidget implements Widget {
         const modifiers: string[] = [];
         if (isLink)
             modifiers.push('repo link');
+        if (item.metadata?.fishStyle === 'true')
+            modifiers.push('fish-style');
         const maxWidthText = getMaxWidthModifier(item);
         if (maxWidthText)
             modifiers.push(maxWidthText);
