@@ -209,6 +209,20 @@ export function getTerminalWidth(options?: TerminalWidthOptions): number | null 
         }
     }
 
+    // Claude Code >= 2.1.153 sets COLUMNS to the terminal width when it spawns
+    // the statusline, since its captured stdio leaves no TTY to probe. Reading
+    // it skips the ancestor walk (several ps/stty calls per render on macOS).
+    // Checked before the L2 cache so a stale "no TTY" entry cannot hide it.
+    const columnsRaw = process.env.COLUMNS;
+    if (columnsRaw) {
+        const columns = parsePositiveInteger(columnsRaw);
+        if (columns !== null) {
+            cachedWidth = columns;
+            hasProbed = true;
+            return cachedWidth;
+        }
+    }
+
     const sessionId = options?.sessionId;
     const ttlSeconds = options?.ttlSeconds ?? 0;
 
