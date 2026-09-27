@@ -32,6 +32,7 @@ function render(options: {
     cwd?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
+    metadata?: Record<string, string>;
     rawValue?: boolean;
 } = {}) {
     const widget = new GitWorktreeWidget();
@@ -39,11 +40,15 @@ function render(options: {
         isPreview: options.isPreview,
         data: options.cwd ? { cwd: options.cwd } : undefined
     };
+    const metadata = {
+        ...options.metadata,
+        ...(options.hideNoGit ? { hide: 'no-git' } : {})
+    };
     const item: WidgetItem = {
         id: 'git-worktree',
         type: 'git-worktree',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hide: 'no-git' } : undefined
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined
     };
 
     return widget.render(item, context);
@@ -141,5 +146,29 @@ describe('GitWorktreeWidget', () => {
         mockExecFileSync.mockReturnValueOnce('C:\\repo\\worktrees\\some-worktree');
 
         expect(render()).toBe('𖠰 some-worktree');
+    });
+
+    describe('fish style', () => {
+        it.each([
+            { name: 'collapses the main worktree to its first letter', gitDir: '.git', expected: '𖠰 m' },
+            { name: 'keeps the last segment full', gitDir: '/some/path/.git/worktrees/some-dir/some-worktree', expected: '𖠰 s/some-worktree' }
+        ])('$name', ({ gitDir, expected }) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce(gitDir);
+
+            expect(render({ metadata: { fishStyle: 'true' } })).toBe(expected);
+        });
+
+        it('shows the fish-style modifier and keybind in the editor', () => {
+            const widget = new GitWorktreeWidget();
+
+            expect(widget.getEditorDisplay({ id: 'git-worktree', type: 'git-worktree', metadata: { fishStyle: 'true' } }).modifierText)
+                .toBe('(fish-style)');
+            expect(widget.getCustomKeybinds()).toContainEqual({
+                key: 'f',
+                label: '(f)ish style',
+                action: 'toggle-fish-style'
+            });
+        });
     });
 });
