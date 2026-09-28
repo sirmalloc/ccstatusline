@@ -594,8 +594,8 @@ function fetchFromGlab(
     };
 }
 
-// Honor a confirmed absence in the CLI's resolved repository. Only unresolved
-// lookups fall back to origin; a negative result must not trigger a second query.
+// The CLI's default repository can differ from origin in a fork. Confirm
+// absence at both targets before replacing useful cached data.
 function fetchFromProvider(
     provider: GitReviewProvider,
     cwd: string,
@@ -608,17 +608,22 @@ function fetchFromProvider(
         ? fetchFromGh(cwd, targetRepoRef, includeChecks, deadline, deps)
         : fetchFromGlab(cwd, targetRepoRef, deadline, deps);
 
+    let unpinned: GitReviewLookupResult = null;
     try {
-        const unpinned = fetch(null);
-        if (unpinned) {
+        unpinned = fetch(null);
+        if (unpinned && unpinned !== NO_PULL_REQUEST) {
             return unpinned;
         }
     } catch { /* fall through */ }
 
     if (repoRef) {
-        return fetch(repoRef);
+        const pinned = fetch(repoRef);
+        if (pinned === NO_PULL_REQUEST && unpinned !== NO_PULL_REQUEST) {
+            return null;
+        }
+        return pinned;
     }
-    return null;
+    return unpinned;
 }
 
 export function fetchGitReviewData(
@@ -636,6 +641,8 @@ export function fetchGitReviewData(
     }
     const repoRef = getOriginRepoRef(cwd, deps);
     const deadline = deps.now() + CLI_TIMEOUT;
+    let confirmedAbsent = false;
+    let lookupFailed = false;
 
     for (const provider of getProviderCandidates(cwd, deps)) {
         if (!isCliAvailable(provider, deadline, deps)) {
@@ -644,14 +651,22 @@ export function fetchGitReviewData(
         try {
             const data = fetchFromProvider(provider, cwd, repoRef, includeChecks, deadline, deps);
             if (data === NO_PULL_REQUEST) {
-                writeCache(cachePath, null, true, deps);
-                return null;
+                confirmedAbsent = true;
+                continue;
             }
             if (data) {
                 writeCache(cachePath, data, includeChecks, deps);
                 return data;
             }
-        } catch { /* try next provider */ }
+            lookupFailed = true;
+        } catch {
+            lookupFailed = true;
+        }
+    }
+
+    if (confirmedAbsent && !lookupFailed) {
+        writeCache(cachePath, null, true, deps);
+        return null;
     }
 
     // Keep useful stale data on transient refresh failures. A later statusline
