@@ -83,6 +83,8 @@ export const SettingsSchema = z.object({
     terminalWidthCacheTtlSeconds: z.number().min(0).max(300).default(5),
     customCommandCacheTtlSeconds: z.number().min(0).max(60).default(0),
     minimalistMode: z.boolean().default(false),
+    // Abbreviate widget labels to their compact presets (Session: -> S:, In: -> I:, ...).
+    compactLabels: z.boolean().default(false),
     powerline: PowerlineConfigSchema.default({
         enabled: false,
         separators: ['\uE0B0'],
