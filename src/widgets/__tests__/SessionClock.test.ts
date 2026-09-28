@@ -38,6 +38,24 @@ describe('SessionClockWidget', () => {
         )).toBe('Session: 3hr 20m');
     });
 
+    it('supports the compact label like the other labeled widgets', () => {
+        const widget = new SessionClockWidget();
+        const context: RenderContext = { data: { cost: { total_duration_ms: 58 * 60 * 1000 } } };
+
+        // The global compactLabels setting reaches the widget pre-injected as
+        // metadata by the renderer; a widget-level test passes it explicitly.
+        expect(widget.render(
+            { id: 'session-clock', type: 'session-clock', metadata: { compactLabel: 'true' } },
+            context,
+            DEFAULT_SETTINGS
+        )).toBe('S:58m');
+        expect(widget.render(
+            { id: 'session-clock', type: 'session-clock', metadata: { compactLabel: 'false' } },
+            context,
+            { ...DEFAULT_SETTINGS, compactLabels: true }
+        )).toBe('Session: 58m');
+    });
+
     it('declares the zero hideable state', () => {
         expect(new SessionClockWidget().getHideableStates().map(state => state.key)).toEqual(['zero']);
     });

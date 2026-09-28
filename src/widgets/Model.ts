@@ -6,6 +6,8 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
 export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Displays the Claude model name (e.g., Claude 3.5 Sonnet)'; }
@@ -17,7 +19,7 @@ export class ModelWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'Claude' : 'Model: Claude';
+            return formatRawOrLabeledValue(item, 'Model: ', 'Claude');
         }
 
         const model = context.data?.model;
@@ -27,7 +29,7 @@ export class ModelWidget implements Widget {
 
         if (modelDisplayName) {
             const shortName = modelDisplayName.replace(/\s*\(.*\)$/, '');
-            return item.rawValue ? shortName : `Model: ${shortName}`;
+            return formatRawOrLabeledValue(item, 'Model: ', shortName);
         }
         return null;
     }

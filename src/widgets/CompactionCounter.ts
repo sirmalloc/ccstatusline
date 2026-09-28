@@ -145,7 +145,7 @@ function formatStats(data: CompactionData, item: WidgetItem, icon: string, forma
 
 function formatCount(count: number, format: CompactionCounterFormat, icon: string): string {
     switch (format) {
-        case 'icon-space-number': return `${icon} ${count}`;
+        case 'icon-space-number': return `${icon}${count}`;
         case 'text-and-number': return `Compactions: ${count}`;
         case 'number': return String(count);
     }
@@ -158,7 +158,7 @@ function formatCount(count: number, format: CompactionCounterFormat, icon: strin
  * approaches the context window limit. This widget tracks how many times
  * compaction has occurred by counting compact_boundary markers in the transcript.
  *
- * Shows ↻ N by default, including ↻ 0 before compaction occurs. Can be
+ * Shows ↻N by default, including ↻0 before compaction occurs. Can be
  * configured to hide when count is 0. A `metric` selector switches it to emit a
  * single raw value (count, auto, manual, unknown, or reclaimed) so several
  * instances can be composed into a custom layout.

@@ -69,6 +69,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
     const [globalBold, setGlobalBold] = useState(settings.globalBold);
     const [minimalistMode, setMinimalistMode] = useState(settings.minimalistMode);
+    const [compactLabels, setCompactLabels] = useState(settings.compactLabels);
     const [numberFormatMode, setNumberFormatMode] = useState(false);
     const [numberFormatKindIndex, setNumberFormatKindIndex] = useState(0);
     const [gradientMode, setGradientMode] = useState(false);
@@ -257,6 +258,15 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                 const updatedSettings = {
                     ...settings,
                     minimalistMode: newMinimalistMode
+                };
+                onUpdate(updatedSettings);
+            } else if (input === 'j' || input === 'J') {
+                // Toggle compact label presets for labeled widgets
+                const newCompactLabels = !compactLabels;
+                setCompactLabels(newCompactLabels);
+                const updatedSettings = {
+                    ...settings,
+                    compactLabels: newCompactLabels
                 };
                 onUpdate(updatedSettings);
             } else if (input === 'n' || input === 'N') {
@@ -449,6 +459,12 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                         <Text>  Minimalist Mode: </Text>
                         <Text color={minimalistMode ? 'green' : 'red'}>{minimalistMode ? '✓ Enabled' : '✗ Disabled'}</Text>
                         <Text dimColor> - Press (m) to toggle</Text>
+                    </Box>
+
+                    <Box>
+                        <Text>  Compact Labels: </Text>
+                        <Text color={compactLabels ? 'green' : 'red'}>{compactLabels ? '✓ Enabled' : '✗ Disabled'}</Text>
+                        <Text dimColor> - Press (j) to toggle</Text>
                     </Box>
 
                     <Box>

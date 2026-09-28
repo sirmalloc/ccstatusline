@@ -46,6 +46,7 @@ describe('CurrentWorkingDirWidget', () => {
         terminalWidthCacheTtlSeconds: 5,
         customCommandCacheTtlSeconds: 5,
         minimalistMode: false,
+        compactLabels: false,
         powerline: {
             enabled: false,
             separators: [],
