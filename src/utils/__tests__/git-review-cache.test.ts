@@ -204,20 +204,18 @@ function prepareCachePath(harness: PrCacheHarness): string {
 }
 
 describe('git-review-cache', () => {
-    it('negative-caches failed gh PR lookups', () => {
+    it('negative-caches confirmed absent PRs after a single gh lookup', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
-        harness.ghResponses.push(new Error('no pull request found'));
-        harness.ghResponses.push(new Error('no pull request found'));
+        harness.ghResponses.push(new Error('no pull requests found for branch "feature/cache-a"'));
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
 
         const ghCallsAfterFirstRender = harness.execCalls.filter(call => call.cmd === 'gh');
-        expect(ghCallsAfterFirstRender).toHaveLength(3);
+        expect(ghCallsAfterFirstRender).toHaveLength(2);
         const ghPrCalls = ghCallsAfterFirstRender.filter(call => call.args[0] === 'pr');
-        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls).toHaveLength(1);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
-        expect(ghPrCalls[1]?.args).toContain('--repo');
         expect(ghPrCalls.every(call => call.args.at(-1) === 'url,number,title,state,reviewDecision')).toBe(true);
 
         const cachedMissEntry = [...harness.cacheFiles.values()].at(0);
@@ -230,13 +228,12 @@ describe('git-review-cache', () => {
         expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
 
         const ghCallsAfterSecondRender = harness.execCalls.filter(call => call.cmd === 'gh');
-        expect(ghCallsAfterSecondRender).toHaveLength(3);
+        expect(ghCallsAfterSecondRender).toHaveLength(2);
     });
 
-    it('does not retry metadata-only for ordinary CI lookup failures', () => {
+    it('does not retry metadata-only or origin for confirmed absent PRs with CI enabled', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
-        harness.ghResponses.push(new Error('no pull request found'));
         harness.ghResponses.push(new Error('no pull request found'));
 
         expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toBeNull();
@@ -244,10 +241,102 @@ describe('git-review-cache', () => {
         const ghPrCalls = harness.execCalls.filter(
             call => call.cmd === 'gh' && call.args[0] === 'pr'
         );
-        expect(ghPrCalls).toHaveLength(2);
+        expect(ghPrCalls).toHaveLength(1);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
-        expect(ghPrCalls[1]?.args).toContain('--repo');
         expect(ghPrCalls.every(call => call.args.at(-1)?.includes('statusCheckRollup'))).toBe(true);
+    });
+
+    it.each([false, true])('clears stale PR and CI data, then refreshes once per TTL (checks=%s)', (includeChecks) => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/owner/repo.git');
+        harness.ghResponses.push(JSON.stringify({
+            number: 42,
+            state: 'OPEN',
+            statusCheckRollup: [{ conclusion: 'SUCCESS', status: 'COMPLETED' }],
+            url: 'https://github.com/owner/repo/pull/42'
+        }));
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks })?.number).toBe(42);
+        harness.advanceNow(30_001);
+        const absent = Object.assign(new Error('Command failed: gh pr view'), {
+            status: 1,
+            stderr: Buffer.from('no pull requests found for branch "feature/cache-a"\n')
+        });
+        harness.ghResponses.push(absent);
+
+        expect(getCachedGitReviewData('/tmp/repo', { includeChecks }, harness.deps)?.number).toBe(42);
+        getCachedGitReviewData('/tmp/repo', { includeChecks: true }, harness.deps);
+        expect(harness.spawnCalls).toHaveLength(1);
+        const lockPath = [...harness.cacheFiles.keys()].find(filePath => filePath.endsWith('.lock'));
+        expect(lockPath).toBeDefined();
+        refreshGitReviewCacheFromCli('/tmp/repo', { includeChecks }, lockPath ?? '', harness.deps);
+
+        for (const checks of [false, true, false, true]) {
+            expect(getCachedGitReviewData('/tmp/repo', { includeChecks: checks }, harness.deps)).toBeNull();
+            expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: checks })).toBeNull();
+        }
+        expect(harness.spawnCalls).toHaveLength(1);
+        expect(harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr')).toHaveLength(2);
+        const cachedEntry = [...harness.cacheFiles.values()].at(0);
+        expect(JSON.parse(cachedEntry?.content ?? '')).toEqual({
+            checksQueried: true,
+            data: null,
+            version: 1
+        });
+        expect(cachedEntry?.mtimeMs).toBe(harness.deps.now());
+
+        harness.advanceNow(30_001);
+        harness.ghResponses.push(absent);
+        expect(fetchGitReviewData('/tmp/repo', harness.deps, { includeChecks: true })).toBeNull();
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+        expect(harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr')).toHaveLength(3);
+
+        harness.advanceNow(30_001);
+        harness.ghResponses.push(JSON.stringify({ number: 43, url: 'https://github.com/owner/repo/pull/43' }));
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(43);
+    });
+
+    it.each([
+        new Error('network unavailable'),
+        new Error('HTTP 401: authentication required'),
+        new Error('HTTP 404: repository not found'),
+        Object.assign(new Error('Command failed'), { stderr: 'no pull requests found\n', signal: 'SIGTERM', status: null }),
+        Object.assign(new Error('spawnSync gh ETIMEDOUT'), { stderr: 'no pull requests found\n', code: 'ETIMEDOUT' })
+    ])('preserves stale data after a transient or unconfirmed failure: %s', (error) => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/owner/repo.git');
+        harness.ghResponses.push(JSON.stringify({ number: 42, url: 'https://github.com/owner/repo/pull/42' }));
+        const original = fetchGitReviewData('/tmp/repo', harness.deps);
+        const originalCache = [...harness.cacheFiles.values()].at(0);
+        harness.advanceNow(30_001);
+        harness.ghResponses.push(error, error);
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toEqual(original);
+        expect([...harness.cacheFiles.values()].at(0)).toEqual(originalCache);
+    });
+
+    it('treats a confirmed absence from gh default resolution as authoritative over origin', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/repo.git');
+        harness.ghResponses.push(new Error('no pull requests found for branch "feature/cache-a"'));
+        harness.ghResponses.push(JSON.stringify({ number: 99, url: 'https://github.com/fork-owner/repo/pull/99' }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+        expect(harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr')).toHaveLength(1);
+        expect(harness.ghResponses).toHaveLength(1);
+    });
+
+    it('clears stale data when the origin fallback confirms absence', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/repo.git');
+        harness.ghResponses.push(JSON.stringify({ number: 42, url: 'https://github.com/fork-owner/repo/pull/42' }));
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)?.number).toBe(42);
+        harness.advanceNow(30_001);
+        harness.ghResponses.push(new Error('could not resolve default repository'));
+        harness.ghResponses.push(Object.assign(new Error('Command failed'), { stderr: 'no pull requests found\n', status: 1 }));
+
+        expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+        expect(getCachedGitReviewData('/tmp/repo', { includeChecks: true }, harness.deps)).toBeNull();
+        expect(harness.spawnCalls).toHaveLength(0);
     });
 
     it('shares one deadline across unpinned and pinned CI lookups', () => {

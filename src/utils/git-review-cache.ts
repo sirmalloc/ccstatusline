@@ -41,6 +41,9 @@ export interface GitReviewData {
 
 export interface GitReviewFetchOptions { includeChecks?: boolean }
 
+const NO_PULL_REQUEST = Symbol('no-pull-request');
+type GitReviewLookupResult = GitReviewData | typeof NO_PULL_REQUEST | null;
+
 interface StoredGitReviewCache {
     version: 1;
     data: GitReviewData | null;
@@ -448,24 +451,43 @@ function isCiFieldUnavailableError(error: unknown): boolean {
         || text.includes('resource not accessible by integration');
 }
 
+function isNoPullRequestError(error: unknown): boolean {
+    if (!(error instanceof Error)
+        || ('signal' in error && error.signal)
+        || ('killed' in error && error.killed)
+        || ('code' in error && typeof error.code === 'string')
+        || ('status' in error && error.status !== 1)) {
+        return false;
+    }
+    return /^no pull requests? found(?: for branch .+)?\s*$/m.test(errorText(error));
+}
+
 function queryGhPr(
     cwd: string,
     args: string[],
     fields: string,
     deadline: number,
     deps: GitReviewCacheDeps
-): Record<string, unknown> | null {
-    const output = deps.execFileSync(
-        'gh',
-        [...args, '--json', fields],
-        {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe'],
-            cwd,
-            timeout: getRemainingTimeout(deadline, deps),
-            windowsHide: true
+): Record<string, unknown> | typeof NO_PULL_REQUEST | null {
+    let output: string;
+    try {
+        output = deps.execFileSync(
+            'gh',
+            [...args, '--json', fields],
+            {
+                encoding: 'utf8',
+                stdio: ['pipe', 'pipe', 'pipe'],
+                cwd,
+                timeout: getRemainingTimeout(deadline, deps),
+                windowsHide: true
+            }
+        ).trim();
+    } catch (error) {
+        if (isNoPullRequestError(error)) {
+            return NO_PULL_REQUEST;
         }
-    ).trim();
+        throw error;
+    }
 
     if (output.length === 0) {
         return null;
@@ -480,7 +502,7 @@ function fetchFromGh(
     includeChecks: boolean,
     deadline: number,
     deps: GitReviewCacheDeps
-): GitReviewData | null {
+): GitReviewLookupResult {
     const args = ['pr', 'view'];
     if (repoRef) {
         // `--repo` disables branch auto-resolution, so pass the branch explicitly.
@@ -491,7 +513,7 @@ function fetchFromGh(
         args.push(branch, '--repo', repoRef);
     }
 
-    let parsed: Record<string, unknown> | null;
+    let parsed: Record<string, unknown> | typeof NO_PULL_REQUEST | null;
     if (includeChecks) {
         try {
             parsed = queryGhPr(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deadline, deps);
@@ -505,6 +527,9 @@ function fetchFromGh(
         parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
     }
 
+    if (parsed === NO_PULL_REQUEST) {
+        return NO_PULL_REQUEST;
+    }
     if (!parsed) {
         return null;
     }
@@ -569,8 +594,8 @@ function fetchFromGlab(
     };
 }
 
-// First try the CLI's own repo resolution, then fall back to pinning `--repo`
-// to origin. The pinned pass catches forks where the CLI resolves to upstream.
+// Honor a confirmed absence in the CLI's resolved repository. Only unresolved
+// lookups fall back to origin; a negative result must not trigger a second query.
 function fetchFromProvider(
     provider: GitReviewProvider,
     cwd: string,
@@ -578,8 +603,8 @@ function fetchFromProvider(
     includeChecks: boolean,
     deadline: number,
     deps: GitReviewCacheDeps
-): GitReviewData | null {
-    const fetch = (targetRepoRef: string | null): GitReviewData | null => provider === 'gh'
+): GitReviewLookupResult {
+    const fetch = (targetRepoRef: string | null): GitReviewLookupResult => provider === 'gh'
         ? fetchFromGh(cwd, targetRepoRef, includeChecks, deadline, deps)
         : fetchFromGlab(cwd, targetRepoRef, deadline, deps);
 
@@ -618,6 +643,10 @@ export function fetchGitReviewData(
         }
         try {
             const data = fetchFromProvider(provider, cwd, repoRef, includeChecks, deadline, deps);
+            if (data === NO_PULL_REQUEST) {
+                writeCache(cachePath, null, true, deps);
+                return null;
+            }
             if (data) {
                 writeCache(cachePath, data, includeChecks, deps);
                 return data;
