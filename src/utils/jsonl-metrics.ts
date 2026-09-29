@@ -70,6 +70,8 @@ interface SpeedInterval {
 }
 
 interface SpeedRequest {
+    /** Message id shared by every record of one logged API response, or null when absent. */
+    messageId: string | null;
     inputTokens: number;
     outputTokens: number;
     assistantTimestampMs: number | null;
@@ -263,6 +265,19 @@ function parseTimestampMs(value: string | undefined): number | null {
     return Number.isNaN(timestampMs) ? null : timestampMs;
 }
 
+/**
+ * Reads the message id of one transcript record.
+ *
+ * Claude Code logs a single assistant response as one record per content block
+ * (thinking / text / tool_use), so the id is what identifies one logged request
+ * across those records. Records without an id cannot be grouped and are each
+ * treated as a request.
+ */
+function getMessageId(message: TranscriptLine['message']): string | null {
+    const id = message?.id;
+    return typeof id === 'string' && id !== '' ? id : null;
+}
+
 function mergeIntervals(intervals: SpeedInterval[]): SpeedInterval[] {
     if (intervals.length === 0) {
         return [];
@@ -357,6 +372,7 @@ function collectSpeedMetricRecord(
 
     const usage = parseUsageTokens(data.message.usage);
     state.requests.push({
+        messageId: getMessageId(data.message),
         inputTokens: usage.input,
         outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
@@ -392,6 +408,36 @@ function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSp
     };
 }
 
+/**
+ * Picks the requests whose usage is counted, one per logged API response.
+ *
+ * A response is logged as one record per content block, so summing every
+ * record would count its tokens once per block. Only the record written last
+ * carries the response's final usage: main transcripts repeat the same usage on
+ * every record, while subagent transcripts write zeroes until it settles.
+ * Transcripts are append-only, so the last record of a message id is that final
+ * one. The earlier records still contribute their intervals to the active
+ * duration. Requests without a message id cannot be grouped and are each
+ * counted.
+ */
+function selectTokenBearingRequests(selectedRequests: SpeedRequest[]): SpeedRequest[] {
+    const latestByMessageId = new Map<string, SpeedRequest>();
+    const ungrouped: SpeedRequest[] = [];
+
+    for (const request of selectedRequests) {
+        if (request.messageId === null) {
+            ungrouped.push(request);
+            continue;
+        }
+
+        // Later records overwrite earlier ones: the last record of a message id
+        // holds the response's final usage.
+        latestByMessageId.set(request.messageId, request);
+    }
+
+    return [...latestByMessageId.values(), ...ungrouped];
+}
+
 function buildSpeedMetrics(
     collected: CollectedSpeedMetrics,
     windowSeconds?: number
@@ -415,14 +461,9 @@ function buildSpeedMetrics(
         )
         : collected.requests;
 
-    let inputTokens = 0;
-    let outputTokens = 0;
     const intervals: SpeedInterval[] = [];
 
     for (const request of selectedRequests) {
-        inputTokens += request.inputTokens;
-        outputTokens += request.outputTokens;
-
         if (!request.interval) {
             continue;
         }
@@ -445,12 +486,20 @@ function buildSpeedMetrics(
     const mergedIntervals = mergeIntervals(intervals);
     const totalDurationMs = getIntervalsDurationMs(mergedIntervals);
 
+    const tokenRequests = selectTokenBearingRequests(selectedRequests);
+    let inputTokens = 0;
+    let outputTokens = 0;
+    for (const request of tokenRequests) {
+        inputTokens += request.inputTokens;
+        outputTokens += request.outputTokens;
+    }
+
     return {
         totalDurationMs,
         inputTokens,
         outputTokens,
         totalTokens: inputTokens + outputTokens,
-        requestCount: selectedRequests.length
+        requestCount: tokenRequests.length
     };
 }
 
