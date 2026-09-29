@@ -84,6 +84,8 @@ interface CollectedSpeedMetrics {
 }
 
 interface TokenMetricEntry {
+    /** Message id shared by every record of one logged API response, or null when absent. */
+    messageId: string | null;
     usage: UsageTokens;
     stopReason: string | null | undefined;
     timestampMs: number | null;
@@ -99,6 +101,12 @@ interface TokenMetricAccumulator {
     mostRecentTimestampMs: number | null;
     mostRecentPostCompactionUsage: UsageTokens | null;
     mostRecentPostCompactionTimestampMs: number | null;
+    /**
+     * What each message id contributed, so a later record of it can replace that
+     * share. Only entries the stop_reason guard accepted are recorded, which keeps
+     * it in step with the totals it describes.
+     */
+    countedByMessageId: Map<string, UsageTokens>;
 }
 
 interface TokenMetricState {
@@ -131,7 +139,8 @@ function createTokenMetricAccumulator(): TokenMetricAccumulator {
         mostRecentMainChainUsage: null,
         mostRecentTimestampMs: null,
         mostRecentPostCompactionUsage: null,
-        mostRecentPostCompactionTimestampMs: null
+        mostRecentPostCompactionTimestampMs: null,
+        countedByMessageId: new Map()
     };
 }
 
@@ -140,12 +149,33 @@ function resetPostCompactionUsage(accumulator: TokenMetricAccumulator): void {
     accumulator.mostRecentPostCompactionTimestampMs = null;
 }
 
+/**
+ * Adds one entry's usage, replacing what an earlier record of the same response
+ * contributed.
+ *
+ * A response is logged once per content block and repeats that response's usage
+ * on every record, so adding each record would count it once per block. Only the
+ * last record carries the response's final usage, so a repeat for a message id
+ * replaces that id's share instead of accumulating on top of it. Entries without
+ * a message id cannot be grouped and are each added.
+ */
 function accumulateTokenMetricEntry(
     accumulator: TokenMetricAccumulator,
     entry: TokenMetricEntry,
     includePostCompactionUsage: boolean
 ): void {
     const { usage } = entry;
+    if (entry.messageId !== null) {
+        const previous = accumulator.countedByMessageId.get(entry.messageId);
+        if (previous !== undefined) {
+            accumulator.inputTokens -= previous.input;
+            accumulator.outputTokens -= previous.output;
+            accumulator.cacheReadTokens -= previous.read;
+            accumulator.cacheCreationTokens -= previous.creation;
+        }
+        accumulator.countedByMessageId.set(entry.messageId, usage);
+    }
+
     accumulator.inputTokens += usage.input;
     accumulator.outputTokens += usage.output;
     accumulator.cacheReadTokens += usage.read;
@@ -191,6 +221,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const usage = message?.usage;
     if (usage) {
         const entry: TokenMetricEntry = {
+            messageId: getMessageId(message),
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
