@@ -1,5 +1,3 @@
-import * as fs from 'fs';
-
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
@@ -7,9 +5,7 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getClaudeJsonPath } from '../utils/claude-settings';
-
-interface ClaudeJson { oauthAccount?: { emailAddress?: string } }
+import { getClaudeAccountEmail } from '../utils/claude-account-email';
 
 export class ClaudeAccountEmailWidget implements Widget {
     getDefaultColor(): string { return 'blue'; }
@@ -25,19 +21,12 @@ export class ClaudeAccountEmailWidget implements Widget {
             return item.rawValue ? 'you@example.com' : 'Account: you@example.com';
         }
 
-        try {
-            const content = fs.readFileSync(getClaudeJsonPath(), 'utf-8');
-            const data = JSON.parse(content) as ClaudeJson;
-            const email = data.oauthAccount?.emailAddress;
-
-            if (typeof email !== 'string' || email.length === 0) {
-                return null;
-            }
-
-            return item.rawValue ? email : `Account: ${email}`;
-        } catch {
+        const email = getClaudeAccountEmail();
+        if (email === null) {
             return null;
         }
+
+        return item.rawValue ? email : `Account: ${email}`;
     }
 
     supportsRawValue(): boolean { return true; }
