@@ -11,13 +11,15 @@ import type { WidgetItem } from '../types/Widget';
 import { getColorAnsiCode } from './colors';
 
 // Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
-// across statusline invocations, plus a failure lock so an unreachable status
-// page cannot trigger a network attempt on every render.
+// across statusline invocations, plus a lock that is written before each fetch
+// and refreshed on failure. While a fetch is in flight, concurrent sessions
+// serve the expired cache instead of all fetching at once, and an unreachable
+// status page cannot trigger a network attempt on every render.
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
 const CACHE_FILE = path.join(CACHE_DIR, 'claude-status.json');
 const LOCK_FILE = path.join(CACHE_DIR, 'claude-status.lock');
 const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 minutes
-const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed fetch
+const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed or in-flight fetch
 
 const STATUS_HOST = 'status.claude.com';
 const STATUS_PATH = '/api/v2/status.json';
@@ -231,7 +233,9 @@ function writeCachedClaudeStatus(cache: CachedClaudeStatus): void {
     }
 }
 
-function isFailureLockActive(nowSeconds: number): boolean {
+// The lock is judged by its mtime alone, so an empty lock left by an older
+// version still blocks for FAILURE_BACKOFF.
+function isFetchLockActive(nowSeconds: number): boolean {
     try {
         const lockMtime = Math.floor(fs.statSync(LOCK_FILE).mtimeMs / 1000);
         return nowSeconds - lockMtime < FAILURE_BACKOFF;
@@ -249,9 +253,27 @@ function writeFailureLock(): void {
     }
 }
 
-function clearFailureLock(): void {
+// Write the in-flight lock with contents unique to this fetch, so the success
+// path can tell whether the lock is still its own.
+function writeInFlightLock(nowMs: number): string {
+    const contents = `${process.pid}:${nowMs}:${Math.random().toString(36).slice(2)}`;
     try {
-        fs.rmSync(LOCK_FILE, { force: true });
+        ensureCacheDirExists();
+        fs.writeFileSync(LOCK_FILE, contents);
+    } catch {
+        // Ignore lock file errors
+    }
+    return contents;
+}
+
+// Remove the lock only while it still holds the in-flight record this process
+// wrote. A concurrent render may have replaced it with a failure lock in the
+// meantime; deleting that would let the next render retry inside its backoff.
+function clearOwnFetchLock(ownContents: string): void {
+    try {
+        if (fs.readFileSync(LOCK_FILE, 'utf8') === ownContents) {
+            fs.rmSync(LOCK_FILE, { force: true });
+        }
     } catch {
         // Ignore lock file errors
     }
@@ -373,9 +395,11 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
         return { error: true };
     };
 
-    if (isFailureLockActive(nowSeconds)) {
+    if (isFetchLockActive(nowSeconds)) {
         return serveStaleOrError();
     }
+
+    const inFlightLock = writeInFlightLock(nowMs);
 
     const [statusBody, incidentsBody] = await Promise.all([
         fetchStatusPagePath(STATUS_PATH),
@@ -390,7 +414,6 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
         return serveStaleOrError();
     }
 
-    clearFailureLock();
     const cache: CachedClaudeStatus = {
         fetchedAt: nowMs,
         indicator,
@@ -399,6 +422,9 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     };
     memoryCache = cache;
     writeCachedClaudeStatus(cache);
+    // Release the lock only after the fresh cache is on disk, so no render can
+    // see neither a lock nor a fresh cache and start a redundant fetch.
+    clearOwnFetchLock(inFlightLock);
     return toStatusData(cache);
 }
 
