@@ -61,6 +61,7 @@ export class JjBookmarksWidget implements Widget {
     private getJjBookmarks(context: RenderContext): string | null {
         const output = runJjArgs([
             'log',
+            '--ignore-working-copy',
             '--no-graph',
             '-r',
             'heads(::@ & bookmarks())',

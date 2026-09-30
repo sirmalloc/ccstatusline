@@ -61,6 +61,7 @@ export class JjRevisionWidget implements Widget {
     private getJjRevision(context: RenderContext): string | null {
         return runJjArgs([
             'log',
+            '--ignore-working-copy',
             '--no-graph',
             '-r',
             '@',

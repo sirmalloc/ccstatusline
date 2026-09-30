@@ -63,6 +63,7 @@ export class JjWorkspaceWidget implements Widget {
         const output = runJjArgs([
             'workspace',
             'list',
+            '--ignore-working-copy',
             '--template',
             CURRENT_WORKSPACE_TEMPLATE
         ], context);

@@ -10,9 +10,12 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjWorkspaceWidget } from '../JjWorkspace';
 
 vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+
+const workspace = useJjTestWorkspace();
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
@@ -30,7 +33,7 @@ function render(options: {
     const widget = new JjWorkspaceWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
-        data: options.cwd ? { cwd: options.cwd } : undefined
+        data: { cwd: options.cwd ?? workspace.root }
     };
     const item: WidgetItem = {
         id: 'jj-workspace',
@@ -59,27 +62,30 @@ describe('JjWorkspaceWidget', () => {
         mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
         mockExecFileSync.mockReturnValueOnce('default\n');
 
-        expect(render({ cwd: '/tmp/repo' })).toBe('◆ default');
+        expect(render()).toBe('◆ default');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
-            cwd: '/tmp/repo'
+            cwd: workspace.root
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
             'workspace',
             'list',
+            '--ignore-working-copy',
             '--template',
             'if(target.current_working_copy(), name ++ "\n")'
         ]);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
-            cwd: '/tmp/repo'
+            cwd: workspace.root
         });
     });
 

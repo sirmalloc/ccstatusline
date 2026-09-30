@@ -42,6 +42,7 @@ export class JjDescriptionWidget implements Widget {
 
         const description = runJjArgs([
             'log',
+            '--ignore-working-copy',
             '--no-graph',
             '-r',
             '@',

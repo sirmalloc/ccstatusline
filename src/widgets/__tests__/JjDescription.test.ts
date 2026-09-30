@@ -10,9 +10,12 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjDescriptionWidget } from '../JjDescription';
 
 vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+
+const workspace = useJjTestWorkspace();
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
@@ -28,7 +31,7 @@ function render(options: {
     const widget = new JjDescriptionWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
-        data: options.cwd ? { cwd: options.cwd } : undefined
+        data: { cwd: options.cwd ?? workspace.root }
     };
     const item: WidgetItem = {
         id: 'jj-description',
@@ -52,10 +55,11 @@ describe('JjDescriptionWidget', () => {
         mockExecFileSync.mockReturnValueOnce('/my/project\n');
         mockExecFileSync.mockReturnValueOnce('fix: update readme');
 
-        expect(render({ cwd: '/my/project' })).toBe('fix: update readme');
+        expect(render()).toBe('fix: update readme');
         expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
             'log',
+            '--ignore-working-copy',
             '--no-graph',
             '-r',
             '@',
@@ -80,20 +84,20 @@ describe('JjDescriptionWidget', () => {
         mockExecFileSync.mockReturnValueOnce('/my/project\n');
         mockExecFileSync.mockReturnValueOnce('');
 
-        expect(render({ cwd: '/my/project' })).toBe('(no description)');
+        expect(render()).toBe('(no description)');
     });
 
     it('should render no jj when command fails', () => {
         mockExecFileSync.mockReturnValueOnce('/my/project\n');
         mockExecFileSync.mockImplementation(() => { throw new Error('Failed'); });
 
-        expect(render({ cwd: '/my/project' })).toBe('no jj');
+        expect(render()).toBe('no jj');
     });
 
     it('should hide when command fails and hideNoJj enabled', () => {
         mockExecFileSync.mockReturnValueOnce('/my/project\n');
         mockExecFileSync.mockImplementation(() => { throw new Error('Failed'); });
 
-        expect(render({ cwd: '/my/project', hideNoJj: true })).toBeNull();
+        expect(render({ hideNoJj: true })).toBeNull();
     });
 });

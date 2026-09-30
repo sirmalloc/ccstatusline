@@ -17,7 +17,7 @@ export interface GitFileStatusCounts {
     untracked: number;
 }
 
-interface GitRepoMetadata {
+export interface GitRepoMetadata {
     cachePath: string;
     headMtimeMs: number | null;
     indexMtimeMs: number | null;
@@ -45,24 +45,24 @@ const GIT_CACHE_SCHEMA_VERSION = 1 as const;
 // and the widget renders empty instead.
 const GIT_COMMAND_TIMEOUT_MS = 5_000;
 
-// In-process cache keeps cwd in the key; the persistent cache stores cwd once
-// at the file level and keys entries by command.
+// In-process cache keeps the executable and cwd in the key; the persistent
+// cache stores cwd once at the file level and keys entries by command.
 const gitCommandCache = new Map<string, GitCacheEntry>();
 
 function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
 }
 
-function getCachePath(gitDir: string): string {
+export function getCommandCachePath(tool: 'git' | 'jj', repoDir: string): string {
     const repoHash = createHash('sha256')
-        .update(gitDir)
+        .update(repoDir)
         .digest('hex')
         .slice(0, 16);
 
-    return path.join(getCacheDir(), 'git-cache', `git-${repoHash}.json`);
+    return path.join(getCacheDir(), `${tool}-cache`, `${tool}-${repoHash}.json`);
 }
 
-function getMtimeMs(filePath: string): number | null {
+export function getMtimeMs(filePath: string): number | null {
     try {
         return fs.statSync(filePath).mtimeMs;
     } catch {
@@ -70,7 +70,7 @@ function getMtimeMs(filePath: string): number | null {
     }
 }
 
-function normalizeDirectory(candidate: string): string | null {
+export function normalizeDirectory(candidate: string): string | null {
     try {
         const resolved = path.resolve(candidate);
         const stats = fs.statSync(resolved);
@@ -138,13 +138,13 @@ function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     }
 
     return {
-        cachePath: getCachePath(gitDir),
+        cachePath: getCommandCachePath('git', gitDir),
         headMtimeMs: getMtimeMs(path.join(gitDir, 'HEAD')),
         indexMtimeMs: getMtimeMs(path.join(gitDir, 'index'))
     };
 }
 
-function getGitCacheTtlMs(context: RenderContext): number {
+export function getGitCacheTtlMs(context: RenderContext): number {
     const ttlSeconds = context.gitCacheTtlSeconds;
     if (typeof ttlSeconds !== 'number' || !Number.isFinite(ttlSeconds)) {
         return DEFAULT_GIT_CACHE_TTL_SECONDS * 1000;
@@ -317,11 +317,46 @@ export function runGit(command: string, context: RenderContext): string | null {
 
 export function runGitArgs(args: string[], context: RenderContext, cacheCommand?: string): string | null {
     const cwd = resolveGitCwd(context);
-    const cacheToken = cacheCommand ?? args.join('\0');
-    const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
+
+    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
+    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
+    // git process is writing it.
+    // We use the environment variable instead of the CLI flag because older Git
+    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
+    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
+    return runCachedCommand({
+        file: 'git',
+        args,
+        cacheToken: cacheCommand ?? args.join('\0'),
+        cwd,
+        metadata: getGitRepoMetadata(cwd),
+        ttlMs: getGitCacheTtlMs(context),
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }
+    });
+}
+
+export interface CachedCommandOptions {
+    file: 'git' | 'jj';
+    args: string[];
+    cacheToken: string;
+    cwd: string | undefined;
+    metadata: GitRepoMetadata | null;
+    ttlMs: number;
+    env?: NodeJS.ProcessEnv;
+    allowEmpty?: boolean;
+    // For commands that can themselves change the repo state the metadata
+    // tracks (a jj working-copy snapshot), re-read it after the command so the
+    // entry is keyed to the state its output describes.
+    refreshMetadata?: () => GitRepoMetadata | null;
+}
+
+// Runs a VCS command through the in-process and persistent caches shared by
+// the git and jj helpers. Failures are cached as null so a missing binary or a
+// non-repo directory does not respawn the command on every widget.
+export function runCachedCommand(options: CachedCommandOptions): string | null {
+    const { file, args, cacheToken, cwd, metadata, ttlMs, env, allowEmpty = false, refreshMetadata } = options;
+    const memoryCacheKey = `${file === 'git' ? '' : `${file}|`}${cacheToken}|${cwd ?? ''}`;
     const persistentCacheKey = cacheToken;
-    const metadata = getGitRepoMetadata(cwd);
-    const ttlMs = getGitCacheTtlMs(context);
     const now = Date.now();
 
     // Check cache first
@@ -336,27 +371,21 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
         return persistentEntry.output;
     }
 
-    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
-    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
-    // git process is writing it.
-    // We use the environment variable instead of the CLI flag because older Git
-    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
-    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
-
     try {
-        const output = execFileSync('git', args, {
+        const output = execFileSync(file, args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+            ...(env ? { env } : {}),
             timeout: GIT_COMMAND_TIMEOUT_MS,
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
 
-        const result = output.length > 0 ? output : null;
-        const entry = createCacheEntry(result, metadata, now);
+        const result = (allowEmpty || output.length > 0) ? output : null;
+        const entryMetadata = refreshMetadata ? refreshMetadata() : metadata;
+        const entry = createCacheEntry(result, entryMetadata, now);
         gitCommandCache.set(memoryCacheKey, entry);
-        writePersistentCacheEntry(metadata, persistentCacheKey, cwd, entry);
+        writePersistentCacheEntry(entryMetadata, persistentCacheKey, cwd, entry);
         return result;
     } catch {
         const entry = createCacheEntry(null, metadata, now);
