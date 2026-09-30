@@ -2,6 +2,7 @@ import type {
     BlockMetrics,
     SkillsMetrics
 } from '../types';
+import type { CustomCommandResult } from '../utils/custom-command';
 
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
@@ -60,6 +61,8 @@ export interface RenderContext {
     minimalist?: boolean;
     gitCacheTtlSeconds?: number;
     customCommandCacheTtlSeconds?: number;
+    // Custom command results fetched concurrently before the render, keyed by request.
+    customCommandResults?: Map<string, CustomCommandResult> | null;
     gitReviewNeedsChecks?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines

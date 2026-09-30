@@ -70,7 +70,7 @@ export class CustomCommandWidget implements Widget {
                 ttlSeconds: context.customCommandCacheTtlSeconds,
                 sessionId: context.data.session_id,
                 terminalWidth: context.terminalWidth
-            });
+            }, context.customCommandResults);
 
             if (result.status === 'failed') {
                 return result.marker;

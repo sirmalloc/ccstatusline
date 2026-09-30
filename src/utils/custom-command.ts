@@ -1,9 +1,15 @@
 import type { SpawnSyncReturns } from 'child_process';
-import { spawnSync } from 'child_process';
+import {
+    spawn,
+    spawnSync
+} from 'child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+import type { RenderContext } from '../types/RenderContext';
+import type { WidgetItem } from '../types/Widget';
 
 import { captureCustomCommand } from './custom-command-capture';
 
@@ -256,7 +262,8 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
         const script = `(${captureCustomCommand.toString()})(
             require('child_process').spawn,
             JSON.parse(require('fs').readFileSync(0, 'utf8')),
-            ${MAX_STDOUT_BYTES}, ${MAX_CACHED_OUTPUT_CHARS}
+            ${MAX_STDOUT_BYTES}, ${MAX_CACHED_OUTPUT_CHARS},
+            (result) => process.stdout.write(JSON.stringify(result), () => process.exit(0))
         )`;
         const result = spawnSync(process.execPath, ['-e', script], {
             encoding: 'utf8',
@@ -281,6 +288,95 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
 }
 
 /**
+ * Run a command in this process, without the synchronous path's helper runtime.
+ *
+ * @remarks
+ * The capture owns the pipe and destroys it on delivery, so a background
+ * descendant that keeps stdout open cannot hold this process open either.
+ */
+function executeCommandAsync(request: CustomCommandRequest): Promise<CustomCommandResult> {
+    return new Promise((resolve) => {
+        let settled = false;
+        let backstop: ReturnType<typeof setTimeout> | undefined;
+        const settle = (result: CustomCommandResult): void => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(backstop);
+            resolve(result);
+        };
+
+        // The capture enforces the command deadline. This mirrors the synchronous
+        // path's spawnSync timeout, in case the capture never delivers.
+        if (request.timeoutMs > 0) {
+            backstop = setTimeout(() => {
+                settle({ status: 'failed', marker: '[Timeout]' });
+            }, request.timeoutMs + 1000);
+        }
+
+        try {
+            captureCustomCommand(spawn, request, MAX_STDOUT_BYTES, MAX_CACHED_OUTPUT_CHARS, settle);
+        } catch {
+            settle({ status: 'failed', marker: '[Error]' });
+        }
+    });
+}
+
+interface CacheSlot {
+    ttlMs: number;
+    cwd: string;
+    entryKey: string;
+    memoryCacheKey: string;
+    canShareAcrossProcesses: boolean;
+}
+
+function getCacheSlot(request: CustomCommandRequest, ttlMs: number): CacheSlot {
+    const cwd = process.cwd();
+    const entryKey = getEntryKey(request);
+
+    return {
+        ttlMs,
+        cwd,
+        entryKey,
+        memoryCacheKey: `${entryKey}\0${cwd}`,
+        canShareAcrossProcesses: typeof request.sessionId === 'string' && request.sessionId.length > 0
+    };
+}
+
+function readCachedResult(slot: CacheSlot): CustomCommandResult | null {
+    const now = Date.now();
+
+    const memoryEntry = customCommandCache.get(slot.memoryCacheKey);
+    if (memoryEntry && isCacheEntryFresh(memoryEntry, slot.ttlMs, now)) {
+        return memoryEntry.result;
+    }
+
+    if (slot.canShareAcrossProcesses) {
+        const persistentEntry = readPersistentCacheEntry(slot.cwd, slot.entryKey, slot.ttlMs, now);
+        if (persistentEntry) {
+            customCommandCache.set(slot.memoryCacheKey, persistentEntry);
+            return persistentEntry.result;
+        }
+    }
+
+    return null;
+}
+
+function storeResult(slot: CacheSlot, result: CustomCommandResult): void {
+    // Stamped after the run, so a command slower than the TTL still gets the
+    // full TTL of reuse rather than expiring the moment it returns.
+    const entry: CustomCommandCacheEntry = {
+        result,
+        createdAt: Date.now()
+    };
+    customCommandCache.set(slot.memoryCacheKey, entry);
+    if (slot.canShareAcrossProcesses) {
+        writePersistentCacheEntry(slot.cwd, slot.entryKey, entry, entry.createdAt);
+    }
+}
+
+/**
  * Run a custom command, reusing a recent result when one is still within the TTL.
  *
  * @remarks
@@ -296,44 +392,138 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
  * another's, so the result stays in this process rather than reaching the file
  * every session shares.
  */
-export function runCustomCommand(request: CustomCommandRequest): CustomCommandResult {
+export function runCustomCommand(
+    request: CustomCommandRequest,
+    prefetched?: CustomCommandResults | null
+): CustomCommandResult {
+    // The render prefetch normally has the result already. Anything it missed
+    // still runs, synchronously.
+    const prefetchedResult = prefetched?.get(getCustomCommandResultKey(request));
+    if (prefetchedResult) {
+        return prefetchedResult;
+    }
+
     const ttlMs = getCacheTtlMs(request.ttlSeconds);
     if (ttlMs === 0) {
         return executeCommand(request);
     }
 
-    const cwd = process.cwd();
-    const entryKey = getEntryKey(request);
-    const memoryCacheKey = `${entryKey}\0${cwd}`;
-    const canShareAcrossProcesses = typeof request.sessionId === 'string' && request.sessionId.length > 0;
-    const now = Date.now();
-
-    const memoryEntry = customCommandCache.get(memoryCacheKey);
-    if (memoryEntry && isCacheEntryFresh(memoryEntry, ttlMs, now)) {
-        return memoryEntry.result;
-    }
-
-    if (canShareAcrossProcesses) {
-        const persistentEntry = readPersistentCacheEntry(cwd, entryKey, ttlMs, now);
-        if (persistentEntry) {
-            customCommandCache.set(memoryCacheKey, persistentEntry);
-            return persistentEntry.result;
-        }
+    const slot = getCacheSlot(request, ttlMs);
+    const cached = readCachedResult(slot);
+    if (cached) {
+        return cached;
     }
 
     const result = executeCommand(request);
-    // Stamped after the run, so a command slower than the TTL still gets the
-    // full TTL of reuse rather than expiring the moment it returns.
-    const entry: CustomCommandCacheEntry = {
-        result,
-        createdAt: Date.now()
-    };
-    customCommandCache.set(memoryCacheKey, entry);
-    if (canShareAcrossProcesses) {
-        writePersistentCacheEntry(cwd, entryKey, entry, entry.createdAt);
+    storeResult(slot, result);
+    return result;
+}
+
+/**
+ * {@link runCustomCommand} without blocking, so several commands can run at once.
+ * It never rejects: every failure resolves to a marker.
+ */
+export async function runCustomCommandAsync(request: CustomCommandRequest): Promise<CustomCommandResult> {
+    const ttlMs = getCacheTtlMs(request.ttlSeconds);
+    if (ttlMs === 0) {
+        return executeCommandAsync(request);
     }
 
+    const slot = getCacheSlot(request, ttlMs);
+    const cached = readCachedResult(slot);
+    if (cached) {
+        return cached;
+    }
+
+    const result = await executeCommandAsync(request);
+    storeResult(slot, result);
     return result;
+}
+
+/** The render-context fields a custom command request is built from. */
+export type CustomCommandRequestContext = Pick<RenderContext, 'data' | 'terminalWidth' | 'customCommandCacheTtlSeconds'>;
+
+/** Results the render prefetch already has, keyed by {@link getCustomCommandResultKey}. */
+export type CustomCommandResults = Map<string, CustomCommandResult>;
+
+/**
+ * Build the request a custom command widget runs, or null when it runs nothing.
+ * It must match what CustomCommandWidget sends, or the prefetch always misses.
+ */
+export function createCustomCommandRequest(
+    item: WidgetItem,
+    context: CustomCommandRequestContext
+): CustomCommandRequest | null {
+    if (!item.commandPath || !context.data) {
+        return null;
+    }
+
+    const input = JSON.stringify(
+        typeof context.terminalWidth === 'number'
+            ? { ...context.data, terminal_width: context.terminalWidth }
+            : context.data
+    );
+
+    return {
+        command: item.commandPath,
+        input,
+        timeoutMs: item.timeout ?? 1000,
+        ttlSeconds: context.customCommandCacheTtlSeconds,
+        sessionId: context.data.session_id,
+        terminalWidth: context.terminalWidth
+    };
+}
+
+/** Identifies a request completely, including the payload the cache key omits. */
+export function getCustomCommandResultKey(request: CustomCommandRequest): string {
+    return [
+        getEntryKey(request),
+        String(request.ttlSeconds ?? ''),
+        request.input
+    ].join('\0');
+}
+
+/**
+ * Run every custom command widget's command at once, ahead of the synchronous
+ * render, so a status line with several commands waits for the slowest one
+ * rather than their sum.
+ *
+ * @remarks
+ * Identical requests run once and share the result. It never rejects.
+ */
+export async function prefetchCustomCommandsIfNeeded(
+    lines: WidgetItem[][],
+    context: CustomCommandRequestContext
+): Promise<CustomCommandResults | null> {
+    const pending = new Map<string, Promise<CustomCommandResult>>();
+
+    for (const line of lines) {
+        for (const item of line) {
+            if (item.type !== 'custom-command') {
+                continue;
+            }
+
+            const request = createCustomCommandRequest(item, context);
+            if (!request) {
+                continue;
+            }
+
+            const key = getCustomCommandResultKey(request);
+            if (!pending.has(key)) {
+                pending.set(key, runCustomCommandAsync(request).catch((): CustomCommandResult => ({ status: 'failed', marker: '[Error]' })));
+            }
+        }
+    }
+
+    if (pending.size === 0) {
+        return null;
+    }
+
+    const results: CustomCommandResults = new Map();
+    await Promise.all(Array.from(pending, async ([key, promise]) => {
+        results.set(key, await promise);
+    }));
+    return results;
 }
 
 /**
