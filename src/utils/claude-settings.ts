@@ -405,14 +405,17 @@ export async function installStatusLine({
 }: InstallStatusLineOptions): Promise<void> {
     let settings: ClaudeSettings;
 
-    const backupPath = await backupClaudeSettings('.orig');
+    // A missing settings file loads as {}; any error here means the file exists
+    // but could not be read or parsed. Abort rather than overwrite it with only
+    // our statusLine, which would discard the user's other Claude Code settings.
     try {
         settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
-        console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
-        settings = {};
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then install again.`, { cause: error });
     }
+
+    await backupClaudeSettings('.orig');
 
     // Update settings with our status line (confirmation already handled in TUI)
     const existingRefreshInterval = settings.statusLine?.refreshInterval;
