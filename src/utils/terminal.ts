@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { probeWidthNative } from './terminal-native';
+import { probeTerminalNative } from './terminal-native';
 import {
     readCachedWidth,
     writeCachedWidth
@@ -45,13 +45,40 @@ function probeTerminalWidth(): number | null {
         return null;
     }
 
-    // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Returns null on
-    // other platforms and falls through to the portable ps/stty/tput walk below.
-    const nativeWidth = probeWidthNative();
-    if (nativeWidth !== null) {
-        return nativeWidth;
+    // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Inconclusive
+    // on other platforms and falls through to the portable ps/stty/tput walk below.
+    const native = probeTerminalNative();
+    if (native.width !== null) {
+        return native.width;
     }
 
+    // When /proc already showed that no ancestor has a controlling terminal,
+    // `ps -o tty=` would print "?" for every one of them, so the ps walk (two
+    // spawns per ancestor, on every render) cannot find a width. Skip it.
+    if (!native.noControllingTTY) {
+        const width = probeAncestorWidth();
+        if (width !== null) {
+            return width;
+        }
+    }
+
+    // Fallback: try tput cols which might work in some environments
+    try {
+        const width = execFileSync('tput', ['cols'], {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true
+        }).trim();
+
+        return parsePositiveInteger(width);
+    } catch {
+        // tput also failed
+    }
+
+    return null;
+}
+
+function probeAncestorWidth(): number | null {
     // Claude Code can spawn ccstatusline with piped stdio, leaving the immediate
     // parent process without a controlling TTY. Walk up a few ancestors until we
     // find the shell process that owns the real PTY.
@@ -73,19 +100,6 @@ function probeTerminalWidth(): number | null {
         if (width !== null) {
             return width;
         }
-    }
-
-    // Fallback: try tput cols which might work in some environments
-    try {
-        const width = execFileSync('tput', ['cols'], {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            windowsHide: true
-        }).trim();
-
-        return parsePositiveInteger(width);
-    } catch {
-        // tput also failed
     }
 
     return null;
