@@ -202,6 +202,22 @@ describe('renderer ANSI/OSC handling', () => {
         expect(truncated).toContain(OSC8_CLOSE);
         expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(8);
     });
+
+    it('never returns text wider than maxWidth when an escape splits a cluster', () => {
+        // U+2764 + SGR + U+FE0F: the escape-stripped text measures 2 columns per
+        // heart, but each run between escapes measures 1 + 0.
+        const heart = '\u2764\x1b[31m\uFE0F\x1b[39m';
+        const text = heart.repeat(6);
+        expect(getVisibleWidth(text)).toBe(12);
+
+        for (const ellipsis of [true, false]) {
+            for (let maxWidth = 1; maxWidth < 12; maxWidth++) {
+                const truncated = truncateStyledText(text, maxWidth, { ellipsis });
+                expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(maxWidth);
+            }
+        }
+        expect(getVisibleText(truncateStyledText(text, 9))).toBe('\u2764\uFE0F'.repeat(3) + '...');
+    });
 });
 
 describe('renderer minimalist mode', () => {

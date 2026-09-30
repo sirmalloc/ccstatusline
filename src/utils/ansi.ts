@@ -337,6 +337,16 @@ function getOsc8CloseSequence(terminator: OscTerminator): string {
     return `${ESC}]8;;${ESC}\\`;
 }
 
+function nextOsc8Terminator(escape: ParsedEscapeSequence, current: OscTerminator | null): OscTerminator | null {
+    if (escape.osc8Action === 'open') {
+        return escape.osc8Terminator ?? 'st';
+    }
+    if (escape.osc8Action === 'close') {
+        return null;
+    }
+    return current;
+}
+
 export function stripSgrCodes(text: string): string {
     return text.replace(SGR_REGEX, '');
 }
@@ -432,32 +442,24 @@ export function truncateStyledText(
     let didTruncate = false;
     let openOsc8Terminator: OscTerminator | null = null;
 
+    // Measure clusters on the escape-stripped text, exactly as getVisibleWidth
+    // does. Measuring each run between escapes separately splits a cluster
+    // that straddles an escape (U+2764, SGR, U+FE0F) into narrower pieces, so
+    // the loop could finish without overshooting and return the whole,
+    // over-wide input below.
+    const visibleText = getVisibleText(text);
+    let visibleIndex = 0;
+
     while (index < text.length) {
         const escape = parseEscapeSequence(text, index);
         if (escape) {
             output += escape.sequence;
             index = escape.nextIndex;
-
-            if (escape.osc8Action === 'open') {
-                openOsc8Terminator = escape.osc8Terminator ?? 'st';
-            } else if (escape.osc8Action === 'close') {
-                openOsc8Terminator = null;
-            }
+            openOsc8Terminator = nextOsc8Terminator(escape, openOsc8Terminator);
             continue;
         }
 
-        let visibleSegmentEnd = index;
-        while (visibleSegmentEnd < text.length && !parseEscapeSequence(text, visibleSegmentEnd)) {
-            const codePoint = text.codePointAt(visibleSegmentEnd);
-            if (codePoint === undefined) {
-                break;
-            }
-
-            visibleSegmentEnd += String.fromCodePoint(codePoint).length;
-        }
-
-        const visibleSegment = text.slice(index, visibleSegmentEnd);
-        const cluster = consumeDisplayCluster(visibleSegment, 0);
+        const cluster = consumeDisplayCluster(visibleText, visibleIndex);
         if (!cluster) {
             break;
         }
@@ -469,9 +471,30 @@ export function truncateStyledText(
             break;
         }
 
-        output += cluster.text;
+        // Copy the cluster's code units, and any escapes that sit inside it.
+        let remaining = cluster.text.length;
+        while (remaining > 0 && index < text.length) {
+            const inner = parseEscapeSequence(text, index);
+            if (inner) {
+                output += inner.sequence;
+                index = inner.nextIndex;
+                openOsc8Terminator = nextOsc8Terminator(inner, openOsc8Terminator);
+                continue;
+            }
+
+            const codePoint = text.codePointAt(index);
+            if (codePoint === undefined) {
+                break;
+            }
+
+            const character = String.fromCodePoint(codePoint);
+            output += character;
+            index += character.length;
+            remaining -= character.length;
+        }
+
         currentWidth += clusterWidth;
-        index += cluster.text.length;
+        visibleIndex = cluster.nextIndex;
     }
 
     if (!didTruncate) {
