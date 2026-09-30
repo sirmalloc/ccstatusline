@@ -20,6 +20,13 @@ const REGIONAL_INDICATOR_START = 0x1f1e6;
 const REGIONAL_INDICATOR_END = 0x1f1ff;
 
 const SGR_REGEX = /\x1b\[[0-9;]*m/g;
+// Lowest code point that can extend a display cluster (U+0300 is the first
+// \p{Mark}; ZWJ, variation selectors, the keycap and emoji modifiers are all
+// higher), so a printable ASCII character followed by anything below it is a
+// one-column cluster on its own.
+const FIRST_CLUSTER_EXTENDER = 0x300;
+const CLUSTER_WIDTH_CACHE_LIMIT = 4096;
+const clusterWidthCache = new Map<string, number>();
 const EXTENDED_PICTOGRAPHIC_REGEX = createUnicodePropertyRegex('\\p{Extended_Pictographic}');
 const EMOJI_PRESENTATION_REGEX = createUnicodePropertyRegex('\\p{Emoji_Presentation}');
 const EMOJI_MODIFIER_REGEX = createUnicodePropertyRegex('\\p{Emoji_Modifier}');
@@ -142,8 +149,8 @@ function isZeroWidthStandaloneCluster(cluster: string): boolean {
     });
 }
 
-function shouldTreatClusterAsNarrowTextPictograph(cluster: string): boolean {
-    if (stringWidth(cluster) <= 1) {
+function shouldTreatClusterAsNarrowTextPictograph(cluster: string, clusterStringWidth: number): boolean {
+    if (clusterStringWidth <= 1) {
         return false;
     }
 
@@ -171,16 +178,42 @@ function shouldTreatClusterAsNarrowTextPictograph(cluster: string): boolean {
     return characters.some(character => matchesUnicodeProperty(character, EXTENDED_PICTOGRAPHIC_REGEX));
 }
 
-function getClusterWidth(cluster: string): number {
+function isPrintableAscii(charCode: number): boolean {
+    return charCode >= 0x20 && charCode <= 0x7e;
+}
+
+function computeClusterWidth(cluster: string): number {
     if (cluster.length === 0 || isZeroWidthStandaloneCluster(cluster)) {
         return 0;
     }
 
-    if (shouldTreatClusterAsNarrowTextPictograph(cluster)) {
+    const clusterStringWidth = stringWidth(cluster);
+    if (shouldTreatClusterAsNarrowTextPictograph(cluster, clusterStringWidth)) {
         return 1;
     }
 
-    return stringWidth(cluster);
+    return clusterStringWidth;
+}
+
+// A cluster's width depends only on its text, and a render measures the same
+// handful of clusters (separators, bar glyphs, icons) many times over, so the
+// Unicode property checks and string-width calls are memoised per process.
+function getClusterWidth(cluster: string): number {
+    if (cluster.length === 1 && isPrintableAscii(cluster.charCodeAt(0))) {
+        return 1;
+    }
+
+    const cached = clusterWidthCache.get(cluster);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const width = computeClusterWidth(cluster);
+    if (clusterWidthCache.size >= CLUSTER_WIDTH_CACHE_LIMIT) {
+        clusterWidthCache.clear();
+    }
+    clusterWidthCache.set(cluster, width);
+    return width;
 }
 
 function getTextDisplayWidth(text: string): number {
@@ -188,6 +221,17 @@ function getTextDisplayWidth(text: string): number {
     let index = 0;
 
     while (index < text.length) {
+        // Fast path: a printable ASCII character that nothing can extend is a
+        // one-column cluster, so skip the cluster scan entirely.
+        if (isPrintableAscii(text.charCodeAt(index))) {
+            const nextIndex = index + 1;
+            if (nextIndex >= text.length || text.charCodeAt(nextIndex) < FIRST_CLUSTER_EXTENDER) {
+                width += 1;
+                index = nextIndex;
+                continue;
+            }
+        }
+
         const cluster = consumeDisplayCluster(text, index);
         if (!cluster) {
             break;
@@ -369,6 +413,10 @@ export function stripOscCodes(text: string): string {
     return result;
 }
 
+function isEscapeIntroducer(character: string | undefined): boolean {
+    return character === ESC || character === C1_CSI || character === C1_OSC;
+}
+
 export function getVisibleText(text: string): string {
     let result = '';
     let index = 0;
@@ -380,14 +428,15 @@ export function getVisibleText(text: string): string {
             continue;
         }
 
-        const codePoint = text.codePointAt(index);
-        if (codePoint === undefined) {
-            break;
+        // Copy the whole run up to the next escape introducer in one slice
+        // rather than one code point at a time.
+        let runEnd = index + 1;
+        while (runEnd < text.length && !isEscapeIntroducer(text[runEnd])) {
+            runEnd++;
         }
 
-        const character = String.fromCodePoint(codePoint);
-        result += character;
-        index += character.length;
+        result += text.slice(index, runEnd);
+        index = runEnd;
     }
 
     return result;
