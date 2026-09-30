@@ -45,17 +45,20 @@ const GIT_CACHE_SCHEMA_VERSION = 1 as const;
 // and the widget renders empty instead.
 const GIT_COMMAND_TIMEOUT_MS = 5_000;
 
-// In-process cache keeps cwd in the key; the persistent cache stores cwd once
-// at the file level and keys entries by command.
+// In-process cache keeps cwd in the key; the persistent cache uses one file
+// per (repo, cwd) pair, stores cwd once at the file level and keys entries by
+// command. Per-cwd files matter because some outputs are cwd-scoped (e.g.
+// `ls-files --unmerged`) and because sessions in the same repo at different
+// cwds (root vs a subdirectory) would otherwise evict each other every render.
 const gitCommandCache = new Map<string, GitCacheEntry>();
 
 function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
 }
 
-function getCachePath(gitDir: string): string {
+function getCachePath(gitDir: string, cwd: string): string {
     const repoHash = createHash('sha256')
-        .update(gitDir)
+        .update(`${gitDir}\0${cwd}`)
         .digest('hex')
         .slice(0, 16);
 
@@ -138,10 +141,56 @@ function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     }
 
     return {
-        cachePath: getCachePath(gitDir),
+        cachePath: getCachePath(gitDir, cwd),
         headMtimeMs: getMtimeMs(path.join(gitDir, 'HEAD')),
         indexMtimeMs: getMtimeMs(path.join(gitDir, 'index'))
     };
+}
+
+// True only when git is certain to fail with "not a git repository" in cwd,
+// so runGitArgs can skip the spawn (every command it runs needs a repo). This
+// is deliberately more conservative than discoverGitDir: it walks the
+// physical path (git discovers from getcwd() after chdir), treats any `.git`
+// entry (even a malformed gitfile) or any `HEAD` (bare repo, or cwd inside a
+// git dir) as a possible repo, and bails out when GIT_DIR / GIT_WORK_TREE /
+// GIT_COMMON_DIR could point git elsewhere. GIT_CEILING_DIRECTORIES and
+// filesystem boundaries only make git stop earlier, so walking to the root
+// is the safe direction.
+function isDefinitelyOutsideGitRepository(cwd: string): boolean {
+    if (
+        process.env.GIT_DIR !== undefined
+        || process.env.GIT_WORK_TREE !== undefined
+        || process.env.GIT_COMMON_DIR !== undefined
+    ) {
+        return false;
+    }
+
+    let current: string;
+    try {
+        current = fs.realpathSync(cwd);
+        if (!fs.statSync(current).isDirectory()) {
+            return false;
+        }
+    } catch {
+        return false;
+    }
+
+    for (;;) {
+        for (const marker of ['.git', 'HEAD']) {
+            try {
+                fs.lstatSync(path.join(current, marker));
+                return false;
+            } catch {
+                // Not present; keep looking.
+            }
+        }
+
+        const parent = path.dirname(current);
+        if (parent === current) {
+            return true;
+        }
+        current = parent;
+    }
 }
 
 function getGitCacheTtlMs(context: RenderContext): number {
@@ -321,6 +370,12 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
     const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
     const persistentCacheKey = cacheToken;
     const metadata = getGitRepoMetadata(cwd);
+    if (!metadata && cwd && isDefinitelyOutsideGitRepository(cwd)) {
+        // Outside any repository git would only exit 128; nothing to cache
+        // either, since there is no git dir to key a persistent entry on.
+        return null;
+    }
+
     const ttlMs = getGitCacheTtlMs(context);
     const now = Date.now();
 
