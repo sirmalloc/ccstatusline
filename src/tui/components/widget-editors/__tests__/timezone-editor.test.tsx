@@ -9,11 +9,9 @@ import {
     vi
 } from 'vitest';
 
-import type { WidgetItem } from '../../../types/Widget';
-import {
-    TIMEZONE_EDITOR_ACTION,
-    UsageTimezoneEditor
-} from '../timezone-editor';
+import type { WidgetItem } from '../../../../types/Widget';
+import { TIMEZONE_EDITOR_ACTION } from '../../../../widgets/shared/timezone-editor';
+import { UsageTimezoneEditor } from '../UsageTimezoneEditor';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;

@@ -1,11 +1,10 @@
-import type React from 'react';
-
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     HideableState,
     Widget,
+    WidgetEditorDescriptor,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
@@ -189,7 +188,7 @@ export class BlockResetTimerWidget implements Widget {
         });
     }
 
-    renderEditor(props: WidgetEditorProps): React.ReactElement | null {
+    renderEditor(props: WidgetEditorProps): WidgetEditorDescriptor | null {
         if (props.action === LOCALE_EDITOR_ACTION) {
             return renderUsageLocaleEditor(props);
         }

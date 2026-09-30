@@ -8,26 +8,26 @@ import React, {
     useState
 } from 'react';
 
-import type { WidgetEditorProps } from '../../types/Widget';
-import { shouldInsertInput } from '../../utils/input-guards';
+import type { WidgetEditorProps } from '../../../types/Widget';
+import { shouldInsertInput } from '../../../utils/input-guards';
 import {
-    filterTimezoneOptions,
-    getTimezoneMatchSegments,
-    getTimezoneOptions,
-    type TimezoneOption
-} from '../../utils/timezones';
-
+    DEFAULT_RESET_LOCALE,
+    canonicalizeLocale,
+    filterLocaleOptions,
+    getLocaleMatchSegments,
+    getLocaleOptions,
+    type LocaleOption
+} from '../../../utils/locales';
+import { LOCALE_EDITOR_ACTION } from '../../../widgets/shared/locale-editor';
 import {
-    getUsageTimezone,
-    setUsageTimezone
-} from './usage-display';
-
-export const TIMEZONE_EDITOR_ACTION = 'edit-timezone';
+    getUsageLocale,
+    setUsageLocale
+} from '../../../widgets/shared/usage-display';
 
 const MAX_VISIBLE_OPTIONS = 10;
 
-function getInitialSelectedIndex(options: TimezoneOption[], currentTimezone: string | undefined): number {
-    const selectedValue = currentTimezone ?? 'UTC';
+function getInitialSelectedIndex(options: LocaleOption[], currentLocale: string | undefined): number {
+    const selectedValue = currentLocale ? canonicalizeLocale(currentLocale) : DEFAULT_RESET_LOCALE;
     const selectedIndex = options.findIndex(option => option.value === selectedValue);
     return selectedIndex === -1 ? 0 : selectedIndex;
 }
@@ -43,33 +43,29 @@ function getVisibleRange(selectedIndex: number, totalOptions: number): { start: 
     return { start, end: start + MAX_VISIBLE_OPTIONS };
 }
 
-export function renderUsageTimezoneEditor(props: WidgetEditorProps): React.ReactElement {
-    return <UsageTimezoneEditor {...props} />;
-}
-
-export const UsageTimezoneEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
-    const currentTimezone = getUsageTimezone(widget);
-    const options = useMemo(() => getTimezoneOptions(currentTimezone), [currentTimezone]);
+export const UsageLocaleEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
+    const currentLocale = getUsageLocale(widget);
+    const options = useMemo(() => getLocaleOptions(currentLocale), [currentLocale]);
     const [query, setQuery] = useState('');
-    const [selectedIndex, setSelectedIndex] = useState(() => getInitialSelectedIndex(options, currentTimezone));
+    const [selectedIndex, setSelectedIndex] = useState(() => getInitialSelectedIndex(options, currentLocale));
 
-    const filteredOptions = filterTimezoneOptions(options, query);
+    const filteredOptions = filterLocaleOptions(options, query);
     const clampedSelectedIndex = filteredOptions.length === 0
         ? 0
         : Math.min(selectedIndex, filteredOptions.length - 1);
     const selectedOption = filteredOptions[clampedSelectedIndex];
     const visibleRange = getVisibleRange(clampedSelectedIndex, filteredOptions.length);
     const visibleOptions = filteredOptions.slice(visibleRange.start, visibleRange.end);
-    const currentLabel = currentTimezone ?? 'UTC';
+    const currentLabel = currentLocale ?? DEFAULT_RESET_LOCALE;
 
     useInput((input, key) => {
-        if (action !== TIMEZONE_EDITOR_ACTION) {
+        if (action !== LOCALE_EDITOR_ACTION) {
             return;
         }
 
         if (key.return) {
             if (selectedOption) {
-                onComplete(setUsageTimezone(widget, selectedOption.value));
+                onComplete(setUsageLocale(widget, selectedOption.value));
             }
             return;
         }
@@ -106,14 +102,14 @@ export const UsageTimezoneEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
         }
     });
 
-    if (action !== TIMEZONE_EDITOR_ACTION) {
+    if (action !== LOCALE_EDITOR_ACTION) {
         return <Text>Unknown editor mode</Text>;
     }
 
     return (
         <Box flexDirection='column'>
             <Box>
-                <Text bold>Timezone</Text>
+                <Text bold>Locale</Text>
                 <Text dimColor>
                     {' '}
                     Current:
@@ -128,12 +124,12 @@ export const UsageTimezoneEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
             <Text dimColor>Type to search, Up/Down select, Enter save, ESC cancel</Text>
             <Box marginTop={1} flexDirection='column'>
                 {filteredOptions.length === 0 ? (
-                    <Text dimColor>No timezones match the search.</Text>
+                    <Text dimColor>No locales match the search.</Text>
                 ) : (
                     visibleOptions.map((option, visibleIndex) => {
                         const actualIndex = visibleRange.start + visibleIndex;
                         const isSelected = actualIndex === clampedSelectedIndex;
-                        const segments = getTimezoneMatchSegments(option.displayName, query);
+                        const segments = getLocaleMatchSegments(option.displayName, query);
 
                         return (
                             <Box key={option.value} flexDirection='row' flexWrap='nowrap'>

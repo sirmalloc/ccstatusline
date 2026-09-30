@@ -43,6 +43,7 @@ import {
     type WidgetPickerAction,
     type WidgetPickerState
 } from './items-editor/input-handlers';
+import { renderWidgetEditor } from './widget-editors';
 
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
@@ -352,12 +353,13 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
 
     // If custom editor is active, render it instead of the normal UI
     if (customEditorWidget?.impl.renderEditor) {
-        return customEditorWidget.impl.renderEditor({
+        const editor = customEditorWidget.impl.renderEditor({
             widget: customEditorWidget.widget,
             onComplete: handleEditorComplete,
             onCancel: handleEditorCancel,
             action: customEditorWidget.action
         });
+        return editor ? renderWidgetEditor(editor) : null;
     }
 
     if (showClearConfirm) {

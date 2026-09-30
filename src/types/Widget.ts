@@ -53,7 +53,11 @@ export interface Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null;
     getCustomKeybinds?(item?: WidgetItem): CustomKeybind[];
     getHideableStates?(): HideableState[];
-    renderEditor?(props: WidgetEditorProps): React.ReactElement | null;
+    // Names the TUI editor to open for props.action (null: none). Widgets
+    // return a plain descriptor rather than a React element so the status line
+    // render path never loads ink/React; the TUI maps it to a component in
+    // tui/components/widget-editors.
+    renderEditor?(props: WidgetEditorProps): WidgetEditorDescriptor | null;
     supportsRawValue(): boolean;
     supportsColors(item: WidgetItem): boolean;
     // Whether the widget renders a number whose precision can be overridden.
@@ -77,6 +81,32 @@ export interface WidgetEditorProps {
     onCancel: () => void;
     action?: string;
 }
+
+// One editable symbol of a widget. id 'character' stores on the item's
+// character field (the pre-existing override convention); any other id is a
+// metadata key, which is how widgets with several symbols keep them apart.
+export interface SymbolSlot {
+    id: string;
+    label: string;
+    defaultSymbol: string;
+}
+
+// TUI editors that take only the standard editor props
+export type BasicWidgetEditorKind
+    = | 'current-working-dir'
+        | 'custom-command'
+        | 'custom-symbol'
+        | 'custom-text'
+        | 'link'
+        | 'max-width'
+        | 'skills'
+        | 'speed-window'
+        | 'usage-locale'
+        | 'usage-timezone';
+
+export type WidgetEditorDescriptor
+    = | { kind: BasicWidgetEditorKind; props: WidgetEditorProps }
+        | { kind: 'symbol-slots'; props: WidgetEditorProps; slots: SymbolSlot[] };
 
 export interface CustomKeybind {
     key: string;

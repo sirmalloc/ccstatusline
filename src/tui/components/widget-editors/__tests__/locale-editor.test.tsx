@@ -9,12 +9,10 @@ import {
     vi
 } from 'vitest';
 
-import type { WidgetItem } from '../../../types/Widget';
-import { canonicalizeLocale } from '../../../utils/locales';
-import {
-    LOCALE_EDITOR_ACTION,
-    UsageLocaleEditor
-} from '../locale-editor';
+import type { WidgetItem } from '../../../../types/Widget';
+import { canonicalizeLocale } from '../../../../utils/locales';
+import { LOCALE_EDITOR_ACTION } from '../../../../widgets/shared/locale-editor';
+import { UsageLocaleEditor } from '../UsageLocaleEditor';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
