@@ -5,6 +5,10 @@ on:
   pull_request:
     branches: [main]
 
+# CI only reads the repo; don't rely on the repository's default token permissions.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint & Type Check
