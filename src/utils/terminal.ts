@@ -92,8 +92,8 @@ function probeTerminalWidth(): number | null {
 }
 
 function parsePositiveInteger(value: string): number | null {
-    const parsed = parseInt(value, 10);
-    if (isNaN(parsed) || parsed <= 0) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
         return null;
     }
 

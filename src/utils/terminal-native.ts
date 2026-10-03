@@ -46,8 +46,8 @@ export function parsePpidFromStat(stat: string): number | null {
 
     // After "(comm)" the remaining fields are: state, ppid, ...
     const fields = stat.slice(commEnd + 1).trim().split(/\s+/);
-    const ppid = parseInt(fields[1] ?? '', 10);
-    if (isNaN(ppid) || ppid <= 0) {
+    const ppid = Number.parseInt(fields[1] ?? '', 10);
+    if (Number.isNaN(ppid) || ppid <= 0) {
         return null;
     }
 
