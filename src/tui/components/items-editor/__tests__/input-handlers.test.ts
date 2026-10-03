@@ -1089,4 +1089,57 @@ describe('items-editor input handlers', () => {
             expect(onUpdate).not.toHaveBeenCalled();
         });
     });
+
+    describe('modifier combos', () => {
+        function pressInNormalMode(input: string, key: Record<string, boolean>, widgets: WidgetItem[]) {
+            const onUpdate = vi.fn();
+            const openWidgetPicker = vi.fn();
+            const setShowClearConfirm = vi.fn();
+
+            handleNormalInputMode({
+                input,
+                key,
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm,
+                openWidgetPicker,
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn()
+            });
+
+            return { onUpdate, openWidgetPicker, setShowClearConfirm };
+        }
+
+        const commandWidget: WidgetItem = { id: '2', type: 'custom-command', commandPath: 'date' };
+        const widgets: WidgetItem[] = [{ id: '1', type: 'model' }, commandWidget];
+
+        it.each([
+            ['ctrl', { ctrl: true }],
+            ['alt', { meta: true }]
+        ])('ignores letter shortcuts while %s is held', (_name, key) => {
+            for (const letter of ['a', 'i', 'd', 'k', 'c', 'r', 'm']) {
+                const { onUpdate, openWidgetPicker, setShowClearConfirm } = pressInNormalMode(letter, key, widgets);
+                expect(onUpdate).not.toHaveBeenCalled();
+                expect(openWidgetPicker).not.toHaveBeenCalled();
+                expect(setShowClearConfirm).not.toHaveBeenCalled();
+            }
+        });
+
+        it('still runs the shortcut for the bare letter', () => {
+            expect(pressInNormalMode('d', {}, widgets).onUpdate).toHaveBeenCalledWith([{ id: '2', type: 'custom-command', commandPath: 'date' }]);
+        });
+
+        it('ignores widget keybinds while alt is held, not just ctrl', () => {
+            const commandFirst = [commandWidget];
+
+            expect(pressInNormalMode('p', { meta: true }, commandFirst).onUpdate).not.toHaveBeenCalled();
+            expect(pressInNormalMode('p', {}, commandFirst).onUpdate)
+                .toHaveBeenCalledWith([{ id: '2', type: 'custom-command', commandPath: 'date', preserveColors: true }]);
+        });
+    });
 });
