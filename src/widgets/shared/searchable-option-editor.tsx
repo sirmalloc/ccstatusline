@@ -45,6 +45,15 @@ function getVisibleRange(selectedIndex: number, totalOptions: number): { start: 
     return { start, end: start + MAX_VISIBLE_OPTIONS };
 }
 
+// The selected row is all green; other rows highlight the letters that match
+function getSegmentColor(isSelected: boolean, matched: boolean): string | undefined {
+    if (isSelected) {
+        return 'green';
+    }
+
+    return matched ? 'yellowBright' : undefined;
+}
+
 // The list behind the reset timers' locale and timezone editors: type to
 // search, Up/Down to select, Enter to save, ESC to cancel. Each editor
 // supplies its options, how to search them, and its labels.
@@ -58,7 +67,7 @@ export function SearchableOptionEditor<T extends SearchableOption>({
     emptyMessage,
     onSelect,
     onCancel
-}: SearchableOptionEditorProps<T>): React.ReactElement {
+}: Readonly<SearchableOptionEditorProps<T>>): React.ReactElement {
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(() => getInitialSelectedIndex(options, initialValue));
 
@@ -145,7 +154,7 @@ export function SearchableOptionEditor<T extends SearchableOption>({
                                 {segments.map((segment, index) => (
                                     <Text
                                         key={index}
-                                        color={isSelected ? 'green' : (segment.matched ? 'yellowBright' : undefined)}
+                                        color={getSegmentColor(isSelected, segment.matched)}
                                         bold={isSelected ? true : segment.matched}
                                     >
                                         {segment.text}
