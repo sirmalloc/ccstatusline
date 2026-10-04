@@ -65,6 +65,36 @@ function flushInk() {
     });
 }
 
+// Lets work React has already queued run first. Its scheduler runs on
+// setImmediate, and it attaches input listeners in an effect just after
+// drawing a frame, so a key sent as soon as the frame shows could be lost.
+async function letReactCatchUp() {
+    for (let turn = 0; turn < 2; turn++) {
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+    }
+}
+
+// Retries the assertions until they pass; a fixed delay races Ink on a busy machine
+async function waitFor(assertions: () => void, timeoutMs = 3000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+        });
+        try {
+            assertions();
+            await letReactCatchUp();
+            return;
+        } catch (error) {
+            if (Date.now() >= deadline) {
+                throw error;
+            }
+        }
+    }
+}
+
 function StatefulItemsEditor({ initialWidgets }: { initialWidgets: WidgetItem[] }) {
     const [widgets, setWidgets] = useState(initialWidgets);
 
@@ -493,12 +523,14 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toMatch(/▶\s+2\. Tokens Input/);
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toMatch(/▶\s+2\. Tokens Input/);
+            });
 
             stdin.write('\x1b[B');
-            await flushInk();
-            expect(onSelectedIndexChange).toHaveBeenLastCalledWith(2);
+            await waitFor(() => {
+                expect(onSelectedIndexChange).toHaveBeenLastCalledWith(2);
+            });
         } finally {
             instance.unmount();
             instance.cleanup();
