@@ -55,9 +55,36 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
-function flushInk() {
+// Lets work React has already queued run first. Its scheduler runs on
+// setImmediate, and it attaches input listeners in an effect just after
+// drawing a frame, so a key sent as soon as the frame shows could be lost.
+async function letReactCatchUp() {
+    for (let turn = 0; turn < 2; turn++) {
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+    }
+}
+
+// Polls until the condition holds; a fixed delay races Ink on a busy machine
+async function waitUntil(condition: () => boolean, timeoutMs = 3000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    do {
+        await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+        });
+        if (condition()) {
+            await letReactCatchUp();
+            return true;
+        }
+    } while (Date.now() < deadline);
+    return false;
+}
+
+// Long enough for a key to be handled, for checks that it did nothing
+function settle() {
     return new Promise((resolve) => {
-        setTimeout(resolve, 25);
+        setTimeout(resolve, 150);
     });
 }
 
@@ -151,20 +178,31 @@ const cases: ShortcutCase[] = [
     }
 ];
 
-async function pressShortcut(testCase: ShortcutCase, keys: string): Promise<boolean> {
+async function pressShortcut(testCase: ShortcutCase, keys: string, expectFired: boolean): Promise<boolean> {
     const stdin = new MockTtyStream() as unknown as NodeJS.ReadStream;
     const stdout = createMockStdout();
     const stderr = createMockStdout();
     const spy = vi.fn();
     const instance = render(testCase.element(spy), { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false });
 
+    const fired = () => testCase.fired(spy, stripAnsi(stdout.getOutput()));
+
     try {
-        await flushInk();
-        for (const input of [keys, ...(testCase.then ?? [])]) {
+        await waitUntil(() => stdout.getOutput().length > 0);
+        const inputs = [keys, ...(testCase.then ?? [])];
+        for (const [index, input] of inputs.entries()) {
+            const drawn = stdout.getOutput().length;
             stdin.write(input);
-            await flushInk();
+            // A follow-up key needs the previous key's redraw, or it acts on stale state
+            if (index < inputs.length - 1) {
+                await waitUntil(() => stdout.getOutput().length > drawn);
+            }
         }
-        return testCase.fired(spy, stripAnsi(stdout.getOutput()));
+        if (expectFired) {
+            return await waitUntil(fired);
+        }
+        await settle();
+        return fired();
     } finally {
         instance.unmount();
         instance.cleanup();
@@ -177,12 +215,12 @@ async function pressShortcut(testCase: ShortcutCase, keys: string): Promise<bool
 describe('letter shortcuts ignore ctrl and alt combos', () => {
     describe.each(cases)('$name', (testCase) => {
         it('fires on the bare key', async () => {
-            expect(await pressShortcut(testCase, testCase.shortcut)).toBe(true);
+            expect(await pressShortcut(testCase, testCase.shortcut, true)).toBe(true);
         });
 
         it.each(Object.keys(MODIFIED))('does nothing with %s held', async (modifier) => {
             const toBytes = MODIFIED[modifier] ?? ((key: string) => key);
-            expect(await pressShortcut(testCase, toBytes(testCase.shortcut))).toBe(false);
+            expect(await pressShortcut(testCase, toBytes(testCase.shortcut), false)).toBe(false);
         });
     });
 });
