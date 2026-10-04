@@ -251,10 +251,12 @@ export class CompactionCounterWidget implements Widget {
             return keybinds;
         }
 
-        keybinds.push(...getFormatKeybinds(item, FORMAT_OPTIONS));
-        keybinds.push({ key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION });
-        keybinds.push({ key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION });
-        keybinds.push(getSymbolKeybind());
+        keybinds.push(
+            ...getFormatKeybinds(item, FORMAT_OPTIONS),
+            { key: 's', label: '(s)plit by trigger', action: TOGGLE_TRIGGERS_ACTION },
+            { key: 't', label: '(t)okens reclaimed', action: TOGGLE_RECLAIMED_ACTION },
+            getSymbolKeybind()
+        );
 
         return keybinds;
     }
