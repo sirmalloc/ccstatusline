@@ -7,6 +7,7 @@ import {
     useInput
 } from 'ink';
 import Gradient from 'ink-gradient';
+import * as path from 'path';
 import React, {
     useCallback,
     useEffect,
@@ -40,11 +41,17 @@ import {
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
+    normalizeUserPath,
     saveInstallationMetadata,
     saveSettings,
     validateImportFile,
     type ImportValidationResult
 } from '../utils/config';
+import {
+    DEFAULT_EXPORT_FILE_NAME,
+    getExportConfirmMessage,
+    getExportTargetStatus
+} from '../utils/export-target';
 import {
     inspectGlobalCommandResolution,
     isPathInsideDir
@@ -483,6 +490,10 @@ export const App: React.FC = () => {
     const [commandAvailability] = useState(() => getPackageCommandAvailability());
     const [updateCheckerState, setUpdateCheckerState] = useState<UpdateCheckerState>({ status: 'checking' });
     const [flowNotice, setFlowNotice] = useState<FlowNoticeState | null>(null);
+    const [exportDraft, setExportDraft] = useState<{ dir: string | undefined; fileName: string }>({
+        dir: undefined,
+        fileName: DEFAULT_EXPORT_FILE_NAME
+    });
     const [globalPackageInstallations, setGlobalPackageInstallations] = useState<GlobalPackageInstallation[]>([]);
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
@@ -783,23 +794,79 @@ export const App: React.FC = () => {
     }, [getGlobalResolutionWarning]);
 
     const handleExportConfig = useCallback(async (filePath: string) => {
-        try {
-            if (!settings) {
-                return;
-            }
-            await exportConfig(settings, filePath);
-            setFlashMessage({ text: `Config exported to ${filePath}`, color: 'green' });
-        } catch (err) {
-            setFlowNotice({
-                title: 'Export Failed',
-                message: err instanceof Error ? err.message : String(err),
-                color: 'red',
-                continueScreen: 'main'
-            });
-            setScreen('flowNotice');
+        if (!settings) {
             return;
         }
-        setScreen('main');
+
+        const target = normalizeUserPath(filePath);
+        const status = getExportTargetStatus(target);
+
+        // Remember folder and name so a declined confirm (or an error) returns to the same dialog state.
+        // A missing folder is not remembered: the picker cannot start in a folder that does not exist.
+        const knownDir = status === 'ok' || status === 'exists' || status === 'is-directory' || status === 'not-regular';
+        setExportDraft(prev => ({
+            dir: knownDir ? path.dirname(target) : prev.dir,
+            fileName: path.basename(target)
+        }));
+
+        const failToDialog = (message: string) => {
+            setFlowNotice({
+                title: 'Export Failed',
+                message,
+                color: 'red',
+                continueScreen: 'exportConfig'
+            });
+            setScreen('flowNotice');
+        };
+
+        const runExport = async (createDir: boolean, overwrite: boolean) => {
+            try {
+                await exportConfig(settings, target, { createDir, overwrite });
+            } catch (err) {
+                setConfirmDialog(null);
+                const code = (err as NodeJS.ErrnoException | undefined)?.code;
+                failToDialog(code === 'EEXIST'
+                    ? `${target} was created by something else just now. Export again to overwrite it.`
+                    : err instanceof Error ? err.message : String(err));
+                return;
+            }
+            setConfirmDialog(null);
+            setFlashMessage({ text: `Config exported to ${target}`, color: 'green' });
+            setScreen('main');
+        };
+
+        switch (status) {
+            case 'ok':
+                await runExport(false, false);
+                return;
+            case 'is-directory':
+                failToDialog(`${target} is a folder. Choose a file name.`);
+                return;
+            case 'parent-not-directory':
+                failToDialog(`${path.dirname(target)} is not a folder.`);
+                return;
+            case 'not-regular':
+                failToDialog(`${target} is not a regular file (symlink, device or pipe). Choose another name.`);
+                return;
+            case 'exists':
+            case 'missing-dir': {
+                // ConfirmDialog stays mounted until the awaited write finishes; ignore a second Yes.
+                let started = false;
+                setConfirmDialog({
+                    message: getExportConfirmMessage(status, target),
+                    cancelScreen: 'exportConfig',
+                    action: async () => {
+                        if (started) {
+                            return;
+                        }
+                        started = true;
+                        await runExport(status === 'missing-dir', status === 'exists');
+                    }
+                });
+                setScreen('confirm');
+                return;
+            }
+        }
     }, [settings]);
 
     const handleImportFileChosen = useCallback(async (filePath: string) => {
@@ -1451,6 +1518,8 @@ export const App: React.FC = () => {
 
                 {screen === 'exportConfig' && (
                     <ExportConfigDialog
+                        initialDir={exportDraft.dir}
+                        initialFileName={exportDraft.fileName}
                         onExport={(filePath) => { void handleExportConfig(filePath); }}
                         onCancel={() => { setScreen('main'); }}
                     />

@@ -258,15 +258,46 @@ function expandPath(filePath: string): string {
     return filePath;
 }
 
-export async function exportConfig(settings: Settings, filePath: string): Promise<void> {
-    const expanded = expandPath(filePath);
+const MATCHING_QUOTES_REGEX = /^(['"])(.*)\1$/su;
+
+/**
+ * Normalizes a user-typed or pasted file path (import or export): trims whitespace, strips one
+ * pair of surrounding quotes, expands `~`, and resolves relative paths.
+ * `~user/...` forms are not supported (resolved literally against `cwd`).
+ */
+export function normalizeUserPath(input: string, cwd: string = process.cwd()): string {
+    const trimmed = input.trim();
+    const unquoted = MATCHING_QUOTES_REGEX.exec(trimmed)?.[2] ?? trimmed;
+    return path.resolve(cwd, expandPath(unquoted.trim()));
+}
+
+export interface ExportConfigOptions {
+    /** Create the target folder (recursively) if it does not exist. Defaults to false. */
+    createDir?: boolean;
+    /** Replace an existing file. Defaults to false: the write fails with EEXIST instead. */
+    overwrite?: boolean;
+}
+
+export async function exportConfig(
+    settings: Settings,
+    filePath: string,
+    options: ExportConfigOptions = {}
+): Promise<void> {
+    const resolved = normalizeUserPath(filePath);
     const exportData = { ...settings, exportedBy: getPackageVersion() };
-    await mkdir(path.dirname(expanded), { recursive: true });
-    await writeFile(expanded, JSON.stringify(exportData, null, 2), 'utf-8');
+    if (options.createDir) {
+        await mkdir(path.dirname(resolved), { recursive: true });
+    }
+    // 'wx' (O_EXCL) closes the check-then-write race: a file (or dangling symlink) that appeared
+    // after the existence check is never clobbered without a confirmed overwrite.
+    await writeFile(resolved, JSON.stringify(exportData, null, 2), {
+        encoding: 'utf-8',
+        flag: options.overwrite ? 'w' : 'wx'
+    });
 }
 
 export async function validateImportFile(filePath: string): Promise<ImportValidationResult> {
-    const expanded = expandPath(filePath);
+    const expanded = normalizeUserPath(filePath);
     let raw: string;
     try {
         raw = await readFile(expanded, 'utf-8');
