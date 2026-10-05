@@ -95,6 +95,22 @@ describe('ExtraUsageUsedWidget', () => {
         expect(widget.supportsNumberFormat()).toBe(true);
     });
 
+    // Usage-based plans (Enterprise) have no plan limits, so extra usage is the
+    // account's whole spend rather than overage beyond a limit.
+    it('labels the amount as spend when the account has no plan limits', () => {
+        const widget = new ExtraUsageUsedWidget();
+        const usageData = {
+            extraUsageEnabled: true,
+            extraUsageUsed: 1250,
+            extraUsageCurrency: 'USD',
+            noPlanLimits: true
+        };
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, { usageData })).toBe('Spend Used: $12.50');
+        expect(render(widget, { id: 'extra', rawValue: true, type: 'extra-usage-used' }, { usageData })).toBe('$12.50');
+        expect(render(widget, { id: 'extra', type: 'extra-usage-used' }, { usageData: { extraUsageEnabled: false, noPlanLimits: true } })).toBe('Spend Used: n/a');
+    });
+
     it('declares the disabled and no-data hideable states', () => {
         const widget = new ExtraUsageUsedWidget();
 

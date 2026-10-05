@@ -455,6 +455,26 @@ describe('usage prefetch', () => {
         ]);
     });
 
+    it('keeps the API\'s no-plan-limits flag when merging with statusline data', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            extraUsageEnabled: true,
+            extraUsageLimit: 50000,
+            extraUsageUsed: 12345,
+            noPlanLimits: true
+        });
+
+        const lines = makeLines([{ id: '1', type: 'extra-usage-used' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {});
+
+        expect(usageData).toEqual({
+            extraUsageEnabled: true,
+            extraUsageLimit: 50000,
+            extraUsageUsed: 12345,
+            noPlanLimits: true
+        });
+    });
+
     it('preserves API errors when extra usage fields are missing', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
 

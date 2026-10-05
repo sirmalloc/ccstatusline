@@ -68,6 +68,26 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toBe('Overage: 2.6%');
     });
 
+    // Usage-based plans (Enterprise) have no plan limits, so extra usage is the
+    // account's whole spend rather than overage beyond a limit.
+    it('labels the percentage as spend when the account has no plan limits', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const usageData = {
+            extraUsageEnabled: true,
+            extraUsageUtilization: 25,
+            noPlanLimits: true
+        };
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData })).toBe('Spend: 25.0%');
+        expect(render(widget, {
+            id: 'extra',
+            metadata: { display: 'progress-short' },
+            type: 'extra-usage-utilization'
+        }, { usageData })).toBe('Spend: [████░░░░░░░░░░░░] 25.0%');
+        expect(render(widget, { id: 'extra', rawValue: true, type: 'extra-usage-utilization' }, { usageData })).toBe('25.0%');
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData: { extraUsageEnabled: false, noPlanLimits: true } })).toBe('Spend: n/a');
+    });
+
     it('declares the disabled and no-data hideable states alongside display keybinds', () => {
         const widget = new ExtraUsageUtilizationWidget();
         const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-utilization' };

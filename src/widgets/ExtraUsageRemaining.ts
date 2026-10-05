@@ -11,13 +11,14 @@ import { getUsageErrorMessage } from '../utils/usage';
 
 import { formatUsageCurrency } from './shared/currency';
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
+import { getExtraUsageLabel } from './shared/extra-usage-label';
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import { USAGE_NO_DATA_HIDEABLE_STATE } from './shared/usage-display';
 
 export class ExtraUsageRemainingWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows the remaining amount of your monthly extra usage limit'; }
+    getDescription(): string { return 'Shows what\'s left of your monthly extra usage limit (Pro/Max overage or Enterprise spend)'; }
     getDisplayName(): string { return 'Extra Usage Remaining'; }
     getCategory(): string { return 'Usage'; }
 
@@ -30,16 +31,17 @@ export class ExtraUsageRemainingWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        const label = `${getExtraUsageLabel(context.usageData)} Left: `;
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Overage Left: ', formatUsageCurrency(3894, undefined, format));
+            return formatRawOrLabeledValue(item, label, formatUsageCurrency(3894, undefined, format));
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
             return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
-                : formatRawOrLabeledValue(item, 'Overage Left: ', 'n/a');
+                : formatRawOrLabeledValue(item, label, 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageLimit === undefined || data.extraUsageUsed === undefined) {
             if (data.error) {
@@ -56,7 +58,7 @@ export class ExtraUsageRemainingWidget implements Widget {
         const remaining = Math.max(0, limitDollars - usedDollars);
         const formatted = formatUsageCurrency(remaining, data.extraUsageCurrency, format);
 
-        return formatRawOrLabeledValue(item, 'Overage Left: ', formatted);
+        return formatRawOrLabeledValue(item, label, formatted);
     }
 
     supportsRawValue(): boolean { return true; }
