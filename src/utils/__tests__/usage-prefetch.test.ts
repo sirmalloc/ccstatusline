@@ -589,6 +589,25 @@ describe('usage prefetch', () => {
         ]);
     });
 
+    it('fetches the extra usage state and monthly limit for the Extra Usage Limit widget', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            extraUsageEnabled: true,
+            extraUsageLimit: 50000
+        });
+
+        const lines = makeLines([{ id: '1', type: 'extra-usage-limit' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {});
+
+        expect(usageData).toEqual({
+            extraUsageEnabled: true,
+            extraUsageLimit: 50000
+        });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['extraUsageEnabled', 'extraUsageLimit'] }]
+        ]);
+    });
+
     it('fetches the extra usage state, limit and spend for the Daily Budget widget', async () => {
         mockFetchUsageData.mockResolvedValue({
             extraUsageEnabled: true,
