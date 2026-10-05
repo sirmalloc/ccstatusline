@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as tty from 'tty';
+import * as fs from 'node:fs';
+import * as tty from 'node:tty';
 
 const MAX_ANCESTOR_DEPTH = 8;
 const STDIO_FDS = [0, 1, 2] as const;
