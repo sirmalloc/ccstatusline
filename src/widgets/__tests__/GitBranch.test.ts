@@ -72,6 +72,12 @@ describe('GitBranchWidget', () => {
         expect(render({ isPreview: true, rawValue: true })).toBe('main');
     });
 
+    // A sample long enough for the limit to show, cut the way a real branch is
+    it('should apply the max width to the preview', () => {
+        expect(render({ isPreview: true, maxWidth: 12 })).toBe('⎇ feature...');
+        expect(render({ isPreview: true, rawValue: true, maxWidth: 12 })).toBe('feature/l...');
+    });
+
     it('should render branch name', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockReturnValueOnce('feature/worktree');

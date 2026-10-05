@@ -104,8 +104,10 @@ export class GitBranchWidget implements Widget {
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            const text = item.rawValue ? 'main' : `${prefix}main`;
-            return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
+            // With a width limit, a sample long enough for the limit to show
+            const sample = item.maxWidth ? 'feature/long-branch-name' : 'main';
+            const text = applyMaxWidth(item.rawValue ? sample : `${prefix}${sample}`, item.maxWidth);
+            return isLink ? renderOsc8Link(`https://github.com/owner/repo/tree/${sample}`, text) : text;
         }
 
         if (!isInsideGitWorkTree(context)) {
