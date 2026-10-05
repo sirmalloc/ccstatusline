@@ -134,6 +134,7 @@ Default to using Bun instead of Node.js:
   - Fix: Patches `build/parse-keypress.js` to correctly map `\x7f` to backspace
   - Applied automatically during `bun install` via `patchedDependencies` in package.json
   - Patch file: `patches/ink@6.2.0.patch`
+- **ink-file-picker@0.3.2**: Pinned exact version powering the Import Config file browser (`src/tui/components/ImportConfigDialog.tsx`). It consumes all printable keys for type-ahead filtering, so extra dialog shortcuts must use Ctrl combos.
 - **Build process**: Two-step build using `bun run build`
   1. `bun build`: Bundles src/ccstatusline.ts into dist/ccstatusline.js targeting Node.js 14+
   2. `postbuild`: Runs scripts/replace-version.ts to replace `__PACKAGE_VERSION__` placeholder with actual version from package.json

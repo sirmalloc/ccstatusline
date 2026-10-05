@@ -1,0 +1,65 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 13e77df..07ccd58 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -109,7 +109,10 @@ type FilePickerProps = {
+      * Custom theme overrides. Merged with the default theme.
+      * Allows customizing styles (colors, layout) and config (icons, separators).
+      */
+-    readonly theme?: Partial<FilePickerTheme>;
++    readonly theme?: {
++        readonly styles?: Partial<FilePickerThemeStyles>;
++        readonly config?: Partial<FilePickerTheme['config']>;
++    };
+ };
+ type FilePickerThemeStyles = {
+     container: () => BoxProps;
+@@ -147,6 +150,7 @@ type FilePickerTheme = {
+         separatorChar: string;
+         directoryTrail: string;
+         symlinkIndicator: string;
++        focusIndicator?: string;
+     };
+ };
+ type FilePickerMode = 'loading' | 'browsing' | 'filtering' | 'error';
+diff --git a/dist/index.js b/dist/index.js
+index 3d7ede4..f29d299 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -750,7 +750,7 @@ function FilePickerEntry({
+       "aria-role": "listitem",
+       "aria-state": { selected: isSelected || isFocused },
+       children: [
+-        isFocused ? /* @__PURE__ */ jsx(Text, { ...styles.focusIndicator(), "aria-hidden": true, children: ">" }) : /* @__PURE__ */ jsx(Text, { "aria-hidden": true, children: " " }),
++        isFocused ? /* @__PURE__ */ jsx(Text, { ...styles.focusIndicator(), "aria-hidden": true, children: config.focusIndicator ?? ">" }) : /* @__PURE__ */ jsx(Text, { "aria-hidden": true, children: " " }),
+         multiSelect && /* @__PURE__ */ jsx(Box, { "aria-role": "checkbox", "aria-state": { checked: isSelected }, children: /* @__PURE__ */ jsx(Text, { ...styles.selectedIndicator(), "aria-hidden": true, children: isSelected ? "[x]" : "[ ]" }) }),
+         /* @__PURE__ */ jsx(Text, { ...styles.entryIcon({ kind: entry.kind }), "aria-hidden": true, children: icon }),
+         /* @__PURE__ */ jsx(
+@@ -805,8 +805,7 @@ function FilePickerHeader({
+   return /* @__PURE__ */ jsxs2(Box2, { ...styles.header(), children: [
+     /* @__PURE__ */ jsxs2(Text2, { ...styles.headerPath(), "aria-label": `Current directory: ${currentPath}`, children: [
+       /* @__PURE__ */ jsxs2(Text2, { "aria-hidden": true, children: [
+-        config.directoryIcon,
+-        " "
++        "Folder: "
+       ] }),
+       truncatePath(currentPath, 50)
+     ] }),
+@@ -831,7 +830,7 @@ function FilePickerFooter({
+   const hints = [];
+   if (mode === "filtering") {
+     hints.push({ key: "Esc", action: "clear filter" });
+-    hints.push({ key: "Enter", action: "open" });
++    hints.push({ key: "Enter", action: "open/select" });
+   } else if (mode === "error") {
+     hints.push({ key: "r", action: "retry" });
+     hints.push({ key: "Esc", action: "go back" });
+@@ -1042,7 +1041,7 @@ function FilePicker(props) {
+         styles
+       }
+     ),
+-    (state.mode === "browsing" || state.mode === "filtering") && /* @__PURE__ */ jsx5(Box5, { "aria-role": "list", children: state.filteredEntries.length === 0 ? /* @__PURE__ */ jsx5(Box5, { "aria-role": "listitem", children: /* @__PURE__ */ jsx5(Text5, { ...styles.emptyDirectory(), children: state.filterText ? "No matches" : "Empty directory" }) }) : /* @__PURE__ */ jsxs5(Fragment, { children: [
++    (state.mode === "browsing" || state.mode === "filtering") && /* @__PURE__ */ jsx5(Box5, { "aria-role": "list", flexDirection: "column", children: state.filteredEntries.length === 0 ? /* @__PURE__ */ jsx5(Box5, { "aria-role": "listitem", children: /* @__PURE__ */ jsx5(Text5, { ...styles.emptyDirectory(), children: state.filterText ? "No matches" : "Empty directory" }) }) : /* @__PURE__ */ jsxs5(Fragment, { children: [
+       state.visibleFromIndex > 0 && /* @__PURE__ */ jsxs5(Text5, { dimColor: true, "aria-hidden": true, children: [
+         "  ",
+         state.visibleFromIndex,

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import path from 'path';
 import {
     afterAll,
@@ -25,8 +26,9 @@ const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;
 let saveSettings: (settings: Settings) => Promise<void>;
-let exportConfig: (settings: Settings, filePath: string) => Promise<void>;
+let exportConfig: (settings: Settings, filePath: string, options?: { createDir?: boolean; overwrite?: boolean }) => Promise<void>;
 let validateImportFile: (filePath: string) => Promise<ImportValidationResult>;
+let normalizeUserPath: (input: string, cwd?: string) => string;
 let applyImport: (
     current: Settings,
     imported: Settings,
@@ -58,6 +60,7 @@ describe('config utilities', () => {
         saveSettings = configModule.saveSettings;
         exportConfig = configModule.exportConfig;
         validateImportFile = configModule.validateImportFile;
+        normalizeUserPath = configModule.normalizeUserPath;
         applyImport = configModule.applyImport;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
@@ -128,6 +131,44 @@ describe('config utilities', () => {
         };
         expect(exported.globalBold).toBe(true);
         expect(exported.exportedBy).toBeTruthy();
+    });
+
+    it('does not create a missing export folder by default', async () => {
+        const { configDir } = getSettingsPaths();
+        const exportPath = path.join(configDir, 'missing-folder', 'export.json');
+
+        await expect(exportConfig(DEFAULT_SETTINGS, exportPath)).rejects.toThrow(/ENOENT/);
+        expect(fs.existsSync(path.dirname(exportPath))).toBe(false);
+    });
+
+    it('refuses to overwrite an existing export file unless overwrite is set', async () => {
+        const { configDir } = getSettingsPaths();
+        const exportPath = path.join(configDir, 'keep.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(exportPath, 'old');
+
+        await expect(exportConfig(DEFAULT_SETTINGS, exportPath)).rejects.toThrow(/EEXIST/);
+        expect(fs.readFileSync(exportPath, 'utf-8')).toBe('old');
+    });
+
+    it('creates the export folder when createDir is true', async () => {
+        const { configDir } = getSettingsPaths();
+        const exportPath = path.join(configDir, 'made-folder', 'export.json');
+
+        await exportConfig(DEFAULT_SETTINGS, exportPath, { createDir: true });
+
+        expect(fs.existsSync(exportPath)).toBe(true);
+    });
+
+    it('overwrites an existing export file', async () => {
+        const { configDir } = getSettingsPaths();
+        const exportPath = path.join(configDir, 'overwrite.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(exportPath, 'old');
+
+        await exportConfig({ ...DEFAULT_SETTINGS, globalBold: true }, exportPath, { overwrite: true });
+
+        expect((JSON.parse(fs.readFileSync(exportPath, 'utf-8')) as { globalBold?: boolean }).globalBold).toBe(true);
     });
 
     it('preserves current settings omitted from a merge import', async () => {
@@ -517,5 +558,47 @@ describe('config utilities', () => {
 
         const onDiskAfterSave = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { lines: { type: string }[][] };
         expect(onDiskAfterSave.lines[0]?.[1]?.type).toBe('git-review');
+    });
+
+    describe('normalizeUserPath', () => {
+        it('trims whitespace and strips matching quotes', () => {
+            expect(normalizeUserPath('  "/tmp/a b.json"  ', '/x')).toBe('/tmp/a b.json');
+            expect(normalizeUserPath('\'/tmp/c.json\'', '/x')).toBe('/tmp/c.json');
+        });
+
+        it('does not strip mismatched quotes', () => {
+            expect(normalizeUserPath('"/tmp/d.json\'', '/x')).toBe(path.resolve('/x', '"/tmp/d.json\''));
+        });
+
+        it('expands ~ to the home directory', () => {
+            expect(normalizeUserPath('~/cfg.json', '/x')).toBe(path.join(os.homedir(), 'cfg.json'));
+        });
+
+        it('resolves relative paths against cwd', () => {
+            expect(normalizeUserPath('sub/cfg.json', '/base')).toBe(path.resolve('/base', 'sub/cfg.json'));
+        });
+
+        it('expands a bare ~ to the home directory', () => {
+            expect(normalizeUserPath('~', '/x')).toBe(os.homedir());
+        });
+
+        it('resolves .. segments', () => {
+            expect(normalizeUserPath('../cfg.json', '/base/sub')).toBe(path.resolve('/base', 'cfg.json'));
+        });
+    });
+
+    it('validates import file with quoted path and trailing space', async () => {
+        const { configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const importPath = path.join(configDir, 'import.json');
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []] }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(`"${importPath}" `);
+
+        expect(validation.status).toBe('valid');
     });
 });
