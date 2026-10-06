@@ -170,6 +170,32 @@ describe('CurrentWorkingDirWidget', () => {
         });
     });
 
+    describe('fishStyle', () => {
+        it('should replace home directory with ~ and abbreviate middle segments', () => {
+            const item = createItem({ fishStyle: 'true' }, true);
+            const result = widget.render(
+                item,
+                createContext(`${defaultHomeDir}/Documents/Projects/app`),
+                defaultSettings
+            );
+
+            expect(result).toBe('~/D/P/app');
+        });
+
+        it('should not abbreviate non-home sibling paths with shared prefix', () => {
+            mockHomedir.mockReturnValue('/Users/al');
+
+            const item = createItem({ fishStyle: 'true' }, true);
+            const result = widget.render(
+                item,
+                createContext('/Users/alex/project'),
+                defaultSettings
+            );
+
+            expect(result).toBe('/Users/a/project');
+        });
+    });
+
     describe('getEditorDisplay', () => {
         it('should show ~ modifier when abbreviateHome is enabled', () => {
             const item = createItem({ abbreviateHome: 'true' });

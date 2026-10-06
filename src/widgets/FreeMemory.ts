@@ -1,5 +1,5 @@
-import { execSync } from 'child_process';
-import os from 'os';
+import { execSync } from 'node:child_process';
+import os from 'node:os';
 
 import type { NumberFormat } from '../types/NumberFormat';
 import type { RenderContext } from '../types/RenderContext';
@@ -47,7 +47,7 @@ function getUsedMemoryMacOS(): number | null {
         const pageSizeString = pageSizeMatch?.[1];
         if (!pageSizeString)
             return null;
-        const pageSize = parseInt(pageSizeString, 10);
+        const pageSize = Number.parseInt(pageSizeString, 10);
 
         // Parse page counts
         let activePages = 0;
@@ -57,11 +57,11 @@ function getUsedMemoryMacOS(): number | null {
             const activeMatch = /Pages active:\s+(\d+)/.exec(line);
             const activeValue = activeMatch?.[1];
             if (activeValue)
-                activePages = parseInt(activeValue, 10);
+                activePages = Number.parseInt(activeValue, 10);
             const wiredMatch = /Pages wired down:\s+(\d+)/.exec(line);
             const wiredValue = wiredMatch?.[1];
             if (wiredValue)
-                wiredPages = parseInt(wiredValue, 10);
+                wiredPages = Number.parseInt(wiredValue, 10);
         }
 
         return (activePages + wiredPages) * pageSize;
