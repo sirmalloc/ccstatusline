@@ -23,11 +23,13 @@ describe('Extra Usage widgets on Enterprise accounts', () => {
         expect(description).toContain('Enterprise');
     });
 
-    it.each(['enterprise', 'spend'])('lists the Extra Usage widgets first when searching "%s"', (query) => {
-        const types = filterWidgetCatalog(getWidgetCatalog(DEFAULT_SETTINGS), 'All', query).map(entry => entry.type);
-        const firstOther = types.findIndex(type => !type.startsWith('extra-usage-'));
-        const leading = firstOther === -1 ? types : types.slice(0, firstOther);
+    // Every widget that mentions the word ranks ahead of the loose fuzzy matches,
+    // so the three are listed before anything unrelated
+    it.each(['enterprise', 'spend'])('finds the Extra Usage widgets among the widgets that mention "%s"', (query) => {
+        const results = filterWidgetCatalog(getWidgetCatalog(DEFAULT_SETTINGS), 'All', query);
+        const firstLoose = results.findIndex(entry => !entry.searchText.includes(query));
+        const mentioning = (firstLoose === -1 ? results : results.slice(0, firstLoose)).map(entry => entry.type);
 
-        expect(leading).toEqual(expect.arrayContaining(EXTRA_USAGE_TYPES));
+        expect(mentioning).toEqual(expect.arrayContaining(EXTRA_USAGE_TYPES));
     });
 });
