@@ -1,8 +1,12 @@
-import { EventEmitter } from 'events';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import { EventEmitter } from 'node:events';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import type { ClaudeIncidentWindow } from '../claude-service-status';
@@ -11,6 +15,7 @@ import {
     INCIDENT_HISTORY_BUCKET_MS,
     __testing,
     computeIncidentHistoryBuckets,
+    getClaudeStatusFgCode,
     hasClaudeStatusWidgets,
     isClaudeStatusHistoryEnabled,
     parseClaudeIncidentsResponse,
@@ -21,6 +26,24 @@ type StatusPageRequestFn = NonNullable<Parameters<typeof __testing.fetchStatusPa
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW = Date.parse('2026-08-15T12:00:00Z');
+
+// Tests set HTTPS_PROXY themselves; the environment running the suite must not leak in.
+function isolateHttpsProxyEnv(): void {
+    let original: string | undefined;
+
+    beforeEach(() => {
+        original = process.env.HTTPS_PROXY;
+        delete process.env.HTTPS_PROXY;
+    });
+
+    afterEach(() => {
+        if (original === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = original;
+        }
+    });
+}
 
 function incident(impact: ClaudeIncidentWindow['impact'], startHoursAgo: number, endHoursAgo: number | null): ClaudeIncidentWindow {
     return {
@@ -149,21 +172,47 @@ describe('parseClaudeIncidentsResponse', () => {
 });
 
 describe('status page response handling', () => {
-    function responseFailureRequest(event: 'aborted' | 'error'): StatusPageRequestFn {
-        return (_options, onResponse) => {
-            const response = Object.assign(new EventEmitter(), {
-                statusCode: 200,
-                setEncoding: () => undefined
-            });
+    isolateHttpsProxyEnv();
+
+    // Streams the chunks as the response body, then ends it or fails it mid-stream.
+    function respondingRequest(
+        statusCode: number,
+        chunks: string[],
+        finalEvent: 'end' | 'aborted' | 'error' = 'end'
+    ): StatusPageRequestFn {
+        return (_options, onResponse) => Object.assign(new EventEmitter(), {
+            destroy: () => undefined,
+            end() {
+                const response = Object.assign(new EventEmitter(), {
+                    statusCode,
+                    setEncoding: () => undefined
+                });
+                onResponse(response);
+                for (const chunk of chunks) {
+                    response.emit('data', chunk);
+                }
+                if (finalEvent === 'error') {
+                    response.emit('error', new Error('response stream failed'));
+                } else {
+                    response.emit(finalEvent);
+                }
+            }
+        });
+    }
+
+    function failingRequest(event: 'error' | 'timeout', onDestroy: () => void = () => undefined): StatusPageRequestFn {
+        return () => {
             const request = Object.assign(new EventEmitter(), {
-                destroy: () => undefined,
+                destroy() {
+                    onDestroy();
+                    // A real ClientRequest destroyed before any response reports a socket error.
+                    request.emit('error', new Error('socket hang up'));
+                },
                 end() {
-                    onResponse(response);
-                    response.emit('data', 'partial response');
                     if (event === 'error') {
-                        response.emit('error', new Error('response stream failed'));
+                        request.emit('error', new Error('connect ECONNREFUSED'));
                     } else {
-                        response.emit('aborted');
+                        request.emit('timeout');
                     }
                 }
             });
@@ -174,11 +223,83 @@ describe('status page response handling', () => {
 
     it.each(['aborted', 'error'] as const)('settles with null when the response emits %s', async (event) => {
         const result = await Promise.race([
-            __testing.fetchStatusPagePath('/test', responseFailureRequest(event)),
+            __testing.fetchStatusPagePath('/test', respondingRequest(200, ['partial response'], event)),
             new Promise<'timeout'>(resolve => setTimeout(() => { resolve('timeout'); }, 100))
         ]);
 
         expect(result).toBeNull();
+    });
+
+    it('returns the full body of a 200 response delivered in several chunks', async () => {
+        const result = await __testing.fetchStatusPagePath('/test', respondingRequest(200, ['{"status":', '{"indicator":', '"minor"}}']));
+
+        expect(result).toBe('{"status":{"indicator":"minor"}}');
+    });
+
+    it.each([
+        ['a non-200 status', 503, ['<html>Service Unavailable</html>']],
+        ['an empty 200 body', 200, []]
+    ])('settles with null for %s', async (_label, statusCode, chunks) => {
+        await expect(__testing.fetchStatusPagePath('/test', respondingRequest(statusCode, chunks))).resolves.toBeNull();
+    });
+
+    it('settles with null when the request fails before any response', async () => {
+        await expect(__testing.fetchStatusPagePath('/test', failingRequest('error'))).resolves.toBeNull();
+    });
+
+    it('destroys a timed-out request and settles with null', async () => {
+        const destroy = vi.fn();
+
+        await expect(__testing.fetchStatusPagePath('/test', failingRequest('timeout', destroy))).resolves.toBeNull();
+        expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a GET for the path to status.claude.com with a 5 second timeout and no proxy agent by default', async () => {
+        const requestFn = vi.fn(respondingRequest(200, ['{}']));
+
+        await __testing.fetchStatusPagePath('/api/v2/status.json', requestFn);
+
+        expect(requestFn).toHaveBeenCalledTimes(1);
+        expect(requestFn.mock.calls[0]?.[0]).toEqual({
+            hostname: 'status.claude.com',
+            path: '/api/v2/status.json',
+            method: 'GET',
+            timeout: 5000
+        });
+    });
+
+    it('tunnels through the proxy named by HTTPS_PROXY', async () => {
+        process.env.HTTPS_PROXY = 'http://proxy.example:8080';
+        const requestFn = vi.fn(respondingRequest(200, ['{}']));
+
+        await __testing.fetchStatusPagePath('/test', requestFn);
+
+        const agent = requestFn.mock.calls[0]?.[0].agent;
+        expect(agent).toBeInstanceOf(HttpsProxyAgent);
+        expect((agent as HttpsProxyAgent<string>).proxy.href).toBe('http://proxy.example:8080/');
+    });
+
+    it('ignores a whitespace-only HTTPS_PROXY', async () => {
+        process.env.HTTPS_PROXY = '   ';
+        const requestFn = vi.fn(respondingRequest(200, ['{}']));
+
+        await expect(__testing.fetchStatusPagePath('/test', requestFn)).resolves.toBe('{}');
+        expect(requestFn.mock.calls[0]?.[0]).not.toHaveProperty('agent');
+    });
+
+    it('settles with null without sending a request when HTTPS_PROXY is not a valid URL', async () => {
+        process.env.HTTPS_PROXY = 'not a proxy url';
+        const requestFn = vi.fn(respondingRequest(200, ['{}']));
+
+        await expect(__testing.fetchStatusPagePath('/test', requestFn)).resolves.toBeNull();
+        expect(requestFn).not.toHaveBeenCalled();
+    });
+});
+
+describe('getClaudeStatusFgCode', () => {
+    it('uses the 16-color escapes as-is, with major falling back to red and critical to bright red', () => {
+        expect(getClaudeStatusFgCode('major', 'ansi16')).toBe('\x1b[31m');
+        expect(getClaudeStatusFgCode('critical', 'ansi16')).toBe('\x1b[91m');
     });
 });
 

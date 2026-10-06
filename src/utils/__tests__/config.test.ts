@@ -1,5 +1,6 @@
-import * as fs from 'fs';
-import path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import path from 'node:path';
 import {
     afterAll,
     afterEach,
@@ -20,7 +21,8 @@ import {
 } from '../../types/Settings';
 import type { ImportValidationResult } from '../config';
 
-const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
+// Unique per run, so test runs going at once don't delete each other's files
+const MOCK_HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-config-test-home-'));
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;

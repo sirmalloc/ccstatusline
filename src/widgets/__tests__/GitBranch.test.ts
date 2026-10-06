@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -15,7 +15,7 @@ import { clearGitCache } from '../../utils/git';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitBranchWidget } from '../GitBranch';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
