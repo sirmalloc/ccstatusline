@@ -78,6 +78,8 @@ export class GitBranchWidget implements Widget {
         const modifiers: string[] = [];
         if (isLink)
             modifiers.push('repo link');
+        if (item.metadata?.fishStyle === 'true')
+            modifiers.push('fish-style');
         const maxWidthText = getMaxWidthModifier(item);
         if (maxWidthText)
             modifiers.push(maxWidthText);
@@ -95,16 +97,27 @@ export class GitBranchWidget implements Widget {
         if (action === TOGGLE_LINK_ACTION) {
             return toggleLink(item);
         }
+        if (action === 'toggle-fish-style') {
+            const enabled = item.metadata?.fishStyle === 'true';
+            const { fishStyle, ...restMetadata } = item.metadata ?? {};
+            const nextMetadata = enabled ? restMetadata : { ...restMetadata, fishStyle: 'true' };
+            return {
+                ...item,
+                metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined
+            };
+        }
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const isLink = isLinkEnabled(item);
+        const fishStyle = item.metadata?.fishStyle === 'true';
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            const text = item.rawValue ? 'main' : `${prefix}main`;
+            const preview = this.abbreviateBranch('main', fishStyle);
+            const text = item.rawValue ? preview : `${prefix}${preview}`;
             return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
         }
 
@@ -117,7 +130,8 @@ export class GitBranchWidget implements Widget {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
-        const displayText = applyMaxWidth(item.rawValue ? branch : `${prefix}${branch}`, item.maxWidth);
+        const displayBranch = this.abbreviateBranch(branch, fishStyle);
+        const displayText = applyMaxWidth(item.rawValue ? displayBranch : `${prefix}${displayBranch}`, item.maxWidth);
 
         if (isLink) {
             const origin = getRemoteInfo('origin', context);
@@ -136,9 +150,23 @@ export class GitBranchWidget implements Widget {
         return runGit('symbolic-ref --short HEAD', context);
     }
 
+    // Fish-style branch abbreviation: every segment but the last collapses to
+    // its first character, so 'main' -> 'm' and 'fix/np/story' -> 'f/p/story'.
+    private abbreviateBranch(branch: string, fishStyle: boolean): string {
+        if (!fishStyle) {
+            return branch;
+        }
+        const parts = branch.split('/');
+        if (parts.length === 1) {
+            return branch[0] ?? '';
+        }
+        return parts.map((part, index) => (index === parts.length - 1 ? part : part[0] ?? '')).join('/');
+    }
+
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION },
+            { key: 'f', label: '(f)ish style', action: 'toggle-fish-style' },
             getMaxWidthKeybind(),
             getSymbolKeybind()
         ];

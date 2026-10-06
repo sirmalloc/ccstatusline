@@ -252,4 +252,28 @@ describe('GitBranchWidget', () => {
             expect(toggled?.metadata).toEqual({ hide: 'no-git' });
         });
     });
+
+    describe('fish style', () => {
+        it.each([
+            { name: 'collapses a plain branch to its first letter', branch: 'main', expected: '⎇ m' },
+            { name: 'keeps the last segment full', branch: 'feature/worktree', expected: '⎇ f/worktree' }
+        ])('$name', ({ branch, expected }) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce(branch);
+
+            expect(render({ metadata: { fishStyle: 'true' } })).toBe(expected);
+        });
+
+        it('shows the fish-style modifier and keybind in the editor', () => {
+            const widget = new GitBranchWidget();
+
+            expect(widget.getEditorDisplay({ id: 'git-branch', type: 'git-branch', metadata: { fishStyle: 'true' } }).modifierText)
+                .toBe('(fish-style)');
+            expect(widget.getCustomKeybinds()).toContainEqual({
+                key: 'f',
+                label: '(f)ish style',
+                action: 'toggle-fish-style'
+            });
+        });
+    });
 });

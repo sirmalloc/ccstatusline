@@ -12,6 +12,7 @@ import {
     runGit
 } from '../utils/git';
 
+import { makeModifierText } from './shared/editor-display';
 import {
     NO_GIT_HIDEABLE_STATE,
     isHidden
@@ -30,29 +31,66 @@ export class GitWorktreeWidget implements Widget {
     getDisplayName(): string { return 'Git Worktree'; }
     getCategory(): string { return 'Git'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+        const modifiers: string[] = [];
+        if (item.metadata?.fishStyle === 'true')
+            modifiers.push('fish-style');
+        return {
+            displayText: this.getDisplayName(),
+            modifierText: makeModifierText(modifiers)
+        };
     }
 
     getHideableStates(): HideableState[] {
         return [NO_GIT_HIDEABLE_STATE];
     }
 
+    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === 'toggle-fish-style') {
+            const enabled = item.metadata?.fishStyle === 'true';
+            const { fishStyle, ...restMetadata } = item.metadata ?? {};
+            const nextMetadata = enabled ? restMetadata : { ...restMetadata, fishStyle: 'true' };
+            return {
+                ...item,
+                metadata: Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined
+            };
+        }
+        return null;
+    }
+
     render(item: WidgetItem, context: RenderContext): string | null {
         const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
+        const fishStyle = item.metadata?.fishStyle === 'true';
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
-        if (context.isPreview)
-            return item.rawValue ? 'main' : `${prefix}main`;
+        if (context.isPreview) {
+            const preview = this.abbreviateWorktree('main', fishStyle);
+            return item.rawValue ? preview : `${prefix}${preview}`;
+        }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
         const worktree = this.getGitWorktree(context);
-        if (worktree)
-            return item.rawValue ? worktree : `${prefix}${worktree}`;
+        if (worktree) {
+            const displayWorktree = this.abbreviateWorktree(worktree, fishStyle);
+            return item.rawValue ? displayWorktree : `${prefix}${displayWorktree}`;
+        }
 
         return hideNoGit ? null : `${prefix}no git`;
+    }
+
+    // Same fish-style rule as Git Branch: every segment but the last collapses
+    // to its first character, so 'main' -> 'm' and 'dir/wt' -> 'd/wt'.
+    private abbreviateWorktree(worktree: string, fishStyle: boolean): string {
+        if (!fishStyle) {
+            return worktree;
+        }
+        const parts = worktree.split('/');
+        if (parts.length === 1) {
+            return worktree[0] ?? '';
+        }
+        return parts.map((part, index) => (index === parts.length - 1 ? part : part[0] ?? '')).join('/');
     }
 
     private getGitWorktree(context: RenderContext): string | null {
@@ -85,7 +123,10 @@ export class GitWorktreeWidget implements Widget {
     }
 
     getCustomKeybinds(): CustomKeybind[] {
-        return [getSymbolKeybind()];
+        return [
+            { key: 'f', label: '(f)ish style', action: 'toggle-fish-style' },
+            getSymbolKeybind()
+        ];
     }
 
     renderEditor(props: WidgetEditorProps) {
