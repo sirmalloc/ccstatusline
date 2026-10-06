@@ -104,10 +104,7 @@ export class GitBranchWidget implements Widget {
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            // With a width limit, a sample long enough for the limit to show
-            const sample = item.maxWidth ? 'feature/long-branch-name' : 'main';
-            const text = applyMaxWidth(item.rawValue ? sample : `${prefix}${sample}`, item.maxWidth);
-            return isLink ? renderOsc8Link(`https://github.com/owner/repo/tree/${sample}`, text) : text;
+            return this.renderPreview(item, prefix, isLink);
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -132,6 +129,13 @@ export class GitBranchWidget implements Widget {
         }
 
         return displayText;
+    }
+
+    private renderPreview(item: WidgetItem, prefix: string, isLink: boolean): string {
+        // With a width limit, a sample long enough for the limit to show
+        const sample = item.maxWidth ? 'feature/long-branch-name' : 'main';
+        const text = applyMaxWidth(item.rawValue ? sample : `${prefix}${sample}`, item.maxWidth);
+        return isLink ? renderOsc8Link(`https://github.com/owner/repo/tree/${sample}`, text) : text;
     }
 
     private getGitBranch(context: RenderContext): string | null {
