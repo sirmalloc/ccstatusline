@@ -70,11 +70,11 @@ describe('applyTextCursorInput', () => {
 
 describe('renderTextWithCursor', () => {
     it('inverts the grapheme under the cursor', () => {
-        expect(renderTextWithCursor({ text: `a${FAMILY}`, cursor: 1 })).toBe(`a\x1b[7m${FAMILY}\x1b[0m`);
+        expect(renderTextWithCursor({ text: `a${FAMILY}`, cursor: 1 })).toBe(`a\x1b[7m${FAMILY}\x1b[27m`);
     });
 
     it('draws a trailing block when the cursor is at the end', () => {
-        expect(renderTextWithCursor({ text: 'ab', cursor: 2 })).toBe('ab\x1b[7m \x1b[0m');
-        expect(renderTextWithCursor({ text: '', cursor: 0 })).toBe('\x1b[7m \x1b[0m');
+        expect(renderTextWithCursor({ text: 'ab', cursor: 2 })).toBe('ab\x1b[7m \x1b[27m');
+        expect(renderTextWithCursor({ text: '', cursor: 0 })).toBe('\x1b[7m \x1b[27m');
     });
 });

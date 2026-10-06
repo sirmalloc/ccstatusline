@@ -72,11 +72,11 @@ export function renderTextWithCursor({ text, cursor }: TextCursorState): string 
         .map((grapheme) => {
             const underCursor = offset === cursor;
             offset += grapheme.length;
-            return underCursor ? `\x1b[7m${grapheme}\x1b[0m` : grapheme;
+            return underCursor ? `\x1b[7m${grapheme}\x1b[27m` : grapheme;
         })
         .join('');
 
-    return cursor === text.length ? `${rendered}\x1b[7m \x1b[0m` : rendered;
+    return cursor === text.length ? `${rendered}\x1b[7m \x1b[27m` : rendered;
 }
 
 export function useTextCursor(initialText: string) {
