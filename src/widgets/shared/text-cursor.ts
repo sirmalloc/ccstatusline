@@ -1,5 +1,8 @@
 import type { Key } from 'ink';
-import { useState } from 'react';
+import {
+    useRef,
+    useState
+} from 'react';
 
 import { shouldInsertInput } from '../../utils/input-guards';
 
@@ -80,20 +83,23 @@ export function renderTextWithCursor({ text, cursor }: TextCursorState): string 
 
 export function useTextCursor(initialText: string) {
     const [state, setState] = useState<TextCursorState>({ text: initialText, cursor: initialText.length });
+    const latestState = useRef(state);
 
     return {
         text: state.text,
         display: renderTextWithCursor(state),
+        getText: (): string => latestState.current.text,
         // Returns whether the key was consumed, so callers can fall through
         // to their own bindings
         handleInput: (input: string, key: Key): boolean => {
-            // Whether a key is consumed never depends on the text, so the
-            // render-time snapshot can answer it. The edit itself must apply
-            // to the latest state, or keys arriving before a re-render drop.
-            if (applyTextCursorInput(state, input, key) === null) {
+            const nextState = applyTextCursorInput(latestState.current, input, key);
+            if (nextState === null) {
                 return false;
             }
-            setState(prev => applyTextCursorInput(prev, input, key) ?? prev);
+            // Publish edits immediately so another key or Save sees them
+            // even before React renders the updated text.
+            latestState.current = nextState;
+            setState(nextState);
             return true;
         }
     };

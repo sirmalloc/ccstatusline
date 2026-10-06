@@ -57,11 +57,11 @@ export class CustomTextWidget implements Widget {
 }
 
 const CustomTextEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
-    const { text, display, handleInput } = useTextCursor(widget.customText ?? '');
+    const { getText, display, handleInput } = useTextCursor(widget.customText ?? '');
 
     useInput((input, key) => {
         if (key.return) {
-            onComplete({ ...widget, customText: text });
+            onComplete({ ...widget, customText: getText() });
         } else if (key.escape) {
             onCancel();
         } else {

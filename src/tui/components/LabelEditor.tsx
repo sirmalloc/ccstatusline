@@ -21,11 +21,11 @@ export interface LabelEditorProps {
 }
 
 export const LabelEditor: React.FC<LabelEditorProps> = ({ widget, defaultLabel, onComplete, onCancel }) => {
-    const { text, display, handleInput } = useTextCursor(getLabel(widget, defaultLabel));
+    const { getText, display, handleInput } = useTextCursor(getLabel(widget, defaultLabel));
 
     useInput((input, key) => {
         if (key.return) {
-            onComplete(setLabel(widget, text));
+            onComplete(setLabel(widget, getText()));
         } else if (key.escape) {
             onCancel();
         } else if (key.tab) {

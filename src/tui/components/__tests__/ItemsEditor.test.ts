@@ -11,6 +11,7 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import { ItemsEditor } from '../ItemsEditor';
 
 class MockTtyStream extends PassThrough {
@@ -217,7 +218,10 @@ describe('ItemsEditor', () => {
         }
     });
 
-    it('drops the label when the widget type changes', async () => {
+    it.each([
+        { query: 'session cost', name: 'Session Cost', keepsLabel: false },
+        { query: 'model', name: 'Model', keepsLabel: true }
+    ])('preserves the label only when reselecting the same type: $name', async ({ query, name, keepsLabel }) => {
         const stdin = createMockStdin();
         const stdout = createMockStdout();
         const stderr = createMockStdout();
@@ -240,7 +244,7 @@ describe('ItemsEditor', () => {
 
             stdin.write('\x1b[C');
             await flushInk();
-            for (const char of 'session cost') {
+            for (const char of query) {
                 stdin.write(char);
                 await flushInk();
             }
@@ -248,8 +252,12 @@ describe('ItemsEditor', () => {
             stdin.write('\r');
             await flushInk();
             const output = stripAnsi(stdout.getOutput());
-            expect(output).toContain('1. Session Cost');
-            expect(output).not.toContain('(label:');
+            expect(output).toContain(`1. ${name}`);
+            if (keepsLabel) {
+                expect(output).toContain('(label: "M ")');
+            } else {
+                expect(output).not.toContain('(label:');
+            }
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -290,6 +298,46 @@ describe('ItemsEditor', () => {
             stdin.write('\r');
             await flushInk();
             expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "Model")');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it.each([
+        { type: 'model', openKey: 'b', prompt: '(default: "Model: ")', edit: 'X', expected: '1. Model (label: "Model: X")' },
+        { type: 'model', openKey: 'b', prompt: '(default: "Model: ")', edit: '\x7f', expected: '1. Model (label: "Model:")' },
+        { type: 'custom-text', openKey: 'e', prompt: 'Enter custom text:', edit: 'X', expected: '1. Custom Text (HelloX)' },
+        { type: 'custom-text', openKey: 'e', prompt: 'Enter custom text:', edit: '\x7f', expected: '1. Custom Text (Hell)' }
+    ])('saves the latest $type edit when Enter arrives before a redraw ($edit)', async ({ type, openKey, prompt, edit, expected }) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type, customText: 'Hello' }] }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. ');
+            });
+            stdout.clearOutput();
+            stdin.write(openKey);
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain(prompt);
+            });
+
+            stdout.clearOutput();
+            stdin.write(edit);
+            await new Promise(resolve => setImmediate(resolve));
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain(expected);
+            });
         } finally {
             instance.unmount();
             instance.cleanup();

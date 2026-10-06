@@ -176,7 +176,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             if (currentWidget) {
                 const newWidgets = [...widgets];
                 // Other metadata carries over, but a label names the old widget's value
-                newWidgets[selectedIndex] = { ...clearLabel(currentWidget), type: selectedType };
+                newWidgets[selectedIndex] = currentWidget.type === selectedType
+                    ? currentWidget
+                    : { ...clearLabel(currentWidget), type: selectedType };
                 onUpdate(newWidgets);
             }
         } else {
