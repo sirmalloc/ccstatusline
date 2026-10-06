@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import { StringDecoder } from 'string_decoder';
+import * as fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 
 /** Read size for both sync iterators. Exported so tests size records against it rather than a copy. */
 export const JSONL_READ_CHUNK_BYTES = 1024 * 1024;

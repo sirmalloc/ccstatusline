@@ -1,7 +1,8 @@
 import {
     execFileSync,
     spawn
-} from 'child_process';
+} from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
     closeSync,
     existsSync,
@@ -11,8 +12,7 @@ import {
     statSync,
     unlinkSync,
     writeFileSync
-} from 'fs';
-import { createHash } from 'node:crypto';
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 

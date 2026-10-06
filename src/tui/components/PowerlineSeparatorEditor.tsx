@@ -119,7 +119,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 setCursorPos(0);
             } else if (key.return) {
                 if (hexInput.length >= 4 && hexInput.length <= 6) {
-                    const codePoint = parseInt(hexInput, 16);
+                    const codePoint = Number.parseInt(hexInput, 16);
                     if (codePoint >= 0 && codePoint <= 0x10FFFF) {
                         const char = String.fromCodePoint(codePoint);
                         const newSeparators = [...separators];
