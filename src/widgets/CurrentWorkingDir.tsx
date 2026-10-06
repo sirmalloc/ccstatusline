@@ -30,7 +30,7 @@ export class CurrentWorkingDirWidget implements Widget {
     getDisplayName(): string { return 'Current Working Dir'; }
     getCategory(): string { return 'Environment'; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+        const segments = item.metadata?.segments ? Number.parseInt(item.metadata.segments, 10) : undefined;
         const fishStyle = item.metadata?.fishStyle === 'true';
         const abbreviateHome = item.metadata?.abbreviateHome === 'true';
         const modifiers: string[] = [];
@@ -107,7 +107,7 @@ export class CurrentWorkingDirWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const segments = item.metadata?.segments ? parseInt(item.metadata.segments, 10) : undefined;
+        const segments = item.metadata?.segments ? Number.parseInt(item.metadata.segments, 10) : undefined;
         const fishStyle = item.metadata?.fishStyle === 'true';
         const abbreviateHome = item.metadata?.abbreviateHome === 'true';
         const symbolPrefix = formatSymbolPrefix(item, '');
@@ -251,8 +251,8 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
     useInput((input, key) => {
         if (action === 'edit-segments') {
             if (key.return) {
-                const segments = parseInt(segmentsInput, 10);
-                if (!isNaN(segments) && segments > 0) {
+                const segments = Number.parseInt(segmentsInput, 10);
+                if (!Number.isNaN(segments) && segments > 0) {
                     onComplete({
                         ...widget,
                         metadata: {
