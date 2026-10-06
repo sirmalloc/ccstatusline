@@ -23,9 +23,11 @@ describe('Extra Usage widgets on Enterprise accounts', () => {
         expect(description).toContain('Enterprise');
     });
 
-    it.each(['enterprise', 'spend'])('lists the three widgets first when searching "%s"', (query) => {
-        const results = filterWidgetCatalog(getWidgetCatalog(DEFAULT_SETTINGS), 'All', query);
+    it.each(['enterprise', 'spend'])('lists the Extra Usage widgets first when searching "%s"', (query) => {
+        const types = filterWidgetCatalog(getWidgetCatalog(DEFAULT_SETTINGS), 'All', query).map(entry => entry.type);
+        const firstOther = types.findIndex(type => !type.startsWith('extra-usage-'));
+        const leading = firstOther === -1 ? types : types.slice(0, firstOther);
 
-        expect(results.slice(0, 3).map(entry => entry.type).sort()).toEqual([...EXTRA_USAGE_TYPES].sort());
+        expect(leading).toEqual(expect.arrayContaining(EXTRA_USAGE_TYPES));
     });
 });
