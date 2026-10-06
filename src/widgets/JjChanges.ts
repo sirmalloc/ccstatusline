@@ -40,8 +40,8 @@ export class JjChangesWidget extends JjWidgetBase<JjChangeCounts> {
             if (summaryLine) {
                 const insertMatch = /(\d+) insertion/.exec(summaryLine);
                 const deleteMatch = /(\d+) deletion/.exec(summaryLine);
-                totalInsertions += insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0;
-                totalDeletions += deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0;
+                totalInsertions += insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0;
+                totalDeletions += deleteMatch?.[1] ? Number.parseInt(deleteMatch[1], 10) : 0;
             }
         }
 

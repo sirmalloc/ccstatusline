@@ -31,7 +31,7 @@ const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
 const EMPTY_HIDEABLE_STATE: HideableState = { key: 'empty', label: 'when no skills have been used' };
 
 function parseListLimit(item: WidgetItem): number {
-    const parsed = parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
+    const parsed = Number.parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
     if (Number.isNaN(parsed) || parsed < 0) {
         return 0;
     }
@@ -173,7 +173,7 @@ const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCance
         }
 
         if (key.return) {
-            const parsed = parseInt(limitInput, 10);
+            const parsed = Number.parseInt(limitInput, 10);
             const limit = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
             onComplete(setListLimit(widget, limit));
         } else if (key.escape) {
