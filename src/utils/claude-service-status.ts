@@ -1,8 +1,8 @@
-import * as fs from 'fs';
-import * as https from 'https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { z } from 'zod';
 
 import type { ColorLevelString } from '../types/ColorLevel';
