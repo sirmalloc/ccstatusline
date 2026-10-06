@@ -63,6 +63,20 @@ describe('SessionUsageWidget', () => {
         }, context)).toBe('Session: ▓▓░░░│░░░░');
     });
 
+    it('applies the label override to every display mode', () => {
+        const widget = new SessionUsageWidget();
+        const context: RenderContext = { usageData: { sessionUsage: 20 } };
+        const metadata = { label: '5h ' };
+
+        expect(widget.getLabelPrefix()).toBe('Session: ');
+        expect(render(widget, { id: 'session', type: 'session-usage', metadata }, context)).toBe('5h 20.0%');
+        expect(render(widget, {
+            id: 'session',
+            type: 'session-usage',
+            metadata: { ...metadata, display: 'slider-only' }
+        }, context)).toBe('5h ▓▓░░░░░░░░');
+    });
+
     runUsagePercentWidgetSuite({
         baseItem: { id: 'session', type: 'session-usage' },
         createWidget: () => new SessionUsageWidget(),
