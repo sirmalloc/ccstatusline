@@ -1,7 +1,7 @@
-import { execFileSync } from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { Mock } from 'vitest';
 import {
     afterEach,
@@ -20,7 +20,7 @@ import {
     parseMacKeychainCredentialCandidates
 } from '../usage-fetch';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()

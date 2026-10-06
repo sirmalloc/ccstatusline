@@ -1,5 +1,5 @@
-import * as childProcess from 'child_process';
-import os from 'os';
+import * as childProcess from 'node:child_process';
+import os from 'node:os';
 import {
     afterEach,
     beforeEach,

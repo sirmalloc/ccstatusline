@@ -95,8 +95,8 @@ export function getChalkColor(colorName: string | undefined, colorLevel: 'ansi16
 
     // Handle ansi256:X format
     if (colorName.startsWith('ansi256:')) {
-        const code = parseInt(colorName.substring(8), 10);
-        if (!isNaN(code) && code >= 0 && code <= 255) {
+        const code = Number.parseInt(colorName.substring(8), 10);
+        if (!Number.isNaN(code) && code >= 0 && code <= 255) {
             return isBackground ? chalk.bgAnsi256(code) : chalk.ansi256(code);
         }
         return undefined;
@@ -225,8 +225,8 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
 
     // Handle ansi256:X format
     if (colorName.startsWith('ansi256:')) {
-        const code = parseInt(colorName.substring(8), 10);
-        if (!isNaN(code) && code >= 0 && code <= 255) {
+        const code = Number.parseInt(colorName.substring(8), 10);
+        if (!Number.isNaN(code) && code >= 0 && code <= 255) {
             return isBackground ? `\x1b[48;5;${code}m` : `\x1b[38;5;${code}m`;
         }
         return '';
@@ -236,9 +236,9 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
     if (colorName.startsWith('hex:')) {
         const hex = colorName.substring(4);
         if (/^[0-9A-Fa-f]{6}$/.test(hex)) {
-            const r = parseInt(hex.substring(0, 2), 16);
-            const g = parseInt(hex.substring(2, 4), 16);
-            const b = parseInt(hex.substring(4, 6), 16);
+            const r = Number.parseInt(hex.substring(0, 2), 16);
+            const g = Number.parseInt(hex.substring(2, 4), 16);
+            const b = Number.parseInt(hex.substring(4, 6), 16);
             return isBackground ? `\x1b[48;2;${r};${g};${b}m` : `\x1b[38;2;${r};${g};${b}m`;
         }
         return '';

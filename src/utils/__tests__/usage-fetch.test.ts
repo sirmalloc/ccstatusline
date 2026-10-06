@@ -1,10 +1,10 @@
-import type * as childProcess from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import { createRequire } from 'module';
-import * as os from 'os';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import type * as childProcess from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
     describe,
     expect,
@@ -58,13 +58,13 @@ function createProbeHarness() {
     const usageModulePath = fileURLToPath(new URL('../usage.ts', import.meta.url));
 
     const probeScript = `
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { createRequire } from 'module';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const https = require('https');
+const https = require('node:https');
 const mode = process.env.TEST_REQUEST_MODE || 'success';
 const responseBody = process.env.TEST_RESPONSE_BODY || '';
 const responseHeaders = JSON.parse(process.env.TEST_RESPONSE_HEADERS_JSON || '{}');
