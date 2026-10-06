@@ -211,15 +211,11 @@ export class CurrentWorkingDirWidget implements Widget {
     }
 
     private abbreviatePath(path: string): string {
-        const homeDir = os.homedir();
         const useBackslash = path.includes('\\') && !path.includes('/');
         const sep = useBackslash ? '\\' : '/';
 
-        // Replace home directory with ~
-        let normalizedPath = path;
-        if (path.startsWith(homeDir)) {
-            normalizedPath = '~' + path.slice(homeDir.length);
-        }
+        // Replace home directory with ~ (only on a path-segment boundary)
+        const normalizedPath = this.abbreviateHomeDir(path);
 
         // Split path into parts
         const parts = normalizedPath.split(/[\\/]+/).filter(part => part !== '');
