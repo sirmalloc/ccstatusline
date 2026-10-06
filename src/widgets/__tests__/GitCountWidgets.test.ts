@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -22,7 +22,7 @@ import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
 import { GitUntrackedFilesWidget } from '../GitUntrackedFiles';
 import type { SymbolSlot } from '../shared/symbol-override';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const mockExecFileSync = execFileSync as unknown as { mockImplementation: (impl: (command: string, args: string[], options?: { cwd?: string }) => string) => void };
 
