@@ -25,13 +25,10 @@ export function clearLabel(item: WidgetItem): WidgetItem {
     return removeMetadataKeys(item, [LABEL_METADATA_KEY]);
 }
 
-// An override matching the default is dropped so untouched items stay minimal.
-// An empty override is kept: it means "no label" rather than "default".
-export function setLabel(item: WidgetItem, defaultLabel: string, value: string): WidgetItem {
-    if (value === defaultLabel) {
-        return clearLabel(item);
-    }
-
+// Kept even when it equals the current default: widgets whose default changes
+// with their mode apply one override in every mode. An empty override means
+// "no label" rather than "default".
+export function setLabel(item: WidgetItem, value: string): WidgetItem {
     return {
         ...item,
         metadata: {

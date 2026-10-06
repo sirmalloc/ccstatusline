@@ -330,4 +330,45 @@ describe('ItemsEditor', () => {
             stderr.destroy();
         }
     });
+
+    it('keeps a label equal to the bar-mode default for every mode, and Tab clears it', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type: 'block-timer', metadata: { display: 'progress' } }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('b');
+            await flushInk();
+            stdout.clearOutput();
+            stdin.write('\r');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('(label: "Block ")');
+
+            stdin.write('b');
+            await flushInk();
+            stdout.clearOutput();
+            stdin.write('\t');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).not.toContain('(label:');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });

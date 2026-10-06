@@ -6,6 +6,7 @@ import {
 
 import type { WidgetItem } from '../../../types/Widget';
 import {
+    clearLabel,
     formatRawOrLabeledValue,
     getLabel,
     getLabelModifierText,
@@ -36,19 +37,24 @@ describe('formatRawOrLabeledValue', () => {
 
 describe('setLabel', () => {
     it('stores an override that differs from the default', () => {
-        const item = setLabel(makeItem(), 'Model: ', 'M ');
+        const item = setLabel(makeItem(), 'M ');
         expect(item.metadata).toEqual({ label: 'M ' });
         expect(getLabel(item, 'Model: ')).toBe('M ');
     });
 
     it('keeps an empty override', () => {
-        expect(setLabel(makeItem(), 'Model: ', '').metadata).toEqual({ label: '' });
+        expect(setLabel(makeItem(), '').metadata).toEqual({ label: '' });
     });
 
-    it('drops the override when it matches the default, preserving other metadata', () => {
-        const item = makeItem({ metadata: { label: 'M ', hide: 'zero' } });
-        expect(setLabel(item, 'Model: ', 'Model: ').metadata).toEqual({ hide: 'zero' });
-        expect(setLabel(makeItem({ metadata: { label: 'M ' } }), 'Model: ', 'Model: ').metadata).toBeUndefined();
+    it('stores an override even when it matches the default', () => {
+        expect(setLabel(makeItem(), 'Model: ').metadata).toEqual({ label: 'Model: ' });
+    });
+});
+
+describe('clearLabel', () => {
+    it('drops the override, preserving other metadata', () => {
+        expect(clearLabel(makeItem({ metadata: { label: 'M ', hide: 'zero' } })).metadata).toEqual({ hide: 'zero' });
+        expect(clearLabel(makeItem({ metadata: { label: 'M ' } })).metadata).toBeUndefined();
     });
 });
 

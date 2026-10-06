@@ -85,8 +85,6 @@ export function useTextCursor(initialText: string) {
     return {
         text: state.text,
         display: renderTextWithCursor(state),
-        // Replaces the text and moves the cursor to its end
-        setText: (text: string) => { setState({ text, cursor: text.length }); },
         // Returns whether the key was consumed, so callers can fall through
         // to their own bindings
         handleInput: (input: string, key: Key): boolean => {
