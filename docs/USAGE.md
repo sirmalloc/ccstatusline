@@ -176,6 +176,12 @@ The same menu controls these ccstatusline cache settings, saved with **Save & Ex
 
 Git commands run on cache misses with a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
 
+### Status line empty in one folder but fine elsewhere
+
+Claude Code only runs a custom `statusLine` command in a workspace whose trust dialog has been accepted (since Claude Code 2.1.51). Since 2.1.232, a git repository nested under an already-trusted parent folder no longer inherits that trust, and Claude Code does not always show the trust dialog again. In such a folder, ccstatusline is never invoked, so the status line renders as an empty row even though running `ccstatusline` by hand in the same folder works and other folders still show it.
+
+To confirm, look up the project path in `~/.claude.json` under `projects` and check its `hasTrustDialogAccepted` value. Setting it to `true` (or accepting the trust dialog when Claude Code shows it) and starting a new session restores the status line.
+
 ## Usage Credentials and Cache
 
 Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials`, then matching suffixed services, then the credentials file.
