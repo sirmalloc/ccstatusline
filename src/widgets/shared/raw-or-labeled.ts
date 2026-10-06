@@ -21,11 +21,15 @@ export function getLabel(item: WidgetItem, defaultLabel: string): string {
     return item.metadata?.[LABEL_METADATA_KEY] ?? defaultLabel;
 }
 
+export function clearLabel(item: WidgetItem): WidgetItem {
+    return removeMetadataKeys(item, [LABEL_METADATA_KEY]);
+}
+
 // An override matching the default is dropped so untouched items stay minimal.
 // An empty override is kept: it means "no label" rather than "default".
 export function setLabel(item: WidgetItem, defaultLabel: string, value: string): WidgetItem {
     if (value === defaultLabel) {
-        return removeMetadataKeys(item, [LABEL_METADATA_KEY]);
+        return clearLabel(item);
     }
 
     return {

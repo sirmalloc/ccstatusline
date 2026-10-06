@@ -33,6 +33,7 @@ import {
 } from '../../widgets/shared/hideable';
 import {
     EDIT_LABEL_ACTION,
+    clearLabel,
     getLabelKeybind,
     getLabelModifierText
 } from '../../widgets/shared/raw-or-labeled';
@@ -174,7 +175,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             const currentWidget = widgets[selectedIndex];
             if (currentWidget) {
                 const newWidgets = [...widgets];
-                newWidgets[selectedIndex] = { ...currentWidget, type: selectedType };
+                // Other metadata carries over, but a label names the old widget's value
+                newWidgets[selectedIndex] = { ...clearLabel(currentWidget), type: selectedType };
                 onUpdate(newWidgets);
             }
         } else {

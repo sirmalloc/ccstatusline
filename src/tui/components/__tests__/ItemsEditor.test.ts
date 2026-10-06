@@ -216,4 +216,46 @@ describe('ItemsEditor', () => {
             stderr.destroy();
         }
     });
+
+    it('drops the label when the widget type changes', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type: 'model', metadata: { label: 'M ' } }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "M ")');
+
+            stdin.write('\x1b[C');
+            await flushInk();
+            for (const char of 'session cost') {
+                stdin.write(char);
+                await flushInk();
+            }
+            stdout.clearOutput();
+            stdin.write('\r');
+            await flushInk();
+            const output = stripAnsi(stdout.getOutput());
+            expect(output).toContain('1. Session Cost');
+            expect(output).not.toContain('(label:');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
