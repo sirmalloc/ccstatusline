@@ -86,11 +86,14 @@ export function useTextCursor(initialText: string) {
         // Returns whether the key was consumed, so callers can fall through
         // to their own bindings
         handleInput: (input: string, key: Key): boolean => {
-            const next = applyTextCursorInput(state, input, key);
-            if (next) {
-                setState(next);
+            // Whether a key is consumed never depends on the text, so the
+            // render-time snapshot can answer it. The edit itself must apply
+            // to the latest state, or keys arriving before a re-render drop.
+            if (applyTextCursorInput(state, input, key) === null) {
+                return false;
             }
-            return next !== null;
+            setState(prev => applyTextCursorInput(prev, input, key) ?? prev);
+            return true;
         }
     };
 }

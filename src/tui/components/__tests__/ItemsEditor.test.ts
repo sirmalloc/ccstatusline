@@ -258,4 +258,44 @@ describe('ItemsEditor', () => {
             stderr.destroy();
         }
     });
+
+    it('keeps every key typed into the label editor before a re-render', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, { initialWidgets: [{ id: '1', type: 'model' }] }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            stdin.write('b');
+            await flushInk();
+
+            // One macrotask apart: separate keypresses, but no re-render between them
+            stdin.write('\x7f');
+            await new Promise(resolve => setImmediate(resolve));
+            stdin.write('\x7f');
+            await flushInk();
+            stdout.clearOutput();
+            stdin.write('\r');
+            await flushInk();
+            expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "Model")');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
