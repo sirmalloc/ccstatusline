@@ -1,22 +1,12 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    getJjChangeCounts,
-    isInsideJjRepo
-} from '../utils/jj';
+import { getJjChangeCounts } from '../utils/jj';
 
-import {
-    NO_JJ_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { JjWidgetBase } from './shared/jj-widget-base';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -26,32 +16,20 @@ import {
 
 const INSERTIONS_SLOT: SymbolSlot = { id: 'symbolInsertions', label: 'Insertions', defaultSymbol: '+' };
 
-export class JjInsertionsWidget implements Widget {
+export class JjInsertionsWidget extends JjWidgetBase<number> {
+    protected readonly previewValue = 42;
+    protected readonly noJjText = '(no jj)';
+
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows jujutsu insertions count'; }
     getDisplayName(): string { return 'JJ Insertions'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected getValue(context: RenderContext): number {
+        return getJjChangeCounts(context).insertions;
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_JJ_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return `${getSlotSymbol(item, INSERTIONS_SLOT)}42`;
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : '(no jj)';
-        }
-
-        const changes = getJjChangeCounts(context);
-        return `${getSlotSymbol(item, INSERTIONS_SLOT)}${changes.insertions}`;
+    protected formatValue(item: WidgetItem, insertions: number): string {
+        return `${getSlotSymbol(item, INSERTIONS_SLOT)}${insertions}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -63,5 +41,4 @@ export class JjInsertionsWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
 }

@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -382,8 +382,8 @@ function parseDiffShortStat(stat: string): GitChangeCounts {
     const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
 
     return {
-        insertions: insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0,
-        deletions: deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0
+        insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,
+        deletions: deleteMatch?.[1] ? Number.parseInt(deleteMatch[1], 10) : 0
     };
 }
 
@@ -497,10 +497,10 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
     if (parts.length !== 2 || !parts[0] || !parts[1])
         return null;
 
-    const ahead = parseInt(parts[0], 10);
-    const behind = parseInt(parts[1], 10);
+    const ahead = Number.parseInt(parts[0], 10);
+    const behind = Number.parseInt(parts[1], 10);
 
-    if (isNaN(ahead) || isNaN(behind))
+    if (Number.isNaN(ahead) || Number.isNaN(behind))
         return null;
 
     return { ahead, behind };

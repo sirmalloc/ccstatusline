@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { JjRootDirWidget } from '../JjRootDir';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
