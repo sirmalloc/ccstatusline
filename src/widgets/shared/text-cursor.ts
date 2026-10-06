@@ -10,7 +10,7 @@ export interface TextCursorState {
     cursor: number;
 }
 
-function getGraphemes(str: string): string[] {
+export function getGraphemes(str: string): string[] {
     if ('Segmenter' in Intl) {
         const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
         return Array.from(segmenter.segment(str), seg => seg.segment);
