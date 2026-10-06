@@ -22,7 +22,6 @@ export interface UsageData {
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
     extraUsageUtilization?: number; // percentage 0-100
     extraUsageCurrency?: string;   // ISO 4217 currency code (e.g. 'USD', 'EUR')
-    noPlanLimits?: boolean;        // the API reports no plan limits at all (usage-based plans such as Enterprise)
     error?: UsageError;
 }
 

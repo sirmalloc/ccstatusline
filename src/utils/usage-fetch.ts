@@ -109,7 +109,6 @@ const CachedUsageDataSchema = z.object({
     extraUsageUsed: z.number().nullable().optional(),
     extraUsageUtilization: z.number().nullable().optional(),
     extraUsageCurrency: z.string().nullable().optional(),
-    noPlanLimits: z.boolean().nullable().optional(),
     error: z.string().nullable().optional()
 });
 
@@ -252,7 +251,6 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
         extraUsageUtilization: parsed.extraUsageUtilization ?? undefined,
         extraUsageCurrency: parsed.extraUsageCurrency ?? undefined,
-        noPlanLimits: parsed.noPlanLimits ?? undefined,
         error: parsedError.success ? parsedError.data : undefined
     };
 }
@@ -299,22 +297,6 @@ function getLegacyUsageApiBucket(parsed: Record<string, unknown>, apiBucketKey: 
     return parsed[apiBucketKey] as UsageApiBucket;
 }
 
-// Usage-based plans (Enterprise) have no session, weekly or per-model limits:
-// the API reports every window as null and no limits[] entries, and all spend
-// goes through extra usage. Only an explicit null counts, so a response that
-// omits the fields leaves the plan type unknown. Any limits[] entry counts as a
-// limit, even an unused one: a quota that hasn't been touched this window can
-// report 0% with no reset time.
-function reportsNoPlanLimits(parsed: z.infer<typeof UsageApiResponseSchema>): boolean {
-    const legacyModelBuckets = WEEKLY_MODEL_USAGE_BUCKETS.flatMap(bucket => (
-        bucket.apiBucketKey ? [getLegacyUsageApiBucket(parsed, bucket.apiBucketKey)] : []
-    ));
-    return parsed.five_hour === null
-        && parsed.seven_day === null
-        && legacyModelBuckets.every(bucket => bucket === null || bucket === undefined)
-        && (parsed.limits ?? []).length === 0;
-}
-
 export function parseUsageApiResponse(rawJson: string): UsageData | null {
     const parsed = parseJsonWithSchema(rawJson, UsageApiResponseSchema);
     if (!parsed) {
@@ -337,8 +319,7 @@ export function parseUsageApiResponse(rawJson: string): UsageData | null {
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
         extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined,
-        extraUsageCurrency: parsed.extra_usage?.currency ?? undefined,
-        noPlanLimits: reportsNoPlanLimits(parsed) || undefined
+        extraUsageCurrency: parsed.extra_usage?.currency ?? undefined
     };
 
     for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {

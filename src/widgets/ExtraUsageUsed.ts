@@ -11,23 +11,18 @@ import { getUsageErrorMessage } from '../utils/usage';
 
 import { formatUsageCurrency } from './shared/currency';
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
-import { getExtraUsageLabel } from './shared/extra-usage-label';
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import { USAGE_NO_DATA_HIDEABLE_STATE } from './shared/usage-display';
 
-// "Overage Used: ", or "Spend Used: " on accounts without plan limits
-function getLabelFor(usageData: RenderContext['usageData']): string {
-    return `${getExtraUsageLabel(usageData)} Used: `;
-}
+const LABEL = 'Overage Used: ';
 
 export class ExtraUsageUsedWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows extra usage spent: overage beyond Pro/Max plan limits, or your spend on Enterprise'; }
     getDisplayName(): string { return 'Extra Usage Used'; }
     getCategory(): string { return 'Usage'; }
-    // The editor has no usage data, so it offers the Overage label
-    getLabelPrefix(): string { return getLabelFor(undefined); }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
@@ -38,17 +33,16 @@ export class ExtraUsageUsedWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const label = getLabelFor(context.usageData);
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, label, formatUsageCurrency(106, undefined, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatUsageCurrency(106, undefined, format));
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
             return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
-                : formatRawOrLabeledValue(item, label, 'n/a');
+                : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageUsed === undefined) {
             if (data.error) {
@@ -63,7 +57,7 @@ export class ExtraUsageUsedWidget implements Widget {
         const usedDollars = data.extraUsageUsed / 100;
         const formatted = formatUsageCurrency(usedDollars, data.extraUsageCurrency, format);
 
-        return formatRawOrLabeledValue(item, label, formatted);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatted);
     }
 
     supportsRawValue(): boolean { return true; }

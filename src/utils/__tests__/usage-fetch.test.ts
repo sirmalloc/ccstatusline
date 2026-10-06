@@ -1438,8 +1438,7 @@ describe('fetchUsageData error handling', () => {
                 extraUsageEnabled: true,
                 extraUsageLimit: 50000,
                 extraUsageCurrency: 'USD',
-                extraUsageUsed: 0,
-                noPlanLimits: true
+                extraUsageUsed: 0
             });
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
@@ -2219,79 +2218,5 @@ describe('parseUsageApiResponse limits[] fallback (#503)', () => {
             weeklyUsage: 0,
             weeklyResetAt: '2030-07-07T00:00:00.000Z'
         });
-    });
-});
-
-describe('parseUsageApiResponse plan limits', () => {
-    const extraUsage = {
-        is_enabled: true,
-        monthly_limit: 50000,
-        used_credits: 12345,
-        utilization: 24.69,
-        currency: 'USD'
-    };
-
-    it('flags a response that reports no plan limits at all', () => {
-        // Usage-based Enterprise plans: every window null and no limits[] entries;
-        // all spend goes through extra usage.
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: null,
-            seven_day: null,
-            seven_day_sonnet: null,
-            seven_day_opus: null,
-            limits: [],
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBe(true);
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: null,
-            seven_day: null,
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBe(true);
-    });
-
-    it('does not flag a response with session or weekly windows', () => {
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: { utilization: 2, resets_at: '2030-01-01T05:00:00.000Z' },
-            seven_day: { utilization: 45, resets_at: '2030-01-07T00:00:00.000Z' },
-            limits: [],
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBeUndefined();
-    });
-
-    it('does not flag a migrated account whose windows only appear in limits[]', () => {
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: null,
-            seven_day: null,
-            limits: [{ kind: 'weekly_all', percent: 45, resets_at: '2030-01-07T00:00:00.000Z' }],
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBeUndefined();
-    });
-
-    it('counts an unused limits[] entry as a plan limit', () => {
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: null,
-            seven_day: null,
-            limits: [{ kind: 'session', percent: 0, resets_at: null }],
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBeUndefined();
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: null,
-            seven_day: null,
-            limits: [{ kind: 'weekly_scoped', percent: 0, resets_at: null, scope: { model: { display_name: 'Fable' } } }],
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBeUndefined();
-    });
-
-    it('does not flag a response with a legacy per-model window', () => {
-        expect(parseUsageApiResponse(JSON.stringify({
-            five_hour: null,
-            seven_day: null,
-            seven_day_opus: { utilization: 10, resets_at: '2030-01-07T00:00:00.000Z' },
-            extra_usage: extraUsage
-        }))?.noPlanLimits).toBeUndefined();
-    });
-
-    it('leaves the flag unset when the window fields are missing rather than null', () => {
-        expect(parseUsageApiResponse(JSON.stringify({ extra_usage: extraUsage }))?.noPlanLimits).toBeUndefined();
     });
 });

@@ -14,7 +14,6 @@ import {
 import { getUsageErrorMessage } from '../utils/usage';
 
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
-import { getExtraUsageLabel } from './shared/extra-usage-label';
 import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
@@ -32,18 +31,14 @@ import {
     toggleUsageInverted
 } from './shared/usage-display';
 
-// "Overage: ", or "Spend: " on accounts without plan limits
-function getLabelFor(usageData: RenderContext['usageData']): string {
-    return `${getExtraUsageLabel(usageData)}: `;
-}
+const LABEL = 'Overage: ';
 
 export class ExtraUsageUtilizationWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows extra usage as a percentage of your monthly limit (Pro/Max overage or Enterprise spend)'; }
     getDisplayName(): string { return 'Extra Usage Utilization'; }
     getCategory(): string { return 'Usage'; }
-    // The editor has no usage data, so it offers the Overage label
-    getLabelPrefix(): string { return getLabelFor(undefined); }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
@@ -69,7 +64,6 @@ export class ExtraUsageUtilizationWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const label = getLabelFor(context.usageData);
         const displayMode = getUsageDisplayMode(item);
         const inverted = isUsageInverted(item);
         const format = resolveNumberFormat('percent', item, settings);
@@ -81,23 +75,23 @@ export class ExtraUsageUtilizationWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(renderedPercent, width);
-                return formatRawOrLabeledValue(item, label, `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(renderedPercent);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
-                return formatRawOrLabeledValue(item, label, sliderDisplay);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, label, formatPercent(renderedPercent, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatPercent(renderedPercent, format));
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
             return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
-                : formatRawOrLabeledValue(item, label, 'n/a');
+                : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
             if (data.error) {
@@ -115,16 +109,16 @@ export class ExtraUsageUtilizationWidget implements Widget {
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
             const progressBar = makeTimerProgressBar(renderedPercent, width);
-            return formatRawOrLabeledValue(item, label, `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const slider = makeSliderBar(renderedPercent);
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
-            return formatRawOrLabeledValue(item, label, sliderDisplay);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, label, formatPercent(renderedPercent, format));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatPercent(renderedPercent, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
