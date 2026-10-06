@@ -20,7 +20,6 @@ export function getGraphemes(str: string): string[] {
     return Array.from(str);
 }
 
-// String offsets of every grapheme boundary, from 0 through text.length
 function getBoundaries(text: string): number[] {
     const boundaries = [0];
     for (const grapheme of getGraphemes(text)) {
