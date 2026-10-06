@@ -1,5 +1,5 @@
-import { spawnSync } from 'child_process';
-import * as os from 'os';
+import { spawnSync } from 'node:child_process';
+import * as os from 'node:os';
 
 export interface OpenExternalUrlResult {
     success: boolean;
