@@ -197,6 +197,139 @@ describe('Token widgets', () => {
         }, zeroContext, DEFAULT_SETTINGS)).toBeNull();
     });
 
+    it('renders nothing for input and output when neither tokenMetrics nor context_window has data', async () => {
+        const { TokensInputWidget, TokensOutputWidget } = await loadWidgets();
+
+        for (const context of [{}, { data: {} }, { tokenMetrics: null }] as RenderContext[]) {
+            expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBeNull();
+            expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBeNull();
+        }
+    });
+
+    it('keeps a zero tokenMetrics count over the context_window totals for input and output', async () => {
+        const { TokensInputWidget, TokensOutputWidget } = await loadWidgets();
+        const context: RenderContext = {
+            data: {
+                context_window: {
+                    total_input_tokens: 1111,
+                    total_output_tokens: 2222
+                }
+            },
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 0
+            }
+        };
+
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:0');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output' }, context, DEFAULT_SETTINGS)).toBe('Out: fmt:0');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('hides a zero context_window fallback when the zero hide state is enabled', async () => {
+        const { TokensInputWidget, TokensOutputWidget } = await loadWidgets();
+        const context: RenderContext = {
+            data: {
+                context_window: {
+                    total_input_tokens: 0,
+                    total_output_tokens: 0
+                }
+            }
+        };
+
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input' }, context, DEFAULT_SETTINGS)).toBe('In: fmt:0');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:0');
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', metadata: { hide: 'zero' } }, context, DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('keeps non-zero counts and the preview sample when zero counts are hidden', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const metadata = { hide: 'zero' };
+        const context: RenderContext = {
+            tokenMetrics: {
+                inputTokens: 1,
+                outputTokens: 2,
+                cachedTokens: 3,
+                totalTokens: 6,
+                contextLength: 0
+            }
+        };
+        const previewZeroContext: RenderContext = {
+            isPreview: true,
+            tokenMetrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedTokens: 0,
+                totalTokens: 0,
+                contextLength: 0
+            }
+        };
+
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', metadata }, context, DEFAULT_SETTINGS)).toBe('In: fmt:1');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', metadata }, context, DEFAULT_SETTINGS)).toBe('Out: fmt:2');
+        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', metadata }, context, DEFAULT_SETTINGS)).toBe('Cached: fmt:3');
+        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', metadata }, context, DEFAULT_SETTINGS)).toBe('Total: fmt:6');
+
+        expect(new TokensInputWidget().render({ id: 'in', type: 'tokens-input', metadata }, previewZeroContext, DEFAULT_SETTINGS)).toBe('In: fmt:15200');
+        expect(new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', metadata }, previewZeroContext, DEFAULT_SETTINGS)).toBe('Out: fmt:3400');
+        expect(new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', metadata }, previewZeroContext, DEFAULT_SETTINGS)).toBe('Cached: fmt:12000');
+        expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', metadata }, previewZeroContext, DEFAULT_SETTINGS)).toBe('Total: fmt:30600');
+    });
+
+    it('resolves a global token number format over the widget format', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const context: RenderContext = {
+            tokenMetrics: {
+                inputTokens: 1000,
+                outputTokens: 2000,
+                cachedTokens: 3000,
+                totalTokens: 6000,
+                contextLength: 0
+            }
+        };
+        const settings = { ...DEFAULT_SETTINGS, numberFormat: { token: { style: 'whole' as const }, cost: { decimals: 4 } } };
+        const numberFormat = { style: 'compact' as const };
+
+        new TokensInputWidget().render({ id: 'in', type: 'tokens-input', numberFormat }, context, settings);
+        new TokensOutputWidget().render({ id: 'out', type: 'tokens-output', numberFormat }, context, settings);
+        new TokensCachedWidget().render({ id: 'cached', type: 'tokens-cached', numberFormat }, context, settings);
+        new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', numberFormat }, { isPreview: true }, settings);
+
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(1, 1000, { style: 'whole' });
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(2, 2000, { style: 'whole' });
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(3, 3000, { style: 'whole' });
+        expect(renderer.formatTokens).toHaveBeenNthCalledWith(4, 30600, { style: 'whole' });
+    });
+
+    it('describes each token widget and its editor row', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const cases = [
+            { widget: new TokensInputWidget(), type: 'tokens-input', name: 'Tokens Input', color: 'blue', description: 'Shows input token count for the current session' },
+            { widget: new TokensOutputWidget(), type: 'tokens-output', name: 'Tokens Output', color: 'white', description: 'Shows output token count for the current session' },
+            { widget: new TokensCachedWidget(), type: 'tokens-cached', name: 'Tokens Cached', color: 'cyan', description: 'Shows cached token count for the current session' },
+            { widget: new TokensTotalWidget(), type: 'tokens-total', name: 'Tokens Total', color: 'cyan', description: 'Shows total token count (input + output + cache) for the current session' }
+        ];
+
+        for (const { widget, type, name, color, description } of cases) {
+            const item = { id: type, type, rawValue: true, metadata: { hide: 'zero' }, numberFormat: { style: 'compact' as const } };
+
+            expect(widget.getDisplayName()).toBe(name);
+            expect(widget.getDescription()).toBe(description);
+            expect(widget.getDefaultColor()).toBe(color);
+            expect(widget.getCategory()).toBe('Tokens');
+            expect(widget.getEditorDisplay(item)).toEqual({ displayText: name });
+            expect(widget.getHideableStates()).toEqual([{ key: 'zero', label: 'when token count is zero' }]);
+            expect(widget.supportsRawValue()).toBe(true);
+            expect(widget.supportsColors(item)).toBe(true);
+            expect(widget.supportsNumberFormat()).toBe(true);
+        }
+    });
+
     it('declares the zero hideable state for all token widgets', async () => {
         const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
 

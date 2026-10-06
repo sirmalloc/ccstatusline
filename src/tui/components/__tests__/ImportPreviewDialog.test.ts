@@ -12,6 +12,7 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../../types/Settings';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     ImportPreviewDialog,
     getImportPreviewKeys,
@@ -61,10 +62,6 @@ function createMockStdout(): CapturedWriteStream {
             return stripAnsi(chunks.join(''));
         }
     });
-}
-
-function flushInk() {
-    return new Promise(resolve => setTimeout(resolve, 25));
 }
 
 describe('ImportPreviewDialog helpers', () => {
@@ -129,16 +126,17 @@ describe('ImportPreviewDialog helpers', () => {
         });
 
         try {
-            await flushInk();
-            expect(stdout.getOutput()).toContain('flexMode: full-minus-40 → full');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('flexMode: full-minus-40 → full');
+            });
 
             stdout.clearOutput();
             stdin.write('\u001B[B');
-            await flushInk();
-
-            const output = stdout.getOutput();
-            const lastFlexModeRow = output.slice(output.lastIndexOf('flexMode:')).split('\n')[0];
-            expect(lastFlexModeRow).toBe('flexMode: full-minus-40');
+            await waitFor(() => {
+                const output = stdout.getOutput();
+                const lastFlexModeRow = output.slice(output.lastIndexOf('flexMode:')).split('\n')[0];
+                expect(lastFlexModeRow).toBe('flexMode: full-minus-40');
+            });
         } finally {
             instance.unmount();
             instance.cleanup();

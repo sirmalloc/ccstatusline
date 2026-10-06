@@ -1,5 +1,5 @@
-import type { SpawnSyncReturns } from 'child_process';
-import { spawnSync } from 'child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -22,7 +22,7 @@ import { CustomCommandWidget } from '../CustomCommand';
 // Mock the process boundary: echo back whatever is handed to stdin, the way
 // `cat` would. The widget output then IS the JSON it sent, so we can assert
 // exactly what the custom command received, without spawning a subprocess.
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()

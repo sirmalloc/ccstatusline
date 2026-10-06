@@ -1,29 +1,17 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    HideableState,
-    Widget,
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
 import {
-    buildRepoWebUrl,
     getForkStatus,
-    getRemoteInfo
+    type RemoteInfo
 } from '../utils/git-remote';
-import { renderOsc8Link } from '../utils/hyperlink';
 
 import { makeModifierText } from './shared/editor-display';
-import {
-    getRemoteWidgetKeybinds,
-    handleRemoteWidgetAction,
-    isLinkToRepoEnabled
-} from './shared/git-remote';
-import {
-    NO_REMOTE_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { isLinkToRepoEnabled } from './shared/git-remote';
+import { GitRemoteWidgetBase } from './shared/git-remote-widget-base';
 import {
     isMetadataFlagEnabled,
     toggleMetadataFlag
@@ -32,13 +20,16 @@ import {
 const OWNER_ONLY_WHEN_FORK_KEY = 'ownerOnlyWhenFork';
 const TOGGLE_OWNER_ONLY_ACTION = 'toggle-owner-only';
 
-export class GitOriginOwnerRepoWidget implements Widget {
+export class GitOriginOwnerRepoWidget extends GitRemoteWidgetBase {
+    protected readonly remote = 'origin';
+    protected readonly previewText = 'owner/repo';
+    protected readonly previewUrl = 'https://github.com/owner/repo';
+
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Shows the origin remote as owner/repo'; }
     getDisplayName(): string { return 'Git Origin Owner/Repo'; }
-    getCategory(): string { return 'Git'; }
 
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+    override getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
 
         if (isLinkToRepoEnabled(item)) {
@@ -54,51 +45,27 @@ export class GitOriginOwnerRepoWidget implements Widget {
         };
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_REMOTE_HIDEABLE_STATE];
-    }
-
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+    override handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_OWNER_ONLY_ACTION) {
             return toggleMetadataFlag(item, OWNER_ONLY_WHEN_FORK_KEY);
         }
 
-        return handleRemoteWidgetAction(action, item);
+        return super.handleEditorAction(action, item);
     }
 
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideWhenEmpty = isHidden(item, NO_REMOTE_HIDEABLE_STATE.key);
-        const linkEnabled = isLinkToRepoEnabled(item);
-        const ownerOnlyWhenFork = isMetadataFlagEnabled(item, OWNER_ONLY_WHEN_FORK_KEY);
-
-        if (context.isPreview) {
-            const text = ownerOnlyWhenFork ? 'owner' : 'owner/repo';
-            return linkEnabled ? renderOsc8Link('https://github.com/owner/repo', text) : text;
-        }
-
-        const origin = getRemoteInfo('origin', context);
-        if (!origin) {
-            return hideWhenEmpty ? null : 'no remote';
-        }
-
-        const isFork = ownerOnlyWhenFork && getForkStatus(context).isFork;
-        const text = isFork ? origin.owner : `${origin.owner}/${origin.repo}`;
-
-        if (linkEnabled) {
-            const url = buildRepoWebUrl(origin);
-            return renderOsc8Link(url, text);
-        }
-
-        return text;
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
+    override getCustomKeybinds(): CustomKeybind[] {
         return [
-            ...getRemoteWidgetKeybinds(),
+            ...super.getCustomKeybinds(),
             { key: 'o', label: '(o)wner only when fork', action: TOGGLE_OWNER_ONLY_ACTION }
         ];
     }
 
-    supportsRawValue(): boolean { return false; }
-    supportsColors(_item: WidgetItem): boolean { return true; }
+    protected override getPreviewText(item: WidgetItem): string {
+        return isMetadataFlagEnabled(item, OWNER_ONLY_WHEN_FORK_KEY) ? 'owner' : this.previewText;
+    }
+
+    protected formatRemote(remote: RemoteInfo, item: WidgetItem, context: RenderContext): string {
+        const isFork = isMetadataFlagEnabled(item, OWNER_ONLY_WHEN_FORK_KEY) && getForkStatus(context).isFork;
+        return isFork ? remote.owner : `${remote.owner}/${remote.repo}`;
+    }
 }
