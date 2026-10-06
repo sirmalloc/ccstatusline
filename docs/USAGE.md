@@ -90,6 +90,8 @@ CCSTATUSLINE_WIDTH=160 ccstatusline
 
 The override is checked before automatic width detection, so it also works in wrapper processes, IDE integrations, nested PTYs, and Windows environments where probing may be unavailable. Invalid values such as `0`, negative numbers, or non-numeric strings are ignored and ccstatusline falls back to normal detection.
 
+Claude Code 2.1.153 and later set `COLUMNS` to the current terminal width when running the status line. ccstatusline reads it after `CCSTATUSLINE_WIDTH` and before any probing, so on current Claude Code versions no width-detection subprocesses run. Invalid values fall back to detection the same way.
+
 On Linux, width detection first uses `/proc` and the terminal device directly, avoiding subprocesses when that probe succeeds. Portable `ps`/`stty`/`tput` fallbacks run without shell wrappers. A probe result is reused throughout one render. If no width is found, that result can also be cached for the same session across renders (default: 5 seconds); a detected width is always re-probed on the next render so resizes take effect immediately. Adjust **Terminal Width Cache TTL** under **Configure Status Line**, or set `terminalWidthCacheTtlSeconds` to `0-300` in `settings.json`; `0` disables the cache across renders.
 
 ## Powerline Auto-Alignment

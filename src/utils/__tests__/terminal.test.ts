@@ -51,6 +51,7 @@ describe('terminal utils', () => {
         vi.clearAllMocks();
         vi.restoreAllMocks();
         delete process.env.CCSTATUSLINE_WIDTH;
+        delete process.env.COLUMNS;
     });
 
     beforeEach(() => {
@@ -60,6 +61,7 @@ describe('terminal utils', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         delete process.env.CCSTATUSLINE_WIDTH;
+        delete process.env.COLUMNS;
         setPlatform(ORIGINAL_PLATFORM);
     });
 
@@ -282,6 +284,52 @@ describe('terminal utils', () => {
         expect(mockExecFileSync.mock.calls.length).toBe(0);
     });
 
+    it('uses COLUMNS from Claude Code without probing', () => {
+        pinPosixPlatform();
+        process.env.COLUMNS = '132';
+
+        expect(getTerminalWidth()).toBe(132);
+        expect(mockExecFileSync.mock.calls.length).toBe(0);
+    });
+
+    it('prefers CCSTATUSLINE_WIDTH over COLUMNS', () => {
+        process.env.CCSTATUSLINE_WIDTH = '200';
+        process.env.COLUMNS = '132';
+
+        expect(getTerminalWidth()).toBe(200);
+    });
+
+    it.each(['0', 'wide'])('ignores COLUMNS=%s and falls back to probing', (value) => {
+        pinPosixPlatform();
+        process.env.COLUMNS = value;
+
+        mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+            if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
+                return '1234\n';
+            }
+
+            if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
+                return 'ttys001\n';
+            }
+
+            if (file === 'stty' && args.join(' ') === '-F /dev/ttys001 size') {
+                return '24 160\n';
+            }
+
+            throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
+        });
+
+        expect(getTerminalWidth()).toBe(160);
+    });
+
+    it('COLUMNS applies on Windows where probing is disabled', () => {
+        setPlatform('win32');
+        process.env.COLUMNS = '140';
+
+        expect(getTerminalWidth()).toBe(140);
+        expect(canDetectTerminalWidth()).toBe(true);
+    });
+
     it('disables width detection on Windows', () => {
         setPlatform('win32');
 
@@ -415,6 +463,16 @@ describe('terminal utils', () => {
             expect(getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 300 })).toBe(220);
             expect(getTerminalWidth()).toBe(220);
             expect(canDetectTerminalWidth()).toBe(true);
+            expect(readSpy).not.toHaveBeenCalled();
+            expect(writeSpy).not.toHaveBeenCalled();
+            expect(mockExecFileSync).not.toHaveBeenCalled();
+        });
+
+        it('honors COLUMNS even when the session has a cached no-TTY result', () => {
+            readSpy.mockReturnValue({ width: null });
+            process.env.COLUMNS = '132';
+
+            expect(getTerminalWidth({ sessionId: 'session-a', ttlSeconds: 300 })).toBe(132);
             expect(readSpy).not.toHaveBeenCalled();
             expect(writeSpy).not.toHaveBeenCalled();
             expect(mockExecFileSync).not.toHaveBeenCalled();
