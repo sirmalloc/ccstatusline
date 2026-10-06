@@ -29,6 +29,7 @@ export abstract class TokenCountWidget implements Widget {
     protected abstract getTokenCount(context: RenderContext): number | null;
 
     getCategory(): string { return 'Tokens'; }
+    getLabelPrefix(): string { return this.label; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -40,7 +41,7 @@ export abstract class TokenCountWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, this.label, formatTokens(this.previewTokens, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(this.previewTokens, format));
         }
 
         const tokens = this.getTokenCount(context);
@@ -52,7 +53,7 @@ export abstract class TokenCountWidget implements Widget {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, this.label, formatTokens(tokens, format));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(tokens, format));
     }
 
     supportsRawValue(): boolean { return true; }

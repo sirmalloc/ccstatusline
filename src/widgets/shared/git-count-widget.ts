@@ -83,6 +83,8 @@ export abstract class GitFileCountWidget extends GitCountWidgetBase<number> {
     protected abstract readonly field: keyof GitFileStatusCounts;
     protected abstract readonly label: string;
 
+    getLabelPrefix(): string { return this.label; }
+
     protected getCounts(context: RenderContext): number {
         return getGitFileStatusCounts(context)[this.field];
     }
@@ -92,7 +94,7 @@ export abstract class GitFileCountWidget extends GitCountWidgetBase<number> {
     }
 
     protected formatCounts(item: WidgetItem, count: number): string {
-        return formatRawOrLabeledValue(item, this.label, `${count}`);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${count}`);
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {

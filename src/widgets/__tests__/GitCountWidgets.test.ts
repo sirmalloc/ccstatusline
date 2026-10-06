@@ -176,6 +176,18 @@ describe('Git Staged, Unstaged and Untracked Files', () => {
         expect('getCustomKeybinds' in widget).toBe(false);
         expect('renderEditor' in widget).toBe(false);
     });
+
+    it.each(FILES)('$type exposes an editable label for live and preview counts', ({ type, widget }) => {
+        const item: WidgetItem = { id: 'w', type };
+        const defaults: Record<string, string> = { 'git-staged-files': 'S:', 'git-unstaged-files': 'M:', 'git-untracked-files': '?:' };
+        expect(widget.getLabelPrefix?.(item)).toBe(defaults[type]);
+        for (const context of [live('dirty'), preview]) {
+            const value = render(widget, type, context, { rawValue: true });
+            expect(render(widget, type, context, { metadata: { label: 'Files ' } })).toBe(`Files ${value}`);
+            expect(render(widget, type, context, { metadata: { label: '' } })).toBe(value);
+            expect(render(widget, type, context, { rawValue: true, metadata: { label: 'Files ' } })).toBe(value);
+        }
+    });
 });
 
 // The glyph editor's rows, as passed to the shared symbol editor

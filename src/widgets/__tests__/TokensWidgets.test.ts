@@ -352,6 +352,28 @@ describe('Token widgets', () => {
         expect(new TokensTotalWidget().render({ id: 'total', type: 'tokens-total', rawValue: true }, context, DEFAULT_SETTINGS)).toBe('fmt:30600');
     });
 
+    it('exposes editable labels and applies overrides to live and preview counts', async () => {
+        const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
+        const context: RenderContext = { tokenMetrics: { inputTokens: 1, outputTokens: 2, cachedTokens: 3, totalTokens: 6, contextLength: 0 } };
+        const cases = [
+            { widget: new TokensInputWidget(), type: 'tokens-input', label: 'In: ', count: 1, preview: 15200 },
+            { widget: new TokensOutputWidget(), type: 'tokens-output', label: 'Out: ', count: 2, preview: 3400 },
+            { widget: new TokensCachedWidget(), type: 'tokens-cached', label: 'Cached: ', count: 3, preview: 12000 },
+            { widget: new TokensTotalWidget(), type: 'tokens-total', label: 'Total: ', count: 6, preview: 30600 }
+        ];
+
+        for (const { widget, type, label, count, preview } of cases) {
+            expect(widget.getLabelPrefix()).toBe(label);
+            for (const isPreview of [false, true]) {
+                const value = `fmt:${isPreview ? preview : count}`;
+                const renderContext = { ...context, isPreview };
+                expect(widget.render({ id: type, type, metadata: { label: 'T ' } }, renderContext, DEFAULT_SETTINGS)).toBe(`T ${value}`);
+                expect(widget.render({ id: type, type, metadata: { label: '' } }, renderContext, DEFAULT_SETTINGS)).toBe(value);
+                expect(widget.render({ id: type, type, rawValue: true, metadata: { label: 'T ' } }, renderContext, DEFAULT_SETTINGS)).toBe(value);
+            }
+        }
+    });
+
     it('formats every preview sample with the selected token style', async () => {
         const { TokensCachedWidget, TokensInputWidget, TokensOutputWidget, TokensTotalWidget } = await loadWidgets();
         const context: RenderContext = { isPreview: true };
