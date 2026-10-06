@@ -3,7 +3,7 @@ import {
     Text,
     useInput
 } from 'ink';
-import * as os from 'os';
+import * as os from 'node:os';
 import React, { useState } from 'react';
 
 import type { PowerlineConfig } from '../../types/PowerlineConfig';

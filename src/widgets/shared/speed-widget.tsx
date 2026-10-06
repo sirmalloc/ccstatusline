@@ -97,6 +97,10 @@ export function getSpeedWidgetDisplayName(kind: SpeedWidgetKind): string {
     return SPEED_WIDGET_CONFIG[kind].displayName;
 }
 
+export function getSpeedWidgetLabel(kind: SpeedWidgetKind): string {
+    return SPEED_WIDGET_CONFIG[kind].label;
+}
+
 export function getSpeedWidgetDescription(kind: SpeedWidgetKind): string {
     return SPEED_WIDGET_CONFIG[kind].description;
 }

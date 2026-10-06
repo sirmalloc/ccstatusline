@@ -16,6 +16,7 @@ import {
     type WidgetCatalogEntry
 } from '../../../utils/widgets';
 import { EDIT_HIDE_STATES_ACTION } from '../../../widgets/shared/hideable';
+import { EDIT_LABEL_ACTION } from '../../../widgets/shared/raw-or-labeled';
 
 export type WidgetPickerAction = 'change' | 'add' | 'insert';
 export type WidgetPickerLevel = 'category' | 'widget';
@@ -490,10 +491,10 @@ export function handleNormalInputMode({
             const matchedKeybind = customKeybinds.find(kb => kb.key === shortcut);
 
             if (matchedKeybind) {
-                // The hide-state checklist is rendered by the items editor for
-                // every widget that declares hideable states, so it bypasses
+                // The hide-state checklist and label editor are rendered by the
+                // items editor for every widget that opts in, so they bypass
                 // widget-level action handling.
-                if (matchedKeybind.action === EDIT_HIDE_STATES_ACTION) {
+                if (matchedKeybind.action === EDIT_HIDE_STATES_ACTION || matchedKeybind.action === EDIT_LABEL_ACTION) {
                     setCustomEditorWidget({ widget: currentWidget, impl: widgetImpl, action: matchedKeybind.action });
                     return;
                 }

@@ -127,8 +127,8 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 setAnsi256Input('');
             } else if (key.return) {
                 // Validate and apply the ansi256 color
-                const code = parseInt(ansi256Input, 10);
-                if (!isNaN(code) && code >= 0 && code <= 255) {
+                const code = Number.parseInt(ansi256Input, 10);
+                if (!Number.isNaN(code) && code >= 0 && code <= 255) {
                     const ansiColor = `ansi256:${code}`;
 
                     const selectedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
@@ -147,7 +147,7 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                 // Only accept numeric characters (0-9)
                 if (/^[0-9]$/.test(input)) {
                     const newInput = ansi256Input + input;
-                    const code = parseInt(newInput, 10);
+                    const code = Number.parseInt(newInput, 10);
                     // Only allow if it won't exceed 255
                     if (code <= 255) {
                         setAnsi256Input(newInput);
