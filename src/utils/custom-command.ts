@@ -253,9 +253,11 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
     try {
         // Only the capture runtime owns this pipe. The command's descendants
         // cannot inherit it and keep spawnSync waiting after their shell exits.
+        // Keep CommonJS requires unprefixed for Node versions before 14.18;
+        // this script runs verbatim and is not transformed by the bundler.
         const script = `(${captureCustomCommand.toString()})(
-            require('node:child_process').spawn,
-            JSON.parse(require('node:fs').readFileSync(0, 'utf8')),
+            require('child_process').spawn,
+            JSON.parse(require('fs').readFileSync(0, 'utf8')),
             ${MAX_STDOUT_BYTES}, ${MAX_CACHED_OUTPUT_CHARS}
         )`;
         const result = spawnSync(process.execPath, ['-e', script], {

@@ -71,7 +71,7 @@ export interface RunGlobalPackageInstallOptions { platform?: NodeJS.Platform }
 
 function parseVersion(version: string): number[] {
     return version.split(/[.-]/).map((part) => {
-        const parsed = parseInt(part, 10);
+        const parsed = Number.parseInt(part, 10);
         return Number.isFinite(parsed) ? parsed : 0;
     });
 }
