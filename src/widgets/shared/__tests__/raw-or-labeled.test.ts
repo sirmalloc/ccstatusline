@@ -57,4 +57,8 @@ describe('getLabelModifierText', () => {
         expect(getLabelModifierText(makeItem({ metadata: { label: 'M ' } }))).toBe('(label: "M ")');
         expect(getLabelModifierText(makeItem())).toBeUndefined();
     });
+
+    it('escapes quotes inside the override', () => {
+        expect(getLabelModifierText(makeItem({ metadata: { label: 'a" b' } }))).toBe('(label: "a\\" b")');
+    });
 });

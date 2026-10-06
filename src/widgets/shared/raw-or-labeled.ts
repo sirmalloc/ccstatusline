@@ -51,5 +51,5 @@ export function getLabelKeybind(): CustomKeybind {
 
 export function getLabelModifierText(item: WidgetItem): string | undefined {
     const label = item.metadata?.[LABEL_METADATA_KEY];
-    return label === undefined ? undefined : `(label: "${label}")`;
+    return label === undefined ? undefined : `(label: ${JSON.stringify(label)})`;
 }

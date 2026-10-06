@@ -44,7 +44,7 @@ export const LabelEditor: React.FC<LabelEditorProps> = ({ widget, defaultLabel, 
             <Box marginTop={1}>
                 <Text>
                     {`"${display}"`}
-                    <Text dimColor>{` (default: "${defaultLabel}")`}</Text>
+                    <Text dimColor>{` (default: ${JSON.stringify(defaultLabel)})`}</Text>
                 </Text>
             </Box>
         </Box>
