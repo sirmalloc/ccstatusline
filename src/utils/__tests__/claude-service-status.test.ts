@@ -1,5 +1,5 @@
-import { EventEmitter } from 'events';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { EventEmitter } from 'node:events';
 import {
     afterEach,
     beforeEach,

@@ -1,4 +1,4 @@
-import type * as childProcess from 'child_process';
+import type * as childProcess from 'node:child_process';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as os from 'node:os';
@@ -39,8 +39,8 @@ beforeAll(() => {
         console.log(JSON.stringify({ result, elapsed: Date.now() - start }));
     `);
     fs.writeFileSync(writerPath, `
-        const fs = require('fs');
-        const { spawn } = require('child_process');
+        const fs = require('node:fs');
+        const { spawn } = require('node:child_process');
         const mode = process.argv[2];
         if (mode === 'stdin') {
             process.stdout.write(fs.readFileSync(0));

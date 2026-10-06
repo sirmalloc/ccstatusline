@@ -1,5 +1,5 @@
-import { execFile } from 'child_process';
-import * as https from 'https';
+import { execFile } from 'node:child_process';
+import * as https from 'node:https';
 
 import type {
     InstallationMetadata,
