@@ -36,7 +36,7 @@ export class SessionCostWidget implements Widget {
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
             const value = formatCost(2.45, format);
-            return formatRawOrLabeledValue(item, LABEL, value);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const totalCost = context.data?.cost?.total_cost_usd;
@@ -52,7 +52,7 @@ export class SessionCostWidget implements Widget {
         }
 
         const formattedCost = formatCost(totalCost, format);
-        return formatRawOrLabeledValue(item, LABEL, formattedCost);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formattedCost);
     }
 
     supportsRawValue(): boolean { return true; }

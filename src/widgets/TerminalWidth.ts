@@ -25,9 +25,9 @@ export class TerminalWidthWidget implements Widget {
         const width = context.terminalWidth ?? getTerminalWidth();
         if (context.isPreview) {
             const detectedWidth = width ?? '??';
-            return formatRawOrLabeledValue(item, LABEL, `${detectedWidth}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${detectedWidth}`);
         } else if (width) {
-            return formatRawOrLabeledValue(item, LABEL, `${width}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${width}`);
         }
         return null;
     }

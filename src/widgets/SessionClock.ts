@@ -50,7 +50,7 @@ export class SessionClockWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, '2hr 15m');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), '2hr 15m');
         }
 
         const hideZero = isHidden(item, ZERO_HIDEABLE_STATE.key);
@@ -61,14 +61,14 @@ export class SessionClockWidget implements Widget {
                 return null;
             }
             const formatted = formatDurationFromMs(durationMs);
-            return formatRawOrLabeledValue(item, LABEL, formatted);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatted);
         }
 
         const duration = context.sessionDuration ?? '0m';
         if ((duration === '0m' || duration === '<1m') && hideZero) {
             return null;
         }
-        return formatRawOrLabeledValue(item, LABEL, duration);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), duration);
     }
 
     supportsRawValue(): boolean { return true; }

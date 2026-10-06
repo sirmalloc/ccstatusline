@@ -39,7 +39,7 @@ export class GitStagedFilesWidget implements Widget {
         const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, '3');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), '3');
         }
 
         if (!isInsideGitWorkTree(context)) {
@@ -51,7 +51,7 @@ export class GitStagedFilesWidget implements Widget {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, LABEL, `${counts.staged}`);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${counts.staged}`);
     }
 
     getNumericValue(context: RenderContext, _item: WidgetItem): number | null {

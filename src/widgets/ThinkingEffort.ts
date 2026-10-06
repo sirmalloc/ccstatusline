@@ -73,11 +73,11 @@ export class ThinkingEffortWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, 'high');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'high');
         }
 
         const effort = formatEffort(resolveThinkingEffort(context));
-        return formatRawOrLabeledValue(item, LABEL, effort);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), effort);
     }
 
     supportsRawValue(): boolean { return true; }

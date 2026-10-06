@@ -75,23 +75,23 @@ export class ExtraUsageUtilizationWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const width = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(renderedPercent, width);
-                return formatRawOrLabeledValue(item, LABEL, `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
                 const slider = makeSliderBar(renderedPercent);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
-                return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
             }
 
-            return formatRawOrLabeledValue(item, LABEL, formatPercent(renderedPercent, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatPercent(renderedPercent, format));
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
             return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
-                : formatRawOrLabeledValue(item, LABEL, 'n/a');
+                : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
             if (data.error) {
@@ -109,16 +109,16 @@ export class ExtraUsageUtilizationWidget implements Widget {
         if (isUsageProgressMode(displayMode)) {
             const width = getUsageProgressBarWidth(displayMode);
             const progressBar = makeTimerProgressBar(renderedPercent, width);
-            return formatRawOrLabeledValue(item, LABEL, `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `[${progressBar}] ${formatPercent(renderedPercent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
             const slider = makeSliderBar(renderedPercent);
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${formatPercent(renderedPercent, format)}` : slider;
-            return formatRawOrLabeledValue(item, LABEL, sliderDisplay);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
         }
 
-        return formatRawOrLabeledValue(item, LABEL, formatPercent(renderedPercent, format));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatPercent(renderedPercent, format));
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

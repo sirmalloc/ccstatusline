@@ -34,7 +34,7 @@ export class TokensInputWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, formatTokens(15200, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(15200, format));
         }
 
         const inputTotalTokens = context.tokenMetrics?.inputTokens
@@ -48,7 +48,7 @@ export class TokensInputWidget implements Widget {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, LABEL, formatTokens(inputTotalTokens, format));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(inputTotalTokens, format));
     }
 
     supportsRawValue(): boolean { return true; }

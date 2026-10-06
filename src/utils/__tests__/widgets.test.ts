@@ -368,3 +368,37 @@ describe('getMatchSegments', () => {
         expect(segments[0]).toEqual({ text: 'Git', matched: true });
     });
 });
+
+describe('label prefix', () => {
+    const LABEL_MODE_PROBES: Record<string, string>[] = [
+        {},
+        { absolute: 'true' },
+        { display: 'progress' },
+        { display: 'progress-short' },
+        { display: 'slider' },
+        { display: 'slider-only' },
+        { inverse: 'true' }
+    ];
+
+    it('widgets render the label their prefix declares in every mode', () => {
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+
+        for (const type of getAllWidgetTypes(settings)) {
+            const widget = getWidget(type);
+            if (!widget?.getLabelPrefix) {
+                continue;
+            }
+
+            for (const metadata of LABEL_MODE_PROBES) {
+                const item = { id: '1', type, metadata };
+                const label = widget.getLabelPrefix(item);
+                const rendered = widget.render(item, { isPreview: true }, settings) ?? '';
+                expect(`${type}/${JSON.stringify(metadata)}: ${rendered.includes(label) ? 'has' : 'lacks'} "${label}"`)
+                    .toBe(`${type}/${JSON.stringify(metadata)}: has "${label}"`);
+            }
+        }
+    });
+});

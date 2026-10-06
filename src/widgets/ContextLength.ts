@@ -27,16 +27,16 @@ export class ContextLengthWidget implements Widget {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             const value = formatTokens(18600, format);
-            return formatRawOrLabeledValue(item, LABEL, value);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const contextLengthTokens = getContextWindowContextLengthTokens(context.data);
         if (contextLengthTokens !== null) {
-            return formatRawOrLabeledValue(item, LABEL, formatTokens(contextLengthTokens, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(contextLengthTokens, format));
         }
 
         if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, LABEL, formatTokens(context.tokenMetrics.contextLength, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(context.tokenMetrics.contextLength, format));
         }
         return null;
     }

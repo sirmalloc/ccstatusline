@@ -33,14 +33,14 @@ export class TokensTotalWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, formatTokens(30600, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(30600, format));
         }
 
         if (context.tokenMetrics) {
             if (context.tokenMetrics.totalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, LABEL, formatTokens(context.tokenMetrics.totalTokens, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(context.tokenMetrics.totalTokens, format));
         }
         return null;
     }

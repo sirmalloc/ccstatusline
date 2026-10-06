@@ -30,13 +30,13 @@ export class OutputStyleWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, 'default');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'default');
         } else if (context.data?.output_style?.name) {
             const styleName = context.data.output_style.name;
             if (styleName === 'default' && isHidden(item, DEFAULT_VALUE_HIDEABLE_STATE.key)) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, LABEL, styleName);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), styleName);
         }
         return null;
     }

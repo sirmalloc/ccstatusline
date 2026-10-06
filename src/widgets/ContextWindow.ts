@@ -31,7 +31,7 @@ export class ContextWindowWidget implements Widget {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             const value = formatTokens(200000, format);
-            return formatRawOrLabeledValue(item, LABEL, value);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         let total = getContextWindowSize(context.data);
@@ -45,7 +45,7 @@ export class ContextWindowWidget implements Widget {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, LABEL, formatTokens(total, format));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(total, format));
     }
 
     supportsRawValue(): boolean { return true; }

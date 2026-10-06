@@ -22,13 +22,13 @@ export class ClaudeSessionIdWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, 'preview-session-id');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'preview-session-id');
         } else {
             const sessionId = context.data?.session_id;
             if (!sessionId) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, LABEL, sessionId);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), sessionId);
         }
     }
 

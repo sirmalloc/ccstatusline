@@ -49,13 +49,13 @@ export class CacheWriteWidget implements Widget {
         const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
             const value = formatTokensWithPercentage(3000, 16, tokenFormat, percentFormat);
-            return formatRawOrLabeledValue(item, LABEL, value);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, LABEL, 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
 
         if (tokens.creation === 0 && hideWhenEmpty) {
@@ -63,7 +63,7 @@ export class CacheWriteWidget implements Widget {
         }
 
         const value = formatTokensWithPercentage(tokens.creation, getCacheWritePercentage(tokens), tokenFormat, percentFormat);
-        return formatRawOrLabeledValue(item, LABEL, value);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

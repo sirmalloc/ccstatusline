@@ -139,7 +139,7 @@ export class CurrentWorkingDirWidget implements Widget {
                 previewPath = '/Users/example/Documents/Projects/my-project';
             }
 
-            return `${symbolPrefix}${formatRawOrLabeledValue(item, LABEL, previewPath)}`;
+            return `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), previewPath)}`;
         }
 
         const cwd = context.data?.cwd;
@@ -176,7 +176,7 @@ export class CurrentWorkingDirWidget implements Widget {
             }
         }
 
-        return `${symbolPrefix}${formatRawOrLabeledValue(item, LABEL, displayPath)}`;
+        return `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), displayPath)}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

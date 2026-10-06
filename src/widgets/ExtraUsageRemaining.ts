@@ -35,14 +35,14 @@ export class ExtraUsageRemainingWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, formatUsageCurrency(3894, undefined, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatUsageCurrency(3894, undefined, format));
         }
 
         const data = context.usageData ?? {};
         if (data.extraUsageEnabled === false) {
             return isHidden(item, EXTRA_USAGE_DISABLED_HIDEABLE_STATE.key)
                 ? null
-                : formatRawOrLabeledValue(item, LABEL, 'n/a');
+                : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
         if (data.extraUsageEnabled !== true || data.extraUsageLimit === undefined || data.extraUsageUsed === undefined) {
             if (data.error) {
@@ -59,7 +59,7 @@ export class ExtraUsageRemainingWidget implements Widget {
         const remaining = Math.max(0, limitDollars - usedDollars);
         const formatted = formatUsageCurrency(remaining, data.extraUsageCurrency, format);
 
-        return formatRawOrLabeledValue(item, LABEL, formatted);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatted);
     }
 
     supportsRawValue(): boolean { return true; }

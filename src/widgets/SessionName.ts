@@ -23,7 +23,7 @@ export class SessionNameWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, LABEL, 'my-session');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'my-session');
         }
 
         const sessionName = context.transcriptSessionName === undefined
@@ -33,7 +33,7 @@ export class SessionNameWidget implements Widget {
             return null;
         }
 
-        return formatRawOrLabeledValue(item, LABEL, sessionName);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), sessionName);
     }
 
     supportsRawValue(): boolean { return true; }

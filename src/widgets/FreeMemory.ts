@@ -84,7 +84,7 @@ export class FreeMemoryWidget implements Widget {
         const format = resolveNumberFormat('memory', item, settings);
         if (context.isPreview) {
             const value = `${formatBytes(12.4 * 1024 ** 3, format)}/${formatBytes(16 * 1024 ** 3, format)}`;
-            return formatRawOrLabeledValue(item, LABEL, value);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const total = os.totalmem();
@@ -100,7 +100,7 @@ export class FreeMemoryWidget implements Widget {
 
         const value = `${formatBytes(used, format)}/${formatBytes(total, format)}`;
 
-        return formatRawOrLabeledValue(item, LABEL, value);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
     }
 
     supportsRawValue(): boolean { return true; }
