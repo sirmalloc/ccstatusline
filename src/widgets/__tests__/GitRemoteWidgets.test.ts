@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -22,7 +22,7 @@ import { GitUpstreamOwnerWidget } from '../GitUpstreamOwner';
 import { GitUpstreamOwnerRepoWidget } from '../GitUpstreamOwnerRepo';
 import { GitUpstreamRepoWidget } from '../GitUpstreamRepo';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 // The widgets by type, imported directly: the full registry also loads widgets
 // that need more of child_process than this mock provides
