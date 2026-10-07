@@ -314,6 +314,18 @@ describe('BlockResetTimerWidget', () => {
         }).modifierText).toBe('(short bar only)');
     });
 
+    it('does not show a time cursor carried over from a usage widget', () => {
+        // A usage bar's cursor metadata survives a type change in the picker,
+        // but this timer never draws a cursor
+        const widget = new BlockResetTimerWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { display: 'progress', cursor: 'true' }
+        }).modifierText).toBe('(long bar)');
+    });
+
     runUsageTimerEditorSuite({
         baseItem: { id: 'reset', type: 'reset-timer' },
         createWidget: () => new BlockResetTimerWidget(),

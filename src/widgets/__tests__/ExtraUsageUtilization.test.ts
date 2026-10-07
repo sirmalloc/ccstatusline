@@ -99,6 +99,18 @@ describe('ExtraUsageUtilizationWidget', () => {
         expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
     });
 
+    it('does not show a time cursor carried over from a usage widget', () => {
+        // A usage bar's cursor metadata survives a type change in the picker,
+        // but this widget never draws a cursor
+        const widget = new ExtraUsageUtilizationWidget();
+
+        expect(widget.getEditorDisplay({
+            id: 'extra',
+            type: 'extra-usage-utilization',
+            metadata: { display: 'progress', cursor: 'true' }
+        }).modifierText).toBe('(long bar, used)');
+    });
+
     it('shows usage errors only when required extra usage data is missing', () => {
         const widget = new ExtraUsageUtilizationWidget();
 
