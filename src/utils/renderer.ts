@@ -1156,7 +1156,7 @@ export function renderStatusLine(
         }
 
         if (widget.type === 'flex-separator') {
-            elements.push({ content: 'FLEX', type: 'flex-separator', widget });
+            elements.push({ content: '', type: 'flex-separator', widget });
             hasFlexSeparator = true;
             continue;
         }
@@ -1239,8 +1239,9 @@ export function renderStatusLine(
         }
     }
 
-    // Apply default padding and separators
-    const finalElements: string[] = [];
+    // Apply default padding and separators. A flex separator is pushed as null,
+    // so no widget text can be mistaken for one.
+    const finalElements: (string | null)[] = [];
     const padding = settings.defaultPadding ?? '';
     const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
     const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
@@ -1281,7 +1282,9 @@ export function renderStatusLine(
         }
 
         // Add element with padding (separators don't get padding)
-        if (elem.type === 'separator' || elem.type === 'flex-separator') {
+        if (elem.type === 'flex-separator') {
+            finalElements.push(null);
+        } else if (elem.type === 'separator') {
             finalElements.push(elem.content);
         } else {
             // Check if padding should be omitted due to no-padding merge
@@ -1324,7 +1327,7 @@ export function renderStatusLine(
         let currentPart = 0;
 
         for (const elem of finalElements) {
-            if (elem === 'FLEX') {
+            if (elem === null) {
                 currentPart++;
                 parts[currentPart] = [];
             } else {
@@ -1362,7 +1365,7 @@ export function renderStatusLine(
         // No flex separator OR no width detected
         if (hasFlexSeparator && terminalWidth === null) {
             // Treat flex separators as normal separators when width detection fails
-            statusLine = finalElements.map(e => e === 'FLEX' ? chalk.gray(' | ') : e).join('');
+            statusLine = finalElements.map(e => e ?? chalk.gray(' | ')).join('');
         } else {
             // Just join all elements normally
             statusLine = finalElements.join('');

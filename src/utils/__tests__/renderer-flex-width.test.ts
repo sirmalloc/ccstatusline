@@ -669,4 +669,18 @@ describe('flex-separator widget', () => {
         expect(getVisibleWidth(line)).toBe(50 - 6);
     });
 
+    it('keeps uncolored widget text that reads FLEX instead of treating it as a flex separator', () => {
+        const widgets: WidgetItem[] = [
+            { id: 'left', type: 'custom-text', customText: 'left' },
+            flexWidget,
+            { id: 'literal', type: 'custom-text', customText: 'FLEX' },
+            { id: 'right', type: 'custom-text', customText: 'right' }
+        ];
+
+        const known = renderLine(widgets, { flexMode: 'full', colorLevel: 0 }, { terminalWidth: 46 });
+        expect(stripSgrCodes(known)).toBe(`left${' '.repeat(27)}FLEXright`);
+
+        const unknown = renderLine(widgets, { flexMode: 'full', colorLevel: 0 }, { terminalWidth: 0 });
+        expect(stripSgrCodes(unknown)).toBe('left | FLEXright');
+    });
 });
