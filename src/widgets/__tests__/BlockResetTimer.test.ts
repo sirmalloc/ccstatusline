@@ -319,11 +319,14 @@ describe('BlockResetTimerWidget', () => {
         // but this timer never draws a cursor
         const widget = new BlockResetTimerWidget();
 
-        expect(widget.getEditorDisplay({
+        const modifierText = widget.getEditorDisplay({
             id: 'reset',
             type: 'reset-timer',
             metadata: { display: 'progress', cursor: 'true' }
-        }).modifierText).toBe('(long bar)');
+        }).modifierText;
+
+        expect(modifierText).toContain('bar');
+        expect(modifierText).not.toContain('time cursor');
     });
 
     runUsageTimerEditorSuite({

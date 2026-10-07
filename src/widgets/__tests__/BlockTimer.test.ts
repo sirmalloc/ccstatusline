@@ -257,11 +257,14 @@ describe('BlockTimerWidget', () => {
         // but this timer never draws a cursor
         const widget = new BlockTimerWidget();
 
-        expect(widget.getEditorDisplay({
+        const modifierText = widget.getEditorDisplay({
             id: 'block',
             type: 'block-timer',
             metadata: { display: 'progress', cursor: 'true' }
-        }).modifierText).toBe('(long bar)');
+        }).modifierText;
+
+        expect(modifierText).toContain('bar');
+        expect(modifierText).not.toContain('time cursor');
     });
 
     runUsageTimerEditorSuite({

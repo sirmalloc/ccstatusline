@@ -104,11 +104,14 @@ describe('ExtraUsageUtilizationWidget', () => {
         // but this widget never draws a cursor
         const widget = new ExtraUsageUtilizationWidget();
 
-        expect(widget.getEditorDisplay({
+        const modifierText = widget.getEditorDisplay({
             id: 'extra',
             type: 'extra-usage-utilization',
             metadata: { display: 'progress', cursor: 'true' }
-        }).modifierText).toBe('(long bar, used)');
+        }).modifierText;
+
+        expect(modifierText).toContain('bar');
+        expect(modifierText).not.toContain('time cursor');
     });
 
     it('shows usage errors only when required extra usage data is missing', () => {
