@@ -5,6 +5,7 @@ import type {
     WidgetItemType
 } from '../../../types/Widget';
 import { generateGuid } from '../../../utils/guid';
+import { moveItem } from '../../../utils/move-item';
 import {
     CYCLE_NUMBER_STYLE_ACTION,
     cycleNumberStyle
@@ -315,24 +316,12 @@ export function handleMoveInputMode({
     setMoveMode
 }: HandleMoveInputModeArgs): void {
     if (key.upArrow && widgets.length > 1) {
-        const newWidgets = [...widgets];
         const targetIndex = selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1;
-        const temp = newWidgets[selectedIndex];
-        const prev = newWidgets[targetIndex];
-        if (temp && prev) {
-            [newWidgets[selectedIndex], newWidgets[targetIndex]] = [prev, temp];
-        }
-        onUpdate(newWidgets);
+        onUpdate(moveItem(widgets, selectedIndex, targetIndex));
         setSelectedIndex(targetIndex);
     } else if (key.downArrow && widgets.length > 1) {
-        const newWidgets = [...widgets];
         const targetIndex = selectedIndex + 1 > widgets.length - 1 ? 0 : selectedIndex + 1;
-        const temp = newWidgets[selectedIndex];
-        const next = newWidgets[targetIndex];
-        if (temp && next) {
-            [newWidgets[selectedIndex], newWidgets[targetIndex]] = [next, temp];
-        }
-        onUpdate(newWidgets);
+        onUpdate(moveItem(widgets, selectedIndex, targetIndex));
         setSelectedIndex(targetIndex);
     } else if (key.escape || key.return) {
         setMoveMode(false);

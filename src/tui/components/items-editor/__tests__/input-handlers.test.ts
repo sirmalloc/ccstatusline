@@ -437,7 +437,7 @@ describe('items-editor input handlers', () => {
         expect(setSelectedIndex).toHaveBeenCalledWith(0);
     });
 
-    it('wraps to last position when moving widget up from first position', () => {
+    it('wraps to last position when moving widget up from first position, keeping the others in order', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'tokens-input' },
             { id: '2', type: 'tokens-output' },
@@ -456,14 +456,14 @@ describe('items-editor input handlers', () => {
         });
 
         expect(onUpdate).toHaveBeenCalledWith([
-            { id: '3', type: 'git-branch' },
             { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' },
             { id: '1', type: 'tokens-input' }
         ]);
         expect(setSelectedIndex).toHaveBeenCalledWith(2);
     });
 
-    it('wraps to first position when moving widget down from last position', () => {
+    it('wraps to first position when moving widget down from last position, keeping the others in order', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'tokens-input' },
             { id: '2', type: 'tokens-output' },
@@ -483,8 +483,8 @@ describe('items-editor input handlers', () => {
 
         expect(onUpdate).toHaveBeenCalledWith([
             { id: '3', type: 'git-branch' },
-            { id: '2', type: 'tokens-output' },
-            { id: '1', type: 'tokens-input' }
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' }
         ]);
         expect(setSelectedIndex).toHaveBeenCalledWith(0);
     });
