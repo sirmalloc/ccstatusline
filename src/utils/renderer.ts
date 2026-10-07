@@ -1361,15 +1361,12 @@ export function renderStatusLine(
                 statusLine += ' '.repeat(spaces);
             }
         }
+    } else if (hasFlexSeparator) {
+        // No width detected: treat flex separators as normal separators
+        statusLine = finalElements.map(e => e ?? chalk.gray(' | ')).join('');
     } else {
-        // No flex separator OR no width detected
-        if (hasFlexSeparator && terminalWidth === null) {
-            // Treat flex separators as normal separators when width detection fails
-            statusLine = finalElements.map(e => e ?? chalk.gray(' | ')).join('');
-        } else {
-            // Just join all elements normally
-            statusLine = finalElements.join('');
-        }
+        // No flex separator: just join all elements normally
+        statusLine = finalElements.join('');
     }
 
     // Truncate if the line exceeds the terminal width
