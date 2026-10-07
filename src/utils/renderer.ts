@@ -22,6 +22,7 @@ import {
     applyLineGradientSegment,
     getVisibleText,
     getVisibleWidth,
+    restoreBackgroundAfterResets,
     stripSgrCodes,
     truncateStyledText
 } from './ansi';
@@ -514,9 +515,14 @@ function renderPowerlineStatusLine(
         const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
             ? overrideForegroundGradientStops
             : null;
-        const styledContent = widget.widget.dim === 'parens'
-            ? applyParensDim(widget.content, shouldBold)
+        // Resets in preserved content would clear the segment background up
+        // to the separator, so it is re-applied after each one.
+        const segmentContent = isPreserveColors && widget.bgColor
+            ? restoreBackgroundAfterResets(widget.content, getColorAnsiCode(widget.bgColor, colorLevel, true))
             : widget.content;
+        const styledContent = widget.widget.dim === 'parens'
+            ? applyParensDim(segmentContent, shouldBold)
+            : segmentContent;
 
         if (widget.fgColor && !isPreserveColors && !textGradientStops) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);

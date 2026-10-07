@@ -7,6 +7,7 @@ import {
 import {
     getVisibleText,
     getVisibleWidth,
+    restoreBackgroundAfterResets,
     stripOscCodes,
     truncateStyledText
 } from '../ansi';
@@ -108,5 +109,20 @@ describe('truncateStyledText', () => {
         // through as-is and must not trigger an extra hyperlink close.
         expect(truncateStyledText('\x1b]8;\x07abcdefgh', 5)).toBe('\x1b]8;\x07ab...');
         expect(truncateStyledText('\x1b]0;title\x07abcdefgh', 5)).toBe('\x1b]0;title\x07ab...');
+    });
+});
+
+describe('restoreBackgroundAfterResets', () => {
+    const BG = '\x1b[44m';
+
+    it('re-applies the background after every sequence that clears it', () => {
+        expect(restoreBackgroundAfterResets('\x1b[31ma\x1b[0mb\x1b[mc\x1b[00md\x1b[;1me\x1b[39;49mf', BG))
+            .toBe(`\x1b[31ma\x1b[0m${BG}b\x1b[m${BG}c\x1b[00m${BG}d\x1b[;1m${BG}e\x1b[39;49m${BG}f`);
+    });
+
+    it('leaves other styling, and the arguments of extended colors, alone', () => {
+        const text = '\x1b[1;31ma\x1b[38;5;0mb\x1b[48;2;0;49;0mc\x1b[58;5;49md\x1b[39me';
+
+        expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
     });
 });
