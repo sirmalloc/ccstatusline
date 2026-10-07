@@ -864,7 +864,11 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     try {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
-        if (fileAge < CACHE_MAX_AGE) {
+        // A file dated ahead of now still counts within one cache lifetime: a
+        // concurrent render may have written it after this one read the clock.
+        // Further ahead, it was written under a clock since set back, and
+        // trusting it would keep that data on screen until real time caught up.
+        if (Math.abs(fileAge) < CACHE_MAX_AGE) {
             const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error

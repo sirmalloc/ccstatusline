@@ -1162,6 +1162,39 @@ describe('fetchUsageData error handling', () => {
     });
 
     it.each([
+        ['a day', 24 * 60 * 60 * 1000, 1, 42],
+        ['a few seconds', 2000, 0, 5]
+    ])('refetches a cache dated %s in the future only when the date cannot be right', (_label, aheadMs, expectedRequests, expectedSessionUsage) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('future-dated-cache');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: matchingHash });
+            // A day ahead: written while the system clock ran fast, since
+            // corrected. A few seconds ahead: a concurrent render wrote it
+            // after this one read the clock.
+            const futureSeconds = (mtimeMs + aheadMs) / 1000;
+            fs.utimesSync(cacheFile, futureSeconds, futureSeconds);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(expectedRequests);
+            expect(result.first.sessionUsage).toBe(expectedSessionUsage);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
         ['fresh', 5000],
         ['stale', 200000]
     ])('serves a %s legacy cache during backoff without rewriting the cache or lock', (_state, cacheAgeMs) => {

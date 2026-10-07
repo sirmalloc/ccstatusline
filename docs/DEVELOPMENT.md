@@ -71,7 +71,7 @@ Configuration exports snapshot the live TUI settings and add an `exportedBy` pac
 
 Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
-Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignored, so mocked clocks, system clock jumps, or old test artifacts cannot suppress usage fetching indefinitely. Valid deadlines up to 24 hours ahead, including API `Retry-After` backoffs, remain active.
+Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignored, so mocked clocks, system clock jumps, or old test artifacts cannot suppress usage fetching indefinitely. Valid deadlines up to 24 hours ahead, including API `Retry-After` backoffs, remain active. Likewise, a `usage.json` modified more than its 180-second lifetime in the future counts as stale rather than fresh.
 
 ## Widget Data Sources
 
