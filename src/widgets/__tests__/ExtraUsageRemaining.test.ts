@@ -103,6 +103,9 @@ describe('ExtraUsageRemainingWidget', () => {
         const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-remaining' };
 
         expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
+        expect(widget.getCustomKeybinds()).toEqual([
+            { key: 'b', label: '(b)udget colors', action: 'toggle-budget-colors' }
+        ]);
         expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
     });
 

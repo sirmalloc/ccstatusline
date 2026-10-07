@@ -13,6 +13,12 @@ import {
 } from '../utils/number-format';
 import { getUsageErrorMessage } from '../utils/usage';
 
+import {
+    appendBudgetColorsModifier,
+    getBudgetColorsKeybind,
+    handleToggleBudgetColorsAction,
+    resolveBudgetColor
+} from './shared/budget-color';
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './shared/extra-usage-disabled';
 import { isHidden } from './shared/hideable';
 import { makeTimerProgressBar } from './shared/progress-bar';
@@ -43,7 +49,10 @@ export class ExtraUsageUtilizationWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true })
+            modifierText: appendBudgetColorsModifier(
+                getUsageDisplayModifierText(item, { showUsageDirection: true }),
+                item
+            )
         };
     }
 
@@ -60,7 +69,7 @@ export class ExtraUsageUtilizationWidget implements Widget {
             return toggleUsageInverted(item);
         }
 
-        return null;
+        return handleToggleBudgetColorsAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
@@ -122,7 +131,11 @@ export class ExtraUsageUtilizationWidget implements Widget {
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-        return getUsagePercentCustomKeybinds(item, false);
+        return [...getUsagePercentCustomKeybinds(item, false), getBudgetColorsKeybind()];
+    }
+
+    getDynamicColor(item: WidgetItem, context: RenderContext): string | undefined {
+        return resolveBudgetColor(item, context.usageData?.extraUsageUtilization);
     }
 
     supportsRawValue(): boolean { return true; }
