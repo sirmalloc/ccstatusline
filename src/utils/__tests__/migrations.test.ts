@@ -30,6 +30,11 @@ describe('migrations', () => {
         expect(needsMigration({}, 3)).toBe(true);
     });
 
+    it('does not migrate a config whose version is present but not a number', () => {
+        expect(needsMigration({ version: '4' }, 4)).toBe(false);
+        expect(needsMigration({ version: null }, 4)).toBe(false);
+    });
+
     it('returns original value for non-record migration input', () => {
         expect(migrateConfig('invalid', 3)).toBe('invalid');
         expect(migrateConfig(123, 3)).toBe(123);
