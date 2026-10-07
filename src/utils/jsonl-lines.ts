@@ -197,7 +197,8 @@ export function* iterateJsonlLinesReverseSync(filePath: string): Generator<strin
                 }
 
                 end = newline;
-                newline = chunk.lastIndexOf(0x0a, end - 1);
+                // A negative offset would search from the end of the chunk again.
+                newline = end > 0 ? chunk.lastIndexOf(0x0a, end - 1) : -1;
             }
 
             if (end > 0) {
