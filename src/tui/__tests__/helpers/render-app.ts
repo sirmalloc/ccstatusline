@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import { render } from 'ink';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -54,6 +55,9 @@ export interface AppSandbox {
 // stub the Claude status line and install state they need on top of this.
 export function setUpAppSandbox(): AppSandbox {
     const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    // The TUI sets chalk's global color level from the settings it loads, so
+    // it's put back for the test files that run after this one
+    const originalChalkLevel = chalk.level;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-app-'));
     const settingsPath = path.join(dir, 'settings.json');
     process.env.CLAUDE_CONFIG_DIR = path.join(dir, 'claude');
@@ -73,6 +77,7 @@ export function setUpAppSandbox(): AppSandbox {
         settingsPath,
         restore: () => {
             vi.restoreAllMocks();
+            chalk.level = originalChalkLevel;
             initConfigPath();
             if (originalClaudeConfigDir === undefined) {
                 delete process.env.CLAUDE_CONFIG_DIR;
