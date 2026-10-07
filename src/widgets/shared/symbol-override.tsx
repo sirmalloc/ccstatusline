@@ -14,6 +14,7 @@ import { getVisibleWidth } from '../../utils/ansi';
 import { shouldInsertInput } from '../../utils/input-guards';
 
 import { removeMetadataKeys } from './metadata';
+import { getGraphemes } from './text-cursor';
 
 export const SYMBOL_OVERRIDE_ACTION = 'edit-symbol-override';
 
@@ -88,22 +89,6 @@ export function renderSymbolSlotsEditor(props: WidgetEditorProps, slots: SymbolS
     return <SymbolSlotsEditor {...props} slots={slots} />;
 }
 
-// Helper to get grapheme segments if Intl.Segmenter is available
-function getFirstGrapheme(str: string): string {
-    if (str.length === 0) {
-        return '';
-    }
-
-    if ('Segmenter' in Intl) {
-        const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-        const segments = Array.from(segmenter.segment(str));
-        return segments[0]?.segment ?? '';
-    }
-
-    // Fallback: just take first character
-    return Array.from(str)[0] ?? '';
-}
-
 const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> = ({ widget, slots, onComplete, onCancel }) => {
     const [values, setValues] = useState<string[]>(() => slots.map(slot => getSlotSymbol(widget, slot)));
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -126,7 +111,7 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             setValues(values.map((value, index) => (index === selectedIndex ? '' : value)));
         } else if (shouldInsertInput(input, key)) {
             // Take only the first grapheme (handles multi-byte emojis correctly)
-            const grapheme = getFirstGrapheme(input);
+            const grapheme = getGraphemes(input)[0] ?? '';
             setValues(values.map((value, index) => (index === selectedIndex ? grapheme : value)));
         }
     });
