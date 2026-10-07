@@ -259,8 +259,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             // Toggle show separators (only if not in powerline mode and no default separator)
             if (!settings.powerline.enabled && !settings.defaultSeparator) {
                 setShowSeparators(!showSeparators);
-                // The highlighted item ID will be maintained, and we'll recalculate
-                // the initial index when rendering the SelectInput
+                // The highlighted item ID is kept, and the SelectInput recalculates its
+                // initial index. Hiding the highlighted separator takes it off the list,
+                // so the highlight moves to the first widget instead.
+                const highlightedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                if (showSeparators && highlightedWidget?.type === 'separator') {
+                    setHighlightedItemId(colorableWidgets.find(widget => widget.type !== 'separator')?.id ?? null);
+                }
             }
         } else if (input === 'f' || input === 'F') {
             if (colorableWidgets.length > 0) {

@@ -199,4 +199,42 @@ describe('ColorMenu', () => {
             menu.cleanup();
         }
     });
+
+    it('moves the highlight to the first widget when hiding the highlighted separator', async () => {
+        const menu = renderColorMenu([
+            { id: '1', type: 'model' },
+            { id: '2', type: 'separator' },
+            { id: '3', type: 'version' }
+        ]);
+
+        try {
+            await waitFor(() => {
+                expect(menu.latestFrame()).toContain('(s)how separators:OFF');
+            });
+
+            menu.stdin.write('s');
+            await waitFor(() => {
+                expect(menu.latestFrame()).toContain('(s)how separators:ON');
+            });
+            menu.stdin.write('\x1B[B');
+            await waitFor(() => {
+                expect(menu.latestFrame()).toContain('▶  2: Separator');
+            });
+            menu.stdin.write('s');
+            await waitFor(() => {
+                expect(menu.latestFrame()).toContain('(s)how separators:OFF');
+            });
+
+            expect(menu.latestFrame()).toContain('▶  1: Model');
+            expect(menu.latestFrame()).toContain('Current foreground');
+
+            menu.stdin.write('b');
+            await waitFor(() => {
+                expect(menu.onUpdate).toHaveBeenCalled();
+            });
+            expect(menu.onUpdate.mock.calls[0]?.[0]?.[0]).toMatchObject({ id: '1', bold: true });
+        } finally {
+            menu.cleanup();
+        }
+    });
 });
