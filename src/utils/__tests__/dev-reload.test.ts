@@ -1,6 +1,7 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { PassThrough } from 'node:stream';
 import {
     afterEach,
     beforeEach,
@@ -14,8 +15,13 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import {
     DEV_RELOAD_EXIT_CODE,
     getDevReloadMode,
+    getDevReloadStateFile,
+    isDevReloadRequested,
+    promptRetryOnTerminal,
     readDevReloadSnapshot,
+    requestDevReload,
     runDevReloadSupervisor,
+    superviseDevReload,
     writeDevReloadSnapshot,
     type DevReloadSnapshot
 } from '../dev-reload';
@@ -30,6 +36,22 @@ describe('getDevReloadMode', () => {
     it('supervises from the first launch and runs the TUI in the children it starts', () => {
         expect(getDevReloadMode({ CCSTATUSLINE_DEV_RELOAD: '1' })).toBe('supervisor');
         expect(getDevReloadMode({ CCSTATUSLINE_DEV_RELOAD: '1', CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBe('child');
+    });
+});
+
+describe('getDevReloadStateFile', () => {
+    it('is the snapshot path only in a child the supervisor started', () => {
+        expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD: '1', CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBe('/tmp/x.json');
+        expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD: '1' })).toBeNull();
+        expect(getDevReloadStateFile({ CCSTATUSLINE_DEV_RELOAD_STATE: '/tmp/x.json' })).toBeNull();
+    });
+});
+
+describe('requestDevReload', () => {
+    it('marks the reload for when the TUI exits', () => {
+        requestDevReload();
+
+        expect(isDevReloadRequested()).toBe(true);
     });
 });
 
@@ -67,6 +89,75 @@ describe('runDevReloadSupervisor', () => {
         expect(await runDevReloadSupervisor(deps)).toBe(1);
         expect(deps.launch).toHaveBeenCalledTimes(1);
         expect(deps.cleanup).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('superviseDevReload', () => {
+    it('relaunches this command with a snapshot path, and removes the snapshot when done', async () => {
+        const launches: { command: string; args: string[]; stateFile: string | undefined }[] = [];
+        const spawn = vi.fn((command: string, args: string[], env: NodeJS.ProcessEnv) => {
+            const stateFile = env.CCSTATUSLINE_DEV_RELOAD_STATE;
+            launches.push({ command, args, stateFile });
+            if (launches.length > 1 || !stateFile) {
+                return 0;
+            }
+            // The first child leaves a snapshot behind and asks for a reload
+            fs.writeFileSync(stateFile, '{}');
+            return DEV_RELOAD_EXIT_CODE;
+        });
+
+        expect(await superviseDevReload(['--config', 'x.json'], spawn)).toBe(0);
+
+        expect(launches).toHaveLength(2);
+        expect(launches[0]?.command).toBe(process.execPath);
+        expect(launches[0]?.args.slice(-2)).toEqual(['--config', 'x.json']);
+        const stateFile = launches[0]?.stateFile ?? '';
+        expect(path.basename(stateFile)).toBe(`ccstatusline-dev-reload-${process.pid}.json`);
+        expect(launches[1]?.stateFile).toBe(stateFile);
+        expect(fs.existsSync(stateFile)).toBe(false);
+    });
+});
+
+describe('promptRetryOnTerminal', () => {
+    function makeTerminal() {
+        const stdin = Object.assign(new PassThrough(), { setRawMode: vi.fn<(mode: boolean) => void>() });
+        const stdout = new PassThrough();
+        const written: string[] = [];
+        stdout.on('data', (chunk: Buffer) => {
+            written.push(chunk.toString());
+        });
+        return {
+            stdin,
+            output: () => written.join(''),
+            terminal: {
+                stdin: stdin as unknown as NodeJS.ReadStream,
+                stdout: stdout as unknown as NodeJS.WriteStream
+            }
+        };
+    }
+
+    it('retries on Enter, ignoring other keys, and hands the terminal back', async () => {
+        const { stdin, output, terminal } = makeTerminal();
+        const answer = promptRetryOnTerminal(1, terminal);
+
+        stdin.write('x');
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+        stdin.write('\r');
+
+        expect(await answer).toBe(true);
+        expect(output()).toContain('Reload failed (exit 1)');
+        expect(stdin.setRawMode).toHaveBeenLastCalledWith(false);
+    });
+
+    it('gives up on q', async () => {
+        const { stdin, terminal } = makeTerminal();
+        const answer = promptRetryOnTerminal(2, terminal);
+
+        stdin.write('q');
+
+        expect(await answer).toBe(false);
     });
 });
 
@@ -110,6 +201,9 @@ describe('dev reload snapshot', () => {
         expect(readDevReloadSnapshot(stateFile)).toBeNull();
 
         fs.writeFileSync(stateFile, '{not json');
+        expect(readDevReloadSnapshot(stateFile)).toBeNull();
+
+        fs.writeFileSync(stateFile, 'null');
         expect(readDevReloadSnapshot(stateFile)).toBeNull();
 
         fs.writeFileSync(stateFile, JSON.stringify({ ...snapshot, settings: { lines: 'not lines' } }));

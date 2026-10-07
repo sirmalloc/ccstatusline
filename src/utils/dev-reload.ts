@@ -143,11 +143,16 @@ export async function runDevReloadSupervisor(deps: DevReloadSupervisorDeps): Pro
     }
 }
 
-function promptRetryOnTerminal(exitCode: number): Promise<boolean> {
-    process.stdout.write(`\nReload failed (exit ${exitCode}). Fix the code, then press Enter to retry, or q to quit.\n`);
+export interface DevReloadTerminal {
+    stdin: NodeJS.ReadStream;
+    stdout: NodeJS.WriteStream;
+}
+
+export function promptRetryOnTerminal(exitCode: number, terminal: DevReloadTerminal = process): Promise<boolean> {
+    terminal.stdout.write(`\nReload failed (exit ${exitCode}). Fix the code, then press Enter to retry, or q to quit.\n`);
 
     return new Promise((resolve) => {
-        const stdin = process.stdin;
+        const stdin = terminal.stdin;
         const onData = (data: Buffer) => {
             const key = data.toString();
             const retry = key === '\r' || key === '\n';
@@ -168,16 +173,23 @@ function promptRetryOnTerminal(exitCode: number): Promise<boolean> {
     });
 }
 
+// Runs a child process to completion and returns its exit code
+export type DevReloadSpawn = (command: string, args: string[], env: NodeJS.ProcessEnv) => number;
+
+function spawnInTerminal(command: string, args: string[], env: NodeJS.ProcessEnv): number {
+    return spawnSync(command, args, { stdio: 'inherit', env }).status ?? 1;
+}
+
 // Relaunches this same command (runtime, script and original arguments) as
 // a child that runs the TUI, for as long as the child asks to be reloaded
-export async function superviseDevReload(launchArgs: string[]): Promise<number> {
+export async function superviseDevReload(launchArgs: string[], spawn: DevReloadSpawn = spawnInTerminal): Promise<number> {
     const stateFile = path.join(os.tmpdir(), `ccstatusline-dev-reload-${process.pid}.json`);
     const script = process.argv[1];
     const command = [...process.execArgv, ...(script ? [script] : []), ...launchArgs];
     const env = { ...process.env, [DEV_RELOAD_STATE_ENV]: stateFile };
 
     return runDevReloadSupervisor({
-        launch: () => spawnSync(process.execPath, command, { stdio: 'inherit', env }).status ?? 1,
+        launch: () => spawn(process.execPath, command, env),
         promptRetry: promptRetryOnTerminal,
         cleanup: () => { removeDevReloadSnapshot(stateFile); }
     });
