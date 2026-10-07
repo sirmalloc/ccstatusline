@@ -105,8 +105,15 @@ export function readDevReloadSnapshot(stateFile: string): RestoredDevReloadSnaps
     };
 }
 
-export function removeDevReloadSnapshot(stateFile: string): void {
-    fs.rmSync(stateFile, { force: true });
+// Each supervisor run keeps its snapshot in a new private (0700) directory,
+// so its first TUI can't restore one an earlier run left behind (its PID
+// reused) or another user planted in a shared temp directory
+function createDevReloadStateDir(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-dev-reload-'));
+}
+
+function removeDevReloadStateDir(stateDir: string): void {
+    fs.rmSync(stateDir, { recursive: true, force: true });
 }
 
 // Set by the TUI when ctrl+r is pressed; read once Ink has unmounted so the
@@ -183,7 +190,8 @@ function spawnInTerminal(command: string, args: string[], env: NodeJS.ProcessEnv
 // Relaunches this same command (runtime, script and original arguments) as
 // a child that runs the TUI, for as long as the child asks to be reloaded
 export async function superviseDevReload(launchArgs: string[], spawn: DevReloadSpawn = spawnInTerminal): Promise<number> {
-    const stateFile = path.join(os.tmpdir(), `ccstatusline-dev-reload-${process.pid}.json`);
+    const stateDir = createDevReloadStateDir();
+    const stateFile = path.join(stateDir, 'snapshot.json');
     const script = process.argv[1];
     const command = [...process.execArgv, ...(script ? [script] : []), ...launchArgs];
     const env = { ...process.env, [DEV_RELOAD_STATE_ENV]: stateFile };
@@ -191,6 +199,6 @@ export async function superviseDevReload(launchArgs: string[], spawn: DevReloadS
     return runDevReloadSupervisor({
         launch: () => spawn(process.execPath, command, env),
         promptRetry: promptRetryOnTerminal,
-        cleanup: () => { removeDevReloadSnapshot(stateFile); }
+        cleanup: () => { removeDevReloadStateDir(stateDir); }
     });
 }

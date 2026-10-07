@@ -93,7 +93,7 @@ describe('runDevReloadSupervisor', () => {
 });
 
 describe('superviseDevReload', () => {
-    it('relaunches this command with a snapshot path, and removes the snapshot when done', async () => {
+    it('relaunches this command with a snapshot path, and removes its snapshot directory when done', async () => {
         const launches: { command: string; args: string[]; stateFile: string | undefined }[] = [];
         const spawn = vi.fn((command: string, args: string[], env: NodeJS.ProcessEnv) => {
             const stateFile = env.CCSTATUSLINE_DEV_RELOAD_STATE;
@@ -112,9 +112,38 @@ describe('superviseDevReload', () => {
         expect(launches[0]?.command).toBe(process.execPath);
         expect(launches[0]?.args.slice(-2)).toEqual(['--config', 'x.json']);
         const stateFile = launches[0]?.stateFile ?? '';
-        expect(path.basename(stateFile)).toBe(`ccstatusline-dev-reload-${process.pid}.json`);
         expect(launches[1]?.stateFile).toBe(stateFile);
-        expect(fs.existsSync(stateFile)).toBe(false);
+        expect(fs.existsSync(path.dirname(stateFile))).toBe(false);
+    });
+
+    it('gives each run a fresh private snapshot directory, so no earlier snapshot is restored', async () => {
+        // What a killed supervisor whose PID was reused, or another local
+        // user, could leave at a predictable path
+        const leftover = path.join(os.tmpdir(), `ccstatusline-dev-reload-${process.pid}.json`);
+        fs.writeFileSync(leftover, '{}');
+        const firstLaunches: { stateFile: string; existed: boolean; dirMode: number }[] = [];
+        const spawn = vi.fn((_command: string, _args: string[], env: NodeJS.ProcessEnv) => {
+            const stateFile = env.CCSTATUSLINE_DEV_RELOAD_STATE ?? '';
+            firstLaunches.push({
+                stateFile,
+                existed: fs.existsSync(stateFile),
+                dirMode: fs.statSync(path.dirname(stateFile)).mode & 0o777
+            });
+            return 0;
+        });
+
+        try {
+            await superviseDevReload([], spawn);
+            await superviseDevReload([], spawn);
+        } finally {
+            fs.rmSync(leftover, { force: true });
+        }
+
+        const [first, second] = firstLaunches;
+        expect(first?.existed).toBe(false);
+        expect(first?.dirMode).toBe(0o700);
+        expect(second?.stateFile).not.toBe(first?.stateFile);
+        expect(fs.existsSync(path.dirname(first?.stateFile ?? ''))).toBe(false);
     });
 });
 
