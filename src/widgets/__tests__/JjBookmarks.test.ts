@@ -75,7 +75,7 @@ describe('JjBookmarksWidget', () => {
             '-r',
             'heads(::@ & bookmarks())',
             '--template',
-            'bookmarks ++ "\\n"'
+            String.raw`bookmarks ++ "\n"`
         ]);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
@@ -99,7 +99,7 @@ describe('JjBookmarksWidget', () => {
         mockExecFileSync.mockReturnValueOnce('feature-a\nfeature-b\n');
 
         expect(render()).toBe('🔖 feature-a, feature-b');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toContain('bookmarks ++ "\\n"');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toContain(String.raw`bookmarks ++ "\n"`);
     });
 
     it('should render raw bookmark value', () => {

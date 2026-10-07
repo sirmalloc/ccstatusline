@@ -34,7 +34,7 @@ export class JjBookmarksWidget extends JjWidgetBase {
             '-r',
             'heads(::@ & bookmarks())',
             '--template',
-            'bookmarks ++ "\\n"'
+            String.raw`bookmarks ++ "\n"`
         ], context);
         if (!output) {
             return null;
