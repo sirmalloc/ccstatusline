@@ -221,7 +221,8 @@ for (const runtime of ['bun', 'node']) {
             expect(output.result).toEqual([{ status: 'ok', stdout: 'fast' }, { status: 'ok', stdout: 'EARLY' }]);
             expect(output.elapsed).toBeLessThan(1000);
             expect(output.lingered).toBeLessThan(500);
-            await new Promise(resolve => setTimeout(resolve, 1300));
+            // Let the deliberately surviving background job finish before cleanup.
+            await waitForFile(sentinelPath);
             expect(fs.existsSync(sentinelPath)).toBe(true);
         });
     });
