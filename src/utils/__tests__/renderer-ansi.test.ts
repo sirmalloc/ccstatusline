@@ -234,3 +234,34 @@ describe('renderer minimalist mode', () => {
         expect(content).toBe('Model: Claude');
     });
 });
+
+describe('renderer color levels', () => {
+    const widgets: WidgetItem[] = [
+        { id: 'hex', type: 'custom-text', customText: 'hex', color: 'hex:FF0000', backgroundColor: 'hex:0000FF' },
+        { id: 'sep', type: 'separator' },
+        { id: 'a256', type: 'custom-text', customText: 'a256', color: 'ansi256:100', backgroundColor: 'ansi256:20' }
+    ];
+    const extendedColorCode = /\x1b\[[34]8;[25];/;
+
+    it('emits no 256-color or truecolor escapes at No Color and Basic', () => {
+        for (const colorLevel of [0, 1] as const) {
+            for (const enabled of [false, true]) {
+                const line = renderLine(widgets, {
+                    settings: { colorLevel, powerline: { ...DEFAULT_SETTINGS.powerline, enabled } },
+                    terminalWidth: 80
+                });
+
+                expect(getVisibleText(line)).toContain('hex');
+                expect(line).not.toMatch(extendedColorCode);
+            }
+        }
+    });
+
+    it('keeps them at 256-color and truecolor levels', () => {
+        for (const colorLevel of [2, 3] as const) {
+            const line = renderLine(widgets, { settings: { colorLevel }, terminalWidth: 80 });
+
+            expect(line).toMatch(extendedColorCode);
+        }
+    });
+});
