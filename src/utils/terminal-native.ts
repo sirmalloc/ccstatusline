@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as tty from 'tty';
+import * as fs from 'node:fs';
+import * as tty from 'node:tty';
 
 const MAX_ANCESTOR_DEPTH = 8;
 const STDIO_FDS = [0, 1, 2] as const;
@@ -46,8 +46,8 @@ export function parsePpidFromStat(stat: string): number | null {
 
     // After "(comm)" the remaining fields are: state, ppid, ...
     const fields = stat.slice(commEnd + 1).trim().split(/\s+/);
-    const ppid = parseInt(fields[1] ?? '', 10);
-    if (isNaN(ppid) || ppid <= 0) {
+    const ppid = Number.parseInt(fields[1] ?? '', 10);
+    if (Number.isNaN(ppid) || ppid <= 0) {
         return null;
     }
 

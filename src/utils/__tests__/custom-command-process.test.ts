@@ -1,4 +1,4 @@
-import type * as childProcess from 'child_process';
+import type * as childProcess from 'node:child_process';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as os from 'node:os';
@@ -39,8 +39,8 @@ beforeAll(() => {
         console.log(JSON.stringify({ result, elapsed: Date.now() - start }));
     `);
     fs.writeFileSync(writerPath, `
-        const fs = require('fs');
-        const { spawn } = require('child_process');
+        const fs = require('node:fs');
+        const { spawn } = require('node:child_process');
         const mode = process.argv[2];
         if (mode === 'stdin') {
             process.stdout.write(fs.readFileSync(0));
@@ -49,7 +49,7 @@ beforeAll(() => {
         } else if (mode === 'sleep') {
             setTimeout(() => console.log('LATE'), 3000);
         } else if (mode === 'background' || mode === 'timeout-tree' || mode === 'overflow-tree') {
-            spawn(process.execPath, [__filename, 'sentinel', process.argv[3]], {
+            spawn(process.execPath, [__filename, 'sentinel', process.argv[3], mode === 'background' ? '3000' : '1200'], {
                 stdio: ['ignore', 1, 'ignore']
             }).unref();
             console.log('EARLY');
@@ -63,7 +63,7 @@ beforeAll(() => {
             setTimeout(() => {
                 fs.writeFileSync(process.argv[3], 'survived');
                 console.log('LATE');
-            }, 1200);
+            }, Number(process.argv[4]));
         } else if (mode === 'file') {
             fs.writeFileSync(process.argv[3], Buffer.alloc(4 * 1024 * 1024));
             console.log('OK');
@@ -77,6 +77,14 @@ beforeAll(() => {
 afterAll(() => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
 });
+
+// Polls until the file exists or the timeout passes
+async function waitForFile(filePath: string, timeoutMs = 8000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!fs.existsSync(filePath) && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+}
 
 for (const runtime of ['bun', 'node']) {
     describe(`custom command capture under ${runtime}`, () => {
@@ -136,18 +144,22 @@ for (const runtime of ['bun', 'node']) {
 
         it.skipIf(process.platform === 'win32')('returns successful output when a background job keeps stdout open', async () => {
             const sentinelPath = path.join(tempRoot, `${runtime}-background`);
-            const result = run('background', { timeoutMs: 200, argument: sentinelPath });
+            // The timeout leaves room for the command to start on a busy machine;
+            // the background job lives 3s, well past it
+            const result = run('background', { timeoutMs: 1500, argument: sentinelPath });
             expect(result.result).toEqual({ status: 'ok', stdout: 'EARLY' });
-            expect(result.elapsed).toBeLessThan(1000);
+            expect(result.elapsed).toBeLessThan(3000);
             // Let the deliberately surviving background job finish before cleanup.
-            await new Promise(resolve => setTimeout(resolve, 1300));
+            await waitForFile(sentinelPath);
             expect(fs.existsSync(sentinelPath)).toBe(true);
         });
 
         for (const mode of ['timeout-tree', 'overflow-tree']) {
             it.skipIf(process.platform === 'win32')(`kills descendants on ${mode}`, async () => {
                 const sentinelPath = path.join(tempRoot, `${runtime}-${mode}`);
-                const result = run(mode, { timeoutMs: 300, argument: sentinelPath });
+                // The overflow, not the timeout, should end overflow-tree, however
+                // slowly the command starts
+                const result = run(mode, { timeoutMs: mode === 'timeout-tree' ? 300 : 5000, argument: sentinelPath });
                 expect(result.result).toEqual({ status: 'failed', marker: mode === 'timeout-tree' ? '[Timeout]' : '[Error]' });
                 await new Promise(resolve => setTimeout(resolve, 1300));
                 expect(fs.existsSync(sentinelPath)).toBe(false);

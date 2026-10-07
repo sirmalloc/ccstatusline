@@ -35,6 +35,7 @@ export class ContextPercentageUsableWidget implements Widget {
     getDescription(): string { return 'Shows percentage of usable context window used or remaining (80% of max before auto-compact)'; }
     getDisplayName(): string { return 'Context % (usable)'; }
     getCategory(): string { return 'Context'; }
+    getLabelPrefix(item: WidgetItem): string { return isContextInverse(item) ? 'Ctx(u) Left: ' : 'Ctx(u) Used: '; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers = [
             getContextInverseModifierText(item),
@@ -55,7 +56,6 @@ export class ContextPercentageUsableWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
-        const label = isInverse ? 'Ctx(u) Left: ' : 'Ctx(u) Used: ';
         const sliderMode = getContextSliderMode(item);
         const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
@@ -64,7 +64,7 @@ export class ContextPercentageUsableWidget implements Widget {
 
         const formatContextPercentage = (displayPercentage: number): string => {
             const sliderResult = renderContextSlider(sliderMode, displayPercentage, format);
-            return formatRawOrLabeledValue(item, label, sliderResult ?? formatPercent(displayPercentage, format));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderResult ?? formatPercent(displayPercentage, format));
         };
 
         if (context.isPreview) {

@@ -24,11 +24,14 @@ import {
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Cache Read: ';
+
 export class CacheReadWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows cache read tokens served from cache, with context share'; }
     getDisplayName(): string { return 'Cache Read'; }
     getCategory(): string { return 'Cache'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName(), modifierText: getCacheModifierText(item) };
     }
@@ -46,13 +49,13 @@ export class CacheReadWidget implements Widget {
         const percentFormat = resolveNumberFormat('percent', item, settings);
         if (context.isPreview) {
             const value = formatTokensWithPercentage(12000, 64, tokenFormat, percentFormat);
-            return formatRawOrLabeledValue(item, 'Cache Read: ', value);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
         const tokens = getCacheTokens(context, isCacheSessionScope(item));
         if (!tokens) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache Read: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
 
         if (tokens.read === 0 && hideWhenEmpty) {
@@ -60,7 +63,7 @@ export class CacheReadWidget implements Widget {
         }
 
         const value = formatTokensWithPercentage(tokens.read, getCacheReadPercentage(tokens), tokenFormat, percentFormat);
-        return formatRawOrLabeledValue(item, 'Cache Read: ', value);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

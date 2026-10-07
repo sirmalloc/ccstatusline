@@ -1,22 +1,13 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    isInsideJjRepo,
-    runJjArgs
-} from '../utils/jj';
+import { runJjArgs } from '../utils/jj';
 
-import {
-    NO_JJ_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { JjWidgetBase } from './shared/jj-widget-base';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     formatSymbolPrefix,
     getSymbolKeybind,
@@ -25,40 +16,16 @@ import {
 
 const DEFAULT_SYMBOL = '🔖';
 
-export class JjBookmarksWidget implements Widget {
+export class JjBookmarksWidget extends JjWidgetBase {
+    protected readonly previewValue = 'main';
+    protected readonly noJjText = 'no jj';
+    protected override readonly emptyText = '(none)';
+
     getDefaultColor(): string { return 'magenta'; }
     getDescription(): string { return 'Shows the current jujutsu bookmark(s)'; }
     getDisplayName(): string { return 'JJ Bookmarks'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
-    }
 
-    getHideableStates(): HideableState[] {
-        return [NO_JJ_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
-        const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
-
-        if (context.isPreview) {
-            return item.rawValue ? 'main' : `${prefix}main`;
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : `${prefix}no jj`;
-        }
-
-        const bookmarks = this.getJjBookmarks(context);
-        if (bookmarks) {
-            return item.rawValue ? bookmarks : `${prefix}${bookmarks}`;
-        }
-
-        return hideNoJj ? null : `${prefix}(none)`;
-    }
-
-    private getJjBookmarks(context: RenderContext): string | null {
+    protected getValue(context: RenderContext): string | null {
         const output = runJjArgs([
             'log',
             '--no-graph',
@@ -79,6 +46,14 @@ export class JjBookmarksWidget implements Widget {
         return bookmarks.join(', ');
     }
 
+    protected formatValue(item: WidgetItem, bookmarks: string): string {
+        return formatRawOrLabeledValue(item, formatSymbolPrefix(item, DEFAULT_SYMBOL), bookmarks);
+    }
+
+    protected override formatPlaceholder(item: WidgetItem, text: string): string {
+        return `${formatSymbolPrefix(item, DEFAULT_SYMBOL)}${text}`;
+    }
+
     getCustomKeybinds(): CustomKeybind[] {
         return [getSymbolKeybind()];
     }
@@ -88,5 +63,4 @@ export class JjBookmarksWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
-    supportsColors(): boolean { return true; }
 }

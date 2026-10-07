@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -20,7 +20,7 @@ import {
 
 import { expectGitExecOptions } from './git-test-helpers';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -319,6 +319,28 @@ describe('git-remote utils', () => {
             const result = getForkStatus({});
 
             expect(result.isFork).toBe(true);
+        });
+
+        it('detects fork when remotes are inverted: origin is the parent, fork is the personal copy', () => {
+            mockExecFileSync.mockReturnValueOnce('https://github.com/browser-use/jev-ultrafast.git\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('https://github.com/axisrow/jev-ultrafast.git\n');
+
+            const result = getForkStatus({});
+
+            expect(result.isFork).toBe(true);
+            expect(result.origin?.owner).toBe('browser-use');
+            expect(result.upstream).toBeNull();
+        });
+
+        it('returns not a fork when the fork remote points to the same repo as origin', () => {
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+
+            const result = getForkStatus({});
+
+            expect(result.isFork).toBe(false);
         });
 
         it('returns not a fork when only origin exists', () => {
