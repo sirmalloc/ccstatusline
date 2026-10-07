@@ -46,8 +46,8 @@ const MaxWidthEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCan
 
     useInput((input, key) => {
         if (key.return) {
-            const width = parseInt(widthInput, 10);
-            if (!isNaN(width) && width > 0) {
+            const width = Number.parseInt(widthInput, 10);
+            if (!Number.isNaN(width) && width > 0) {
                 onComplete({ ...widget, maxWidth: width });
             } else {
                 const { maxWidth, ...rest } = widget;

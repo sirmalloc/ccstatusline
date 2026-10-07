@@ -117,6 +117,7 @@ describe('BlockResetTimerWidget', () => {
 
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBe('Reset: [Loading]');
         expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { display: 'progress' } }, { usageData: {} })).toBe('Reset [Loading]');
     });
 
     it('declares the no-data hideable state', () => {
