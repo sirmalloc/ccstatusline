@@ -441,14 +441,17 @@ export function handleNormalInputMode({
         }
     } else if (input === 'm' && widgets.length > 0) {
         const currentWidget = widgets[selectedIndex];
-        if (currentWidget && selectedIndex < widgets.length - 1
+        // The last widget has nothing to merge into, so there m only clears a
+        // merge left from deleting or moving the widgets after it
+        const isLastWidget = selectedIndex === widgets.length - 1;
+        if (currentWidget && (!isLastWidget || currentWidget.merge)
             && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
             const newWidgets = [...widgets];
             let nextMergeState: boolean | 'no-padding' | undefined;
 
             if (currentWidget.merge === undefined) {
                 nextMergeState = true;
-            } else if (currentWidget.merge === true) {
+            } else if (currentWidget.merge === true && !isLastWidget) {
                 nextMergeState = 'no-padding';
             } else {
                 nextMergeState = undefined;

@@ -1047,6 +1047,57 @@ describe('items-editor input handlers', () => {
         });
     });
 
+    describe('m shortcut - merge', () => {
+        const pressMerge = (widgets: WidgetItem[], selectedIndex: number, onUpdate: (widgets: WidgetItem[]) => void) => {
+            handleNormalInputMode({
+                input: 'm',
+                key: {},
+                widgets,
+                selectedIndex,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+        };
+
+        it('cycles merged, merged without padding and off when a widget follows', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+            pressMerge([{ id: '1', type: 'model', merge: true }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+            pressMerge([{ id: '1', type: 'model', merge: 'no-padding' }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+
+            expect(onUpdate.mock.calls.map(call => (call[0] as WidgetItem[])[0])).toEqual([
+                { id: '1', type: 'model', merge: true },
+                { id: '1', type: 'model', merge: 'no-padding' },
+                { id: '1', type: 'model' }
+            ]);
+        });
+
+        it('clears a merge left on the last widget', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch', merge: true }], 1, onUpdate);
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch', merge: 'no-padding' }], 1, onUpdate);
+
+            expect(onUpdate.mock.calls.map(call => (call[0] as WidgetItem[])[1])).toEqual([
+                { id: '2', type: 'git-branch' },
+                { id: '2', type: 'git-branch' }
+            ]);
+        });
+
+        it('does not set a merge on the last widget', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch' }], 1, onUpdate);
+
+            expect(onUpdate).not.toHaveBeenCalled();
+        });
+    });
+
     describe('precision keybind', () => {
         // The items editor injects this bind for numeric widgets, so the handler
         // applies it itself rather than delegating to handleEditorAction.
