@@ -35,6 +35,9 @@ const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 const MAX_LOCK_HORIZON = 24 * 60 * 60; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
+// Keychain reads normally take milliseconds. A `security` call blocked on an
+// unlock prompt must not hold the status line until someone answers it.
+const MACOS_SECURITY_TIMEOUT_MS = 5000;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
 
@@ -516,7 +519,7 @@ function readMacKeychainSecret(service: string): string | null {
         return execFileSync(
             'security',
             ['find-generic-password', '-s', service, '-w'],
-            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: MACOS_SECURITY_TIMEOUT_MS, windowsHide: true }
         ).trim();
     } catch {
         return null;
@@ -537,6 +540,7 @@ function listMacKeychainCredentialCandidates(): string[] {
                 encoding: 'utf8',
                 maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
                 stdio: ['pipe', 'pipe', 'ignore'],
+                timeout: MACOS_SECURITY_TIMEOUT_MS,
                 windowsHide: true
             }
         );
@@ -611,6 +615,47 @@ export function getUsageCredentials(): UsageCredentials | null {
 
 export function getUsageToken(): string | null {
     return getUsageCredentials()?.accessToken ?? null;
+}
+
+// A lookup that finds no OAuth login (an API-key user, a logged-out profile)
+// stands for LOCK_MAX_AGE across renders, as it already does within one
+// process: on macOS the default profile's lookup runs `security` twice, once
+// for a full keychain dump. The record names the credential stores it
+// covers, so one profile's miss never suppresses another profile's lookup.
+const NO_CREDENTIALS_LOCK_FILE = path.join(CACHE_DIR, 'usage-credentials.lock');
+const NoCredentialsLockSchema = z.object({
+    blockedUntil: z.number(),
+    source: z.string()
+});
+
+function getUsageCredentialsSource(): string {
+    return JSON.stringify([getMacKeychainConfigDirService(), getClaudeConfigDir()]);
+}
+
+function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
+    const source = getUsageCredentialsSource();
+    try {
+        const lock = parseJsonWithSchema(fs.readFileSync(NO_CREDENTIALS_LOCK_FILE, 'utf8'), NoCredentialsLockSchema);
+        // Bounded like the usage lock, so a deadline written before the clock
+        // was set back cannot stretch the backoff.
+        if (lock?.source === source && lock.blockedUntil > now && lock.blockedUntil <= now + LOCK_MAX_AGE) {
+            return null;
+        }
+    } catch {
+        // No recorded miss - look the credentials up
+    }
+
+    const credentials = getUsageCredentials();
+    if (!credentials) {
+        try {
+            ensureCacheDirExists();
+            fs.writeFileSync(NO_CREDENTIALS_LOCK_FILE, JSON.stringify({ blockedUntil: now + LOCK_MAX_AGE, source }));
+        } catch {
+            // Ignore lock file errors
+        }
+    }
+
+    return credentials;
 }
 
 function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageData | null {
@@ -811,7 +856,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     // failures are not masked as timeout) and fingerprint them so the file cache
     // can be invalidated on an account switch: a different login, written by a
     // logout/login, no longer matches the cached fingerprint.
-    const credentials = getUsageCredentials();
+    const credentials = getUsageCredentialsWithBackoff(now);
     const token = credentials?.accessToken ?? null;
     const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
 

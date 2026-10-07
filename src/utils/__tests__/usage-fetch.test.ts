@@ -956,6 +956,47 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('backs off credential lookups across renders after finding none, per profile', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('no-credentials-backoff');
+            const otherProfile = harness.createTokenHome('no-credentials-backoff-other');
+            const credentialsFile = path.join(home.claudeConfig, '.credentials.json');
+            fs.rmSync(credentialsFile);
+            const renderAt = (probeNowMs: number, claudeConfig = home.claudeConfig) => harness.runProbe({
+                claudeConfigDir: claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(renderAt(nowMs).first).toEqual({ error: 'no-credentials' });
+
+            // An API-key user has no OAuth login to find, and on macOS each
+            // lookup spawns `security` twice, a full keychain dump included.
+            // Later renders inside the window skip the lookup entirely, so a
+            // login made meanwhile is only picked up once it ends.
+            fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+            const backedOff = renderAt(nowMs + 10000);
+            expect(backedOff.first).toEqual({ error: 'no-credentials' });
+            expect(backedOff.requestCount).toBe(0);
+
+            // Another profile's lookup is not suppressed by this one's miss.
+            const other = renderAt(nowMs + 10000, otherProfile.claudeConfig);
+            expect(other.first.sessionUsage).toBe(42);
+            expect(other.requestCount).toBe(1);
+
+            const retried = renderAt(nowMs + 31000);
+            expect(retried.first.sessionUsage).toBe(42);
+            expect(retried.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('preserves the in-flight lock after a successful fetch missing required fields', () => {
         const harness = createProbeHarness();
 
