@@ -11,6 +11,7 @@ import {
 
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import { getPowerlineThemes } from '../../../utils/colors';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     PowerlineThemeSelector,
     applyCustomPowerlineTheme,
@@ -42,22 +43,6 @@ function createMockStdin(): NodeJS.ReadStream {
 
 function createMockStdout(): NodeJS.WriteStream {
     return new MockTtyStream() as unknown as NodeJS.WriteStream;
-}
-
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
-    });
-}
-
-async function waitForInkCondition(condition: () => boolean) {
-    const timeoutAt = Date.now() + 1000;
-
-    while (!condition() && Date.now() < timeoutAt) {
-        await new Promise((resolve) => {
-            setTimeout(resolve, 10);
-        });
-    }
 }
 
 describe('PowerlineThemeSelector helpers', () => {
@@ -121,6 +106,10 @@ describe('PowerlineThemeSelector helpers', () => {
         const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
         const onBack = vi.fn();
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const frames: string[] = [];
+        stdout.on('data', (chunk: Buffer | string) => {
+            frames.push(chunk.toString());
+        });
         const instance = render(
             React.createElement(PowerlineThemeSelector, {
                 settings: {
@@ -145,12 +134,15 @@ describe('PowerlineThemeSelector helpers', () => {
         );
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(frames.join('')).toContain('(original)');
+            });
             expect(onUpdate).not.toHaveBeenCalled();
 
             stdin.write('\u001B[B');
-            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
-            await flushInk();
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
 
             expect(onUpdate).toHaveBeenCalledTimes(1);
             expect(onUpdate.mock.calls[0]?.[0]?.powerline.theme).toBe(themes[1]);

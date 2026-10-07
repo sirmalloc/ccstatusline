@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -13,7 +13,7 @@ import type { WidgetItem } from '../../types/Widget';
 import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjWorkspaceWidget } from '../JjWorkspace';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const workspace = useJjTestWorkspace();
 

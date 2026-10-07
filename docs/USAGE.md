@@ -176,6 +176,12 @@ The same menu controls these ccstatusline cache settings, saved with **Save & Ex
 
 Git commands run on cache misses with a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
 
+### Status line empty in one folder but fine elsewhere
+
+Claude Code only runs a custom `statusLine` command in a workspace whose trust dialog has been accepted (since Claude Code 2.1.51). Since 2.1.232, a git repository nested under an already-trusted parent folder no longer inherits that trust, and Claude Code does not always show the trust dialog again. In such a folder, ccstatusline is never invoked, so the status line renders as an empty row even though running `ccstatusline` by hand in the same folder works and other folders still show it.
+
+To confirm, look up the project path in `~/.claude.json` under `projects` and check its `hasTrustDialogAccepted` value. Setting it to `true` (or accepting the trust dialog when Claude Code shows it) and starting a new session restores the status line.
+
 ## Usage Credentials and Cache
 
 Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials`, then matching suffixed services, then the credentials file.
@@ -226,6 +232,8 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
+To keep a label but change it, select the widget and press `b` (`la(b)el…`) instead. The label is replaced verbatim, so include any trailing space or colon yourself (e.g. `M ` renders `M Claude 3.5 Sonnet`); an empty label drops it, and Tab in the editor resets it to the default. Widgets whose label changes with their mode (e.g. `Ctx Used:`/`Ctx Left:`, or `Block:` vs `Block ` before a progress bar) use the one custom label in every mode, even one that matches the current mode's default. The editor row shows `(label: "M ")` while a custom label is set; `b` is hidden while raw value is on, since the label isn't rendered then.
+
 ## Number Formatting
 
 Numeric widgets support three display styles without changing their underlying values:
@@ -249,6 +257,7 @@ Common controls in the line editor:
 - `c` clear the current line
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
+- `b` edit the label shown before the value when raw value is off (labeled widgets)
 - `.` cycle precise/compact/whole number formatting (supported widgets)
 - `m` cycle merge mode (`off` → `merge` → `merge no padding`)
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)

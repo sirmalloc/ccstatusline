@@ -109,8 +109,8 @@ function parseDiffStat(stat: string): JjChangeCounts {
     const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
 
     return {
-        insertions: insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0,
-        deletions: deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0
+        insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,
+        deletions: deleteMatch?.[1] ? Number.parseInt(deleteMatch[1], 10) : 0
     };
 }
 
