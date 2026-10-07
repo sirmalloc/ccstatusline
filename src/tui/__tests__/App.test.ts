@@ -1,5 +1,8 @@
 import chalk from 'chalk';
+import * as fs from 'node:fs';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -10,6 +13,10 @@ import {
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
+import * as claudeSettings from '../../utils/claude-settings';
+import * as globalPackageManager from '../../utils/global-package-manager';
+import { getPackageVersion } from '../../utils/terminal';
+import * as updateChecker from '../../utils/update-checker';
 import {
     applyTuiImport,
     buildConfigLoadWarning,
@@ -20,12 +27,22 @@ import {
     getPathInferredInstallation,
     getPinnedVersionMismatch
 } from '../App';
+import * as claudeStatus from '../claude-status';
 import {
     buildMainMenuItems,
     getMainMenuInstallSelectionIndex,
     getMainMenuSelectionIndex
 } from '../components/MainMenu';
 import { buildManageInstallationItems } from '../components/ManageInstallationMenu';
+
+import {
+    KEYS,
+    pressKey,
+    renderApp,
+    setUpAppSandbox,
+    type AppSandbox
+} from './helpers/render-app';
+import { waitFor } from './helpers/wait-for-ink';
 
 function getMenuValues(
     isClaudeInstalled: boolean,
@@ -138,6 +155,20 @@ describe('Pinned version mismatch guard', () => {
             relaunchCommand: '/usr/local/bin/ccstatusline',
             canUpdateToRunningVersion: false
         });
+    });
+
+    it('does not block for the version this session just installed', () => {
+        expect(getPinnedVersionMismatch({
+            method: 'pinned',
+            packageManager: 'npm',
+            installedVersion: '2.3.0'
+        }, '2.2.13', '/usr/local/bin/ccstatusline', '2.3.0')).toBeNull();
+
+        expect(getPinnedVersionMismatch({
+            method: 'pinned',
+            packageManager: 'npm',
+            installedVersion: '2.3.0'
+        }, '2.2.13', '/usr/local/bin/ccstatusline', '2.2.20')).not.toBeNull();
     });
 
     it('infers pinned package manager from the active PATH match', () => {
@@ -317,5 +348,87 @@ describe('Invalid-config TUI guards', () => {
             .toContain('settings.json is not valid JSON');
         expect(buildInvalidConfigSaveConfirm('settings.json is not in a valid format', vi.fn())?.message)
             .toContain('not in a valid format');
+    });
+});
+
+describe('App after a global update run from the TUI', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('keeps the TUI and its unsaved edits when the pinned install moves past this version', async () => {
+        const runningVersion = getPackageVersion();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: runningVersion }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: null,
+            warning: null
+        });
+        vi.spyOn(updateChecker, 'checkForUpdates').mockResolvedValue({
+            status: 'update-available',
+            currentVersion: runningVersion,
+            latestVersion: '99.0.0',
+            installation: { method: 'pinned', packageManager: 'npm', installedVersion: runningVersion },
+            actions: [{
+                id: 'npm-global',
+                packageManager: 'npm',
+                command: 'npm install -g ccstatusline@99.0.0',
+                version: '99.0.0',
+                available: true
+            }]
+        });
+        const runUpdate = vi.spyOn(updateChecker, 'runGlobalUpdateAction').mockResolvedValue(undefined);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+
+            // An unsaved edit: Color Level 256 → Truecolor
+            await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
+            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '(Truecolor)');
+            await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
+
+            await pressKey(rendered, KEYS.down, '▶  🌐 Global Overrides');
+            await pressKey(rendered, KEYS.down, '▶  🔧 Configure Status Line');
+            await pressKey(rendered, KEYS.down, '▶  📤 Export Config');
+            await pressKey(rendered, KEYS.down, '▶  📥 Import Config');
+            await pressKey(rendered, KEYS.down, '▶  🧰 Manage Installation');
+            await pressKey(rendered, KEYS.enter, '▶  🔄 Check for Updates');
+            await pressKey(rendered, KEYS.enter, 'An update is available.');
+            await pressKey(rendered, KEYS.enter, 'Run global update command?');
+            await pressKey(rendered, KEYS.enter, '✓ Global package updated');
+            expect(runUpdate).toHaveBeenCalledOnce();
+            expect(rendered.getFrame()).not.toContain('Pinned Install Version Mismatch');
+
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as {
+                colorLevel: number;
+                installation: InstallationMetadata;
+            };
+            expect(saved.colorLevel).toBe(3);
+            expect(saved.installation).toEqual({ method: 'pinned', installedVersion: '99.0.0' });
+        } finally {
+            rendered.cleanup();
+        }
     });
 });
