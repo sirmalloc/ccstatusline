@@ -82,7 +82,7 @@ async function ensureWindowsUtf8CodePage() {
     }
 
     try {
-        const { execFileSync } = await import('child_process');
+        const { execFileSync } = await import('node:child_process');
         execFileSync('chcp.com', ['65001'], { stdio: 'ignore', windowsHide: true });
     } catch {
         // Ignore failures to preserve statusline output even in restricted shells.

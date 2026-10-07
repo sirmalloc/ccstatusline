@@ -15,6 +15,7 @@ import {
     getSpeedWidgetDisplayName,
     getSpeedWidgetEditorDisplay,
     getSpeedWidgetHideableStates,
+    getSpeedWidgetLabel,
     renderSpeedWidgetEditor,
     renderSpeedWidgetValue
 } from './shared/speed-widget';
@@ -24,6 +25,7 @@ export class InputSpeedWidget implements Widget {
     getDescription(): string { return getSpeedWidgetDescription('input'); }
     getDisplayName(): string { return getSpeedWidgetDisplayName('input'); }
     getCategory(): string { return 'Token Speed'; }
+    getLabelPrefix(): string { return getSpeedWidgetLabel('input'); }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return getSpeedWidgetEditorDisplay('input', item);
     }
