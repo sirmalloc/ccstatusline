@@ -1,11 +1,5 @@
 import chalk from 'chalk';
-import { render } from 'ink';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { PassThrough } from 'node:stream';
-import React from 'react';
-import stripAnsi from 'strip-ansi';
 import {
     afterEach,
     beforeEach,
@@ -20,13 +14,9 @@ import {
     type InstallationMetadata
 } from '../../types/Settings';
 import * as claudeSettings from '../../utils/claude-settings';
-import { initConfigPath } from '../../utils/config';
-import * as globalCommandResolution from '../../utils/global-command-resolution';
 import * as globalPackageManager from '../../utils/global-package-manager';
-import * as powerline from '../../utils/powerline';
 import * as updateChecker from '../../utils/update-checker';
 import {
-    App,
     applyTuiImport,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
@@ -44,6 +34,13 @@ import {
 } from '../components/MainMenu';
 import { buildManageInstallationItems } from '../components/ManageInstallationMenu';
 
+import {
+    KEYS,
+    pressKey,
+    renderApp,
+    setUpAppSandbox,
+    type AppSandbox
+} from './helpers/render-app';
 import {
     letReactCatchUp,
     waitFor
@@ -342,70 +339,6 @@ describe('Invalid-config TUI guards', () => {
     });
 });
 
-class MockTtyStream extends PassThrough {
-    isTTY = true;
-    columns = 120;
-    rows = 60;
-
-    setRawMode() {
-        return this;
-    }
-
-    ref() {
-        return this;
-    }
-
-    unref() {
-        return this;
-    }
-}
-
-const UP = '\u001B[A';
-const ENTER = '\r';
-const ESCAPE = '\u001B';
-
-function renderApp() {
-    const stdin = new MockTtyStream();
-    const stdout = new MockTtyStream();
-    const stderr = new MockTtyStream();
-    const chunks: string[] = [];
-    stdout.on('data', (chunk: Buffer | string) => {
-        chunks.push(chunk.toString());
-    });
-
-    const instance = render(React.createElement(App), {
-        stdin: stdin as unknown as NodeJS.ReadStream,
-        stdout: stdout as unknown as NodeJS.WriteStream,
-        stderr: stderr as unknown as NodeJS.WriteStream,
-        debug: true,
-        exitOnCtrlC: false,
-        patchConsole: false
-    });
-
-    return {
-        stdin,
-        instance,
-        // Debug mode writes whole frames, so the last chunk is the current screen
-        getFrame: () => stripAnsi(chunks.at(-1) ?? ''),
-        cleanup: () => {
-            instance.unmount();
-            instance.cleanup();
-            stdin.destroy();
-            stdout.destroy();
-            stderr.destroy();
-        }
-    };
-}
-
-type RenderedApp = ReturnType<typeof renderApp>;
-
-async function pressKey(rendered: RenderedApp, key: string, expectedText: string) {
-    rendered.stdin.write(key);
-    await waitFor(() => {
-        expect(rendered.getFrame()).toContain(expectedText);
-    });
-}
-
 function createPendingRun() {
     let finish: () => void = () => undefined;
     const run = vi.fn(() => new Promise<void>((resolve) => {
@@ -416,34 +349,14 @@ function createPendingRun() {
 }
 
 describe('App while an install or update runs', () => {
-    const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    let tempDir = '';
+    let sandbox: AppSandbox;
 
     beforeEach(() => {
-        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-app-'));
-        process.env.CLAUDE_CONFIG_DIR = path.join(tempDir, 'claude');
-        initConfigPath(path.join(tempDir, 'settings.json'));
-        vi.spyOn(claudeSettings, 'isClaudeCodeVersionAtLeast').mockReturnValue(false);
-        vi.spyOn(claudeSettings, 'getPackageCommandAvailability').mockReturnValue({ npm: true, npx: true, bun: false, bunx: false });
-        vi.spyOn(powerline, 'checkPowerlineFonts').mockReturnValue({ installed: true });
-        vi.spyOn(powerline, 'checkPowerlineFontsAsync').mockResolvedValue({ installed: true });
-        vi.spyOn(globalCommandResolution, 'inspectGlobalCommandResolution').mockReturnValue({
-            resolvedPaths: [],
-            firstResolvedPath: null,
-            expectedBinDir: null,
-            warning: null
-        });
+        sandbox = setUpAppSandbox();
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
-        initConfigPath();
-        if (originalClaudeConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
-        } else {
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
-        }
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        sandbox.restore();
     });
 
     it('runs a confirmed install once, ignoring Enter and ESC until it finishes', async () => {
@@ -467,22 +380,22 @@ describe('App while an install or update runs', () => {
             await waitFor(() => {
                 expect(rendered.getFrame()).toContain('Main Menu');
             });
-            await pressKey(rendered, UP, '▶  ⭐ Like ccstatusline?');
-            await pressKey(rendered, UP, '▶  🚪 Exit');
-            await pressKey(rendered, UP, '▶  📦 Install to Claude Code');
-            await pressKey(rendered, ENTER, 'Select update style');
-            await pressKey(rendered, ENTER, 'Select package manager');
-            await pressKey(rendered, ENTER, 'Continue?');
+            await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');
+            await pressKey(rendered, KEYS.up, '▶  🚪 Exit');
+            await pressKey(rendered, KEYS.up, '▶  📦 Install to Claude Code');
+            await pressKey(rendered, KEYS.enter, 'Select update style');
+            await pressKey(rendered, KEYS.enter, 'Select package manager');
+            await pressKey(rendered, KEYS.enter, 'Continue?');
 
             // Yes: the global install starts and doesn't finish yet
-            rendered.stdin.write(ENTER);
+            rendered.stdin.write(KEYS.enter);
             await waitFor(() => {
                 expect(globalInstall.run).toHaveBeenCalledOnce();
             });
 
-            rendered.stdin.write(ENTER);
+            rendered.stdin.write(KEYS.enter);
             await letReactCatchUp();
-            rendered.stdin.write(ESCAPE);
+            rendered.stdin.write(KEYS.escape);
             await letReactCatchUp();
             expect(globalInstall.run).toHaveBeenCalledOnce();
             expect(rendered.getFrame()).toContain('Working...');
@@ -500,7 +413,7 @@ describe('App while an install or update runs', () => {
     });
 
     it('runs the pinned version update once, ignoring Enter and ESC until it finishes', async () => {
-        fs.writeFileSync(path.join(tempDir, 'settings.json'), JSON.stringify({
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
             ...DEFAULT_SETTINGS,
             installation: { method: 'pinned', installedVersion: '2.0.0' }
         }));
@@ -522,14 +435,14 @@ describe('App while an install or update runs', () => {
             await waitFor(() => {
                 expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
             });
-            rendered.stdin.write(ENTER);
+            rendered.stdin.write(KEYS.enter);
             await waitFor(() => {
                 expect(globalInstall.run).toHaveBeenCalledOnce();
             });
 
-            rendered.stdin.write(ENTER);
+            rendered.stdin.write(KEYS.enter);
             await letReactCatchUp();
-            rendered.stdin.write(ESCAPE);
+            rendered.stdin.write(KEYS.escape);
             await letReactCatchUp();
             expect(globalInstall.run).toHaveBeenCalledOnce();
             expect(rendered.getFrame()).toContain('Updating npm global install to v');
