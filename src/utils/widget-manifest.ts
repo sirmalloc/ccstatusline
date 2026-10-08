@@ -84,6 +84,7 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'session-name', create: () => new widgets.SessionNameWidget() },
     { type: 'free-memory', create: () => new widgets.FreeMemoryWidget() },
     { type: 'session-usage', create: () => new widgets.SessionUsageWidget() },
+    { type: 'session-forecast', create: () => new widgets.SessionForecastWidget() },
     { type: 'weekly-usage', create: () => new widgets.WeeklyUsageWidget() },
     { type: 'extra-usage-utilization', create: () => new widgets.ExtraUsageUtilizationWidget() },
     { type: 'extra-usage-remaining', create: () => new widgets.ExtraUsageRemainingWidget() },

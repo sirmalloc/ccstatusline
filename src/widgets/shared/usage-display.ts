@@ -268,11 +268,15 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
-export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
+export function getUsageDirectionKeybind(item?: WidgetItem): CustomKeybind {
     const nextDirection = item && isUsageInverted(item) ? 'used' : 'remaining';
+    return { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' };
+}
+
+export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
     const keybinds: CustomKeybind[] = [
         PROGRESS_TOGGLE_KEYBIND,
-        { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
+        getUsageDirectionKeybind(item)
     ];
 
     if (item && includeCursor) {
