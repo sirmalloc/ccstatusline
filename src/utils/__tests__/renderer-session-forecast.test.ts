@@ -16,33 +16,38 @@ import {
     renderStatusLine
 } from '../renderer';
 
-const plainSettings: Settings = { ...DEFAULT_SETTINGS, colorLevel: 0, powerline: { ...DEFAULT_SETTINGS.powerline } };
-const powerlineSettings: Settings = { ...plainSettings, powerline: { ...DEFAULT_SETTINGS.powerline, enabled: true, separators: ['|'] } };
+const plainSettings: Settings = { ...DEFAULT_SETTINGS, colorLevel: 0, defaultSeparator: '|', powerline: { ...DEFAULT_SETTINGS.powerline } };
+const powerlineSettings: Settings = { ...DEFAULT_SETTINGS, colorLevel: 0, powerline: { ...DEFAULT_SETTINGS.powerline, enabled: true, separators: ['|'] } };
 
 function renderLine(widgets: WidgetItem[], settings: Settings, context: RenderContext): string {
     const [preRendered = []] = preRenderAllWidgets([widgets], settings, context);
     return stripSgrCodes(renderStatusLine(widgets, settings, context, preRendered, []));
 }
 
-const usage: WidgetItem = { id: 'usage', type: 'session-usage', merge: true };
+const usage: WidgetItem = { id: 'usage', type: 'session-usage' };
 const forecast: WidgetItem = { id: 'forecast', type: 'session-forecast' };
-const context: RenderContext = { isPreview: false, terminalWidth: 200, usageData: { sessionUsage: 42 } };
+const model: WidgetItem = { id: 'model', type: 'model' };
+const context: RenderContext = {
+    isPreview: false,
+    terminalWidth: 200,
+    usageData: { sessionUsage: 42 },
+    data: { model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } }
+};
 
-describe('Session Forecast merged after Session Usage', () => {
+describe('Session Forecast between Session Usage and another widget', () => {
     it.each([
         ['plain', plainSettings],
         ['Powerline', powerlineSettings]
-    ])('leaves the %s line as Session Usage alone while hidden', (_mode, settings) => {
-        expect(renderLine([usage, forecast], settings, context)).toBe(renderLine([{ ...usage, merge: undefined }], settings, context));
+    ])('leaves the %s line as if it were not there while hidden', (_mode, settings) => {
+        expect(renderLine([usage, forecast, model], settings, context)).toBe(renderLine([usage, model], settings, context));
     });
 
     it.each([
         ['plain', plainSettings],
         ['Powerline', powerlineSettings]
-    ])('joins Session Usage on the %s line once shown', (_mode, settings) => {
-        const line = renderLine([usage, forecast], settings, { ...context, sessionForecast: { projectedPercent: 83.2, limitInMs: null } });
+    ])('takes its own place on the %s line once shown', (_mode, settings) => {
+        const line = renderLine([usage, forecast, model], settings, { ...context, sessionForecast: { projectedPercent: 83.2, limitInMs: null } });
 
-        expect(line).toContain('Session: 42.0%');
-        expect(line).toContain('→83.2%');
+        expect(line).toMatch(/Session: 42\.0%.*→83\.2%.*Opus 5\.5/);
     });
 });
