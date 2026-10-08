@@ -120,8 +120,8 @@ describe('BlockResetTimerWidget', () => {
         expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { display: 'progress' } }, { usageData: {} })).toBe('Reset [Loading]');
     });
 
-    it('declares the no-data hideable state', () => {
-        expect(new BlockResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data']);
+    it('declares the no-data and under-limit hideable states', () => {
+        expect(new BlockResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data', 'under-limit']);
     });
 
     // One state covers both placeholders, since either means the same thing to
@@ -146,6 +146,53 @@ describe('BlockResetTimerWidget', () => {
 
         expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { hide: '' } }, { usageData: {} })).toBe('Reset: [Loading]');
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
+    });
+
+    describe('under-limit hide state', () => {
+        const item: WidgetItem = { id: 'reset', type: 'reset-timer', metadata: { hide: 'under-limit' } };
+
+        beforeEach(() => {
+            mockResolveUsageWindowWithFallback.mockReturnValue({
+                sessionDurationMs: 18000000,
+                elapsedMs: 11820000,
+                remainingMs: 6180000,
+                elapsedPercent: 65.7,
+                remainingPercent: 34.3
+            });
+            mockFormatUsageDuration.mockReturnValue('1hr 43m');
+        });
+
+        // The raw percent decides, so 99.7% that a whole-number Session Usage shows as
+        // "100%" still counts as under the limit.
+        it.each([
+            ['under 100%', { sessionUsage: 60 }],
+            ['just under 100%', { sessionUsage: 99.7 }],
+            ['unknown', {}],
+            ['unknown with a usage error', { error: 'timeout' as const }]
+        ])('hides the timer when session usage is %s', (_label, usageData) => {
+            expect(render(new BlockResetTimerWidget(), item, { usageData })).toBeNull();
+        });
+
+        it.each([
+            ['at 100%', 100],
+            ['over 100%', 100.4]
+        ])('shows the timer when session usage is %s', (_label, sessionUsage) => {
+            expect(render(new BlockResetTimerWidget(), item, { usageData: { sessionUsage } })).toBe('Reset: 1hr 43m');
+        });
+
+        it('keeps showing the timer under 100% when the state is off', () => {
+            expect(render(new BlockResetTimerWidget(), { id: 'reset', type: 'reset-timer' }, { usageData: { sessionUsage: 60 } })).toBe('Reset: 1hr 43m');
+        });
+
+        it('keeps the preview sample', () => {
+            expect(render(new BlockResetTimerWidget(), item, { isPreview: true })).toBe('Reset: 4hr 30m');
+        });
+
+        it('hides rather than loads at 100% with no reset window when no-data is also on', () => {
+            mockResolveUsageWindowWithFallback.mockReturnValue(null);
+
+            expect(render(new BlockResetTimerWidget(), { ...item, metadata: { hide: 'no-data,under-limit' } }, { usageData: { sessionUsage: 100 } })).toBeNull();
+        });
     });
 
     it('shows raw value without label in time mode', () => {
