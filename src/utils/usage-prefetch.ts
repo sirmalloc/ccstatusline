@@ -3,6 +3,8 @@ import type {
     StatusJSON
 } from '../types/StatusJSON';
 import type { WidgetItem } from '../types/Widget';
+import { isHidden } from '../widgets/shared/hideable';
+import { SESSION_UNDER_LIMIT_HIDEABLE_STATE } from '../widgets/shared/usage-display';
 
 import type { UsageData } from './usage';
 import { fetchUsageData } from './usage';
@@ -80,6 +82,10 @@ const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, { field: bucket.resetField, alternatives: ['weeklyResetAt'] }]))
 };
 
+// Block Reset Timer's under-limit hide state reads the session percent. Like the
+// timer's own reset requirement, a failed fetch made only for it isn't an error.
+const UNDER_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionUsage', suppressFetchError: true };
+
 export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
     return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type)));
 }
@@ -98,6 +104,10 @@ function getUsageFieldRequirements(lines: WidgetItem[][]): UsageFieldRequirement
             const cursorRequirement = USAGE_CURSOR_REQUIREMENTS[item.type];
             if (cursorRequirement && isUsageCursorEnabled(item)) {
                 requirements.push(cursorRequirement);
+            }
+
+            if (item.type === 'reset-timer' && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
+                requirements.push(UNDER_LIMIT_HIDE_REQUIREMENT);
             }
         }
     }

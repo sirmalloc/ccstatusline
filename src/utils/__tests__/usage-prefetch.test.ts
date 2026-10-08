@@ -342,6 +342,44 @@ describe('usage prefetch', () => {
         ]);
     });
 
+    it('fetches the session percent for a reset timer that hides under the limit', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 100 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { resets_at: 1774020000 } } });
+
+        expect(usageData?.sessionUsage).toBe(100);
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['sessionUsage'] }]
+        ]);
+    });
+
+    it('suppresses API errors when the under-limit reset timer only misses the session percent', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionResetAt: epochToIso(1774020000) });
+    });
+
+    it('reads the under-limit reset timer\'s session percent from rate_limits without fetching', async () => {
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 100, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 100, sessionResetAt: epochToIso(1774020000) });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
     it('keeps statusline usage when cursor metadata requires a missing reset and API has no credentials', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
 

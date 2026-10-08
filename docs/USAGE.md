@@ -320,6 +320,7 @@ Supported states by widget family:
 - **Session Clock**: `zero` hides durations under one minute
 - **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
 - **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available
+- **Block Reset Timer**: `under-limit` hides the timer until session usage reaches 100%, so the reset countdown appears only once the 5-hour limit is hit. It reads the raw session percent from the status payload, or the usage API when the payload lacks it, so a Session Usage that rounds 99.7% to `100%` still counts as under the limit
 - **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
 - **Output Style**: `default-value` hides the widget when the style is `default`
 - **Compaction Counter**: `zero` hides the counter before any compaction occurs
