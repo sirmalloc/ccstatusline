@@ -7,6 +7,9 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+// Imported before the widget, as the reset timer tests do: loading a widget first
+// enters the usage -> config -> widget registry import cycle midway under Node.
+import { formatUsageDuration } from '../../utils/usage';
 import { SessionLimitTimerWidget } from '../SessionLimitTimer';
 
 const ITEM: WidgetItem = { id: 'limit', type: 'session-limit-timer' };
@@ -23,6 +26,11 @@ function limitIn(limitInMs: number | null): RenderContext {
 describe('SessionLimitTimerWidget', () => {
     it('shows the time until the limit, rounded down to the minute', () => {
         expect(render(ITEM, limitIn(4_387_500))).toBe('Limit: 1hr 13m');
+    });
+
+    it('formats durations like the reset timers', () => {
+        expect(render(ITEM, limitIn(4_387_500))).toBe(`Limit: ${formatUsageDuration(4_387_500)}`);
+        expect(render(COMPACT, limitIn(4_387_500))).toBe(`Limit: ${formatUsageDuration(4_387_500, true)}`);
     });
 
     it('shows the short form with s', () => {
