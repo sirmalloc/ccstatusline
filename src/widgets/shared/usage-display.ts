@@ -273,6 +273,10 @@ export function getUsageDirectionKeybind(item?: WidgetItem): CustomKeybind {
     return { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' };
 }
 
+export function getUsageCompactKeybind(): CustomKeybind {
+    return COMPACT_TOGGLE_KEYBIND;
+}
+
 export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
     const keybinds: CustomKeybind[] = [
         PROGRESS_TOGGLE_KEYBIND,

@@ -64,6 +64,7 @@ export { FreeMemoryWidget } from './FreeMemory';
 export { SessionNameWidget } from './SessionName';
 export { SessionUsageWidget } from './SessionUsage';
 export { SessionForecastWidget } from './SessionForecast';
+export { SessionLimitTimerWidget } from './SessionLimitTimer';
 export { WeeklyUsageWidget } from './WeeklyUsage';
 export { ExtraUsageUtilizationWidget } from './ExtraUsageUtilization';
 export { ExtraUsageRemainingWidget } from './ExtraUsageRemaining';
