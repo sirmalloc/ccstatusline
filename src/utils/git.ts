@@ -507,14 +507,14 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
 }
 
 export function getGitConflictCount(context: RenderContext): number {
-    const output = runGit('ls-files --unmerged', context);
+    const output = runGit('ls-files --unmerged -z', context);
     if (!output)
         return 0;
 
-    // Count unique file paths (unmerged files appear 3 times in output)
-    const files = new Set(output.split('\n').map((line) => {
-        const parts = line.split(/\s+/).slice(3);
-        return parts.join(' ');
+    // Preserve exact paths while deduplicating the index stages for each file.
+    const files = new Set(output.split('\0').map((entry) => {
+        const separator = entry.indexOf('\t');
+        return separator === -1 ? '' : entry.slice(separator + 1);
     }).filter(path => path.length > 0));
     return files.size;
 }
