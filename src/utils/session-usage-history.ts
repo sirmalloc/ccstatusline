@@ -144,6 +144,12 @@ export function recordSessionUsageReading(
 
     const readings = usageWindow.readings;
     const last = readings[readings.length - 1];
+    // Usage never falls within a window: a lower percent is another session's
+    // stale payload, and recording it would fake a steep climb later.
+    if (last !== undefined && clampedPercent < last[2]) {
+        return readings;
+    }
+
     if (last?.[2] !== clampedPercent) {
         readings.push([nowMs, nowMs, clampedPercent]);
     } else if (nowMs - last[1] >= LAST_SEEN_WRITE_INTERVAL_MS) {

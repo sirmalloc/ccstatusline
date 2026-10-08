@@ -90,6 +90,15 @@ describe('recordSessionUsageReading', () => {
         expect(deps.writes).toBe(1);
     });
 
+    // Usage never falls within a window, so a lower percent is another session's
+    // stale payload, and recording it would fake a steep climb half an hour later.
+    it('ignores a lower percent from a stale session', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 42]] }] }));
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 30, deps)).toEqual([[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 42]]);
+        expect(deps.writes).toBe(0);
+    });
+
     it('skips the write when the percent is unchanged within a minute', () => {
         const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 30_000, 42]] }] }));
 
