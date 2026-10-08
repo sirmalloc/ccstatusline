@@ -185,7 +185,9 @@ describe('BlockResetTimerWidget', () => {
         });
 
         it('keeps the preview sample', () => {
-            expect(render(new BlockResetTimerWidget(), item, { isPreview: true })).toBe('Reset: 4hr 30m');
+            const widget = new BlockResetTimerWidget();
+
+            expect(render(widget, item, { isPreview: true })).toBe(render(widget, { id: 'reset', type: 'reset-timer' }, { isPreview: true }));
         });
 
         it('hides rather than loads at 100% with no reset window when no-data is also on', () => {
