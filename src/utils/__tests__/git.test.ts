@@ -376,6 +376,106 @@ describe('git utils', () => {
             const cacheDir = path.dirname(cachePath);
             expect(fs.readdirSync(cacheDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
         });
+
+        it('keeps separate persistent caches for different cwds in the same repo', () => {
+            vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const subdir = path.join(root, 'src');
+            fs.mkdirSync(subdir);
+            const rootContext: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            const subdirContext: RenderContext = { data: { cwd: subdir }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockReturnValueOnce('root-conflicts\n');
+            mockExecFileSync.mockReturnValueOnce('subdir-conflicts\n');
+
+            expect(runGit('ls-files --unmerged', rootContext)).toBe('root-conflicts');
+            expect(runGit('ls-files --unmerged', subdirContext)).toBe('subdir-conflicts');
+
+            // A fresh process (second session) must still hit both entries.
+            clearGitCache();
+            expect(runGit('ls-files --unmerged', rootContext)).toBe('root-conflicts');
+            expect(runGit('ls-files --unmerged', subdirContext)).toBe('subdir-conflicts');
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+    });
+
+    describe('runGit outside a repository', () => {
+        const ORIGINAL_GIT_DIR = process.env.GIT_DIR;
+
+        // The host running the tests may have a stray .git or HEAD above the
+        // temp dir (e.g. in $HOME), so hide repo markers above the fixture.
+        function useIsolatedDirectory(): string {
+            useTempHome();
+            const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-no-repo-')));
+            tempPaths.push(dir);
+            const isHiddenMarker = (target: fs.PathLike): boolean => {
+                const targetPath = String(target);
+                return ['.git', 'HEAD'].includes(path.basename(targetPath))
+                    && !targetPath.startsWith(`${dir}${path.sep}`);
+            };
+            const enoent = (target: fs.PathLike): Error => Object.assign(new Error(`ENOENT: ${String(target)}`), { code: 'ENOENT' });
+            const realLstatSync = fs.lstatSync;
+            const realStatSync = fs.statSync;
+            vi.spyOn(fs, 'lstatSync').mockImplementation((target: fs.PathLike) => {
+                if (isHiddenMarker(target)) {
+                    throw enoent(target);
+                }
+                return realLstatSync(target);
+            });
+            vi.spyOn(fs, 'statSync').mockImplementation((target: fs.PathLike) => {
+                if (isHiddenMarker(target)) {
+                    throw enoent(target);
+                }
+                return realStatSync(target);
+            });
+            return dir;
+        }
+
+        afterEach(() => {
+            if (ORIGINAL_GIT_DIR === undefined) {
+                delete process.env.GIT_DIR;
+            } else {
+                process.env.GIT_DIR = ORIGINAL_GIT_DIR;
+            }
+        });
+
+        it('returns null without spawning git when no repository encloses cwd', () => {
+            delete process.env.GIT_DIR;
+            const dir = useIsolatedDirectory();
+            const context: RenderContext = { data: { cwd: dir } };
+
+            expect(isInsideGitWorkTree(context)).toBe(false);
+            expect(runGit('remote get-url -- origin', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(0);
+        });
+
+        it('still spawns git when GIT_DIR is set', () => {
+            process.env.GIT_DIR = '/somewhere/else/.git';
+            const dir = useIsolatedDirectory();
+            mockExecFileSync.mockReturnValueOnce('true\n');
+
+            expect(isInsideGitWorkTree({ data: { cwd: dir } })).toBe(true);
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('still spawns git for a malformed .git file', () => {
+            delete process.env.GIT_DIR;
+            const dir = useIsolatedDirectory();
+            fs.writeFileSync(path.join(dir, '.git'), 'not a gitfile\n', 'utf-8');
+
+            expect(isInsideGitWorkTree({ data: { cwd: dir } })).toBe(false);
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('still spawns git in a directory that looks like a bare repository', () => {
+            delete process.env.GIT_DIR;
+            const dir = useIsolatedDirectory();
+            fs.writeFileSync(path.join(dir, 'HEAD'), 'ref: refs/heads/main\n', 'utf-8');
+            mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git\n');
+
+            expect(runGit('remote get-url -- origin', { data: { cwd: dir } })).toBe('git@github.com:owner/repo.git');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
     });
 
     describe('isInsideGitWorkTree', () => {
