@@ -18,6 +18,9 @@ export interface RenderUsageData {
     weeklyOpusResetAt?: string;
     fableUsage?: number;
     fableResetAt?: string;
+    spendLimitUsage?: number;
+    spendLimitUsedUsd?: number;
+    spendLimitLimitUsd?: number;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;
     extraUsageUsed?: number;
