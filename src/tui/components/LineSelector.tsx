@@ -12,6 +12,7 @@ import React, {
 
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { getPlainInput } from '../../utils/input-guards';
 import { moveItem } from '../../utils/move-item';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -87,6 +88,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
     // Handle keyboard input
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (showDeleteDialog) {
             return;
         }
@@ -116,7 +118,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             return;
         }
 
-        switch (input) {
+        switch (shortcut) {
             case 'a':
                 if (allowEditing) {
                     appendLine();
