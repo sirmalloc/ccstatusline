@@ -35,7 +35,7 @@ const LABEL = 'Overage: ';
 
 export class ExtraUsageUtilizationWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows extra usage (pay-as-you-go) utilization percentage'; }
+    getDescription(): string { return 'Shows extra usage as a percentage of your monthly limit (Pro/Max overage or Enterprise spend)'; }
     getDisplayName(): string { return 'Extra Usage Utilization'; }
     getCategory(): string { return 'Usage'; }
     getLabelPrefix(): string { return LABEL; }
