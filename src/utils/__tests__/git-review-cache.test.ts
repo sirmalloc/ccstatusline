@@ -84,7 +84,7 @@ function createHarness(): PrCacheHarness {
             if (cmd === 'git' && gitArgs[0] === 'rev-parse')
                 return 'abc123\n';
             if (cmd === 'ssh' && commandArgs[0] === '-G') {
-                const host = commandArgs[1];
+                const host = commandArgs.at(-1);
                 if (!host)
                     throw new Error('missing ssh host');
                 return `hostname ${sshHostAliases.get(host) ?? host}\n`;
@@ -222,6 +222,18 @@ function gitConfigFromEnv(env: NodeJS.ProcessEnv | undefined): [string, string][
     ]);
 }
 
+// The fields a gh call asks for: the value after --json
+function jsonFields(args: string[] | undefined): string | undefined {
+    const index = args?.indexOf('--json') ?? -1;
+    return index >= 0 ? args?.[index + 1] : undefined;
+}
+
+// A gh call's arguments without its --json fields: what it looks up
+function withoutJsonFields(args: string[] | undefined): string[] {
+    const index = args?.indexOf('--json') ?? -1;
+    return index >= 0 ? [...(args ?? []).slice(0, index), ...(args ?? []).slice(index + 2)] : [...(args ?? [])];
+}
+
 mockExecutableResolution();
 
 describe('git-review-cache', () => {
@@ -334,7 +346,7 @@ describe('git-review-cache', () => {
         expect(ghPrCalls).toHaveLength(2);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('--repo');
-        expect(ghPrCalls.every(call => call.args.at(-1) === 'url,number,title,state,reviewDecision')).toBe(true);
+        expect(ghPrCalls.every(call => jsonFields(call.args) === 'url,number,title,state,reviewDecision')).toBe(true);
 
         const cachedMissEntry = [...harness.cacheFiles.values()].at(0);
         expect(JSON.parse(cachedMissEntry?.content ?? '')).toEqual({
@@ -363,7 +375,7 @@ describe('git-review-cache', () => {
         expect(ghPrCalls).toHaveLength(2);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('--repo');
-        expect(ghPrCalls.every(call => call.args.at(-1)?.includes('statusCheckRollup'))).toBe(true);
+        expect(ghPrCalls.every(call => jsonFields(call.args)?.includes('statusCheckRollup'))).toBe(true);
     });
 
     it('shares one deadline across unpinned and pinned CI lookups', () => {
@@ -637,7 +649,7 @@ describe('git-review-cache', () => {
         );
         expect(ghPrCalls).toHaveLength(1);
         expect(ghPrCalls[0]?.args).not.toContain('--repo');
-        expect(ghPrCalls[0]?.args.at(-1)).toBe(
+        expect(jsonFields(ghPrCalls[0]?.args)).toBe(
             'url,number,title,state,reviewDecision,statusCheckRollup'
         );
     });
@@ -669,10 +681,10 @@ describe('git-review-cache', () => {
         );
         expect(ghPrCalls).toHaveLength(2);
         expect(ghPrCalls[0]?.args.slice(0, -2)).toEqual(ghPrCalls[1]?.args.slice(0, -2));
-        expect(ghPrCalls[0]?.args.at(-1)).toBe(
+        expect(jsonFields(ghPrCalls[0]?.args)).toBe(
             'url,number,title,state,reviewDecision,statusCheckRollup'
         );
-        expect(ghPrCalls[1]?.args.at(-1)).toBe('url,number,title,state,reviewDecision');
+        expect(jsonFields(ghPrCalls[1]?.args)).toBe('url,number,title,state,reviewDecision');
 
         const cachedEntry = [...harness.cacheFiles.values()].at(0);
         expect(JSON.parse(cachedEntry?.content ?? '')).toEqual({
@@ -686,6 +698,53 @@ describe('git-review-cache', () => {
             call => call.cmd === 'gh' && call.args[0] === 'pr'
         );
         expect(cachedGhPrCalls).toHaveLength(2);
+    });
+
+    // A branch named like a flag (a planted HEAD can say `ref: refs/heads/--web`)
+    // must stay an argument
+    it('passes the branch to gh after --, so it can\'t become a flag', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/fork-owner/example-repo.git');
+        harness.setCurrentRef('--web');
+        harness.ghResponses.push('');
+        harness.ghResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr' && call.args.includes('--repo'));
+        expect(pinned.length).toBeGreaterThan(0);
+        for (const call of pinned) {
+            expect(call.args.slice(-2)).toEqual(['--', '--web']);
+        }
+    });
+
+    it('passes the branch to glab after --, so it can\'t become a flag', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:fork-owner/repo.git');
+        harness.setGlabAvailable(true);
+        harness.setCurrentRef('--web');
+        harness.glabResponses.push('');
+        harness.glabResponses.push('');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const pinned = harness.execCalls.filter(call => call.cmd === 'glab' && call.args[0] === 'mr' && call.args.includes('--repo'));
+        expect(pinned.length).toBeGreaterThan(0);
+        for (const call of pinned) {
+            expect(call.args.slice(-2)).toEqual(['--', '--web']);
+        }
+    });
+
+    it('passes the SSH host after --, so a host named like an option stays a host', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@-oProxyCommand=x:owner/repo.git');
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
+        // The remote parser lowercases hosts
+        expect(sshCalls.map(call => call.args)).toEqual(sshCalls.map(() => ['-G', '--', '-oproxycommand=x']));
+        expect(sshCalls.length).toBeGreaterThan(0);
     });
 
     it('falls back to --repo <origin> for forked GitHub repos when gh\'s default resolves elsewhere', () => {
@@ -745,11 +804,11 @@ describe('git-review-cache', () => {
             call => call.cmd === 'gh' && call.args[0] === 'pr'
         );
         expect(ghPrCalls).toHaveLength(3);
-        expect(ghPrCalls[1]?.args.slice(0, -2)).toEqual(ghPrCalls[2]?.args.slice(0, -2));
+        expect(withoutJsonFields(ghPrCalls[1]?.args)).toEqual(withoutJsonFields(ghPrCalls[2]?.args));
         expect(ghPrCalls[1]?.args).toContain('feature/cache-a');
         expect(ghPrCalls[1]?.args).toContain('--repo');
         expect(ghPrCalls[1]?.args).toContain('https://github.com/fork-owner/example-repo');
-        expect(ghPrCalls[2]?.args.at(-1)).toBe('url,number,title,state,reviewDecision');
+        expect(jsonFields(ghPrCalls[2]?.args)).toBe('url,number,title,state,reviewDecision');
     });
 
     it('resolves SSH host aliases before selecting GitHub and pinning --repo', () => {
@@ -776,7 +835,7 @@ describe('git-review-cache', () => {
 
         const sshCalls = harness.execCalls.filter(call => call.cmd === 'ssh');
         expect(sshCalls.length).toBeGreaterThan(0);
-        expect(sshCalls.every(call => call.args.join(' ') === '-G mygit')).toBe(true);
+        expect(sshCalls.every(call => call.args.join(' ') === '-G -- mygit')).toBe(true);
 
         const ghAuthCalls = harness.execCalls.filter(
             call => call.cmd === 'gh' && call.args[0] === 'auth'
