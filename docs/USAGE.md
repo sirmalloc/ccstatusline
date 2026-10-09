@@ -56,7 +56,7 @@ ccstatusline --version
 
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts. Input/output prefer cumulative transcript metrics and fall back to `context_window.total_input_tokens` / `context_window.total_output_tokens` when transcript metrics are unavailable; cached/total use transcript metrics.
 - **Cache Hit Rate** / **Cache Read** / **Cache Write** - Show prompt-cache efficiency. Cache Hit Rate uses cache reads divided by cache reads plus cache writes; Cache Read and Cache Write include each value's share of prompt context. They default to the latest turn from `context_window.current_usage`, can switch to cumulative session totals, and can hide when empty.
-- **Cache Timer** - Estimate time remaining before the current prompt-cache entry expires. It shows `HOT` while a main-chain turn is active, then counts down from the latest assistant request with cache activity and becomes `COLD` just before expiry. The default TTL is 5 minutes; it can switch to 1 hour, hide when no cache anchor is available, and customize the glyph for each state. Because Claude Code transcripts expose cache token activity rather than the actual expiry timestamp, the countdown is best effort.
+- **Cache Timer** - Estimate time remaining before the current prompt-cache entry expires. It shows `HOT` while a main-chain turn is active, then counts down from the latest assistant request with cache activity and becomes `COLD` just before expiry. Interrupts and local slash commands such as `/cost` end the working state without refreshing that cache anchor. The default TTL is 5 minutes; it can switch to 1 hour, hide when no cache anchor is available, and customize the glyph for each state. Because Claude Code transcripts expose cache token activity rather than the actual expiry timestamp, the countdown is best effort.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar. The window size is taken from Claude Code's reported `context_window.context_window_size` when present, then from a model-name hint (e.g. a `[1m]` suffix), and finally from a fixed fallback. Set `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` to a positive integer to override that last-resort fallback (defaults to `200000`) — useful when an older Claude Code does not report the window size for a 1M-context model, so the bar would otherwise read against 200k. Immediately after `/compact`, transcript fallback uses the latest `compact_boundary.postTokens` value until a new main-chain turn reports the current size, so the widgets do not retain the pre-compaction context.
 - **Compaction Counter** - Show how many context compactions have been detected in the current session by scanning transcript compaction markers. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero. Two optional, independent per-item add-ons toggle extra detail: a trigger split (`↻ 3 (2 auto, 1 manual)`; a compaction whose trigger is missing or unrecognized is bucketed as `unknown`) and tokens reclaimed (`↻ 3 ↓887.0k`, each compaction's `preTokens - postTokens` floored at 0 and summed, shown only when greater than 0 — so very old transcripts predating the `postTokens` field display nothing). Its value selector can instead render the total count, one trigger count (`auto`, `manual`, or `unknown`), or reclaimed tokens as a standalone value; hide-when-zero applies to the selected value.
@@ -174,7 +174,7 @@ The same menu controls these ccstatusline cache settings, saved with **Save & Ex
 | Custom Command Cache TTL | `customCommandCacheTtlSeconds` | 0 seconds | 0–60 seconds | Run commands on every render |
 | Terminal Width Cache TTL | `terminalWidthCacheTtlSeconds` | 5 seconds | 0–300 seconds | Re-probe on every render, even after no width was found |
 
-Git commands run on cache misses with a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
+Git commands run on cache misses with a five-second timeout. Persistent caches are separate for each repository and working directory, so sessions in different subdirectories do not evict each other's results. Calls are skipped when ccstatusline can determine that the directory is outside any repository. JJ commands also have a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
 
 ### Status line empty in one folder but fine elsewhere
 
@@ -190,6 +190,14 @@ The usage cache uses a fingerprint of the refresh token when available, falling 
 
 Each macOS Keychain command has a five-second timeout. When no OAuth credentials are found, the lookup backs off for 30 seconds for that profile, so a newly signed-in account may take up to 30 seconds to appear. Usage cache files dated more than 180 seconds into the future are treated as stale.
 
+### Proxy Settings
+
+Usage requests to `api.anthropic.com` and Claude Status requests to `status.claude.com` honor uppercase `HTTPS_PROXY`. Both `NO_PROXY` and `no_proxy` supply exclusions; matching either variable sends the request directly.
+
+Exclusions are separated by commas or whitespace and matched without regard to case. Use `*` for all hosts, a hostname such as `api.anthropic.com`, or a domain such as `anthropic.com`, `.anthropic.com`, or `*.anthropic.com` to match that domain and its subdomains. An optional `:443` suffix is supported; entries for other ports do not match these HTTPS requests.
+
+Each request has a total five-second deadline, including the wait for a proxy to answer CONNECT. The usual stale-cache and error-display behavior applies when the deadline expires.
+
 ## Configuration Import and Export
 
 The TUI main menu can move configurations between machines or preserve a backup:
@@ -204,9 +212,15 @@ The import preview follows the highlighted action:
 
 Both modes keep machine-local installation metadata and ignore schema/update metadata from the imported file. Applying an import updates only the TUI's working configuration; review the result, then choose **Save & Exit** or press `Ctrl+S` to persist it.
 
+If the selected mode adds Custom Command shell commands that are not already in the current configuration, the preview lists each new command in full. Choosing **Replace All** or **Merge** then opens a confirmation with **Cancel** selected by default. Choose **Apply and run these commands** to accept, or Cancel/Escape to return to the preview. Imports without new commands apply immediately. Preview values, paths, and commands display control characters as `\uXXXX`, making them visible without executing terminal controls.
+
 ## Settings Recovery
 
 If `settings.json` is unreadable or invalid, ccstatusline leaves the file unchanged, renders with built-in defaults for that run, and prepends an invalid-config warning badge to the status line. The TUI shows the same warning and asks for confirmation before either **Save & Exit** or `Ctrl+S` replaces the invalid file. Fix the JSON to preserve its contents, or confirm the save to replace it with the configuration currently shown in the TUI.
+
+Installation also stops if Claude Code's own `settings.json` cannot be read or parsed, leaving that file unchanged and showing the error. Correct the file before trying the installation again.
+
+On systems with POSIX file permissions, saving an existing ccstatusline settings file preserves restrictive permissions such as `0600`, including when saving through a symlink. Claude Code settings backups (`.bak` and `.orig`) are created with the source file's permissions, subject to the process umask.
 
 ## Block Timer Widget
 
