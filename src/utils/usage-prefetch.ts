@@ -90,10 +90,10 @@ const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, { field: bucket.resetField, alternatives: ['weeklyResetAt'] }]))
 };
 
-// Block Reset Timer's under-limit hide state reads the session percent from the
-// usage API, kept as apiSessionUsage. The payload's percent comes from this
-// session's last response, so in a session left idle while others use up the
-// limit it never reaches 100%. Like the timer's own reset requirement, a failed
+// Block Reset Timer's under-limit hide state reads the 5-hour block's percent
+// from the usage API, kept as apiSessionUsage. The payload's percent comes from
+// this session's last response, so in a session left idle while others use up
+// the limit it never reaches 100%. Like the timer's own reset requirement, a failed
 // fetch made only for it isn't an error, and the payload's percent stands in.
 const UNDER_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionUsage', fromApi: true, suppressFetchError: true };
 

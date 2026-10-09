@@ -169,14 +169,14 @@ describe('BlockResetTimerWidget', () => {
             ['just under 100%', { sessionUsage: 99.7 }],
             ['unknown', {}],
             ['unknown with a usage error', { error: 'timeout' as const }]
-        ])('hides the timer when session usage is %s', (_label, usageData) => {
+        ])('hides the timer when the block\'s usage is %s', (_label, usageData) => {
             expect(render(new BlockResetTimerWidget(), item, { usageData })).toBeNull();
         });
 
         it.each([
             ['at 100%', 100],
             ['over 100%', 100.4]
-        ])('shows the timer when session usage is %s', (_label, sessionUsage) => {
+        ])('shows the timer when the block\'s usage is %s', (_label, sessionUsage) => {
             expect(render(new BlockResetTimerWidget(), item, { usageData: { sessionUsage } })).toBe('Reset: 1hr 43m');
         });
 

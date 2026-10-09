@@ -22,7 +22,7 @@ export type UsageDisplayMode = 'time' | 'progress' | 'progress-short' | 'slider'
 export const USAGE_NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when usage data is unavailable' };
 // Block Reset Timer's: show the reset countdown only once the 5-hour limit is
 // hit. Here rather than in the widget so the usage prefetch can read it.
-export const SESSION_UNDER_LIMIT_HIDEABLE_STATE: HideableState = { key: 'under-limit', label: 'when session usage is under 100%' };
+export const SESSION_UNDER_LIMIT_HIDEABLE_STATE: HideableState = { key: 'under-limit', label: 'when the 5-hour block is under 100%' };
 
 const SLIDER_WIDTH = 10;
 

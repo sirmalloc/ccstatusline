@@ -342,7 +342,7 @@ describe('usage prefetch', () => {
         ]);
     });
 
-    it('fetches the session percent for a reset timer that hides under the limit', async () => {
+    it('fetches the 5-hour block\'s percent for a reset timer that hides under the limit', async () => {
         mockFetchUsageData.mockResolvedValue({ sessionUsage: 100 });
 
         const lines = makeLines(
@@ -358,7 +358,7 @@ describe('usage prefetch', () => {
         ]);
     });
 
-    it('suppresses API errors when the under-limit reset timer only misses the session percent', async () => {
+    it('suppresses API errors when the under-limit reset timer only misses the block\'s percent', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
 
         const lines = makeLines(
@@ -370,7 +370,7 @@ describe('usage prefetch', () => {
         expect(usageData).toEqual({ sessionResetAt: epochToIso(1774020000) });
     });
 
-    it('fetches the under-limit reset timer\'s session percent even when rate_limits has one', async () => {
+    it('fetches the under-limit reset timer\'s block percent even when rate_limits has one', async () => {
         mockFetchUsageData.mockResolvedValue({ sessionUsage: 100 });
 
         const lines = makeLines(
@@ -387,7 +387,7 @@ describe('usage prefetch', () => {
         ]);
     });
 
-    it('falls back to rate_limits\' session percent when the under-limit fetch fails', async () => {
+    it('falls back to rate_limits\' block percent when the under-limit fetch fails', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
 
         const lines = makeLines(
