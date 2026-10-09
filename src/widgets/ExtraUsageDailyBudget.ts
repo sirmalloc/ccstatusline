@@ -34,6 +34,7 @@ export class ExtraUsageDailyBudgetWidget implements Widget {
     getDescription(): string { return 'Shows what\'s left of your monthly extra usage limit per day left in the month, optionally counting weekdays only'; }
     getDisplayName(): string { return 'Extra Usage Daily Budget'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
