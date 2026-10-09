@@ -47,6 +47,18 @@
 
 ## 🆕 Recent Updates
 
+### v2.2.31 - Cost tracking, customization, and broad reliability improvements
+
+Across the updates since the September 3 release, 64 PRs have been incorporated, plus additional security fixes and test isolation.
+
+- **🩹 Miscellaneous bug fixes** - 29 dedicated bug-fix PRs since September 3 cover usage/account caching, transcript reading, Git/JJ and directory displays, Unicode truncation, Powerline colors and layout, keyboard controls, settings recovery, hooks, and installation/update flows.
+- **🔒 Security fixes** - Three additional fixes restrict repository-controlled Git commands, resolve Windows helper executables from PATH, and filter terminal control sequences while preserving colors and hyperlinks.
+- **💰 Session Cost Rate** - Track session cost per hour of active API time or total session time, with a one-minute minimum before showing a rate.
+- **📅 Extra Usage Daily Budget** - Spread the remaining monthly spending limit over the remaining UTC days, with an option to skip future weekend days.
+- **🏷️ Editable labels** - Press `e` to customize text labels.
+- **⚡ Faster rendering** - Piped status lines skip loading the interactive TUI, reducing startup work on every repaint.
+- **🧰 Maintenance** - Shared widget and editor implementations, broader regression coverage, more reliable tests, dependency updates, and CI actions pinned to commit SHAs.
+
 ### v2.2.29 - v2.2.30 - Faster rendering, command caching, and reliable usage
 
 - **⚡ Faster terminal width detection** - Linux can probe the terminal directly without subprocesses, portable fallbacks skip shell wrappers, and configurable caching reuses failed width probes across renders while detected widths refresh on the next render.

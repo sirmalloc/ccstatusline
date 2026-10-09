@@ -202,6 +202,13 @@ describe('formatSpeed with a format', () => {
         expect(formatSpeed(50, { style: 'compact' })).toBe('50 t/s');
     });
 
+    it('switches to k notation at the rounding boundary of the shown precision', () => {
+        expect(formatSpeed(999.6, { style: 'whole' })).toBe('1k t/s');
+        expect(formatSpeed(999.4, { style: 'whole' })).toBe('999 t/s');
+        expect(formatSpeed(999.996, { decimals: 2 })).toBe('1.00k t/s');
+        expect(formatSpeed(999.994, { decimals: 2 })).toBe('999.99 t/s');
+    });
+
     it('default is unchanged', () => {
         expect(formatSpeed(1000)).toBe('1.0k t/s');
         expect(formatSpeed(50)).toBe('50.0 t/s');

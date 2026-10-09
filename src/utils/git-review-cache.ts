@@ -16,6 +16,15 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
+import {
+    getVisibleWidth,
+    truncateStyledText
+} from './ansi';
+import { resolveExecutable } from './executable-path';
+import {
+    GIT_HARDENING_ARGS,
+    withGitHardeningEnv
+} from './git-hardening';
 import { parseRemoteUrl } from './git-remote';
 
 export type GitReviewProvider = 'gh' | 'glab';
@@ -163,7 +172,7 @@ function getGitReviewCacheDir(deps: GitReviewCacheDeps): string {
 
 function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): string {
     try {
-        return deps.execFileSync('git', args, {
+        return deps.execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
@@ -299,7 +308,7 @@ function isSshRemoteUrl(url: string): boolean {
 
 function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
     try {
-        const output = deps.execFileSync('ssh', ['-G', host], {
+        const output = deps.execFileSync(resolveExecutable('ssh'), ['-G', host], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
@@ -394,7 +403,7 @@ function getRemainingTimeout(deadline: number, deps: GitReviewCacheDeps): number
 
 function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['--version'], {
+        deps.execFileSync(resolveExecutable(cli), ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
@@ -407,7 +416,7 @@ function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitRevie
 
 function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
+        deps.execFileSync(resolveExecutable(cli), ['auth', 'status', '--hostname', host], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
             windowsHide: true
@@ -456,12 +465,14 @@ function queryGhPr(
     deps: GitReviewCacheDeps
 ): Record<string, unknown> | null {
     const output = deps.execFileSync(
-        'gh',
+        resolveExecutable('gh'),
         [...args, '--json', fields],
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd,
+            // gh runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -540,12 +551,14 @@ function fetchFromGlab(
     args.push('--output', 'json');
 
     const output = deps.execFileSync(
-        'glab',
+        resolveExecutable('glab'),
         args,
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
+            // glab runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -771,7 +784,9 @@ export function getGitReviewStatusLabel(state: string, reviewDecision: string): 
 
 export function truncateTitle(title: string, maxWidth?: number): string {
     const limit = maxWidth ?? DEFAULT_TITLE_MAX_WIDTH;
-    if (title.length <= limit)
+    if (getVisibleWidth(title) <= limit)
         return title;
-    return `${title.slice(0, limit - 1)}…`;
+    // Cut by terminal columns and whole characters, so wide (CJK) characters
+    // count twice and an emoji is never split in half
+    return `${truncateStyledText(title, limit - 1, { ellipsis: false })}…`;
 }
