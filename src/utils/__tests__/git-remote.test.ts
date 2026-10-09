@@ -9,6 +9,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import { clearGitCache } from '../git';
+import { GIT_HARDENING_ARGS } from '../git-hardening';
 import {
     buildRepoWebUrl,
     getForkStatus,
@@ -231,7 +232,7 @@ describe('git-remote utils', () => {
             getRemoteInfo(remoteName, {});
 
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['remote', 'get-url', '--', remoteName]);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'remote', 'get-url', '--', remoteName]);
             expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2]);
         });
 

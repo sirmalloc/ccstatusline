@@ -13,6 +13,7 @@ import type {
     Widget,
     WidgetItem
 } from '../../types/Widget';
+import { gitCommandOf } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitOriginOwnerWidget } from '../GitOriginOwner';
@@ -52,7 +53,8 @@ const REMOTE_URLS: Record<string, Record<string, string>> = {
 beforeEach(() => {
     clearGitCache();
     mockExecFileSync.mockImplementation((_command, args, options) => {
-        const url = args[0] === 'remote' && args[1] === 'get-url' ? REMOTE_URLS[options?.cwd ?? '']?.[args[3] ?? ''] : undefined;
+        const [subcommand, action, , remote] = gitCommandOf(args).split(' ');
+        const url = subcommand === 'remote' && action === 'get-url' ? REMOTE_URLS[options?.cwd ?? '']?.[remote ?? ''] : undefined;
         if (url === undefined) {
             throw new Error('fatal: no such remote');
         }

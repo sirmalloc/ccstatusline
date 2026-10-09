@@ -6,6 +6,13 @@ import * as path from 'node:path';
 
 import type { RenderContext } from '../types/RenderContext';
 
+import {
+    GIT_HARDENING_ARGS,
+    getFilterOverrideArgs,
+    parseFilterConfig,
+    type FilterConfigEntry
+} from './git-hardening';
+
 export interface GitChangeCounts {
     insertions: number;
     deletions: number;
@@ -48,6 +55,18 @@ const GIT_COMMAND_TIMEOUT_MS = 5_000;
 // In-process cache keeps cwd in the key; the persistent cache stores cwd once
 // at the file level and keys entries by command.
 const gitCommandCache = new Map<string, GitCacheEntry>();
+const filterOverrideCache = new Map<string, string[] | null>();
+
+// Commands that re-read work tree files, and so can run filter drivers, with the
+// options that keep them from running external diff tools or recursing into
+// submodules, whose own config isn't checked
+const WORK_TREE_COMMAND_ARGS = new Map<string, string[]>([
+    ['status', ['--ignore-submodules=dirty']],
+    ['diff', ['--no-ext-diff', '--no-textconv', '--ignore-submodules=dirty']]
+]);
+
+// `git config --get-regexp` exits with 1 when nothing matches
+const GIT_CONFIG_NO_MATCH_STATUS = 1;
 
 function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
@@ -120,6 +139,133 @@ function discoverGitDir(startDir: string): string | null {
         }
         current = parent;
     }
+}
+
+// The directory holding the .git entry that git would find from startDir
+function findWorkTreeRoot(startDir: string): string | null {
+    let current = startDir;
+
+    for (;;) {
+        if (fs.existsSync(path.join(current, '.git'))) {
+            return current;
+        }
+
+        const parent = path.dirname(current);
+        if (parent === current) {
+            return null;
+        }
+        current = parent;
+    }
+}
+
+function readTextFile(filePath: string): string {
+    try {
+        return fs.readFileSync(filePath, 'utf-8');
+    } catch {
+        return '';
+    }
+}
+
+// Whether the repository's own config files could define a filter driver,
+// directly or through an include. Reading them is far cheaper than asking git,
+// and most repositories have none.
+function mayDefineFilters(gitDir: string): boolean {
+    const commonDir = readTextFile(path.join(gitDir, 'commondir')).trim();
+    const configDirs = [gitDir, ...(commonDir ? [path.resolve(gitDir, commonDir)] : [])];
+    const configText = configDirs
+        .flatMap(dir => [path.join(dir, 'config'), path.join(dir, 'config.worktree')])
+        .map(readTextFile)
+        .join('\n');
+
+    return /filter|include/i.test(configText);
+}
+
+function gitExecOptions(cwd: string | undefined) {
+    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
+    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
+    // git process is writing it.
+    // We use the environment variable instead of the CLI flag because older Git
+    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
+    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
+    return {
+        encoding: 'utf8' as const,
+        stdio: ['pipe', 'pipe', 'ignore'] as ['pipe', 'pipe', 'ignore'],
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+        timeout: GIT_COMMAND_TIMEOUT_MS,
+        windowsHide: true,
+        ...(cwd ? { cwd } : {})
+    };
+}
+
+// '' when nothing matches; null when git couldn't read the config
+function readFilterConfig(args: string[], cwd: string | undefined): string | null {
+    try {
+        return execFileSync('git', [...GIT_HARDENING_ARGS, 'config', ...args, '-z', '--get-regexp', '^filter\\.'], gitExecOptions(cwd));
+    } catch (error) {
+        return (error as { status?: unknown }).status === GIT_CONFIG_NO_MATCH_STATUS ? '' : null;
+    }
+}
+
+function readRepositoryFilterConfig(cwd: string | undefined): FilterConfigEntry[] | null {
+    const scoped = readFilterConfig(['--includes', '--show-scope'], cwd);
+    if (scoped !== null) {
+        return parseFilterConfig(scoped, true);
+    }
+
+    // git before 2.26 has no --show-scope: read the repository's own files
+    // instead. --worktree is newer still; without it, --local covers them.
+    const local = readFilterConfig(['--local', '--includes'], cwd);
+    if (local === null) {
+        return null;
+    }
+    const worktree = readFilterConfig(['--worktree', '--includes'], cwd) ?? '';
+    return [...parseFilterConfig(local, false), ...parseFilterConfig(worktree, false)];
+}
+
+// The -c arguments that turn off the repository's own filter drivers for
+// commands that re-read the work tree; null when that isn't possible
+function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | null {
+    const cacheKey = cwd ?? '';
+    const cached = filterOverrideCache.get(cacheKey);
+    if (cached !== undefined || filterOverrideCache.has(cacheKey)) {
+        return cached ?? null;
+    }
+
+    // Without a .git to read, git could only be using a bare repository found by
+    // searching upward, which safe.bareRepository refuses (git 2.38 and later)
+    const startDir = normalizeDirectory(cwd ?? process.cwd()) ?? process.cwd();
+    const gitDir = discoverGitDir(startDir);
+    let overrides: string[] | null = [];
+    if (gitDir && mayDefineFilters(gitDir)) {
+        const entries = readRepositoryFilterConfig(cwd);
+        overrides = entries === null
+            ? null
+            : getFilterOverrideArgs(entries, findWorkTreeRoot(startDir) ?? startDir);
+    }
+
+    filterOverrideCache.set(cacheKey, overrides);
+    return overrides;
+}
+
+/**
+ * Runs git as every status line call should: with fsmonitor off, no bare
+ * repository found by searching upward, and, for commands that re-read work tree
+ * files, none of the repository's own filter drivers or external diff tools.
+ * Throws when git fails, or when the repository's filters can't be turned off.
+ */
+export function execGit(args: string[], cwd: string | undefined): string {
+    const [subcommand = '', ...rest] = args;
+    const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
+    const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd) : [];
+    if (filterArgs === null) {
+        throw new Error('The repository\'s filter drivers could not be turned off');
+    }
+
+    return execFileSync(
+        'git',
+        [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
+        gitExecOptions(cwd)
+    );
 }
 
 function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
@@ -336,22 +482,8 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
         return persistentEntry.output;
     }
 
-    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
-    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
-    // git process is writing it.
-    // We use the environment variable instead of the CLI flag because older Git
-    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
-    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
-
     try {
-        const output = execFileSync('git', args, {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
-            timeout: GIT_COMMAND_TIMEOUT_MS,
-            windowsHide: true,
-            ...(cwd ? { cwd } : {})
-        }).trimEnd();
+        const output = execGit(args, cwd).trimEnd();
 
         const result = output.length > 0 ? output : null;
         const entry = createCacheEntry(result, metadata, now);
@@ -371,6 +503,7 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
  */
 export function clearGitCache(): void {
     gitCommandCache.clear();
+    filterOverrideCache.clear();
 }
 
 export function isInsideGitWorkTree(context: RenderContext): boolean {

@@ -13,6 +13,7 @@ import type {
     Widget,
     WidgetItem
 } from '../../types/Widget';
+import { gitCommandOf } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitChangesWidget } from '../GitChanges';
 import { GitDeletionsWidget } from '../GitDeletions';
@@ -59,9 +60,9 @@ beforeEach(() => {
             'diff --shortstat': repo.unstagedStat,
             'diff --cached --shortstat': repo.stagedStat
         };
-        const output = outputs[args.join(' ')];
+        const output = outputs[gitCommandOf(args)];
         if (output === undefined) {
-            throw new Error(`unexpected git ${args.join(' ')}`);
+            throw new Error(`unexpected git ${gitCommandOf(args)}`);
         }
         return output;
     });

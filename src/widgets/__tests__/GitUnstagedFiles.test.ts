@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { GitUnstagedFilesWidget } from '../GitUnstagedFiles';
 
 vi.mock('node:child_process', () => ({
@@ -69,7 +70,7 @@ describe('GitUnstagedFilesWidget', () => {
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('M:2');
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['status', '--porcelain', '-z']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'status', '--ignore-submodules=dirty', '--porcelain', '-z']);
     });
 
     it('renders raw unstaged file count', () => {

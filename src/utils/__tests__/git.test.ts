@@ -21,6 +21,7 @@ import {
     resolveGitCwd,
     runGit
 } from '../git';
+import { GIT_HARDENING_ARGS } from '../git-hardening';
 
 import { expectGitExecOptions } from './git-test-helpers';
 
@@ -171,7 +172,7 @@ describe('git utils', () => {
 
             expect(result).toBe('feature/worktree');
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['symbolic-ref', '--short', 'HEAD']);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'symbolic-ref', '--short', 'HEAD']);
             expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/repo');
         });
 
