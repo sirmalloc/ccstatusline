@@ -59,7 +59,7 @@ export class GitWorktreeWidget implements Widget {
         const output = runGit('rev-parse --git-dir --git-common-dir', context);
         const [gitDir, commonDir] = (output ?? '')
             .split('\n')
-            .map(dir => dir.trim().replaceAll('\\', '/'));
+            .map(dir => dir.trim().replace(/\\/g, '/'));
         if (!gitDir)
             return null;
 
