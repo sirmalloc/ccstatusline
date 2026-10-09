@@ -30,6 +30,19 @@ function collectSync(filePath: string): string[] {
     return Array.from(iterateJsonlLinesSync(filePath));
 }
 
+/** Stops after `limit` lines so a reader that repeats lines fails the assertion instead of hanging. */
+function collectReverse(filePath: string, limit = 10): string[] {
+    const lines: string[] = [];
+    for (const line of iterateJsonlLinesReverseSync(filePath)) {
+        lines.push(line);
+        if (lines.length >= limit) {
+            break;
+        }
+    }
+
+    return lines;
+}
+
 describe('jsonl line streaming', () => {
     const tempRoots: string[] = [];
 
@@ -164,6 +177,26 @@ describe('jsonl line streaming', () => {
             '{"value":"latest"}',
             longLine
         ]);
+    });
+
+    it('reverse-reads a file that starts with an empty line', () => {
+        const filePath = writeTranscript('reverse-leading-newline.jsonl', '\n{"value":1}\n{"value":2}\n');
+
+        expect(collectReverse(filePath)).toEqual([
+            '{"value":2}',
+            '{"value":1}'
+        ]);
+    });
+
+    it('reverse-reads a chunk whose first byte is a newline', () => {
+        // The last chunk starts at size - JSONL_READ_CHUNK_BYTES, which is the newline after `older`.
+        const older = '{"value":"older"}';
+        const latest = `{"value":"${'x'.repeat(JSONL_READ_CHUNK_BYTES - 14)}"}`;
+        const filePath = writeTranscript('reverse-chunk-newline.jsonl', `${older}\n${latest}\n`);
+
+        expect(fs.statSync(filePath).size - JSONL_READ_CHUNK_BYTES).toBe(older.length);
+        const lines = collectReverse(filePath).map(line => (line === latest ? 'latest' : line));
+        expect(lines).toEqual(['latest', older]);
     });
 
     it('never reads the file as one string, which would throw past the max string length', async () => {

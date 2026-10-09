@@ -25,7 +25,8 @@ const BASE_USAGE_WIDGET_TYPES = [
     'weekly-reset-timer',
     'extra-usage-utilization',
     'extra-usage-remaining',
-    'extra-usage-used'
+    'extra-usage-used',
+    'extra-usage-daily-budget'
 ];
 
 const USAGE_WIDGET_TYPES = new Set<string>([
@@ -72,6 +73,11 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     ],
     'extra-usage-used': [
         { field: 'extraUsageEnabled' },
+        { field: 'extraUsageUsed' }
+    ],
+    'extra-usage-daily-budget': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageLimit' },
         { field: 'extraUsageUsed' }
     ]
 };
