@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { z } from 'zod';
 
 import { getClaudeConfigDir } from './claude-settings';
+import { isExcludedFromProxy } from './no-proxy';
 import type {
     UsageData,
     UsageDataField,
@@ -765,7 +766,7 @@ const USAGE_API_TIMEOUT_MS = 5000;
 
 function getUsageApiProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    if (proxyUrl === '') {
+    if (proxyUrl === '' || isExcludedFromProxy(USAGE_API_HOST)) {
         return null;
     }
 

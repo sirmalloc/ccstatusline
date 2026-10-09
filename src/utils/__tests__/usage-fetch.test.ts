@@ -44,6 +44,7 @@ interface ProbeOptions {
     httpsProxy?: string;
     lockWrittenDuringRequest?: string;
     lowercaseHttpsProxy?: string;
+    noProxy?: string;
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
@@ -207,7 +208,8 @@ process.stdout.write(JSON.stringify({
             const normalizedKey = key.toUpperCase();
             return normalizedKey !== 'CLAUDE_CONFIG_DIR'
                 && normalizedKey !== 'CLAUDE_SECURESTORAGE_CONFIG_DIR'
-                && normalizedKey !== 'HTTPS_PROXY';
+                && normalizedKey !== 'HTTPS_PROXY'
+                && normalizedKey !== 'NO_PROXY';
         }));
 
         Object.assign(env, {
@@ -239,6 +241,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.lowercaseHttpsProxy !== undefined) {
             env.https_proxy = options.lowercaseHttpsProxy;
+        }
+
+        if (options.noProxy !== undefined) {
+            env.NO_PROXY = options.noProxy;
         }
 
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
@@ -427,6 +433,34 @@ describe('fetchUsageData error handling', () => {
         error: {
             message: 'Rate limited. Please try again later.',
             type: 'rate_limit_error'
+        }
+    });
+
+    // The request carries the account's bearer token, so a host the user kept
+    // off the proxy must stay off it
+    it('connects directly when NO_PROXY lists api.anthropic.com', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const noProxyHome = harness.createTokenHome('no-proxy');
+
+            const result = harness.runProbe({
+                claudeConfigDir: noProxyHome.claudeConfig,
+                home: noProxyHome.home,
+                httpsProxy: 'http://proxy.local:8080',
+                noProxy: 'localhost,.anthropic.com',
+                mode: 'success',
+                nowMs,
+                pathDir: noProxyHome.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toMatchObject({ sessionUsage: 42, weeklyUsage: 17 });
+            expect(result.requestCount).toBe(1);
+            expect(result.proxyAgentConfigured).toBe(false);
+            expect(result.requestHost).toBe('api.anthropic.com');
+        } finally {
+            harness.cleanup();
         }
     });
 

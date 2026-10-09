@@ -9,6 +9,7 @@ import type { ColorLevelString } from '../types/ColorLevel';
 import type { WidgetItem } from '../types/Widget';
 
 import { getColorAnsiCode } from './colors';
+import { isExcludedFromProxy } from './no-proxy';
 
 // Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
 // across statusline invocations, plus a failure lock so an unreachable status
@@ -259,7 +260,7 @@ function clearFailureLock(): void {
 
 function getStatusPageProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    return proxyUrl?.length ? proxyUrl : null;
+    return proxyUrl?.length && !isExcludedFromProxy(STATUS_HOST) ? proxyUrl : null;
 }
 
 interface StatusPageResponse {

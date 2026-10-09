@@ -27,22 +27,35 @@ type StatusPageRequestFn = NonNullable<Parameters<typeof __testing.fetchStatusPa
 const HOUR_MS = 60 * 60 * 1000;
 const NOW = Date.parse('2026-08-15T12:00:00Z');
 
-// Tests set HTTPS_PROXY themselves; the environment running the suite must not leak in.
+// Tests set HTTPS_PROXY and NO_PROXY themselves; the environment running the
+// suite must not leak in.
 function isolateHttpsProxyEnv(): void {
-    let original: string | undefined;
+    let originalProxy: string | undefined;
+    let originalNoProxy: string | undefined;
+    let originalLowercaseNoProxy: string | undefined;
 
     beforeEach(() => {
-        original = process.env.HTTPS_PROXY;
+        originalProxy = process.env.HTTPS_PROXY;
+        originalNoProxy = process.env.NO_PROXY;
+        originalLowercaseNoProxy = process.env.no_proxy;
         delete process.env.HTTPS_PROXY;
+        delete process.env.NO_PROXY;
+        delete process.env.no_proxy;
     });
 
     afterEach(() => {
-        if (original === undefined) {
-            delete process.env.HTTPS_PROXY;
-        } else {
-            process.env.HTTPS_PROXY = original;
-        }
+        restoreEnv('HTTPS_PROXY', originalProxy);
+        restoreEnv('NO_PROXY', originalNoProxy);
+        restoreEnv('no_proxy', originalLowercaseNoProxy);
     });
+}
+
+function restoreEnv(name: 'HTTPS_PROXY' | 'NO_PROXY' | 'no_proxy', value: string | undefined): void {
+    if (value === undefined) {
+        Reflect.deleteProperty(process.env, name);
+    } else {
+        process.env[name] = value;
+    }
 }
 
 function incident(impact: ClaudeIncidentWindow['impact'], startHoursAgo: number, endHoursAgo: number | null): ClaudeIncidentWindow {
@@ -277,6 +290,15 @@ describe('status page response handling', () => {
         const agent = requestFn.mock.calls[0]?.[0].agent;
         expect(agent).toBeInstanceOf(HttpsProxyAgent);
         expect((agent as HttpsProxyAgent<string>).proxy.href).toBe('http://proxy.example:8080/');
+    });
+
+    it('connects directly when NO_PROXY lists status.claude.com', async () => {
+        process.env.HTTPS_PROXY = 'http://proxy.example:8080';
+        process.env.NO_PROXY = 'localhost,claude.com';
+        const requestFn = vi.fn(respondingRequest(200, ['{}']));
+
+        await expect(__testing.fetchStatusPagePath('/test', requestFn)).resolves.toBe('{}');
+        expect(requestFn.mock.calls[0]?.[0]).not.toHaveProperty('agent');
     });
 
     it('ignores a whitespace-only HTTPS_PROXY', async () => {
