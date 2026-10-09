@@ -71,6 +71,17 @@ export const StatusJSONSchema = z.looseObject({
         original_cwd: z.string().optional(),
         original_branch: z.string().optional()
     }).nullable().optional(),
+    // Claude Code reports the live prompt-cache state, including the real
+    // expiry timestamp, so consumers do not have to infer it from transcript
+    // timings. Absent on older Claude Code versions.
+    prompt_cache: z.object({
+        warm: z.boolean().nullable().optional(),
+        caching_observed: z.boolean().nullable().optional(),
+        ttl: z.string().nullable().optional(),
+        expires_at: CoercedNumberSchema.nullable().optional(), // Unix epoch seconds
+        hit_ratio: CoercedNumberSchema.nullable().optional(),
+        recache_tokens_if_cold: CoercedNumberSchema.nullable().optional()
+    }).nullable().optional(),
     rate_limits: z.object({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional(),
