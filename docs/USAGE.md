@@ -259,7 +259,7 @@ Common controls in the line editor:
 - `r` toggle raw value (supported widgets)
 - `b` edit the label shown before the value when raw value is off (labeled widgets)
 - `.` cycle precise/compact/whole number formatting (supported widgets)
-- `m` cycle merge mode (`off` → `merge` → `merge no padding`)
+- `m` cycle merge mode (`off` → `merge` → `merge no padding`). A merge joins the widget to the next one. When the next one renders nothing (a widget hidden at zero or without data), the merge carries on past it only if that widget is merged onward too; otherwise it ends there, and the usual separator follows
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back
 
