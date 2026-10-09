@@ -182,6 +182,10 @@ Claude Code only runs a custom `statusLine` command in a workspace whose trust d
 
 To confirm, look up the project path in `~/.claude.json` under `projects` and check its `hasTrustDialogAccepted` value. Setting it to `true` (or accepting the trust dialog when Claude Code shows it) and starting a new session restores the status line.
 
+### Skills always shows none
+
+The Skills widget reads skill activity recorded by Claude Code hooks, which run your status line command with `--hook`. Saving the configuration adds them only when that command contains `ccstatusline`, since any other command may be another tool's script; the TUI says so when a save leaves them out. If your status line command is a wrapper script that runs ccstatusline, put `ccstatusline` in the script's name (for example `~/.claude/ccstatusline-wrapper.sh`), have it pass its arguments and input on (`ccstatusline "$@"`), and save again.
+
 ## Usage Credentials and Cache
 
 Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials`, then matching suffixed services, then the credentials file.

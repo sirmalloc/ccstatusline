@@ -10,6 +10,7 @@ import {
     type Settings
 } from '../types/Settings';
 
+import type { SkippedWidgetHooks } from './hooks';
 import {
     migrateConfig,
     needsMigration
@@ -241,7 +242,8 @@ export async function loadSettings(): Promise<Settings> {
     }
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
+/** Saves settings and syncs widget hooks; returns the hooks the sync couldn't add, if any. */
+export async function saveSettings(settings: Settings): Promise<SkippedWidgetHooks | null> {
     const paths = getSettingsPaths();
 
     // Always include version when saving
@@ -255,8 +257,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
     // Sync widget hooks to Claude settings
     try {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(settings);
-    } catch { /* ignore hook sync failures */ }
+        return await syncWidgetHooks(settings);
+    } catch {
+        // Ignore hook sync failures
+        return null;
+    }
 }
 
 export type ImportValidationResult
