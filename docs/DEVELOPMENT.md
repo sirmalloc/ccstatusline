@@ -56,11 +56,12 @@ bun run docs
 - `~/.cache/ccstatusline/custom-command-cache/cmd-*.json` - opt-in custom command results, grouped by working directory and keyed by command, timeout, session ID, and terminal width
 - `~/.cache/ccstatusline/terminal-width.json` - per-session no-width probe results; detected numeric widths are not persisted by the renderer
 - `~/.cache/ccstatusline/usage.json` and `~/.cache/ccstatusline/usage.lock` - usage API data cache and fetch backoff lock
+- `~/.cache/ccstatusline/usage-credentials.lock` - 30-second backoff after a usage credential lookup finds no OAuth login, tagged with the profile it applies to
 - `~/.cache/ccstatusline/claude-status.json` and `~/.cache/ccstatusline/claude-status.lock` - Claude service-status cache and failed-fetch backoff lock
 
 If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
 
-On macOS, usage credentials for a custom profile come from `Claude Code-credentials-<sha256(configDir)[:8]>`, then that profile's `.credentials.json`; the lookup does not fall back to another profile's Keychain entry. The hash uses the raw `CLAUDE_CONFIG_DIR` value normalized to NFC, without path resolution. `CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides that hash input, including an empty value to force the default service lookup. Default lookup tries the plain service, discovered suffixed services, then the credentials file. Other platforms use the credentials file directly.
+On macOS, usage credentials for a custom profile come from `Claude Code-credentials-<sha256(configDir)[:8]>`, then that profile's `.credentials.json`; the lookup does not fall back to another profile's Keychain entry. The hash uses the raw `CLAUDE_CONFIG_DIR` value normalized to NFC, without path resolution. `CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides that hash input, including an empty value to force the default service lookup. Default lookup tries the plain service, discovered suffixed services, then the credentials file. Other platforms use the credentials file directly. Each Keychain subprocess has a five-second timeout; a missing OAuth login triggers a profile-specific 30-second lookup backoff.
 
 Usage-cache identity prefers a truncated SHA-256 fingerprint of the refresh token and falls back to the access token when no refresh token is available. Access-token rotation preserves the cache when the refresh token is unchanged. Legacy caches carrying the current access-token hash remain readable; the next successful fetch stores the preferred fingerprint. Mismatched account fingerprints are rejected even for stale-cache fallback during API backoff.
 
@@ -70,7 +71,7 @@ Configuration exports snapshot the live TUI settings and add an `exportedBy` pac
 
 Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
-Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignored, so mocked clocks, system clock jumps, or old test artifacts cannot suppress usage fetching indefinitely. Valid deadlines up to 24 hours ahead, including API `Retry-After` backoffs, remain active.
+Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignored, so mocked clocks, system clock jumps, or old test artifacts cannot suppress usage fetching indefinitely. Valid deadlines up to 24 hours ahead, including API `Retry-After` backoffs, remain active. Likewise, a `usage.json` modified more than its 180-second lifetime in the future counts as stale rather than fresh.
 
 ## Widget Data Sources
 
@@ -82,12 +83,31 @@ Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignore
 - **Git PR and Git CI Status** render from the versioned disk cache under `~/.cache/ccstatusline/git-review`. Missing or stale entries are refreshed in a detached helper so network-bound `gh` or `glab` calls do not block rendering. Git CI Status adds GitHub's `statusCheckRollup`; if the authenticated `gh` token cannot read checks, the refresh retries with PR metadata only so Git PR still works.
 - **Usage widgets** merge Claude Code's stdin `rate_limits` with `/api/oauth/usage` only for fields required by the active widgets. Session and aggregate weekly fields prefer the flat API buckets and fall back to `limits[]`; per-model weekly fields prefer `weekly_scoped` entries. A model-scoped entry reporting 0% without `resets_at` is valid zero usage, while unscoped empty placeholders remain filtered out. `WEEKLY_MODEL_USAGE_BUCKETS` in `src/utils/usage-types.ts` is the shared registry for Sonnet, Opus, and Fable widget wiring, field requirements, reset fields, and scoped-limit matching. Session and weekly percentage widgets delegate rendering and editor behavior to `src/widgets/shared/usage-percent-widget.ts`; the Fable label is `Weekly Fable:`.
 - **Custom Command** delegates to `src/utils/custom-command.ts`. `customCommandCacheTtlSeconds` defaults to `0` (disabled), with a maximum of 60 seconds. Both successes and failures are cached, with TTL measured from command completion; without a session ID, entries stay in process memory. Other stdin fields are deliberately excluded from the key. A helper in the current runtime captures stdout in memory, limits it to 1 MiB, and retains at most 16,384 characters; it enforces command deadlines and closes inherited pipes, terminating the process group on POSIX or the shell on Windows when a command times out. Cached raw output is formatted separately by each widget, and previews never execute commands.
-- **Terminal width** is memoized once per render, including a `null` probe result. Linux first probes ancestor terminal devices through `/proc` and `tty.WriteStream`; portable fallbacks use `execFileSync` for `ps`, `stty`, and `tput`. `CCSTATUSLINE_WIDTH` takes precedence, including on Windows where probing is disabled. Only no-width results are persisted per session, for `terminalWidthCacheTtlSeconds` (default 5, range 0–300); `0` disables cross-process reuse. Numeric widths are re-probed on the next render.
+- **Terminal width** is memoized once per render, including a `null` probe result. Linux first probes ancestor terminal devices through `/proc` and `tty.WriteStream`; portable fallbacks use `execFileSync` for `ps` and `stty`. `CCSTATUSLINE_WIDTH` takes precedence, including on Windows where probing is disabled. Only no-width results are persisted per session, for `terminalWidthCacheTtlSeconds` (default 5, range 0–300); `0` disables cross-process reuse. Numeric widths are re-probed on the next render.
 - **Context length transcript fallback** treats the latest `compact_boundary` as the start of the current context. It uses the first main-chain usage entry after that boundary, then `compactMetadata.postTokens`, then zero, while session token totals remain cumulative.
 - **Sandbox Status** reads `sandbox.enabled` from Claude Code's layered project-local, project, user-local, and user settings on every refresh. This reflects `/sandbox` file updates but remains a best-effort indicator when managed or CLI settings take precedence.
 
+## Widget Implementation
+
+Shared implementations under `src/widgets/shared/` cover Git counts, status indicators and remotes, JJ widgets, token counts, extra-usage amounts, and usage percentages. Reuse the matching base class or helper when adding related widgets. `format-options.ts` shares display-format and Nerd Font controls, while `searchable-option-editor.tsx` serves the locale and timezone editors.
+
+A widget opts into label editing with `getLabelPrefix(item)` and renders through `formatRawOrLabeledValue()`. The common `e` action stores a verbatim override in `metadata.label`; an empty string suppresses the label, raw mode bypasses it, and resetting removes the override. Keep mode-dependent default labels in `getLabelPrefix()` so previews and rendered output agree.
+
+Session Cost Rate reads `cost.total_cost_usd` and either `cost.total_api_duration_ms` (default) or `cost.total_duration_ms` from stdin; it requires at least 60,000 ms of the selected duration. Extra Usage Daily Budget uses the usage API's limit, spend, and currency fields, with UTC day counting in `shared/daily-budget.ts`; the current day always counts, even in weekdays-only mode.
+
+## Git Commands and Terminal Output
+
+`execGit()` in `src/utils/git.ts` disables fsmonitor and sets `safe.bareRepository=explicit` (honored by Git 2.38+). Status/diff calls suppress repository-defined filters, external diff/textconv commands, and dirty-submodule inspection. Standard Git LFS filters and recognized absolute git-crypt commands outside the worktree remain allowed, as do filters defined in user/system config. If repository filters cannot be inspected or overridden, the command fails through the normal widget fallback. Git invoked by PR/CI helpers receives the fsmonitor and bare-repository settings through the environment.
+
+On Windows, `resolveExecutable()` selects Git, JJ, SSH, `gh`, `glab`, and `chcp.com` from absolute PATH entries, skipping empty and relative entries. This keeps the current project directory out of implicit executable lookup.
+
+`sanitizeTerminalText()` filters widget text before layout and piped output before printing. It retains SGR styling, OSC 8 links with control-free, space-free URLs, tabs, and newlines; other terminal controls are removed. Hyperlink construction also validates URLs. Custom Command's preserve-colors option does not bypass this filtering.
+
+Widget hook synchronization installs ccstatusline hooks only when the configured status line command contains `ccstatusline`; otherwise it removes ccstatusline's managed hooks and preserves unrelated hooks.
+
 ## Build Notes
 
+- The entry point imports the TUI lazily for interactive mode; keep the Ink initialization path out of piped rendering. The distribution build uses code splitting, so ship the complete `dist/` directory.
 - Build target is Node.js 14+ (`dist/ccstatusline.js`)
 - `postbuild` replaces the bundled `__PACKAGE_VERSION__` placeholder from `package.json`; `ccstatusline --version` reads that value and exits before mode detection
 - During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals

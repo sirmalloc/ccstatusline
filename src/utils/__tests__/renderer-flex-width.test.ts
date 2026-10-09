@@ -123,6 +123,38 @@ describe('renderer flex width behavior', () => {
         expect(getVisibleWidth(line)).toBe(10);
         expect(line.endsWith('...')).toBe(true);
     });
+
+    it('keeps truncating when the reserved columns take the whole terminal', () => {
+        const compactData = { context_window: { used_percentage: 80 } };
+        const cases: [Partial<Settings>, Partial<RenderContext>][] = [
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 40 }],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 30 }],
+            [{ flexMode: 'full-until-compact', compactThreshold: 60 }, { terminalWidth: 40, data: compactData }],
+            [{ flexMode: 'full' }, { terminalWidth: 6 }],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 40, isPreview: true }]
+        ];
+
+        for (const [settingsOverrides, contextOverrides] of cases) {
+            expect(renderLine([longTextWidget], settingsOverrides, contextOverrides)).toBe('');
+        }
+    });
+
+    it('keeps truncating in powerline mode when the reserved columns take the whole terminal', () => {
+        const widgets: WidgetItem[] = [
+            { ...longTextWidget, backgroundColor: 'bgBlue', color: 'white' },
+            { id: 'flex', type: 'flex-separator' },
+            { id: 'right', type: 'custom-text', customText: 'RIGHT', backgroundColor: 'bgGreen', color: 'white' }
+        ];
+        const line = renderLine(widgets, {
+            flexMode: 'full-minus-40',
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true
+            }
+        }, { terminalWidth: 40 });
+
+        expect(line).toBe('');
+    });
 });
 
 describe('flex-separator widget', () => {
@@ -635,5 +667,20 @@ describe('flex-separator widget', () => {
         }, { terminalWidth: 50 });
 
         expect(getVisibleWidth(line)).toBe(50 - 6);
+    });
+
+    it('keeps uncolored widget text that reads FLEX instead of treating it as a flex separator', () => {
+        const widgets: WidgetItem[] = [
+            { id: 'left', type: 'custom-text', customText: 'left' },
+            flexWidget,
+            { id: 'literal', type: 'custom-text', customText: 'FLEX' },
+            { id: 'right', type: 'custom-text', customText: 'right' }
+        ];
+
+        const known = renderLine(widgets, { flexMode: 'full', colorLevel: 0 }, { terminalWidth: 46 });
+        expect(stripSgrCodes(known)).toBe(`left${' '.repeat(27)}FLEXright`);
+
+        const unknown = renderLine(widgets, { flexMode: 'full', colorLevel: 0 }, { terminalWidth: 0 });
+        expect(stripSgrCodes(unknown)).toBe('left | FLEXright');
     });
 });

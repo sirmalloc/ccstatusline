@@ -10,8 +10,10 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import {
     buildIdeFileUrl,
     renderOsc8Link
@@ -47,6 +49,8 @@ function render(options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolea
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
+mockExecutableResolution();
+
 describe('GitRootDirWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -55,6 +59,11 @@ describe('GitRootDirWidget', () => {
 
     it('should render preview', () => {
         expect(render({ isPreview: true })).toBe('my-repo');
+    });
+
+    // A sample long enough for the limit to show, cut the way a real name is
+    it('should apply the max width to the preview', () => {
+        expect(render({ isPreview: true, maxWidth: 10 })).toBe('my-long...');
     });
 
     it('should render preview for vscode IDE links', () => {
@@ -76,10 +85,10 @@ describe('GitRootDirWidget', () => {
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('my-repo');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--is-inside-work-tree']);
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['rev-parse', '--show-toplevel']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--show-toplevel']);
         expectGitExecOptions(mockExecFileSync.mock.calls[1]?.[2], '/tmp/worktree');
     });
 

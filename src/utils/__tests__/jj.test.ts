@@ -8,11 +8,14 @@ import {
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
+import * as executablePath from '../executable-path';
 import {
     getJjChangeCounts,
     isInsideJjRepo,
     runJjArgs
 } from '../jj';
+
+import { mockExecutableResolution } from './executable-path-test-helpers';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
@@ -23,12 +26,40 @@ const mockExecFileSync = execFileSync as unknown as {
     mockReturnValueOnce: (value: string) => void;
 };
 
+mockExecutableResolution();
+
 describe('jj utils', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
     describe('runJjArgs', () => {
+        it('runs jj from its place on PATH, never the current directory', () => {
+            const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => `C:\\tools\\${name}.exe`);
+            try {
+                mockExecFileSync.mockReturnValue('/repo\n');
+
+                runJjArgs(['root'], { data: { cwd: 'C:\\repo' } });
+
+                expect(resolve).toHaveBeenCalledWith('jj');
+                expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('C:\\tools\\jj.exe');
+            } finally {
+                resolve.mockRestore();
+            }
+        });
+
+        it('treats jj as missing when it isn\'t on PATH', () => {
+            const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(() => {
+                throw new Error('jj was not found on PATH');
+            });
+            try {
+                expect(runJjArgs(['root'], { data: { cwd: 'C:\\repo' } })).toBeNull();
+                expect(mockExecFileSync.mock.calls).toHaveLength(0);
+            } finally {
+                resolve.mockRestore();
+            }
+        });
+
         it('runs jj command with resolved cwd and trims trailing newlines', () => {
             mockExecFileSync.mockReturnValue('some-output\n');
             const context: RenderContext = { data: { cwd: '/tmp/repo' } };
