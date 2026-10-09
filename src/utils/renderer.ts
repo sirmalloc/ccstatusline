@@ -39,6 +39,7 @@ import {
     parseGradientSpec
 } from './gradient';
 import { getTerminalWidth } from './terminal';
+import { sanitizeTerminalText } from './terminal-sanitize';
 import {
     getWidget,
     widgetPreservesColors
@@ -906,7 +907,9 @@ export function preRenderAllWidgets(
             }
 
             const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
-            const widgetText = widgetImpl.render(effectiveWidget, context, settings) ?? '';
+            // Widget text can come from the repository, the session or imported
+            // settings: only colors and safe links may reach the terminal
+            const widgetText = sanitizeTerminalText(widgetImpl.render(effectiveWidget, context, settings) ?? '');
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
