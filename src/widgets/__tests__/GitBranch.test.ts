@@ -150,15 +150,35 @@ describe('GitBranchWidget', () => {
     it('should render the short commit on a detached HEAD', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
 
         expect(render({ hideNoGit: true })).toBe('⎇ (ddfb2de)');
-        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+        expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+    });
+
+    // jj keeps git's HEAD detached in a colocated repo, so its commit isn't one
+    // the user checked out: Git Branch reads it as no branch, as before it
+    // showed detached commits
+    it.each([
+        [false, '⎇ no git'],
+        [true, null]
+    ])('should treat a jj repo\'s detached HEAD as no branch (hide no git: %s)', (hideNoGit, expected) => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockReturnValueOnce('/repo\n');
+
+        expect(render({ hideNoGit })).toBe(expected);
+        expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls).toHaveLength(3);
     });
 
     it('should link a detached HEAD to its commit', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
         mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
 
@@ -180,8 +200,9 @@ describe('GitBranchWidget', () => {
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
-    it('should render no git when branch and commit lookups are empty', () => {
+    it('should render no git when branch, jj and commit lookups are empty', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
 
