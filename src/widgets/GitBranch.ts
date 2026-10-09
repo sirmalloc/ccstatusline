@@ -21,6 +21,7 @@ import {
     encodeGitRefForUrlPath,
     renderOsc8Link
 } from '../utils/hyperlink';
+import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
 import {
@@ -114,9 +115,11 @@ export class GitBranchWidget implements Widget {
         }
 
         // A detached HEAD (rebase, bisect, tag checkout) has no branch, so
-        // show its commit in parentheses, as git prompts do
+        // show its commit in parentheses, as git prompts do. jj keeps git's
+        // HEAD detached in a colocated repo, on a commit the user never
+        // checked out, so there it's no branch at all.
         const branch = this.getGitBranch(context);
-        const ref = branch ?? getGitShortSha(context);
+        const ref = branch ?? (isInsideJjRepo(context) ? null : getGitShortSha(context));
         if (!ref) {
             return hideNoGit ? null : `${prefix}no git`;
         }
