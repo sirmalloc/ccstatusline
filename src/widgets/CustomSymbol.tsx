@@ -9,12 +9,16 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import { shouldInsertInput } from '../utils/input-guards';
+
+import { MERGE_TARGET_HIDDEN_HIDEABLE_STATE } from './shared/hideable';
+import { getGraphemes } from './shared/text-cursor';
 
 export class CustomSymbolWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -39,6 +43,12 @@ export class CustomSymbolWidget implements Widget {
         }];
     }
 
+    // The actual hiding happens in the renderer, which resolves the merge
+    // target's rendered output (see applyMergeTargetHiding)
+    getHideableStates(): HideableState[] {
+        return [MERGE_TARGET_HIDDEN_HIDEABLE_STATE];
+    }
+
     renderEditor(props: WidgetEditorProps): React.ReactElement {
         return <CustomSymbolEditor {...props} />;
     }
@@ -50,22 +60,6 @@ export class CustomSymbolWidget implements Widget {
 const CustomSymbolEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
     const [symbol, setSymbol] = useState(widget.customSymbol ?? '');
 
-    // Helper to get grapheme segments if Intl.Segmenter is available
-    const getFirstGrapheme = (str: string): string => {
-        if (str.length === 0) {
-            return '';
-        }
-
-        if ('Segmenter' in Intl) {
-            const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-            const segments = Array.from(segmenter.segment(str));
-            return segments[0]?.segment ?? '';
-        }
-
-        // Fallback: just take first character
-        return Array.from(str)[0] ?? '';
-    };
-
     useInput((input, key) => {
         if (key.return) {
             onComplete({ ...widget, customSymbol: symbol });
@@ -75,7 +69,7 @@ const CustomSymbolEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, o
             setSymbol('');
         } else if (shouldInsertInput(input, key)) {
             // Take only the first grapheme (handles multi-byte emojis correctly)
-            const firstGrapheme = getFirstGrapheme(input);
+            const firstGrapheme = getGraphemes(input)[0] ?? '';
             setSymbol(firstGrapheme);
         }
     });

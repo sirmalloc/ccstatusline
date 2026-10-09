@@ -2,12 +2,14 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
 import {
+    getGitShortSha,
     isInsideGitWorkTree,
     runGit
 } from '../utils/git';
@@ -22,11 +24,9 @@ import {
 
 import { makeModifierText } from './shared/editor-display';
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 import {
     MAX_WIDTH_ACTION,
     applyMaxWidth,
@@ -45,6 +45,7 @@ const DEFAULT_SYMBOL = '⎇';
 const LINK_KEY = 'linkToRepo';
 const LEGACY_LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
+const BRANCH_REF_PREFIX = 'refs/heads/';
 
 function isLinkEnabled(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, LINK_KEY)
@@ -58,9 +59,6 @@ function toggleLink(item: WidgetItem): WidgetItem {
         [LEGACY_LINK_KEY]: removedLegacyLink,
         ...restMetadata
     } = item.metadata ?? {};
-
-    void removedLink;
-    void removedLegacyLink;
 
     const nextMetadata = nextEnabled
         ? { ...restMetadata, [LINK_KEY]: 'true' }
@@ -80,9 +78,6 @@ export class GitBranchWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const isLink = isLinkEnabled(item);
         const modifiers: string[] = [];
-        const noGitText = getHideNoGitModifierText(item);
-        if (noGitText)
-            modifiers.push('hide \'no git\'');
         if (isLink)
             modifiers.push('repo link');
         const maxWidthText = getMaxWidthModifier(item);
@@ -94,40 +89,46 @@ export class GitBranchWidget implements Widget {
         };
     }
 
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE];
+    }
+
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
         if (action === TOGGLE_LINK_ACTION) {
             return toggleLink(item);
         }
-        return handleToggleNoGitAction(action, item);
+        return null;
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
-        const hideNoGit = isHideNoGitEnabled(item);
+        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
         const isLink = isLinkEnabled(item);
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            const text = item.rawValue ? 'main' : `${prefix}main`;
-            return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
+            return this.renderPreview(item, prefix, isLink);
         }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
+        // A detached HEAD (rebase, bisect, tag checkout) has no branch, so
+        // show its commit in parentheses, as git prompts do
         const branch = this.getGitBranch(context);
-        if (!branch) {
+        const ref = branch ?? getGitShortSha(context);
+        if (!ref) {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
-        const displayText = applyMaxWidth(item.rawValue ? branch : `${prefix}${branch}`, item.maxWidth);
+        const value = branch ?? `(${ref})`;
+        const displayText = applyMaxWidth(item.rawValue ? value : `${prefix}${value}`, item.maxWidth);
 
         if (isLink) {
             const origin = getRemoteInfo('origin', context);
             if (origin) {
                 return renderOsc8Link(
-                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(branch)),
+                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(ref)),
                     displayText
                 );
             }
@@ -136,13 +137,22 @@ export class GitBranchWidget implements Widget {
         return displayText;
     }
 
+    private renderPreview(item: WidgetItem, prefix: string, isLink: boolean): string {
+        // With a width limit, a sample long enough for the limit to show
+        const sample = item.maxWidth ? 'feature/long-branch-name' : 'main';
+        const text = applyMaxWidth(item.rawValue ? sample : `${prefix}${sample}`, item.maxWidth);
+        return isLink ? renderOsc8Link(`https://github.com/owner/repo/tree/${sample}`, text) : text;
+    }
+
     private getGitBranch(context: RenderContext): string | null {
-        return runGit('symbolic-ref --short HEAD', context);
+        // The full ref, since --short turns it into "heads/<name>" when a tag
+        // has the same name
+        const ref = runGit('symbolic-ref HEAD', context);
+        return ref?.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            ...getHideNoGitKeybinds(),
             { key: 'l', label: '(l)ink to repo', action: TOGGLE_LINK_ACTION },
             getMaxWidthKeybind(),
             getSymbolKeybind()

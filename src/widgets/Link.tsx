@@ -16,6 +16,7 @@ import type {
 } from '../types/Widget';
 import { renderOsc8Link } from '../utils/hyperlink';
 import { shouldInsertInput } from '../utils/input-guards';
+import { isSafeHyperlinkUrl } from '../utils/terminal-sanitize';
 
 function isValidHttpUrl(url: string): boolean {
     try {
@@ -51,7 +52,6 @@ function buildMetadata(widget: WidgetItem, urlValue: string, textValue: string):
 
     if (Object.keys(metadata).length === 0) {
         const { metadata, ...rest } = widget;
-        void metadata; // Intentionally unused
         return rest;
     }
 
@@ -97,9 +97,6 @@ export class LinkWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
-        void context;
-
         const { url, label } = getLinkLabel(item);
         const displayText = withEmojiPrefix(label, item.rawValue);
 
@@ -107,7 +104,8 @@ export class LinkWidget implements Widget {
             return displayText;
         }
 
-        return renderOsc8Link(url, displayText);
+        // The parsed form percent-encodes what a link can't carry as is
+        return renderOsc8Link(isSafeHyperlinkUrl(url) ? url : new URL(url).href, displayText);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -123,7 +121,6 @@ export class LinkWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean {
-        void item;
         return true;
     }
 }

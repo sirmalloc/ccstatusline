@@ -1,17 +1,13 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    Widget,
-    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    isInsideJjRepo,
-    runJjArgs
-} from '../utils/jj';
+import { runJjArgs } from '../utils/jj';
 
+import { JjWidgetBase } from './shared/jj-widget-base';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     formatSymbolPrefix,
     getSymbolKeybind,
@@ -20,67 +16,25 @@ import {
 
 const DEFAULT_SYMBOL = '🔖';
 
-export class JjBookmarksWidget implements Widget {
+export class JjBookmarksWidget extends JjWidgetBase {
+    protected readonly previewValue = 'main';
+    protected readonly noJjText = 'no jj';
+    protected override readonly emptyText = '(none)';
+
     getDefaultColor(): string { return 'magenta'; }
     getDescription(): string { return 'Shows the current jujutsu bookmark(s)'; }
     getDisplayName(): string { return 'JJ Bookmarks'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const hideNoJj = item.metadata?.hideNoJj === 'true';
-        const modifiers: string[] = [];
 
-        if (hideNoJj) {
-            modifiers.push('hide \'no jj\'');
-        }
-
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
-        };
-    }
-
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-nojj') {
-            const currentState = item.metadata?.hideNoJj === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    hideNoJj: (!currentState).toString()
-                }
-            };
-        }
-        return null;
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = item.metadata?.hideNoJj === 'true';
-        const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
-
-        if (context.isPreview) {
-            return item.rawValue ? 'main' : `${prefix}main`;
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : `${prefix}no jj`;
-        }
-
-        const bookmarks = this.getJjBookmarks(context);
-        if (bookmarks) {
-            return item.rawValue ? bookmarks : `${prefix}${bookmarks}`;
-        }
-
-        return hideNoJj ? null : `${prefix}(none)`;
-    }
-
-    private getJjBookmarks(context: RenderContext): string | null {
+    protected getValue(context: RenderContext): string | null {
+        // One line per head: jj prints each commit's template output back to
+        // back, so two bookmarked heads (@ on a merge) would run together
         const output = runJjArgs([
             'log',
             '--no-graph',
             '-r',
             'heads(::@ & bookmarks())',
             '--template',
-            'bookmarks'
+            String.raw`bookmarks ++ "\n"`
         ], context);
         if (!output) {
             return null;
@@ -94,11 +48,16 @@ export class JjBookmarksWidget implements Widget {
         return bookmarks.join(', ');
     }
 
+    protected formatValue(item: WidgetItem, bookmarks: string): string {
+        return formatRawOrLabeledValue(item, formatSymbolPrefix(item, DEFAULT_SYMBOL), bookmarks);
+    }
+
+    protected override formatPlaceholder(item: WidgetItem, text: string): string {
+        return `${formatSymbolPrefix(item, DEFAULT_SYMBOL)}${text}`;
+    }
+
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' },
-            getSymbolKeybind()
-        ];
+        return [getSymbolKeybind()];
     }
 
     renderEditor(props: WidgetEditorProps) {
@@ -106,5 +65,4 @@ export class JjBookmarksWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
-    supportsColors(): boolean { return true; }
 }

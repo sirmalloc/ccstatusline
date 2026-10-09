@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import {
     Box,
     Text,
@@ -15,8 +14,14 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import { getVisibleText } from '../utils/ansi';
+import {
+    getVisibleText,
+    stripSgrCodes
+} from '../utils/ansi';
+import { runCustomCommand } from '../utils/custom-command';
 import { shouldInsertInput } from '../utils/input-guards';
+
+import { applyMaxWidth } from './shared/max-width';
 
 export class CustomCommandWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -58,55 +63,44 @@ export class CustomCommandWidget implements Widget {
         if (context.isPreview) {
             return item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
         } else if (item.commandPath && context.data) {
-            try {
-                const timeout = item.timeout ?? 1000;
-                const jsonInput = JSON.stringify(
-                    typeof context.terminalWidth === 'number'
-                        ? { ...context.data, terminal_width: context.terminalWidth }
-                        : context.data
-                );
-                let output = execSync(item.commandPath, {
-                    encoding: 'utf8',
-                    input: jsonInput,
-                    timeout: timeout,
-                    stdio: ['pipe', 'pipe', 'ignore'],
-                    env: process.env,
-                    windowsHide: true
-                }).trim();
+            const jsonInput = JSON.stringify(
+                typeof context.terminalWidth === 'number'
+                    ? { ...context.data, terminal_width: context.terminalWidth }
+                    : context.data
+            );
+            const result = runCustomCommand({
+                command: item.commandPath,
+                input: jsonInput,
+                timeoutMs: item.timeout ?? 1000,
+                ttlSeconds: context.customCommandCacheTtlSeconds,
+                sessionId: context.data.session_id,
+                terminalWidth: context.terminalWidth
+            });
 
-                // Strip ANSI codes if preserveColors is false
-                if (!item.preserveColors) {
-                    // Strip ANSI/OSC escape sequences and keep only visible text
-                    output = getVisibleText(output);
-                }
-
-                if (item.maxWidth && output.length > item.maxWidth) {
-                    output = output.substring(0, item.maxWidth - 3) + '...';
-                }
-
-                return output || null;
-            } catch (error) {
-                // Provide more specific error messages
-                if (error instanceof Error) {
-                    const execError = error as Error & {
-                        code?: string;
-                        signal?: string;
-                        status?: number;
-                    };
-                    if (execError.code === 'ENOENT') {
-                        return '[Cmd not found]';
-                    } else if (execError.code === 'ETIMEDOUT') {
-                        return '[Timeout]';
-                    } else if (execError.code === 'EACCES') {
-                        return '[Permission denied]';
-                    } else if (execError.signal) {
-                        return `[Signal: ${execError.signal}]`;
-                    } else if (execError.status !== undefined) {
-                        return `[Exit: ${execError.status}]`;
-                    }
-                }
-                return '[Error]';
+            if (result.status === 'failed') {
+                return result.marker;
             }
+
+            let output = result.stdout;
+
+            // Strip ANSI codes if preserveColors is false
+            if (!item.preserveColors) {
+                // Strip ANSI/OSC escape sequences and keep only visible text
+                output = getVisibleText(output);
+            }
+
+            // Truncate by display columns, skipping escape sequences and never
+            // splitting a grapheme. A cut can drop the command's own trailing
+            // reset, so close any SGR styling it left open; otherwise the
+            // colour bleeds into the separators and widgets that follow.
+            const truncated = applyMaxWidth(output, item.maxWidth);
+            if (truncated !== output && stripSgrCodes(truncated) !== truncated) {
+                output = `${truncated}\x1b[0m`;
+            } else {
+                output = truncated;
+            }
+
+            return output || null;
         }
         return null;
     }
@@ -122,6 +116,10 @@ export class CustomCommandWidget implements Widget {
 
     renderEditor(props: WidgetEditorProps): React.ReactElement {
         return <CustomCommandEditor {...props} />;
+    }
+
+    preservesRenderedColors(item: WidgetItem): boolean {
+        return item.preserveColors === true;
     }
 
     supportsRawValue(): boolean { return false; }
@@ -173,12 +171,11 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
             }
         } else if (mode === 'width') {
             if (key.return) {
-                const width = parseInt(widthInput, 10);
-                if (!isNaN(width) && width > 0) {
+                const width = Number.parseInt(widthInput, 10);
+                if (!Number.isNaN(width) && width > 0) {
                     onComplete({ ...widget, maxWidth: width });
                 } else {
                     const { maxWidth, ...rest } = widget;
-                    void maxWidth; // Intentionally unused
                     onComplete(rest);
                 }
             } else if (key.escape) {
@@ -190,12 +187,11 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
             }
         } else if (mode === 'timeout') {
             if (key.return) {
-                const timeout = parseInt(timeoutInput, 10);
-                if (!isNaN(timeout) && timeout > 0) {
+                const timeout = Number.parseInt(timeoutInput, 10);
+                if (!Number.isNaN(timeout) && timeout > 0) {
                     onComplete({ ...widget, timeout });
                 } else {
                     const { timeout, ...rest } = widget;
-                    void timeout; // Intentionally unused
                     onComplete(rest);
                 }
             } else if (key.escape) {

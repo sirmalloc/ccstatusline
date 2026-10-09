@@ -20,27 +20,39 @@ function toFiniteNonNegativeNumber(value: unknown): number | null {
     return Math.max(0, value);
 }
 
-interface CurrentUsageObject {
+export interface UsageTokenObject {
     input_tokens?: number;
     output_tokens?: number;
     cache_creation_input_tokens?: number;
     cache_read_input_tokens?: number;
 }
 
-interface CurrentUsageTokens {
+export interface UsageTokens {
     input: number;
     output: number;
     creation: number;
     read: number;
 }
 
-function parseCurrentUsageTokens(usage: CurrentUsageObject): CurrentUsageTokens {
+/**
+ * Coerces one usage object to non-negative finite counts.
+ *
+ * @remarks
+ * Shared by the live status JSON and the transcript fallback so a malformed
+ * count cannot make the two paths disagree about the same session.
+ */
+export function parseUsageTokens(usage: UsageTokenObject): UsageTokens {
     return {
         input: toFiniteNonNegativeNumber(usage.input_tokens) ?? 0,
         output: toFiniteNonNegativeNumber(usage.output_tokens) ?? 0,
         creation: toFiniteNonNegativeNumber(usage.cache_creation_input_tokens) ?? 0,
         read: toFiniteNonNegativeNumber(usage.cache_read_input_tokens) ?? 0
     };
+}
+
+/** Tokens the model re-reads on the next turn: fresh input plus both cache halves. */
+export function contextLengthFromUsageTokens(tokens: UsageTokens): number {
+    return tokens.input + tokens.creation + tokens.read;
 }
 
 function clampPercentage(value: number): number {
@@ -77,10 +89,11 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
         currentUsageTotalTokens = toFiniteNonNegativeNumber(contextWindow.current_usage);
         contextLengthTokens = currentUsageTotalTokens;
     } else if (contextWindow.current_usage && typeof contextWindow.current_usage === 'object') {
-        const { input, output, creation, read } = parseCurrentUsageTokens(contextWindow.current_usage);
+        const usageTokens = parseUsageTokens(contextWindow.current_usage);
+        const { input, output, creation, read } = usageTokens;
 
         currentUsageTotalTokens = input + output + creation + read;
-        contextLengthTokens = input + creation + read;
+        contextLengthTokens = contextLengthFromUsageTokens(usageTokens);
         cachedTokens = creation + read;
     }
 
@@ -169,6 +182,6 @@ export function getContextWindowTurnCacheTokens(data?: StatusJSON): TurnCacheTok
         return null;
     }
 
-    const { input, creation, read } = parseCurrentUsageTokens(usage);
+    const { input, creation, read } = parseUsageTokens(usage);
     return { read, creation, input };
 }

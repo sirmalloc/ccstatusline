@@ -36,9 +36,7 @@ function createDeps(overrides: Partial<GitPrWidgetDeps> = {}): GitPrWidgetDeps {
 function render(
     options: {
         cwd?: string;
-        hideNoGit?: boolean;
-        hideStatus?: boolean;
-        hideTitle?: boolean;
+        hide?: string;
         isPreview?: boolean;
         needsChecks?: boolean;
         rawValue?: boolean;
@@ -52,12 +50,8 @@ function render(
         isPreview: options.isPreview
     };
     const metadata: Record<string, string> = {};
-    if (options.hideNoGit)
-        metadata.hideNoGit = 'true';
-    if (options.hideStatus)
-        metadata.hideStatus = 'true';
-    if (options.hideTitle)
-        metadata.hideTitle = 'true';
+    if (options.hide !== undefined)
+        metadata.hide = options.hide;
 
     const item: WidgetItem = {
         id: 'git-review',
@@ -84,15 +78,15 @@ describe('GitPrWidget', () => {
         );
     });
 
-    it('should render preview without status when hideStatus enabled', () => {
-        const result = render({ isPreview: true, hideStatus: true });
+    it('should render preview without status when the status state is hidden', () => {
+        const result = render({ isPreview: true, hide: 'status' });
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/42', 'PR #42')} Example PR title`
         );
     });
 
-    it('should render preview without title when hideTitle enabled', () => {
-        const result = render({ isPreview: true, hideTitle: true });
+    it('should render preview without title when the title state is hidden', () => {
+        const result = render({ isPreview: true, hide: 'title' });
         expect(result).toBe(
             `${renderOsc8Link('https://github.com/owner/repo/pull/42', 'PR #42')} OPEN`
         );
@@ -109,8 +103,8 @@ describe('GitPrWidget', () => {
         expect(render({ cwd: '/tmp/not-a-repo' }, { isInsideGitWorkTree: () => false })).toBe('(no PR)');
     });
 
-    it('should return null when hideNoGit and not in git repo', () => {
-        expect(render({ cwd: '/tmp/not-a-repo', hideNoGit: true }, { isInsideGitWorkTree: () => false })).toBeNull();
+    it('should return null when no-git is hidden and not in git repo', () => {
+        expect(render({ cwd: '/tmp/not-a-repo', hide: 'no-git' }, { isInsideGitWorkTree: () => false })).toBeNull();
     });
 
     it('should return (no PR) when PR lookup returns null', () => {
@@ -118,6 +112,28 @@ describe('GitPrWidget', () => {
             getCachedGitReviewData: () => null,
             resolveGitCwd: () => undefined
         })).toBe('(no PR)');
+    });
+
+    it('should declare no-git, no-data, status, and title hideable states', () => {
+        expect(new GitPrWidget(createDeps()).getHideableStates().map(state => state.key)).toEqual([
+            'no-git',
+            'no-data',
+            'status',
+            'title'
+        ]);
+    });
+
+    it('should hide segments via the unified hide metadata', () => {
+        expect(render({ isPreview: true, hide: 'status,title' })).toBe(
+            renderOsc8Link('https://github.com/owner/repo/pull/42', 'PR #42')
+        );
+    });
+
+    it('should hide a missing PR via the no-data state', () => {
+        expect(render({ hide: 'no-data' }, {
+            getCachedGitReviewData: () => null,
+            resolveGitCwd: () => undefined
+        })).toBeNull();
     });
 
     it('should use process cwd when repo paths are omitted', () => {
@@ -151,6 +167,27 @@ describe('GitPrWidget', () => {
 
         const result = render({ cwd: '/tmp/repo' }, { getCachedGitReviewData: () => longPr });
         expect(result).toContain('This is a very long pull requ\u2026');
+    });
+
+    it.each([
+        {
+            name: 'without splitting an emoji',
+            title: 'Update the release workflow 🚀 for tagged builds',
+            expected: 'Update the release workflow \u2026'
+        },
+        {
+            name: 'by display width for wide characters',
+            title: '修复状态栏在窄终端下的显示问题并且添加更多的测试用例以及文档说明',
+            expected: '修复状态栏在窄终端下的显示问\u2026'
+        },
+        {
+            name: 'not at all when wide characters fit the width',
+            title: '修复状态栏在窄终端下的显示问题',
+            expected: '修复状态栏在窄终端下的显示问题'
+        }
+    ])('should truncate long titles $name', ({ title, expected }) => {
+        const result = render({ cwd: '/tmp/repo', hide: 'status' }, { getCachedGitReviewData: () => ({ ...SAMPLE_PR, title }) });
+        expect(result).toBe(`${renderOsc8Link('https://github.com/owner/repo/pull/123', 'PR #123')} ${expected}`);
     });
 
     it('should render MERGED status', () => {

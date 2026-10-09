@@ -1,10 +1,11 @@
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { execSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { z } from 'zod';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
+import type { RenderContext } from '../types/RenderContext';
 import {
     SettingsSchema,
     type InstallationMetadata,
@@ -404,14 +405,17 @@ export async function installStatusLine({
 }: InstallStatusLineOptions): Promise<void> {
     let settings: ClaudeSettings;
 
-    const backupPath = await backupClaudeSettings('.orig');
+    // A missing settings file loads as {}; any error here means the file exists
+    // but could not be read or parsed. Abort rather than overwrite it with only
+    // our statusLine, which would discard the user's other Claude Code settings.
     try {
         settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
-        console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
-        settings = {};
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then install again.`, { cause: error });
     }
+
+    await backupClaudeSettings('.orig');
 
     // Update settings with our status line (confirmation already handled in TUI)
     const existingRefreshInterval = settings.statusLine?.refreshInterval;
@@ -516,6 +520,22 @@ function getLayeredSettingsCandidatePathsByPriority(cwd: string): string[] {
         path.join(userDir, 'settings.json')
     ];
     return Array.from(new Set(candidates));
+}
+
+/**
+ * Picks the directory whose `.claude` layer `getVoiceConfig` and `getSandboxConfig` read.
+ *
+ * The project directory is tried first because that is where the project settings
+ * layers live; the session cwd can sit anywhere beneath it.
+ */
+export function resolveClaudeConfigCwd(context: RenderContext): string | undefined {
+    const candidates = [
+        context.data?.workspace?.project_dir,
+        context.data?.cwd,
+        context.data?.workspace?.current_dir
+    ];
+
+    return candidates.find(candidate => typeof candidate === 'string' && candidate.trim().length > 0);
 }
 
 interface VoiceLayerResult {

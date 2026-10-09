@@ -60,6 +60,32 @@ describe('ExtraUsageRemainingWidget', () => {
         })).toBe('Overage Left: €3,894.00');
     });
 
+    it('applies the global cost style while preserving the reported currency', () => {
+        const widget = new ExtraUsageRemainingWidget();
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            numberFormat: { cost: { style: 'compact' as const } }
+        };
+        const context: RenderContext = {
+            usageData: {
+                extraUsageCurrency: 'EUR',
+                extraUsageEnabled: true,
+                extraUsageLimit: 400000,
+                extraUsageUsed: 10600
+            }
+        };
+
+        expect(widget.render({
+            id: 'extra',
+            type: 'extra-usage-remaining'
+        }, context, settings)).toBe('Overage Left: €3,894');
+        expect(widget.render({
+            id: 'extra',
+            type: 'extra-usage-remaining'
+        }, { isPreview: true }, settings)).toBe('Overage Left: $3,894');
+        expect(widget.supportsNumberFormat()).toBe(true);
+    });
+
     it('clamps remaining budget at zero', () => {
         const widget = new ExtraUsageRemainingWidget();
 
@@ -72,21 +98,24 @@ describe('ExtraUsageRemainingWidget', () => {
         })).toBe('Overage Left: $0.00');
     });
 
-    it('exposes and toggles hide-if-disabled configuration', () => {
+    it('declares the disabled and no-data hideable states', () => {
         const widget = new ExtraUsageRemainingWidget();
         const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-remaining' };
 
-        expect(widget.getCustomKeybinds()).toEqual([
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
-        ]);
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
         expect(widget.getEditorDisplay(baseItem).modifierText).toBeUndefined();
+    });
 
-        const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
-        expect(hidden?.metadata?.hideIfDisabled).toBe('true');
-        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(hide if disabled)');
+    it('hides when extra usage is disabled via unified hide metadata', () => {
+        const widget = new ExtraUsageRemainingWidget();
 
-        const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
-        expect(shown?.metadata?.hideIfDisabled).toBe('false');
+        const hiddenItem: WidgetItem = {
+            id: 'extra',
+            metadata: { hide: 'disabled' },
+            type: 'extra-usage-remaining'
+        };
+
+        expect(render(widget, hiddenItem, { usageData: { extraUsageEnabled: false } })).toBeNull();
     });
 
     it('renders available remaining budget before unrelated usage errors', () => {
@@ -116,6 +145,18 @@ describe('ExtraUsageRemainingWidget', () => {
         })).toBeNull();
     });
 
+    it('hides usage errors when the no-data state is enabled', () => {
+        const widget = new ExtraUsageRemainingWidget();
+
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, {
+            id: 'extra',
+            metadata: { hide: 'no-data' },
+            type: 'extra-usage-remaining'
+        }, { usageData: { error: 'timeout' } })).toBeNull();
+    });
+
     it('renders n/a when extra usage is disabled', () => {
         const widget = new ExtraUsageRemainingWidget();
 
@@ -135,7 +176,7 @@ describe('ExtraUsageRemainingWidget', () => {
 
         const hiddenItem: WidgetItem = {
             id: 'extra',
-            metadata: { hideIfDisabled: 'true' },
+            metadata: { hide: 'disabled' },
             type: 'extra-usage-remaining'
         };
 

@@ -1,7 +1,8 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 
 import type { RenderContext } from '../types/RenderContext';
 
+import { resolveExecutable } from './executable-path';
 import { resolveGitCwd } from './git';
 
 export interface JjChangeCounts {
@@ -12,7 +13,7 @@ export interface JjChangeCounts {
 export function runJjArgs(args: string[], context: RenderContext, allowEmpty = false): string | null {
     try {
         const cwd = resolveGitCwd(context);
-        const output = execFileSync('jj', args, {
+        const output = execFileSync(resolveExecutable('jj'), args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             windowsHide: true,
@@ -34,8 +35,8 @@ function parseDiffStat(stat: string): JjChangeCounts {
     const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
 
     return {
-        insertions: insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0,
-        deletions: deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0
+        insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,
+        deletions: deleteMatch?.[1] ? Number.parseInt(deleteMatch[1], 10) : 0
     };
 }
 

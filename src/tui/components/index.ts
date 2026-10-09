@@ -5,6 +5,7 @@ export * from './ImportConfigDialog';
 export * from './ImportPreviewDialog';
 export * from './ConfirmDialog';
 export * from './GlobalOverridesMenu';
+export * from './HideStatesEditor';
 export * from './InstallMenu';
 export * from './ItemsEditor';
 export * from './LineSelector';

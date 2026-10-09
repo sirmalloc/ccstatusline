@@ -38,7 +38,7 @@ function createDeps(overrides: Partial<GitCiStatusWidgetDeps> = {}): GitCiStatus
 }
 
 function render(
-    options: { cwd?: string; hideNoGit?: boolean; isPreview?: boolean; rawValue?: boolean } = {},
+    options: { cwd?: string; hide?: string; isPreview?: boolean; rawValue?: boolean } = {},
     depOverrides: Partial<GitCiStatusWidgetDeps> = {}
 ): string | null {
     const widget = new GitCiStatusWidget(createDeps(depOverrides));
@@ -48,7 +48,7 @@ function render(
     };
     const item: WidgetItem = {
         id: 'git-ci-status',
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined,
+        metadata: options.hide === undefined ? undefined : { hide: options.hide },
         rawValue: options.rawValue,
         type: 'git-ci-status'
     };
@@ -100,8 +100,37 @@ describe('GitCiStatusWidget', () => {
         expect(render({ cwd: '/x' }, { isInsideGitWorkTree: () => false })).toBe('(no git)');
     });
 
-    it('returns null when hideNoGit and not in a git repo', () => {
-        expect(render({ cwd: '/x', hideNoGit: true }, { isInsideGitWorkTree: () => false })).toBeNull();
+    it('returns null when the no-git state is enabled and not in a git repo', () => {
+        expect(render({ cwd: '/x', hide: 'no-git' }, { isInsideGitWorkTree: () => false })).toBeNull();
+    });
+
+    it('declares the no-git and no-data hideable states', () => {
+        expect(new GitCiStatusWidget(createDeps()).getHideableStates().map(state => state.key))
+            .toEqual(['no-git', 'no-data']);
+    });
+
+    it.each([
+        ['no PR exists', null],
+        ['the PR has no checks', { ...PASSING_PR, checks: undefined }]
+    ])('returns null when the no-data state is enabled and %s', (_label, pr) => {
+        expect(render({ cwd: '/tmp/repo', hide: 'no-data' }, { getCachedGitReviewData: () => pr })).toBeNull();
+    });
+
+    // The two gates cover different conditions, so neither may stand in for the
+    // other.
+    it('keeps rendering "-" when only the no-git state is enabled', () => {
+        expect(render({ cwd: '/tmp/repo', hide: 'no-git' }, { getCachedGitReviewData: () => null })).toBe('-');
+    });
+
+    it('keeps rendering (no git) when only the no-data state is enabled', () => {
+        expect(render({ cwd: '/x', hide: 'no-data' }, { isInsideGitWorkTree: () => false })).toBe('(no git)');
+    });
+
+    it.each([
+        ['outside a repo', { isInsideGitWorkTree: () => false }],
+        ['with no check data', { getCachedGitReviewData: () => null }]
+    ])('returns null %s when both states are enabled', (_label, depOverrides) => {
+        expect(render({ cwd: '/tmp/repo', hide: 'no-git,no-data' }, depOverrides)).toBeNull();
     });
 
     it('uses process cwd when repo path is omitted', () => {

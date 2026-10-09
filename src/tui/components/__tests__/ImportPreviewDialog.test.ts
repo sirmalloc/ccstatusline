@@ -12,6 +12,7 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../../types/Settings';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     ImportPreviewDialog,
     getImportPreviewKeys,
@@ -63,10 +64,6 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
-function flushInk() {
-    return new Promise(resolve => setTimeout(resolve, 25));
-}
-
 describe('ImportPreviewDialog helpers', () => {
     it('includes optional settings that exist only in the imported config', () => {
         const current: Settings = { ...DEFAULT_SETTINGS };
@@ -108,7 +105,7 @@ describe('ImportPreviewDialog helpers', () => {
         const stderr = createMockStdout();
         const current: Settings = {
             ...DEFAULT_SETTINGS,
-            flexMode: 'full'
+            flexMode: 'full-minus-40'
         };
         const instance = render(React.createElement(ImportPreviewDialog, {
             validation: {
@@ -129,16 +126,17 @@ describe('ImportPreviewDialog helpers', () => {
         });
 
         try {
-            await flushInk();
-            expect(stdout.getOutput()).toContain('flexMode: full → full-minus-40');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('flexMode: full-minus-40 → full');
+            });
 
             stdout.clearOutput();
             stdin.write('\u001B[B');
-            await flushInk();
-
-            const output = stdout.getOutput();
-            const lastFlexModeRow = output.slice(output.lastIndexOf('flexMode:')).split('\n')[0];
-            expect(lastFlexModeRow).toBe('flexMode: full');
+            await waitFor(() => {
+                const output = stdout.getOutput();
+                const lastFlexModeRow = output.slice(output.lastIndexOf('flexMode:')).split('\n')[0];
+                expect(lastFlexModeRow).toBe('flexMode: full-minus-40');
+            });
         } finally {
             instance.unmount();
             instance.cleanup();

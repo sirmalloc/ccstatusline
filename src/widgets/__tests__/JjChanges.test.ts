@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -10,9 +10,10 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjChangesWidget } from '../JjChanges';
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
@@ -34,11 +35,13 @@ function render(options: {
     const item: WidgetItem = {
         id: 'jj-changes',
         type: 'jj-changes',
-        metadata: options.hideNoJj ? { hideNoJj: 'true' } : undefined
+        metadata: options.hideNoJj ? { hide: 'no-jj' } : undefined
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
 
 describe('JjChangesWidget', () => {
     beforeEach(() => {

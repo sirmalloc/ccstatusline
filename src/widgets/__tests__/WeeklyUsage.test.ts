@@ -39,7 +39,6 @@ describe('WeeklyUsageWidget', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         mockGetUsageErrorMessage = vi.spyOn(usage, 'getUsageErrorMessage');
-        // makeUsageProgressBar no longer used; WeeklyUsage uses makeTimerProgressBar directly
     });
 
     afterEach(() => {
@@ -76,6 +75,7 @@ describe('WeeklyUsageWidget', () => {
         expectedRawProgress: '[███████░░░░░░░░░] 42.1%',
         expectedRawTime: '42.1%',
         expectedTime: 'Weekly: 42.1%',
+        expectedWholePercentTime: 'Weekly: 42%',
         modifierItem: {
             id: 'weekly',
             type: 'weekly-usage',

@@ -1,7 +1,7 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
-    CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetItem
@@ -14,13 +14,12 @@ import type { GitCiChecks } from '../utils/git-review-cache';
 import { getCachedGitReviewData } from '../utils/git-review-cache';
 
 import {
-    getHideNoGitKeybinds,
-    getHideNoGitModifierText,
-    handleToggleNoGitAction,
-    isHideNoGitEnabled
-} from './shared/git-no-git';
+    NO_GIT_HIDEABLE_STATE,
+    isHidden
+} from './shared/hideable';
 
 const NO_CHECKS = '-';
+const NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when there is no check data' };
 const SYMBOLS = {
     success: '✓',
     passing: '✓',
@@ -83,15 +82,12 @@ export class GitCiStatusWidget implements Widget {
         return 'Git';
     }
 
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: getHideNoGitModifierText(item)
-        };
+    getEditorDisplay(): WidgetEditorDisplay {
+        return { displayText: this.getDisplayName() };
     }
 
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        return handleToggleNoGitAction(action, item);
+    getHideableStates(): HideableState[] {
+        return [NO_GIT_HIDEABLE_STATE, NO_DATA_HIDEABLE_STATE];
     }
 
     render(
@@ -106,20 +102,16 @@ export class GitCiStatusWidget implements Widget {
         }
 
         if (!this.deps.isInsideGitWorkTree(context)) {
-            return isHideNoGitEnabled(item) ? null : '(no git)';
+            return isHidden(item, NO_GIT_HIDEABLE_STATE.key) ? null : '(no git)';
         }
 
         const cwd = this.deps.resolveGitCwd(context) ?? this.deps.getProcessCwd();
         const checks = this.deps.getCachedGitReviewData(cwd, { includeChecks: true })?.checks;
         if (!checks) {
-            return NO_CHECKS;
+            return isHidden(item, NO_DATA_HIDEABLE_STATE.key) ? null : NO_CHECKS;
         }
 
         return buildDisplay(checks, rawValue);
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
-        return getHideNoGitKeybinds();
     }
 
     supportsRawValue(): boolean {

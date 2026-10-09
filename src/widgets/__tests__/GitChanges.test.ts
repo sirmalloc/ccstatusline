@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -10,11 +10,15 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitChangesWidget } from '../GitChanges';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -29,6 +33,7 @@ const mockExecFileSync = execFileSync as unknown as {
 
 function render(options: {
     cwd?: string;
+    hide?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
 } = {}) {
@@ -40,11 +45,14 @@ function render(options: {
     const item: WidgetItem = {
         id: 'git-changes',
         type: 'git-changes',
-        metadata: options.hideNoGit ? { hideNoGit: 'true' } : undefined
+        metadata: options.hide ? { hide: options.hide } : (options.hideNoGit ? { hide: 'no-git' } : undefined)
     };
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe('GitChangesWidget', () => {
     beforeEach(() => {
@@ -73,6 +81,22 @@ describe('GitChangesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('(+0,-0)');
+    });
+
+    it('should hide zero changes when the zero state is enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBeNull();
+    });
+
+    it('should keep non-zero changes visible with the zero state enabled', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('1 file changed, 2 insertions(+), 1 deletion(-)');
+        mockExecFileSync.mockReturnValueOnce('');
+
+        expect(render({ hide: 'zero' })).toBe('(+2,-1)');
     });
 
     it('should render no git when probe returns false', () => {

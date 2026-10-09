@@ -1,5 +1,6 @@
-import * as fs from 'fs';
-import path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import path from 'node:path';
 import {
     afterAll,
     afterEach,
@@ -20,7 +21,8 @@ import {
 } from '../../types/Settings';
 import type { ImportValidationResult } from '../config';
 
-const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
+// Unique per run, so test runs going at once don't delete each other's files
+const MOCK_HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-config-test-home-'));
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;
@@ -102,6 +104,9 @@ describe('config utilities', () => {
         expect(Array.isArray(onDisk.lines)).toBe(true);
         expect(settings.gitCacheTtlSeconds).toBe(5);
         expect((onDisk as { gitCacheTtlSeconds?: number }).gitCacheTtlSeconds).toBe(5);
+        // Custom command caching is opt-in, so an untouched install keeps running
+        // the command on every repaint.
+        expect(settings.customCommandCacheTtlSeconds).toBe(0);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
             expect.stringContaining('Default settings written to')
         );
@@ -176,6 +181,25 @@ describe('config utilities', () => {
             status: 'invalid',
             reason: `Config version ${CURRENT_VERSION + 1} is newer than supported version ${CURRENT_VERSION}`
         });
+    });
+
+    it('rejects imports whose version is not a number', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'string-version-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                version: String(CURRENT_VERSION),
+                lines: [[{ id: 'widget-1', type: 'model' }]],
+                minimalistMode: true
+            }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('invalid');
     });
 
     it('preserves local installation metadata during a replace import', () => {
@@ -255,6 +279,30 @@ describe('config utilities', () => {
             expect.stringContaining('Failed to parse settings, using defaults'),
             expect.anything()
         );
+    });
+
+    it.each([
+        { name: 'a string', version: '4' },
+        { name: 'null', version: null }
+    ])('uses defaults in memory and preserves a file whose version is $name', async ({ version }) => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // A version that isn't a number must not be read as a v1 config: the v1 migration
+        // rebuilds the file from lines and v1 fields, dropping powerline and the rest.
+        const original = JSON.stringify({
+            version,
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            powerline: { enabled: true },
+            minimalistMode: true
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.existsSync(backupPath)).toBe(false);
+        expect(getConfigLoadError()).toBe('settings.json is not in a valid format');
     });
 
     it('uses defaults in memory when the settings file cannot be read', async () => {

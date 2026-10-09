@@ -81,6 +81,26 @@ describe('BlockResetTimerWidget', () => {
         expect(render(widget, item, { usageData: {} })).toBe('Reset [███░░░░░░░░░░░░░] 20.0%');
     });
 
+    it('rounds the progress bar fill to the nearest cell', () => {
+        const widget = new BlockResetTimerWidget();
+        const item: WidgetItem = {
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { display: 'progress-short' }
+        };
+
+        mockResolveUsageWindowWithFallback.mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 1800000,
+            remainingMs: 16200000,
+            elapsedPercent: 10,
+            remainingPercent: 90
+        });
+
+        // 10% of 16 cells is 1.6, past the half-cell mark, so the 2nd cell fills.
+        expect(render(widget, item, { usageData: {} })).toBe('Reset [██░░░░░░░░░░░░░░] 10.0%');
+    });
+
     it('returns usage error when no timer data is available', () => {
         const widget = new BlockResetTimerWidget();
 
@@ -97,6 +117,35 @@ describe('BlockResetTimerWidget', () => {
 
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBe('Reset: [Loading]');
         expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { display: 'progress' } }, { usageData: {} })).toBe('Reset [Loading]');
+    });
+
+    it('declares the no-data hideable state', () => {
+        expect(new BlockResetTimerWidget().getHideableStates().map(state => state.key)).toEqual(['no-data']);
+    });
+
+    // One state covers both placeholders, since either means the same thing to
+    // a reader: the widget has nothing to report yet.
+    it.each([
+        ['a usage error', { error: 'timeout' as const }],
+        ['no data at all', {}]
+    ])('hides %s when the no-data state is enabled', (_label, usageData) => {
+        const widget = new BlockResetTimerWidget();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { hide: 'no-data' } }, { usageData })).toBeNull();
+    });
+
+    it('keeps both placeholders when the no-data state is off', () => {
+        const widget = new BlockResetTimerWidget();
+
+        mockResolveUsageWindowWithFallback.mockReturnValue(null);
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { hide: '' } }, { usageData: {} })).toBe('Reset: [Loading]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
     it('shows raw value without label in time mode', () => {
@@ -159,7 +208,7 @@ describe('BlockResetTimerWidget', () => {
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
             { key: 's', label: '(s)hort time', action: 'toggle-compact' },
             { key: 't', label: '(t)imestamp', action: 'toggle-date' },
-            { key: 'h', label: '12/24 (h)our', action: 'toggle-hour-format' },
+            { key: 'f', label: '12/24 (f)ormat', action: 'toggle-hour-format' },
             { key: 'z', label: 'time(z)one', action: 'edit-timezone' },
             { key: 'l', label: '(l)ocale', action: 'edit-locale' }
         ]);
@@ -263,6 +312,21 @@ describe('BlockResetTimerWidget', () => {
             type: 'reset-timer',
             metadata: { display: 'slider-only' }
         }).modifierText).toBe('(short bar only)');
+    });
+
+    it('does not show a time cursor carried over from a usage widget', () => {
+        // A usage bar's cursor metadata survives a type change in the picker,
+        // but this timer never draws a cursor
+        const widget = new BlockResetTimerWidget();
+
+        const modifierText = widget.getEditorDisplay({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { display: 'progress', cursor: 'true' }
+        }).modifierText;
+
+        expect(modifierText).toContain('bar');
+        expect(modifierText).not.toContain('time cursor');
     });
 
     runUsageTimerEditorSuite({
