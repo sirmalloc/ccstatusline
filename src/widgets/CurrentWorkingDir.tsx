@@ -121,22 +121,11 @@ export class CurrentWorkingDirWidget implements Widget {
 
             if (fishStyle) {
                 previewPath = '~/D/P/my-project';
-            } else if (abbreviateHome && segments && segments > 0) {
-                if (segments === 1) {
-                    previewPath = '~/.../my-project';
-                } else {
-                    previewPath = '~/.../Projects/my-project';
-                }
-            } else if (abbreviateHome) {
-                previewPath = '~/Documents/Projects/my-project';
-            } else if (segments && segments > 0) {
-                if (segments === 1) {
-                    previewPath = '.../project';
-                } else {
-                    previewPath = '.../example/project';
-                }
             } else {
-                previewPath = '/Users/example/Documents/Projects/my-project';
+                previewPath = abbreviateHome ? '~/Documents/Projects/my-project' : '/Users/example/Documents/Projects/my-project';
+                if (segments && segments > 0) {
+                    previewPath = this.keepLastSegments(previewPath, segments);
+                }
             }
 
             return `${symbolPrefix}${formatRawOrLabeledValue(item, this.getLabelPrefix(), previewPath)}`;
@@ -158,21 +147,7 @@ export class CurrentWorkingDirWidget implements Widget {
 
             // Then apply segments truncation
             if (segments && segments > 0) {
-                // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
-                const useBackslash = displayPath.includes('\\') && !displayPath.includes('/');
-                const outSep = useBackslash ? '\\' : '/';
-                const pathParts = displayPath.split(/[\\/]+/);
-
-                // Remove empty strings from splitting (e.g., leading slash or UNC leading separators)
-                const filteredParts = pathParts.filter(part => part !== '');
-
-                if (filteredParts.length > segments) {
-                    // Take the last N segments and join with the detected separator
-                    const selectedSegments = filteredParts.slice(-segments);
-                    // Preserve ~ prefix when combined with segments
-                    const prefix = displayPath.startsWith('~') ? `~${outSep}` : '';
-                    displayPath = prefix + '...' + outSep + selectedSegments.join(outSep);
-                }
+                displayPath = this.keepLastSegments(displayPath, segments);
             }
         }
 
@@ -197,6 +172,28 @@ export class CurrentWorkingDirWidget implements Widget {
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+
+    private keepLastSegments(path: string, segments: number): string {
+        // Support both POSIX ('/') and Windows ('\\') separators; preserve original separator in output
+        const useBackslash = path.includes('\\') && !path.includes('/');
+        const outSep = useBackslash ? '\\' : '/';
+        const pathParts = path.split(/[\\/]+/);
+
+        // Remove empty strings from splitting (e.g., leading slash or UNC leading separators)
+        const filteredParts = pathParts.filter(part => part !== '');
+
+        // Preserve ~ prefix when combined with segments; it stands for the home
+        // directory, so it isn't one of the segments
+        const prefix = filteredParts[0] === '~' ? `~${outSep}` : '';
+        const pathSegments = prefix ? filteredParts.slice(1) : filteredParts;
+
+        if (pathSegments.length <= segments) {
+            return path;
+        }
+
+        // Take the last N segments and join with the detected separator
+        return prefix + '...' + outSep + pathSegments.slice(-segments).join(outSep);
+    }
 
     private abbreviateHomeDir(path: string): string {
         const homeDir = os.homedir();
