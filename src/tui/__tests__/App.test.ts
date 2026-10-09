@@ -1,5 +1,8 @@
 import chalk from 'chalk';
+import * as fs from 'node:fs';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -10,6 +13,7 @@ import {
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
+import * as claudeSettings from '../../utils/claude-settings';
 import {
     applyTuiImport,
     buildConfigLoadWarning,
@@ -20,12 +24,22 @@ import {
     getPathInferredInstallation,
     getPinnedVersionMismatch
 } from '../App';
+import * as claudeStatus from '../claude-status';
 import {
     buildMainMenuItems,
     getMainMenuInstallSelectionIndex,
     getMainMenuSelectionIndex
 } from '../components/MainMenu';
 import { buildManageInstallationItems } from '../components/ManageInstallationMenu';
+
+import {
+    KEYS,
+    pressKey,
+    renderApp,
+    setUpAppSandbox,
+    type AppSandbox
+} from './helpers/render-app';
+import { waitFor } from './helpers/wait-for-ink';
 
 function getMenuValues(
     isClaudeInstalled: boolean,
@@ -305,6 +319,11 @@ describe('Invalid-config TUI guards', () => {
         expect(guard?.message).toContain('could not be read');
     });
 
+    it('builds a save-guard confirm dialog that returns to the given screen on cancel', () => {
+        expect(buildInvalidConfigSaveConfirm('settings.json could not be read', vi.fn(), 'items')?.cancelScreen)
+            .toBe('items');
+    });
+
     it('invokes the provided onConfirm when the guard action runs', async () => {
         const onConfirm = vi.fn();
         const guard = buildInvalidConfigSaveConfirm('settings.json is not valid JSON', onConfirm);
@@ -317,5 +336,44 @@ describe('Invalid-config TUI guards', () => {
             .toContain('settings.json is not valid JSON');
         expect(buildInvalidConfigSaveConfirm('settings.json is not in a valid format', vi.fn())?.message)
             .toContain('not in a valid format');
+    });
+});
+
+describe('App save guard for an invalid settings.json', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({ lines: 'not a list' }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('returns to the screen Ctrl+S was pressed on, whether the save is cancelled or confirmed', async () => {
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('not in a valid format');
+            });
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 1');
+
+            await pressKey(rendered, KEYS.ctrlS, 'is preserved on disk');
+            await pressKey(rendered, KEYS.escape, 'Edit Line 1');
+            expect(fs.readFileSync(sandbox.settingsPath, 'utf-8')).toContain('not a list');
+
+            await pressKey(rendered, KEYS.ctrlS, 'is preserved on disk');
+            await pressKey(rendered, KEYS.enter, '✓ Configuration saved');
+            expect(rendered.getFrame()).toContain('Edit Line 1');
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { lines: unknown };
+            expect(Array.isArray(saved.lines)).toBe(true);
+        } finally {
+            rendered.cleanup();
+        }
     });
 });
