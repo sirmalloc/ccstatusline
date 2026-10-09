@@ -75,7 +75,7 @@ describe('JjBookmarksWidget', () => {
             '-r',
             'heads(::@ & bookmarks())',
             '--template',
-            'bookmarks'
+            String.raw`bookmarks ++ "\n"`
         ]);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
@@ -90,6 +90,16 @@ describe('JjBookmarksWidget', () => {
         mockExecFileSync.mockReturnValueOnce('main feature-branch');
 
         expect(render()).toBe('🔖 main, feature-branch');
+    });
+
+    it('should separate bookmarks on different heads', () => {
+        // @ on a merge of two bookmarked heads: jj prints one template output
+        // per head, back to back, so each ends with the template's newline
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('feature-a\nfeature-b\n');
+
+        expect(render()).toBe('🔖 feature-a, feature-b');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toContain(String.raw`bookmarks ++ "\n"`);
     });
 
     it('should render raw bookmark value', () => {

@@ -448,7 +448,8 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
 
 export function buildInvalidConfigSaveConfirm(
     configLoadError: string | null,
-    onConfirm: () => void
+    onConfirm: () => void,
+    returnScreen: Exclude<AppScreen, 'confirm'> = 'main'
 ): ConfirmDialogState | null {
     if (!configLoadError) {
         return null;
@@ -460,7 +461,7 @@ export function buildInvalidConfigSaveConfirm(
             onConfirm();
             return Promise.resolve();
         },
-        cancelScreen: 'main'
+        cancelScreen: returnScreen
     };
 }
 
@@ -603,14 +604,16 @@ export const App: React.FC = () => {
                 })();
             };
 
+            // Ctrl+S works on any screen, so both answers return to the one it was pressed on
+            const returnScreen = screen;
             const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
                 // The confirm dialog doesn't self-dismiss; its action must navigate away
-                // (matching the other confirm flows in this file). Return to the main menu
-                // before saving so the success flash isn't hidden behind the dialog.
+                // (matching the other confirm flows in this file). Navigate back before
+                // saving so the success flash isn't hidden behind the dialog.
                 setConfirmDialog(null);
-                setScreen('main');
+                setScreen(returnScreen);
                 performSave();
-            });
+            }, returnScreen);
             if (saveGuard) {
                 setConfirmDialog(saveGuard);
                 setScreen('confirm');

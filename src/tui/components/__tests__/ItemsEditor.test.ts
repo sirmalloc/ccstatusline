@@ -419,4 +419,57 @@ describe('ItemsEditor', () => {
             stderr.destroy();
         }
     });
+
+    it('offers (m)erge on the last widget only to clear a merge left on it', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Debug mode writes whole frames; the last one starts at the last title
+        const lastFrame = () => {
+            const output = stripAnsi(stdout.getOutput());
+            return output.slice(output.lastIndexOf('Edit Line 1'));
+        };
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, {
+                initialWidgets: [
+                    { id: '1', type: 'model' },
+                    { id: '2', type: 'git-branch', merge: true }
+                ]
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  1. Model');
+            });
+
+            stdin.write('\u001B[B');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  2. Git Branch (merged→)');
+            });
+            expect(lastFrame()).toContain('(m)erge');
+
+            stdin.write('m');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  2. Git Branch');
+                expect(lastFrame()).not.toContain('(merged→)');
+            });
+            expect(lastFrame()).not.toContain('(m)erge');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });

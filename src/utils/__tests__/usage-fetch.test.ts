@@ -956,6 +956,47 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('backs off credential lookups across renders after finding none, per profile', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('no-credentials-backoff');
+            const otherProfile = harness.createTokenHome('no-credentials-backoff-other');
+            const credentialsFile = path.join(home.claudeConfig, '.credentials.json');
+            fs.rmSync(credentialsFile);
+            const renderAt = (probeNowMs: number, claudeConfig = home.claudeConfig) => harness.runProbe({
+                claudeConfigDir: claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(renderAt(nowMs).first).toEqual({ error: 'no-credentials' });
+
+            // An API-key user has no OAuth login to find, and on macOS each
+            // lookup spawns `security` twice, a full keychain dump included.
+            // Later renders inside the window skip the lookup entirely, so a
+            // login made meanwhile is only picked up once it ends.
+            fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+            const backedOff = renderAt(nowMs + 10000);
+            expect(backedOff.first).toEqual({ error: 'no-credentials' });
+            expect(backedOff.requestCount).toBe(0);
+
+            // Another profile's lookup is not suppressed by this one's miss.
+            const other = renderAt(nowMs + 10000, otherProfile.claudeConfig);
+            expect(other.first.sessionUsage).toBe(42);
+            expect(other.requestCount).toBe(1);
+
+            const retried = renderAt(nowMs + 31000);
+            expect(retried.first.sessionUsage).toBe(42);
+            expect(retried.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('preserves the in-flight lock after a successful fetch missing required fields', () => {
         const harness = createProbeHarness();
 
@@ -1115,6 +1156,39 @@ describe('fetchUsageData error handling', () => {
             // Fingerprint matches and the cache is fresh, so it is served with no API call.
             expect(result.requestCount).toBe(0);
             expect(result.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['a day', 24 * 60 * 60 * 1000, 1, 42],
+        ['a few seconds', 2000, 0, 5]
+    ])('refetches a cache dated %s in the future only when the date cannot be right', (_label, aheadMs, expectedRequests, expectedSessionUsage) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('future-dated-cache');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: matchingHash });
+            // A day ahead: written while the system clock ran fast, since
+            // corrected. A few seconds ahead: a concurrent render wrote it
+            // after this one read the clock.
+            const futureSeconds = (mtimeMs + aheadMs) / 1000;
+            fs.utimesSync(cacheFile, futureSeconds, futureSeconds);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(expectedRequests);
+            expect(result.first.sessionUsage).toBe(expectedSessionUsage);
         } finally {
             harness.cleanup();
         }
