@@ -75,7 +75,7 @@ An explicit per-model quota at 0% is shown even when its reset timestamp is stil
 These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators:
 
 - **Full width always** - Uses full terminal width (default; may wrap if auto-compact message appears or IDE integration adds text)
-- **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping
+- **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping. On a terminal narrower than 80 columns it reserves half the width instead, so the status line keeps the other half
 - **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
 
 The default applies to new configurations and settings without an explicit `flexMode`; saved mode choices are preserved.
