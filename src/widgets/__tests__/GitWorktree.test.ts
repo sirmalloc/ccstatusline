@@ -11,6 +11,7 @@ import type {
     RenderContext,
     WidgetItem
 } from '../../types';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
@@ -49,6 +50,8 @@ function render(options: {
 
     return widget.render(item, context);
 }
+
+mockExecutableResolution();
 
 describe('GitWorktreeWidget', () => {
     beforeEach(() => {

@@ -12,6 +12,7 @@ import type {
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjBookmarksWidget } from '../JjBookmarks';
 import { JjChangesWidget } from '../JjChanges';
 import { JjDeletionsWidget } from '../JjDeletions';
@@ -104,6 +105,8 @@ const slotCases: {
     { name: 'JjInsertionsWidget', itemType: 'jj-insertions', widget: new JjInsertionsWidget(), defaultValue: '+3', overriddenValue: '▲3', clearedValue: '3' },
     { name: 'JjDeletionsWidget', itemType: 'jj-deletions', widget: new JjDeletionsWidget(), defaultValue: '-2', overriddenValue: '▼2', clearedValue: '2' }
 ];
+
+mockExecutableResolution();
 
 describe('JJ widget shared behavior', () => {
     beforeEach(() => {

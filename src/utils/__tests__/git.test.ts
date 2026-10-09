@@ -12,8 +12,10 @@ import {
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
+import * as executablePath from '../executable-path';
 import {
     clearGitCache,
+    execGit,
     getGitChangeCounts,
     getGitFileStatusCounts,
     getGitStatus,
@@ -23,6 +25,7 @@ import {
 } from '../git';
 import { GIT_HARDENING_ARGS } from '../git-hardening';
 
+import { mockExecutableResolution } from './executable-path-test-helpers';
 import { expectGitExecOptions } from './git-test-helpers';
 
 vi.mock('node:child_process', () => ({
@@ -81,6 +84,8 @@ function readGitCacheJson(home: string): { cwd?: unknown; entries?: Record<strin
         entries?: Record<string, unknown>;
     };
 }
+
+mockExecutableResolution();
 
 describe('git utils', () => {
     beforeEach(() => {
@@ -163,7 +168,47 @@ describe('git utils', () => {
         });
     });
 
+    describe('execGit', () => {
+        it('uses the resolved executable for both filter discovery and hardened status', () => {
+            const { root } = createGitRepo();
+            fs.writeFileSync(path.join(root, '.git', 'config'), '[filter "custom"]\n\tclean = custom-filter\n');
+            const executable = 'C:\\Git\\cmd\\git.exe';
+            vi.spyOn(executablePath, 'resolveExecutable').mockReturnValue(executable);
+            mockExecFileSync.mockReturnValueOnce('local\0filter.custom.clean\ncustom-filter\0');
+            mockExecFileSync.mockReturnValueOnce(' M file\n');
+
+            expect(execGit(['status', '--porcelain'], root)).toBe(' M file\n');
+
+            expect(mockExecFileSync.mock.calls).toHaveLength(2);
+            for (const call of mockExecFileSync.mock.calls) {
+                expect(call[0]).toBe(executable);
+                expect((call[1] as string[]).slice(0, GIT_HARDENING_ARGS.length)).toEqual(GIT_HARDENING_ARGS);
+            }
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toContain('config');
+            expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(expect.arrayContaining([
+                'filter.custom.clean=',
+                'filter.custom.process=',
+                'status',
+                '--ignore-submodules=dirty'
+            ]));
+        });
+    });
+
     describe('runGit', () => {
+        it('runs git from its place on PATH, never the current directory', () => {
+            const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => `C:\\Git\\cmd\\${name}.exe`);
+            try {
+                mockExecFileSync.mockReturnValue('main\n');
+
+                expect(runGit('symbolic-ref --short HEAD', { data: { cwd: '/tmp/repo' } })).toBe('main');
+
+                expect(resolve).toHaveBeenCalledWith('git');
+                expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('C:\\Git\\cmd\\git.exe');
+            } finally {
+                resolve.mockRestore();
+            }
+        });
+
         it('runs git command with resolved cwd and trims trailing whitespace', () => {
             mockExecFileSync.mockReturnValueOnce('feature/worktree\n');
             const context: RenderContext = { data: { cwd: '/tmp/repo' } };

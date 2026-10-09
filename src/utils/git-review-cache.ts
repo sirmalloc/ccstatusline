@@ -20,6 +20,7 @@ import {
     getVisibleWidth,
     truncateStyledText
 } from './ansi';
+import { resolveExecutable } from './executable-path';
 import {
     GIT_HARDENING_ARGS,
     withGitHardeningEnv
@@ -171,7 +172,7 @@ function getGitReviewCacheDir(deps: GitReviewCacheDeps): string {
 
 function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): string {
     try {
-        return deps.execFileSync('git', [...GIT_HARDENING_ARGS, ...args], {
+        return deps.execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
@@ -307,7 +308,7 @@ function isSshRemoteUrl(url: string): boolean {
 
 function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
     try {
-        const output = deps.execFileSync('ssh', ['-G', host], {
+        const output = deps.execFileSync(resolveExecutable('ssh'), ['-G', host], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
@@ -402,7 +403,7 @@ function getRemainingTimeout(deadline: number, deps: GitReviewCacheDeps): number
 
 function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['--version'], {
+        deps.execFileSync(resolveExecutable(cli), ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
@@ -415,7 +416,7 @@ function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitRevie
 
 function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
+        deps.execFileSync(resolveExecutable(cli), ['auth', 'status', '--hostname', host], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
             windowsHide: true
@@ -464,7 +465,7 @@ function queryGhPr(
     deps: GitReviewCacheDeps
 ): Record<string, unknown> | null {
     const output = deps.execFileSync(
-        'gh',
+        resolveExecutable('gh'),
         [...args, '--json', fields],
         {
             encoding: 'utf8',
@@ -550,7 +551,7 @@ function fetchFromGlab(
     args.push('--output', 'json');
 
     const output = deps.execFileSync(
-        'glab',
+        resolveExecutable('glab'),
         args,
         {
             encoding: 'utf8',

@@ -6,6 +6,7 @@ import * as path from 'node:path';
 
 import type { RenderContext } from '../types/RenderContext';
 
+import { resolveExecutable } from './executable-path';
 import {
     GIT_HARDENING_ARGS,
     getFilterOverrideArgs,
@@ -200,7 +201,7 @@ function gitExecOptions(cwd: string | undefined) {
 // '' when nothing matches; null when git couldn't read the config
 function readFilterConfig(args: string[], cwd: string | undefined): string | null {
     try {
-        return execFileSync('git', [...GIT_HARDENING_ARGS, 'config', ...args, '-z', '--get-regexp', '^filter\\.'], gitExecOptions(cwd));
+        return execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, 'config', ...args, '-z', '--get-regexp', '^filter\\.'], gitExecOptions(cwd));
     } catch (error) {
         return (error as { status?: unknown }).status === GIT_CONFIG_NO_MATCH_STATUS ? '' : null;
     }
@@ -262,7 +263,7 @@ export function execGit(args: string[], cwd: string | undefined): string {
     }
 
     return execFileSync(
-        'git',
+        resolveExecutable('git'),
         [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
         gitExecOptions(cwd)
     );

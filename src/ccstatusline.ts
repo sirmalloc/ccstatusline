@@ -40,6 +40,7 @@ import {
     getTerminalWidth
 } from './utils/terminal';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
+import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
 
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
@@ -72,19 +73,6 @@ async function readStdin(): Promise<string | null> {
         return chunks.join('');
     } catch {
         return null;
-    }
-}
-
-async function ensureWindowsUtf8CodePage() {
-    if (process.platform !== 'win32') {
-        return;
-    }
-
-    try {
-        const { execFileSync } = await import('node:child_process');
-        execFileSync('chcp.com', ['65001'], { stdio: 'ignore', windowsHide: true });
-    } catch {
-        // Ignore failures to preserve statusline output even in restricted shells.
     }
 }
 
@@ -322,7 +310,7 @@ async function main() {
 
     // Check if we're in a piped/non-TTY environment first
     if (!process.stdin.isTTY) {
-        await ensureWindowsUtf8CodePage();
+        ensureWindowsUtf8CodePage();
 
         // We're receiving piped input
         const input = await readStdin();

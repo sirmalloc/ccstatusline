@@ -1,9 +1,11 @@
 import {
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
+import * as executablePath from '../executable-path';
 import { GIT_HARDENING_ARGS } from '../git-hardening';
 import {
     fetchGitReviewData,
@@ -12,6 +14,7 @@ import {
     type GitReviewCacheDeps
 } from '../git-review-cache';
 
+import { mockExecutableResolution } from './executable-path-test-helpers';
 import { gitCommandOf } from './git-test-helpers';
 
 interface FakeCacheFile {
@@ -219,7 +222,63 @@ function gitConfigFromEnv(env: NodeJS.ProcessEnv | undefined): [string, string][
     ]);
 }
 
+mockExecutableResolution();
+
 describe('git-review-cache', () => {
+    it('looks up git, gh and ssh on PATH before running them', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => name);
+        try {
+            const harness = createHarness();
+            harness.setOriginRemoteUrl('git@mygit:example-owner/example-repo.git');
+            harness.setSshHostAlias('mygit', 'github.com');
+            harness.setCliAuthedForHost('gh', 'github.com', true);
+            harness.ghResponses.push(new Error('no pull request found'));
+            harness.ghResponses.push(new Error('no pull request found'));
+
+            fetchGitReviewData('/tmp/repo', harness.deps);
+
+            const looked = new Set(resolve.mock.calls.map(call => call[0]));
+            expect([...looked].sort()).toEqual(['gh', 'git', 'ssh']);
+        } finally {
+            resolve.mockRestore();
+        }
+    });
+
+    it('looks up glab on PATH before running it', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation(name => name);
+        try {
+            const harness = createHarness();
+            harness.setOriginRemoteUrl('git@gitlab.com:owner/repo.git');
+            harness.setGlabAvailable(true);
+            harness.glabResponses.push(new Error('no merge request found'));
+            harness.glabResponses.push(new Error('no merge request found'));
+
+            fetchGitReviewData('/tmp/repo', harness.deps);
+
+            expect(resolve.mock.calls.map(call => call[0])).toContain('glab');
+        } finally {
+            resolve.mockRestore();
+        }
+    });
+
+    it('treats gh as unavailable when it isn\'t on PATH', () => {
+        const resolve = vi.spyOn(executablePath, 'resolveExecutable').mockImplementation((name) => {
+            if (name === 'gh') {
+                throw new Error('gh was not found on PATH');
+            }
+            return name;
+        });
+        try {
+            const harness = createHarness();
+            harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+
+            expect(fetchGitReviewData('/tmp/repo', harness.deps)).toBeNull();
+            expect(harness.execCalls.filter(call => call.cmd === 'gh')).toHaveLength(0);
+        } finally {
+            resolve.mockRestore();
+        }
+    });
+
     it('runs git with the hardening config, and gives it to the git that gh runs', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');

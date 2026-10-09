@@ -19,6 +19,7 @@ import {
     parseRemoteUrl
 } from '../git-remote';
 
+import { mockExecutableResolution } from './executable-path-test-helpers';
 import { expectGitExecOptions } from './git-test-helpers';
 
 vi.mock('node:child_process', () => ({
@@ -34,6 +35,8 @@ const mockExecFileSync = execFileSync as unknown as {
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
+
+mockExecutableResolution();
 
 describe('git-remote utils', () => {
     beforeEach(() => {

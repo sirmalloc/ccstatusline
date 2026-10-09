@@ -13,6 +13,7 @@ import type {
     Widget,
     WidgetItem
 } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { gitCommandOf } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { renderOsc8Link } from '../../utils/hyperlink';
@@ -83,6 +84,8 @@ const WIDGETS = [
     { type: 'git-upstream-repo', preview: ['upstream-repo', 'https://github.com/upstream-owner/upstream-repo'], fork: 'proj', clone: null, missing: 'no upstream', hideKey: 'no-upstream' },
     { type: 'git-upstream-owner-repo', preview: ['upstream-owner/upstream-repo', 'https://github.com/upstream-owner/upstream-repo'], fork: 'them/proj', clone: null, missing: 'no upstream', hideKey: 'no-upstream' }
 ] as const;
+
+mockExecutableResolution();
 
 describe.each(WIDGETS)('$type', ({ type, preview: [previewText, previewUrl], fork, clone, missing, hideKey }) => {
     it('shows sample text in the preview, linked when asked', () => {
