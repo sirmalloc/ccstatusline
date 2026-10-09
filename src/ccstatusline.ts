@@ -46,6 +46,26 @@ function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
 }
 
+const DISPATCHABLE_HOOK_EVENT_NAMES = new Set(['PreToolUse', 'UserPromptSubmit']);
+
+// syncWidgetHooks() builds the configured hook command as `${statusCommand} --hook`.
+// When statusCommand is itself a wrapped command (e.g. `bash -c '... ccstatusline'`),
+// that concatenation puts --hook outside the wrapper's quotes, so when Claude Code
+// executes the already-malformed configured command, the flag never reaches this
+// process's argv and the hook payload arrives on the piped-input path instead.
+// StatusJSONSchema is a looseObject that accepts this shape too, so without this
+// check the hook JSON would render as (garbled) status output.
+function isDispatchableHookPayload(data: unknown): boolean {
+    if (typeof data !== 'object' || data === null) {
+        return false;
+    }
+    const { hook_event_name: hookEventName, session_id: sessionId } = data as Record<string, unknown>;
+    return typeof hookEventName === 'string'
+        && DISPATCHABLE_HOOK_EVENT_NAMES.has(hookEventName)
+        && typeof sessionId === 'string'
+        && sessionId.length > 0;
+}
+
 async function readStdin(): Promise<string | null> {
     // Check if stdin is a TTY (terminal) - if it is, there's no piped data
     if (process.stdin.isTTY) {
@@ -328,8 +348,19 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
+                const parsed = JSON.parse(input);
+
+                // A wrapped statusLine command may have dropped --hook before this
+                // process saw argv (see isDispatchableHookPayload above). Detect that
+                // shape here and dispatch it the same way the explicit --hook mode
+                // does, instead of falling through to status validation/rendering.
+                if (isDispatchableHookPayload(parsed)) {
+                    handleHookInput(input);
+                    return;
+                }
+
                 // Parse and validate JSON in one step
-                const result = StatusJSONSchema.safeParse(JSON.parse(input));
+                const result = StatusJSONSchema.safeParse(parsed);
                 if (!result.success) {
                     console.error('Invalid status JSON format:', result.error.message);
                     process.exit(1);
