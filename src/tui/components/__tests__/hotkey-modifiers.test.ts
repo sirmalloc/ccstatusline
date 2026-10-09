@@ -165,6 +165,7 @@ const cases: ShortcutCase[] = [
             onSelect: vi.fn(),
             onBack: vi.fn(),
             onLinesUpdate: spy,
+            settings: DEFAULT_SETTINGS,
             allowEditing: true
         }),
         fired: calledSpy

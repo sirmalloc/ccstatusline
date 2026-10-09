@@ -3,7 +3,10 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
@@ -55,6 +58,9 @@ export interface ItemsEditorProps {
     widgets: WidgetItem[];
     onUpdate: (widgets: WidgetItem[]) => void;
     onBack: () => void;
+    // Lets the caller restore the cursor, e.g. after a dev reload
+    initialSelectedIndex?: number;
+    onSelectedIndexChange?: (index: number) => void;
     lineNumber: number;
     settings: Settings;
 }
@@ -67,8 +73,16 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
     return Boolean(widgets[index - 1]?.merge);
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({
+    widgets,
+    onUpdate,
+    onBack,
+    initialSelectedIndex = 0,
+    onSelectedIndexChange,
+    lineNumber,
+    settings
+}) => {
+    const [selectedIndex, setSelectedIndex] = useState(() => Math.min(initialSelectedIndex, Math.max(0, widgets.length - 1)));
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
@@ -325,6 +339,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
     const selectedPickerEntry = widgetPicker
         ? (pickerEntries.find(entry => entry.type === widgetPicker.selectedType) ?? pickerEntries[0])
         : null;
+
+    useEffect(() => {
+        onSelectedIndexChange?.(selectedIndex);
+    }, [onSelectedIndexChange, selectedIndex]);
 
     // Build main help text (without custom keybinds)
     let helpText = hasWidgets

@@ -472,4 +472,41 @@ describe('ItemsEditor', () => {
             stderr.destroy();
         }
     });
+
+    it('starts on the given widget and reports where the cursor moves', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onSelectedIndexChange = vi.fn<(index: number) => void>();
+
+        const instance = render(
+            React.createElement(ItemsEditor, {
+                widgets: [{ id: '1', type: 'model' }, { id: '2', type: 'tokens-input' }, { id: '3', type: 'tokens-output' }],
+                onUpdate: vi.fn(),
+                onBack: vi.fn(),
+                initialSelectedIndex: 1,
+                onSelectedIndexChange,
+                lineNumber: 1,
+                settings: DEFAULT_SETTINGS
+            }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toMatch(/▶\s+2\. Tokens Input/);
+            });
+
+            stdin.write('\x1b[B');
+            await waitFor(() => {
+                expect(onSelectedIndexChange).toHaveBeenLastCalledWith(2);
+            });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });

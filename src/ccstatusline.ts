@@ -43,6 +43,10 @@ import { sanitizeTerminalText } from './utils/terminal-sanitize';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
 
+// Captured before --config is parsed out of process.argv, so the dev reload
+// supervisor can relaunch with exactly the arguments it was started with
+const LAUNCH_ARGS = process.argv.slice(2);
+
 function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
@@ -337,6 +341,15 @@ async function main() {
         }
     } else {
         // Interactive mode - run TUI
+        // With CCSTATUSLINE_DEV_RELOAD=1 this process only supervises: it runs
+        // the TUI in child processes and restarts one whenever ctrl+r asks
+        if (process.env.CCSTATUSLINE_DEV_RELOAD === '1') {
+            const { getDevReloadMode, superviseDevReload } = await import('./utils/dev-reload');
+            if (getDevReloadMode(process.env) === 'supervisor') {
+                process.exit(await superviseDevReload(LAUNCH_ARGS));
+            }
+        }
+
         // Remove updatemessage before running TUI
         const settings = await loadSettings();
         if (settings.updatemessage) {
