@@ -69,12 +69,16 @@ function makeUsageLine(params: {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
+    id?: string;
+    model?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
+            id: params.id,
+            model: params.model,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -93,6 +97,7 @@ function makeTranscriptLine(params: {
     output?: number;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    id?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
@@ -101,6 +106,7 @@ function makeTranscriptLine(params: {
         isApiErrorMessage: params.isApiErrorMessage,
         message: typeof params.input === 'number' || typeof params.output === 'number'
             ? {
+                id: params.id,
                 usage: {
                     input_tokens: params.input ?? 0,
                     output_tokens: params.output ?? 0
@@ -264,17 +270,18 @@ describe('jsonl transcript metrics', () => {
         tempRoots.push(root);
         const transcriptPath = path.join(root, 'streaming.jsonl');
 
-        // Simulate two API calls, each with intermediate streaming entries (stop_reason: null)
-        // and a final entry (stop_reason: "tool_use" or "end_turn")
+        // Simulate two API calls, each logged as separate JSONL entries sharing
+        // one message.id (one per content block) with a growing output_tokens.
         const lines = [
-            // API call 1: two intermediates + one final
+            // API call 1: two intermediates + one final, all sharing id msg_1
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:00.000Z',
                 input: 1,
                 output: 30,
                 cacheRead: 12000,
                 cacheCreate: 11000,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_1'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:00.000Z',
@@ -282,7 +289,8 @@ describe('jsonl transcript metrics', () => {
                 output: 30,
                 cacheRead: 12000,
                 cacheCreate: 11000,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_1'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:01.000Z',
@@ -290,16 +298,18 @@ describe('jsonl transcript metrics', () => {
                 output: 150,
                 cacheRead: 12000,
                 cacheCreate: 11000,
-                stopReason: 'tool_use'
+                stopReason: 'tool_use',
+                id: 'msg_1'
             }),
-            // API call 2: one intermediate + one final
+            // API call 2: one intermediate + one final, sharing id msg_2
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:02.000Z',
                 input: 1,
                 output: 25,
                 cacheRead: 23000,
                 cacheCreate: 500,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_2'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:03.000Z',
@@ -307,7 +317,8 @@ describe('jsonl transcript metrics', () => {
                 output: 400,
                 cacheRead: 23000,
                 cacheCreate: 500,
-                stopReason: 'end_turn'
+                stopReason: 'end_turn',
+                id: 'msg_2'
             })
         ];
 
@@ -339,7 +350,8 @@ describe('jsonl transcript metrics', () => {
                 output: 40,
                 cacheRead: 1000,
                 cacheCreate: 200,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_1'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:01.000Z',
@@ -347,7 +359,8 @@ describe('jsonl transcript metrics', () => {
                 output: 90,
                 cacheRead: 1000,
                 cacheCreate: 200,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_1'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:02.000Z',
@@ -355,7 +368,8 @@ describe('jsonl transcript metrics', () => {
                 output: 140,
                 cacheRead: 1000,
                 cacheCreate: 200,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_1'
             })
         ];
 
@@ -386,7 +400,8 @@ describe('jsonl transcript metrics', () => {
                 output: 25,
                 cacheRead: 100,
                 cacheCreate: 50,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_1'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:01.000Z',
@@ -394,7 +409,8 @@ describe('jsonl transcript metrics', () => {
                 output: 80,
                 cacheRead: 100,
                 cacheCreate: 50,
-                stopReason: 'end_turn'
+                stopReason: 'end_turn',
+                id: 'msg_1'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:02.000Z',
@@ -402,7 +418,8 @@ describe('jsonl transcript metrics', () => {
                 output: 30,
                 cacheRead: 200,
                 cacheCreate: 25,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_2'
             }),
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:03.000Z',
@@ -410,7 +427,8 @@ describe('jsonl transcript metrics', () => {
                 output: 120,
                 cacheRead: 200,
                 cacheCreate: 25,
-                stopReason: null
+                stopReason: null,
+                id: 'msg_2'
             })
         ];
 
@@ -429,12 +447,67 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
-    it('falls back to counting all entries when no stop_reason data is present', async () => {
+    it('collapses duplicate content-block rows that carry byte-identical usage under one message id', async () => {
+        // Some Claude Code builds log an already-finalized multi-block message as
+        // several rows that all repeat the same, already-complete usage snapshot
+        // (rather than growing output_tokens across the group). A tie on
+        // output_tokens must still collapse to one counted row, not three.
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'duplicate-identical.jsonl');
+
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 453,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                id: 'msg_1'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 453,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                id: 'msg_1'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 453,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                id: 'msg_1'
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 2,
+            outputTokens: 453,
+            cachedTokens: 16256,
+            cacheReadTokens: 3978,
+            cacheCreationTokens: 12278,
+            totalTokens: 16711,
+            contextLength: 16258
+        });
+    });
+
+    it('counts every entry when no message id is present (older transcript format)', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
         tempRoots.push(root);
         const transcriptPath = path.join(root, 'legacy.jsonl');
 
-        // Older transcript format without stop_reason
+        // Older transcript format without message.id: nothing to group by, so
+        // each entry (here, two distinct calls an hour apart) counts on its own.
         const lines = [
             makeUsageLine({
                 timestamp: '2026-01-01T10:00:00.000Z',
@@ -456,7 +529,7 @@ describe('jsonl transcript metrics', () => {
 
         const metrics = await getTokenMetrics(transcriptPath);
 
-        // Should count all entries since none have stop_reason
+        // Should count all entries since none carry a message id to group by
         expect(metrics).toEqual({
             inputTokens: 300,
             outputTokens: 130,
@@ -929,6 +1002,52 @@ describe('jsonl transcript metrics', () => {
             inputTokens: 300,
             outputTokens: 150,
             totalTokens: 450,
+            requestCount: 2
+        });
+    });
+
+    it('counts one request per API call even when a response is logged as multiple assistant rows', async () => {
+        // Mirrors the token-metrics dedup fix: a multi-content-block response is
+        // logged as several assistant rows sharing one message.id, with
+        // output_tokens growing to its final value on the last row. Without
+        // grouping by id, requestCount and outputTokens both double-count.
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-dedup.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:00.000Z', type: 'user' }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                type: 'assistant',
+                input: 5,
+                output: 20,
+                id: 'msg_1'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'assistant',
+                input: 5,
+                output: 60,
+                id: 'msg_1'
+            }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:04.000Z', type: 'user' }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                input: 7,
+                output: 15,
+                id: 'msg_2'
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 4000,
+            inputTokens: 12,
+            outputTokens: 75,
+            totalTokens: 87,
             requestCount: 2
         });
     });
@@ -1497,6 +1616,98 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 0,
             totalTokens: 0,
             requestCount: 0
+        });
+    });
+
+    describe('cost estimate', () => {
+        it('omits costEstimate when it was not requested', async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+            tempRoots.push(root);
+            const transcriptPath = path.join(root, 'no-cost-estimate.jsonl');
+
+            fs.writeFileSync(transcriptPath, makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 100,
+                output: 50,
+                model: 'claude-sonnet-5'
+            }));
+
+            const analysis = await getTranscriptAnalysis(transcriptPath);
+            expect(analysis.tokenMetrics.costEstimate).toBeUndefined();
+        });
+
+        it('prices each turn by its own model, weighting a Sonnet-5 turn and a Haiku-4.5 turn differently', async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+            tempRoots.push(root);
+            const transcriptPath = path.join(root, 'per-turn-pricing.jsonl');
+
+            // Same token counts, two different models: a mid-session model
+            // switch must price each turn at the model that actually served it.
+            fs.writeFileSync(transcriptPath, [
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:00.000Z',
+                    input: 1_000_000,
+                    output: 1_000_000,
+                    cacheRead: 1_000_000,
+                    cacheCreate: 1_000_000,
+                    model: 'claude-sonnet-5',
+                    id: 'msg_1'
+                }),
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:01.000Z',
+                    input: 1_000_000,
+                    output: 1_000_000,
+                    cacheRead: 1_000_000,
+                    cacheCreate: 1_000_000,
+                    model: 'claude-haiku-4-5-20251001',
+                    id: 'msg_2'
+                })
+            ].join('\n'));
+
+            const analysis = await getTranscriptAnalysis(transcriptPath, { includeCostEstimate: true });
+
+            // Sonnet 5 ($2/$10/$4/$0.20 per 1M) + Haiku 4.5 ($1/$5/$2/$0.10 per 1M),
+            // one million tokens of each category from each model.
+            expect(analysis.tokenMetrics.costEstimate).toEqual({
+                inputCost: 2 + 1,
+                outputCost: 10 + 5,
+                cacheWriteCost: 4 + 2,
+                cacheReadCost: 0.2 + 0.1
+            });
+        });
+
+        it('collapses duplicate content-block rows before pricing, not after', async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+            tempRoots.push(root);
+            const transcriptPath = path.join(root, 'cost-dedup.jsonl');
+
+            // Same call logged as two content-block rows sharing one id; pricing
+            // the un-deduped sum would double the estimate.
+            fs.writeFileSync(transcriptPath, [
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:00.000Z',
+                    input: 1_000_000,
+                    output: 200_000,
+                    model: 'claude-sonnet-5',
+                    id: 'msg_1'
+                }),
+                makeUsageLine({
+                    timestamp: '2026-01-01T10:00:01.000Z',
+                    input: 1_000_000,
+                    output: 500_000,
+                    model: 'claude-sonnet-5',
+                    id: 'msg_1'
+                })
+            ].join('\n'));
+
+            const analysis = await getTranscriptAnalysis(transcriptPath, { includeCostEstimate: true });
+
+            expect(analysis.tokenMetrics.costEstimate).toEqual({
+                inputCost: 2,
+                outputCost: 5,
+                cacheWriteCost: 0,
+                cacheReadCost: 0
+            });
         });
     });
 });
