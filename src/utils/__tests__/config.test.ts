@@ -183,6 +183,25 @@ describe('config utilities', () => {
         });
     });
 
+    it('rejects imports whose version is not a number', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'string-version-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                version: String(CURRENT_VERSION),
+                lines: [[{ id: 'widget-1', type: 'model' }]],
+                minimalistMode: true
+            }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('invalid');
+    });
+
     it('preserves local installation metadata during a replace import', () => {
         const installation: InstallationMetadata = {
             method: 'pinned',
@@ -260,6 +279,30 @@ describe('config utilities', () => {
             expect.stringContaining('Failed to parse settings, using defaults'),
             expect.anything()
         );
+    });
+
+    it.each([
+        { name: 'a string', version: '4' },
+        { name: 'null', version: null }
+    ])('uses defaults in memory and preserves a file whose version is $name', async ({ version }) => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // A version that isn't a number must not be read as a v1 config: the v1 migration
+        // rebuilds the file from lines and v1 fields, dropping powerline and the rest.
+        const original = JSON.stringify({
+            version,
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            powerline: { enabled: true },
+            minimalistMode: true
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.existsSync(backupPath)).toBe(false);
+        expect(getConfigLoadError()).toBe('settings.json is not in a valid format');
     });
 
     it('uses defaults in memory when the settings file cannot be read', async () => {

@@ -232,6 +232,12 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             } else {
                 onBack();
             }
+        } else if (key.return) {
+            // Back is chosen here rather than through SelectInput's onSelect, which
+            // number keys fire too
+            if (highlightedItemId === 'back') {
+                onBack();
+            }
         } else if (shortcut === 'h' || shortcut === 'H') {
             // Enter hex input mode (only in truecolor mode)
             if (highlightedItemId && highlightedItemId !== 'back' && settings.colorLevel === 3) {
@@ -257,8 +263,13 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
             // Toggle show separators (only if not in powerline mode and no default separator)
             if (!settings.powerline.enabled && !settings.defaultSeparator) {
                 setShowSeparators(!showSeparators);
-                // The highlighted item ID will be maintained, and we'll recalculate
-                // the initial index when rendering the SelectInput
+                // The highlighted item ID is kept, and the SelectInput recalculates its
+                // initial index. Hiding the highlighted separator takes it off the list,
+                // so the highlight moves to the first widget instead.
+                const highlightedWidget = colorableWidgets.find(widget => widget.id === highlightedItemId);
+                if (showSeparators && highlightedWidget?.type === 'separator') {
+                    setHighlightedItemId(colorableWidgets.find(widget => widget.type !== 'separator')?.id ?? null);
+                }
             }
         } else if (shortcut === 'f' || shortcut === 'F') {
             if (colorableWidgets.length > 0) {
@@ -368,13 +379,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
         };
     });
     menuItems.push({ label: '← Back', value: 'back' });
-
-    const handleSelect = (selected: { value: string }) => {
-        if (selected.value === 'back') {
-            onBack();
-        }
-        // Enter no longer cycles colors - use left/right arrow keys instead
-    };
 
     const handleHighlight = (item: { value: string }) => {
         setHighlightedItemId(item.value);
@@ -646,7 +650,6 @@ export const ColorMenu: React.FC<ColorMenuProps> = ({ widgets, lineIndex, settin
                     <SelectInput
                         key={`${showSeparators}-${highlightedItemId}`}
                         items={menuItems}
-                        onSelect={handleSelect}
                         onHighlight={handleHighlight}
                         initialIndex={Math.max(0, menuItems.findIndex(item => item.value === highlightedItemId))}
                         indicatorComponent={({ isSelected }) => (

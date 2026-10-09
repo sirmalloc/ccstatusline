@@ -6,6 +6,7 @@ import type {
 } from '../../../types/Widget';
 import { generateGuid } from '../../../utils/guid';
 import { getPlainInput } from '../../../utils/input-guards';
+import { moveItem } from '../../../utils/move-item';
 import {
     CYCLE_NUMBER_STYLE_ACTION,
     cycleNumberStyle
@@ -316,24 +317,12 @@ export function handleMoveInputMode({
     setMoveMode
 }: HandleMoveInputModeArgs): void {
     if (key.upArrow && widgets.length > 1) {
-        const newWidgets = [...widgets];
         const targetIndex = selectedIndex - 1 < 0 ? widgets.length - 1 : selectedIndex - 1;
-        const temp = newWidgets[selectedIndex];
-        const prev = newWidgets[targetIndex];
-        if (temp && prev) {
-            [newWidgets[selectedIndex], newWidgets[targetIndex]] = [prev, temp];
-        }
-        onUpdate(newWidgets);
+        onUpdate(moveItem(widgets, selectedIndex, targetIndex));
         setSelectedIndex(targetIndex);
     } else if (key.downArrow && widgets.length > 1) {
-        const newWidgets = [...widgets];
         const targetIndex = selectedIndex + 1 > widgets.length - 1 ? 0 : selectedIndex + 1;
-        const temp = newWidgets[selectedIndex];
-        const next = newWidgets[targetIndex];
-        if (temp && next) {
-            [newWidgets[selectedIndex], newWidgets[targetIndex]] = [next, temp];
-        }
-        onUpdate(newWidgets);
+        onUpdate(moveItem(widgets, selectedIndex, targetIndex));
         setSelectedIndex(targetIndex);
     } else if (key.escape || key.return) {
         setMoveMode(false);
@@ -444,14 +433,17 @@ export function handleNormalInputMode({
         }
     } else if (shortcut === 'm' && widgets.length > 0) {
         const currentWidget = widgets[selectedIndex];
-        if (currentWidget && selectedIndex < widgets.length - 1
+        // The last widget has nothing to merge into, so there m only clears a
+        // merge left from deleting or moving the widgets after it
+        const isLastWidget = selectedIndex === widgets.length - 1;
+        if (currentWidget && (!isLastWidget || currentWidget.merge)
             && currentWidget.type !== 'separator' && currentWidget.type !== 'flex-separator') {
             const newWidgets = [...widgets];
             let nextMergeState: boolean | 'no-padding' | undefined;
 
             if (currentWidget.merge === undefined) {
                 nextMergeState = true;
-            } else if (currentWidget.merge === true) {
+            } else if (currentWidget.merge === true && !isLastWidget) {
                 nextMergeState = 'no-padding';
             } else {
                 nextMergeState = undefined;

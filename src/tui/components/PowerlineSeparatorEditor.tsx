@@ -41,8 +41,10 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     };
 
     const separators = getItems();
+    // One entry per separator: the saved list can be shorter (its default is [false]),
+    // and writing past its end would leave holes that save as null and fail to load
     const invertBgs = mode === 'separator'
-        ? powerlineConfig.separatorInvertBackground
+        ? separators.map((_, i) => powerlineConfig.separatorInvertBackground[i] ?? false)
         : [];
 
     const [selectedIndex, setSelectedIndex] = useState(0);

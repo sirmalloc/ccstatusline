@@ -9,6 +9,7 @@ import {
     clearLabel,
     formatRawOrLabeledValue,
     getLabel,
+    getLabelKeybind,
     getLabelModifierText,
     setLabel
 } from '../raw-or-labeled';
@@ -66,5 +67,12 @@ describe('getLabelModifierText', () => {
 
     it('escapes quotes inside the override', () => {
         expect(getLabelModifierText(makeItem({ metadata: { label: 'a" b' } }))).toBe('(label: "a\\" b")');
+    });
+});
+
+// The key Custom Text, Custom Command, Custom Symbol and Link use to edit their own text
+describe('getLabelKeybind', () => {
+    it('edits the label with (e)', () => {
+        expect(getLabelKeybind()).toEqual({ key: 'e', label: '(e)dit label…', action: 'edit-label' });
     });
 });

@@ -95,7 +95,7 @@ function widthOfDevice(device: string, deps: NativeProbeDeps): number | null {
 /**
  * Probe terminal width with zero subprocesses, using /proc and TIOCGWINSZ.
  * Linux only; returns null anywhere else so the caller falls back to the
- * portable ps/stty/tput path.
+ * portable ps/stty path.
  */
 export function probeWidthNative(deps: NativeProbeDeps = defaultDeps): number | null {
     if (deps.platform !== 'linux') {
