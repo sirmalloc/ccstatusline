@@ -149,7 +149,9 @@ interface FlowNoticeState {
     continueScreen: Exclude<AppScreen, 'confirm' | 'flowNotice'> | 'exit';
 }
 
-type FlowNoticeProps = FlowNoticeState & { onContinue: () => void };
+// Where Continue leads is App's to handle (onContinue), so the notice itself
+// takes only what it draws
+type FlowNoticeProps = Omit<FlowNoticeState, 'continueScreen'> & { onContinue: () => void };
 
 const NOTICE_ITEMS: ListEntry<string>[] = [
     {
