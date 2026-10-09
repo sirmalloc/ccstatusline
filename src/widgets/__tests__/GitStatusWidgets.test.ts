@@ -13,6 +13,7 @@ import type {
     Widget,
     WidgetItem
 } from '../../types/Widget';
+import { gitCommandOf } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitShaWidget } from '../GitSha';
@@ -44,7 +45,7 @@ beforeEach(() => {
     clearGitCache();
     mockExecFileSync.mockImplementation((_command, args, options) => {
         const repo = REPOS[options?.cwd ?? ''];
-        const command = args.join(' ');
+        const command = gitCommandOf(args);
         if (repo && command === 'rev-parse --is-inside-work-tree') {
             return 'true\n';
         }

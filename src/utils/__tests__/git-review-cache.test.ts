@@ -4,12 +4,15 @@ import {
     it
 } from 'vitest';
 
+import { GIT_HARDENING_ARGS } from '../git-hardening';
 import {
     fetchGitReviewData,
     getCachedGitReviewData,
     refreshGitReviewCacheFromCli,
     type GitReviewCacheDeps
 } from '../git-review-cache';
+
+import { gitCommandOf } from './git-test-helpers';
 
 interface FakeCacheFile {
     content: string;
@@ -19,7 +22,7 @@ interface FakeCacheFile {
 interface PrCacheHarness {
     cacheFiles: Map<string, FakeCacheFile>;
     deps: GitReviewCacheDeps;
-    execCalls: { args: string[]; cmd: string; cwd?: string }[];
+    execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv }[];
     ghDurations: number[];
     ghResponses: (Error | string)[];
     glabResponses: (Error | string)[];
@@ -34,7 +37,7 @@ interface PrCacheHarness {
 
 function createHarness(): PrCacheHarness {
     const cacheFiles = new Map<string, FakeCacheFile>();
-    const execCalls: { args: string[]; cmd: string; cwd?: string }[] = [];
+    const execCalls: { args: string[]; cmd: string; cwd?: string; env?: NodeJS.ProcessEnv }[] = [];
     const ghDurations: number[] = [];
     const ghResponses: (Error | string)[] = [];
     const glabResponses: (Error | string)[] = [];
@@ -60,18 +63,22 @@ function createHarness(): PrCacheHarness {
                 cmd,
                 cwd: typeof options === 'object' && 'cwd' in options
                     ? String(options.cwd)
+                    : undefined,
+                env: typeof options === 'object' && 'env' in options
+                    ? options.env
                     : undefined
             });
+            const gitArgs = cmd === 'git' ? gitCommandOf(commandArgs).split(' ') : [];
 
-            if (cmd === 'git' && commandArgs[0] === 'remote') {
+            if (cmd === 'git' && gitArgs[0] === 'remote') {
                 if (originRemoteUrl === null) {
                     throw new Error('no origin configured');
                 }
                 return `${originRemoteUrl}\n`;
             }
-            if (cmd === 'git' && commandArgs[0] === 'symbolic-ref')
+            if (cmd === 'git' && gitArgs[0] === 'symbolic-ref')
                 return `${currentRef}\n`;
-            if (cmd === 'git' && commandArgs[0] === 'rev-parse')
+            if (cmd === 'git' && gitArgs[0] === 'rev-parse')
                 return 'abc123\n';
             if (cmd === 'ssh' && commandArgs[0] === '-G') {
                 const host = commandArgs[1];
@@ -203,7 +210,57 @@ function prepareCachePath(harness: PrCacheHarness): string {
     return lockPath.slice(0, -'.lock'.length);
 }
 
+// The git config that the environment gives git run by another program
+function gitConfigFromEnv(env: NodeJS.ProcessEnv | undefined): [string, string][] {
+    const count = Number.parseInt(env?.GIT_CONFIG_COUNT ?? '0', 10);
+    return Array.from({ length: count }, (_, index): [string, string] => [
+        env?.[`GIT_CONFIG_KEY_${index}`] ?? '',
+        env?.[`GIT_CONFIG_VALUE_${index}`] ?? ''
+    ]);
+}
+
 describe('git-review-cache', () => {
+    it('runs git with the hardening config, and gives it to the git that gh runs', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');
+        harness.ghResponses.push(new Error('no pull request found'));
+        harness.ghResponses.push(new Error('no pull request found'));
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const gitCalls = harness.execCalls.filter(call => call.cmd === 'git');
+        expect(gitCalls.length).toBeGreaterThan(0);
+        expect(gitCalls.every(call => call.args.slice(0, GIT_HARDENING_ARGS.length).join(' ') === GIT_HARDENING_ARGS.join(' '))).toBe(true);
+
+        const ghPrCalls = harness.execCalls.filter(call => call.cmd === 'gh' && call.args[0] === 'pr');
+        expect(ghPrCalls).toHaveLength(2);
+        for (const call of ghPrCalls) {
+            expect(gitConfigFromEnv(call.env)).toEqual(expect.arrayContaining([
+                ['core.fsmonitor', ''],
+                ['safe.bareRepository', 'explicit']
+            ]));
+        }
+    });
+
+    it('gives the hardening config to the git that glab runs', () => {
+        const harness = createHarness();
+        harness.setOriginRemoteUrl('git@gitlab.com:owner/repo.git');
+        harness.setGlabAvailable(true);
+        harness.glabResponses.push(new Error('no merge request found'));
+        harness.glabResponses.push(new Error('no merge request found'));
+
+        fetchGitReviewData('/tmp/repo', harness.deps);
+
+        const glabMrCalls = harness.execCalls.filter(call => call.cmd === 'glab' && call.args[0] === 'mr');
+        expect(glabMrCalls.length).toBeGreaterThan(0);
+        for (const call of glabMrCalls) {
+            expect(gitConfigFromEnv(call.env)).toEqual(expect.arrayContaining([
+                ['core.fsmonitor', ''],
+                ['safe.bareRepository', 'explicit']
+            ]));
+        }
+    });
+
     it('negative-caches failed gh PR lookups', () => {
         const harness = createHarness();
         harness.setOriginRemoteUrl('https://github.com/example-owner/example-repo.git');

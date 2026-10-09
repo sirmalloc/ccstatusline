@@ -20,6 +20,10 @@ import {
     getVisibleWidth,
     truncateStyledText
 } from './ansi';
+import {
+    GIT_HARDENING_ARGS,
+    withGitHardeningEnv
+} from './git-hardening';
 import { parseRemoteUrl } from './git-remote';
 
 export type GitReviewProvider = 'gh' | 'glab';
@@ -167,7 +171,7 @@ function getGitReviewCacheDir(deps: GitReviewCacheDeps): string {
 
 function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): string {
     try {
-        return deps.execFileSync('git', args, {
+        return deps.execFileSync('git', [...GIT_HARDENING_ARGS, ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
@@ -466,6 +470,8 @@ function queryGhPr(
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd,
+            // gh runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -550,6 +556,8 @@ function fetchFromGlab(
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
+            // glab runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
