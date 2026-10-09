@@ -14,7 +14,11 @@ import type {
 import { CACHE_EMPTY_HIDEABLE_STATE } from './shared/cache-scope';
 import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
-import { removeMetadataKeys } from './shared/metadata';
+import {
+    isMetadataFlagEnabled,
+    removeMetadataKeys,
+    toggleMetadataFlag
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getSlotSymbol,
@@ -34,6 +38,11 @@ const TTL_METADATA_KEY = 'ttlSeconds';
 const DEFAULT_TTL_SECONDS = 300;
 const TTL_OPTIONS = [300, 3600] as const; // 5 minutes, 1 hour
 const TOGGLE_TTL_ACTION = 'toggle-ttl';
+
+// Same key, action and metadata flag as the reset timers, so short time works
+// the same way on every timer widget.
+const COMPACT_METADATA_KEY = 'compact';
+const TOGGLE_COMPACT_ACTION = 'toggle-compact';
 
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
 
@@ -240,13 +249,20 @@ function getRemainingSeconds(lastAssistant: Date, ttlSeconds: number): number {
     return ttlSeconds - SAFETY_MARGIN - elapsedSeconds;
 }
 
-function formatCountdown(remaining: number): string {
+// Labeled like the reset timers ('4m 52s' / '4m52s') rather than clock
+// notation, so every timer widget reads the same way. Seconds always render:
+// they are the point of a cache countdown, and dropping a zero part the way
+// formatUsageDuration does would make the widget jump width every minute.
+function formatCountdown(remaining: number, compact: boolean): string {
     if (remaining <= 0) {
         return 'COLD';
     }
-    const m = Math.floor(remaining / 60);
-    const s = Math.floor(remaining % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    const total = Math.floor(remaining);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const parts = [h > 0 && `${h}${compact ? 'h' : 'hr'}`, (h > 0 || m > 0) && `${m}m`, `${s}s`];
+    return parts.filter(Boolean).join(compact ? '' : ' ');
 }
 
 // The glyph for the current drain state (excluding HOT, handled in render).
@@ -283,6 +299,10 @@ export class CacheTimerWidget implements Widget {
         if (ttlSeconds !== DEFAULT_TTL_SECONDS) {
             modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
         }
+
+        if (isMetadataFlagEnabled(item, COMPACT_METADATA_KEY)) {
+            modifiers.push('compact');
+        }
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
@@ -298,14 +318,20 @@ export class CacheTimerWidget implements Widget {
             return cycleTtl(item);
         }
 
+        if (action === TOGGLE_COMPACT_ACTION) {
+            return toggleMetadataFlag(item, COMPACT_METADATA_KEY);
+        }
+
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
+        const compact = isMetadataFlagEnabled(item, COMPACT_METADATA_KEY);
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
+            const sample = formatCountdown(292, compact);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), sample));
         }
 
         const transcriptPath = context.data?.transcript_path;
@@ -328,12 +354,13 @@ export class CacheTimerWidget implements Widget {
         const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
         const glyph = getStateSymbol(item, remaining, ttlSeconds);
 
-        return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(remaining)));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(remaining, compact)));
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
+            { key: 's', label: '(s)hort time', action: TOGGLE_COMPACT_ACTION },
             getSymbolKeybind()
         ];
     }
