@@ -42,7 +42,10 @@ import {
     setUpAppSandbox,
     type AppSandbox
 } from './helpers/render-app';
-import { waitFor } from './helpers/wait-for-ink';
+import {
+    letReactCatchUp,
+    waitFor
+} from './helpers/wait-for-ink';
 
 function getMenuValues(
     isClaudeInstalled: boolean,
@@ -471,6 +474,127 @@ describe('App save guard for an invalid settings.json', () => {
             expect(rendered.getFrame()).toContain('Edit Line 1');
             const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { lines: unknown };
             expect(Array.isArray(saved.lines)).toBe(true);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+function createPendingRun() {
+    let finish: () => void = () => undefined;
+    const run = vi.fn(() => new Promise<void>((resolve) => {
+        finish = resolve;
+    }));
+
+    return { run, finish: () => { finish(); } };
+}
+
+describe('App while an install or update runs', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('runs a confirmed install once, ignoring Enter and ESC until it finishes', async () => {
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+        vi.spyOn(claudeSettings, 'getExistingStatusLine').mockResolvedValue(null);
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'unknown',
+            resolvedPath: null,
+            resolvedPaths: [],
+            binDir: null,
+            version: null,
+            warning: null
+        });
+        const globalInstall = createPendingRun();
+        vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation(globalInstall.run);
+        const writeClaudeSettings = vi.spyOn(claudeSettings, 'installStatusLine').mockResolvedValue(undefined);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+            await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');
+            await pressKey(rendered, KEYS.up, '▶  🚪 Exit');
+            await pressKey(rendered, KEYS.up, '▶  📦 Install to Claude Code');
+            await pressKey(rendered, KEYS.enter, 'Select update style');
+            await pressKey(rendered, KEYS.enter, 'Select package manager');
+            await pressKey(rendered, KEYS.enter, 'Continue?');
+
+            // Yes: the global install starts and doesn't finish yet
+            rendered.stdin.write(KEYS.enter);
+            await waitFor(() => {
+                expect(globalInstall.run).toHaveBeenCalledOnce();
+            });
+
+            rendered.stdin.write(KEYS.enter);
+            await letReactCatchUp();
+            rendered.stdin.write(KEYS.escape);
+            await letReactCatchUp();
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+            expect(rendered.getFrame()).toContain('Working...');
+            expect(rendered.getFrame()).not.toContain('Select update style');
+
+            globalInstall.finish();
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('✓ Installed to Claude Code');
+            });
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+            expect(writeClaudeSettings).toHaveBeenCalledOnce();
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it('runs the pinned version update once, ignoring Enter and ESC until it finishes', async () => {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: '2.0.0' }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: null,
+            warning: null
+        });
+        const globalInstall = createPendingRun();
+        vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation(globalInstall.run);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
+            });
+            rendered.stdin.write(KEYS.enter);
+            await waitFor(() => {
+                expect(globalInstall.run).toHaveBeenCalledOnce();
+            });
+
+            rendered.stdin.write(KEYS.enter);
+            await letReactCatchUp();
+            rendered.stdin.write(KEYS.escape);
+            await letReactCatchUp();
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+            expect(rendered.getFrame()).toContain('Updating npm global install to v');
+            expect(rendered.getFrame()).not.toContain('Exit');
+
+            globalInstall.finish();
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('✓ Global package updated');
+            });
+            expect(rendered.getFrame()).toContain('Main Menu');
+            expect(globalInstall.run).toHaveBeenCalledOnce();
         } finally {
             rendered.cleanup();
         }

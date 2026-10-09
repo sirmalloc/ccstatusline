@@ -10,6 +10,7 @@ import Gradient from 'ink-gradient';
 import React, {
     useCallback,
     useEffect,
+    useRef,
     useState
 } from 'react';
 
@@ -166,6 +167,7 @@ interface PinnedVersionMismatch {
 interface PinnedVersionMismatchScreenProps {
     mismatch: PinnedVersionMismatch;
     canRunPackageManager: boolean;
+    updating: boolean;
     onUpdate: () => void;
     onExit: () => void;
 }
@@ -228,11 +230,12 @@ function getPinnedMismatchItems(
 const PinnedVersionMismatchScreen: React.FC<PinnedVersionMismatchScreenProps> = ({
     mismatch,
     canRunPackageManager,
+    updating,
     onUpdate,
     onExit
 }) => {
     useInput((_, key) => {
-        if (key.escape) {
+        if (key.escape && !updating) {
             onExit();
         }
     });
@@ -260,23 +263,31 @@ const PinnedVersionMismatchScreen: React.FC<PinnedVersionMismatchScreenProps> = 
                     {mismatch.relaunchCommand}
                 </Text>
             </Box>
-            <List
-                marginTop={1}
-                items={getPinnedMismatchItems(mismatch, canRunPackageManager)}
-                onSelect={(value) => {
-                    if (value === 'back') {
-                        return;
-                    }
+            {updating ? (
+                <Box marginTop={1}>
+                    <Text color='yellow'>
+                        {`Updating ${mismatch.packageManager} global install to v${mismatch.runningVersion}... This may take a moment.`}
+                    </Text>
+                </Box>
+            ) : (
+                <List
+                    marginTop={1}
+                    items={getPinnedMismatchItems(mismatch, canRunPackageManager)}
+                    onSelect={(value) => {
+                        if (value === 'back') {
+                            return;
+                        }
 
-                    if (value === 'update') {
-                        onUpdate();
-                        return;
-                    }
+                        if (value === 'update') {
+                            onUpdate();
+                            return;
+                        }
 
-                    onExit();
-                }}
-                color='cyan'
-            />
+                        onExit();
+                    }}
+                    color='cyan'
+                />
+            )}
         </Box>
     );
 };
@@ -494,6 +505,9 @@ export const App: React.FC = () => {
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
+    const [actionInFlight, setActionInFlight] = useState(false);
+    // The ref blocks a second start synchronously, before the busy screen re-renders
+    const actionInFlightRef = useRef(false);
 
     useEffect(() => {
         void loadClaudeStatusLineState()
@@ -869,6 +883,22 @@ export const App: React.FC = () => {
         )
         : null;
 
+    // Install, uninstall and update run a package manager and write settings files.
+    // Run one at a time and hold its screen until it settles, so a second Enter
+    // can't start it again and ESC can't leave it finishing behind another screen.
+    const runActionOnce = (action: () => Promise<void>) => {
+        if (actionInFlightRef.current) {
+            return;
+        }
+
+        actionInFlightRef.current = true;
+        setActionInFlight(true);
+        void action().finally(() => {
+            actionInFlightRef.current = false;
+            setActionInFlight(false);
+        });
+    };
+
     const handlePinnedVersionMismatchUpdate = async (mismatch: PinnedVersionMismatch) => {
         try {
             await runGlobalPackageInstall(mismatch.packageManager, mismatch.runningVersion);
@@ -1111,8 +1141,9 @@ export const App: React.FC = () => {
                 <PinnedVersionMismatchScreen
                     mismatch={pinnedVersionMismatch}
                     canRunPackageManager={commandAvailability[pinnedVersionMismatch.packageManager]}
+                    updating={actionInFlight}
                     onUpdate={() => {
-                        void handlePinnedVersionMismatchUpdate(pinnedVersionMismatch);
+                        runActionOnce(() => handlePinnedVersionMismatchUpdate(pinnedVersionMismatch));
                     }}
                     onExit={exit}
                 />
@@ -1302,7 +1333,10 @@ export const App: React.FC = () => {
                 {screen === 'confirm' && confirmDialog && (
                     <ConfirmDialog
                         message={confirmDialog.message}
-                        onConfirm={() => void confirmDialog.action()}
+                        busy={actionInFlight}
+                        onConfirm={() => {
+                            runActionOnce(confirmDialog.action);
+                        }}
                         onCancel={() => {
                             setScreen(getConfirmCancelScreen(confirmDialog));
                             setConfirmDialog(null);
