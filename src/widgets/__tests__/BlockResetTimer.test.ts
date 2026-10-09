@@ -180,6 +180,15 @@ describe('BlockResetTimerWidget', () => {
             expect(render(new BlockResetTimerWidget(), item, { usageData: { sessionUsage } })).toBe('Reset: 1hr 43m');
         });
 
+        // The payload's percent comes from this session's last response, so the
+        // usage API's decides when there is one
+        it.each([
+            ['the API reaches 100% while the payload lags', { sessionUsage: 97, apiSessionUsage: 100 }, 'Reset: 1hr 43m'],
+            ['the API is under 100% after the payload reached it', { sessionUsage: 100, apiSessionUsage: 2 }, null]
+        ])('reads the usage API\'s percent over the payload\'s when %s', (_label, usageData, expected) => {
+            expect(render(new BlockResetTimerWidget(), item, { usageData })).toBe(expected);
+        });
+
         it('keeps showing the timer under 100% when the state is off', () => {
             expect(render(new BlockResetTimerWidget(), { id: 'reset', type: 'reset-timer' }, { usageData: { sessionUsage: 60 } })).toBe('Reset: 1hr 43m');
         });

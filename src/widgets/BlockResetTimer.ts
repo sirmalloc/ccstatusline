@@ -145,8 +145,10 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         const usageData = context.usageData ?? {};
-        // The raw percent, not the rounded one: 99.7% isn't the limit yet.
-        const atSessionLimit = usageData.sessionUsage !== undefined && usageData.sessionUsage >= 100;
+        // The usage API's percent when there is one (see usage-prefetch.ts), and
+        // the raw percent, not the rounded one: 99.7% isn't the limit yet.
+        const sessionUsage = usageData.apiSessionUsage ?? usageData.sessionUsage;
+        const atSessionLimit = sessionUsage !== undefined && sessionUsage >= 100;
         if (!atSessionLimit && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
             return null;
         }

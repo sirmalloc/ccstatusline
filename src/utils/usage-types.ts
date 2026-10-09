@@ -22,6 +22,7 @@ export interface UsageData {
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
     extraUsageUtilization?: number; // percentage 0-100
     extraUsageCurrency?: string;   // ISO 4217 currency code (e.g. 'USD', 'EUR')
+    apiSessionUsage?: number;      // the usage API's own sessionUsage, never rate_limits'; see usage-prefetch.ts
     error?: UsageError;
 }
 
@@ -33,7 +34,7 @@ export interface UsageWindowMetrics {
     remainingPercent: number;
 }
 
-export type UsageDataField = Exclude<keyof UsageData, 'error'>;
+export type UsageDataField = Exclude<keyof UsageData, 'error' | 'apiSessionUsage'>;
 
 // TypeScript can't narrow `target[field] = value` when `field` is a plain
 // UsageDataField union at the call site (it can't prove `value`'s type
