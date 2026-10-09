@@ -26,7 +26,10 @@ import {
 import { GIT_HARDENING_ARGS } from '../git-hardening';
 
 import { mockExecutableResolution } from './executable-path-test-helpers';
-import { expectGitExecOptions } from './git-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from './git-test-helpers';
 
 vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
@@ -86,6 +89,7 @@ function readGitCacheJson(home: string): { cwd?: unknown; entries?: Record<strin
 }
 
 mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe('git utils', () => {
     beforeEach(() => {

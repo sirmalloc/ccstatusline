@@ -14,7 +14,10 @@ import type {
     WidgetItem
 } from '../../types/Widget';
 import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
-import { gitCommandOf } from '../../utils/__tests__/git-test-helpers';
+import {
+    gitCommandOf,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitCleanStatusWidget } from '../GitCleanStatus';
 import { GitShaWidget } from '../GitSha';
@@ -115,6 +118,7 @@ const WIDGETS: WidgetCase[] = [
 ];
 
 mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe.each(WIDGETS)('$type', ({ type, widget, name, color, raw, glyphs, preview: [previewText, previewRaw], shows }) => {
     it('shows its sample in the preview, raw too when it has a raw mode', () => {

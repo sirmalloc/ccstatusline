@@ -1,6 +1,38 @@
-import { expect } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import {
+    afterAll,
+    beforeAll,
+    expect
+} from 'vitest';
 
 import { GIT_HARDENING_ARGS } from '../git-hardening';
+
+// Git command mocks must not discover filters or includes in the checkout's
+// real config (actions/checkout adds credential includes in CI). A .git entry
+// also stops discovery from walking into a repository above the temp directory.
+export function isolateGitWorkingDirectory(): void {
+    let originalCwd = '';
+    let directory = '';
+
+    beforeAll(() => {
+        originalCwd = process.cwd();
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-unit-'));
+        fs.mkdirSync(path.join(directory, '.git'));
+        fs.writeFileSync(path.join(directory, '.git', 'config'), '');
+        process.chdir(directory);
+    });
+
+    afterAll(() => {
+        if (originalCwd) {
+            process.chdir(originalCwd);
+        }
+        if (directory) {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+}
 
 export function expectGitExecOptions(options: unknown, cwd?: string): void {
     expect(options).toEqual(expect.objectContaining({

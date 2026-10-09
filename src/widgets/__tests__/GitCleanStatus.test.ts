@@ -11,7 +11,10 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
-import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { GitCleanStatusWidget } from '../GitCleanStatus';
@@ -51,6 +54,7 @@ function render(options: {
 }
 
 mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe('GitCleanStatusWidget', () => {
     beforeEach(() => {
