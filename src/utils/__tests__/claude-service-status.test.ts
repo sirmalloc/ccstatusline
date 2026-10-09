@@ -22,6 +22,11 @@ import {
     parseClaudeStatusResponse
 } from '../claude-service-status';
 
+import {
+    startStalledProxy,
+    type StalledProxy
+} from './proxy-test-helpers';
+
 type StatusPageRequestFn = NonNullable<Parameters<typeof __testing.fetchStatusPagePath>[1]>;
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -265,6 +270,41 @@ describe('status page response handling', () => {
 
         await expect(__testing.fetchStatusPagePath('/test', failingRequest('timeout', destroy))).resolves.toBeNull();
         expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('destroys a request that never connects or answers once the deadline passes', async () => {
+        const destroy = vi.fn();
+        const stalledRequest: StatusPageRequestFn = () => Object.assign(new EventEmitter(), {
+            destroy,
+            end: () => undefined
+        });
+
+        const result = await Promise.race([
+            __testing.fetchStatusPagePath('/test', stalledRequest, 10),
+            new Promise<'still pending'>(resolve => setTimeout(() => { resolve('still pending'); }, 1000))
+        ]);
+
+        expect(result).toBeNull();
+        expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    // The request's socket timeout can't fire before the proxy answers CONNECT,
+    // and the agent's own connection to the proxy would keep the process alive
+    describe('behind a proxy that never answers CONNECT', () => {
+        let proxy: StalledProxy | null = null;
+
+        afterEach(async () => {
+            await proxy?.stop();
+            proxy = null;
+        });
+
+        it('gives up at the deadline and closes its connection to the proxy', async () => {
+            proxy = await startStalledProxy();
+            process.env.HTTPS_PROXY = proxy.url;
+
+            expect(await __testing.fetchStatusPagePath('/test', undefined, 50)).toBeNull();
+            await proxy.connectionClosed;
+        });
     });
 
     it('sends a GET for the path to status.claude.com with a 5 second timeout and no proxy agent by default', async () => {

@@ -6,6 +6,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
@@ -16,6 +18,11 @@ import {
     parseUsageApiResponse
 } from '../usage-fetch';
 import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
+
+import {
+    startStalledProxy,
+    type StalledProxy
+} from './proxy-test-helpers';
 
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
@@ -1889,6 +1896,35 @@ describe('fetchUsageData error handling', () => {
 // missing from the other would parse fine from a live API fetch, then vanish
 // the moment that response round-trips through the on-disk cache. This test
 // makes that drift fail loudly instead.
+describe('usage API request behind a proxy that never answers CONNECT', () => {
+    let originalProxy: string | undefined;
+    let proxy: StalledProxy | null = null;
+
+    beforeEach(() => {
+        originalProxy = process.env.HTTPS_PROXY;
+    });
+
+    afterEach(async () => {
+        await proxy?.stop();
+        proxy = null;
+        if (originalProxy === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = originalProxy;
+        }
+    });
+
+    // The request's socket timeout can't fire before the proxy answers CONNECT,
+    // and the agent's own connection to the proxy would keep the process alive
+    it('gives up at the deadline and closes its connection to the proxy', async () => {
+        proxy = await startStalledProxy();
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 50)).toEqual({ kind: 'error' });
+        await proxy.connectionClosed;
+    });
+});
+
 describe('WEEKLY_MODEL_USAGE_BUCKETS schema parity', () => {
     it('declares every registry bucket field in CachedUsageDataSchema', () => {
         const cachedKeys = new Set(Object.keys(__testing.CachedUsageDataSchema.shape));
