@@ -341,6 +341,32 @@ export function stripSgrCodes(text: string): string {
     return text.replace(SGR_REGEX, '');
 }
 
+// Track background operations in order: a later explicit color overrides a
+// reset (0, an empty parameter, or 49). Skip extended color arguments so their
+// values aren't mistaken for resets or background operations.
+function sgrClearsBackground(sequence: string): boolean {
+    const params = sequence.slice(2, -1).split(';').map(param => Number.parseInt(param || '0', 10));
+    let clearsBackground = false;
+    for (let i = 0; i < params.length; i++) {
+        const param = params[i];
+        if (param === 0 || param === 49) {
+            clearsBackground = true;
+        } else if (param !== undefined && ((param >= 40 && param <= 47) || (param >= 100 && param <= 107) || param === 48)) {
+            clearsBackground = false;
+        }
+        if (param === 38 || param === 48 || param === 58) {
+            i += params[i + 1] === 5 ? 2 : 4;
+        }
+    }
+    return clearsBackground;
+}
+
+// Re-apply a background after each SGR sequence in the text that clears it,
+// so text that resets its own styling stays on the background it's drawn on.
+export function restoreBackgroundAfterResets(text: string, backgroundCode: string): string {
+    return text.replace(SGR_REGEX, sequence => (sgrClearsBackground(sequence) ? sequence + backgroundCode : sequence));
+}
+
 export function stripOscCodes(text: string): string {
     let result = '';
     let index = 0;

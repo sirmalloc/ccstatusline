@@ -9,6 +9,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    getGitShortSha,
     isInsideGitWorkTree,
     runGit
 } from '../utils/git';
@@ -44,6 +45,7 @@ const DEFAULT_SYMBOL = '⎇';
 const LINK_KEY = 'linkToRepo';
 const LEGACY_LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
+const BRANCH_REF_PREFIX = 'refs/heads/';
 
 function isLinkEnabled(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, LINK_KEY)
@@ -112,18 +114,22 @@ export class GitBranchWidget implements Widget {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
+        // A detached HEAD (rebase, bisect, tag checkout) has no branch, so
+        // show its commit in parentheses, as git prompts do
         const branch = this.getGitBranch(context);
-        if (!branch) {
+        const ref = branch ?? getGitShortSha(context);
+        if (!ref) {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
-        const displayText = applyMaxWidth(item.rawValue ? branch : `${prefix}${branch}`, item.maxWidth);
+        const value = branch ?? `(${ref})`;
+        const displayText = applyMaxWidth(item.rawValue ? value : `${prefix}${value}`, item.maxWidth);
 
         if (isLink) {
             const origin = getRemoteInfo('origin', context);
             if (origin) {
                 return renderOsc8Link(
-                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(branch)),
+                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(ref)),
                     displayText
                 );
             }
@@ -133,7 +139,10 @@ export class GitBranchWidget implements Widget {
     }
 
     private getGitBranch(context: RenderContext): string | null {
-        return runGit('symbolic-ref --short HEAD', context);
+        // The full ref, since --short turns it into "heads/<name>" when a tag
+        // has the same name
+        const ref = runGit('symbolic-ref HEAD', context);
+        return ref?.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
     }
 
     getCustomKeybinds(): CustomKeybind[] {

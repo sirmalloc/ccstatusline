@@ -458,7 +458,7 @@ describe('LineSelector', () => {
         }
     });
 
-    it('swaps the highlighted line with its neighbour in move mode, and with the far end past either edge', async () => {
+    it('swaps the highlighted line with its neighbour in move mode, and moves it to the other end past either edge', async () => {
         const view = renderLineSelector({ lines: [ONE_WIDGET, EMPTY, TWO_WIDGETS], allowEditing: true });
 
         try {
@@ -493,15 +493,25 @@ describe('LineSelector', () => {
             });
             expect(view.onLinesUpdate).toHaveBeenLastCalledWith([EMPTY, TWO_WIDGETS, ONE_WIDGET]);
 
+            // Past the bottom edge it goes to the top, and the other lines keep their order
             view.press(DOWN_ARROW);
             await waitFor(() => {
                 expect(view.rows()[0]).toBe('◆  ☰ Line 1 (1 widget)');
             });
-            expect(view.onLinesUpdate).toHaveBeenLastCalledWith([ONE_WIDGET, TWO_WIDGETS, EMPTY]);
+            expect(view.rows()).toEqual([
+                '◆  ☰ Line 1 (1 widget)',
+                '☰ Line 2 (empty)',
+                '☰ Line 3 (2 widgets)'
+            ]);
+            expect(view.onLinesUpdate).toHaveBeenLastCalledWith([ONE_WIDGET, EMPTY, TWO_WIDGETS]);
 
             view.press(UP_ARROW);
             await waitFor(() => {
-                expect(view.rows()[2]).toBe('◆  ☰ Line 3 (1 widget)');
+                expect(view.rows()).toEqual([
+                    '☰ Line 1 (empty)',
+                    '☰ Line 2 (2 widgets)',
+                    '◆  ☰ Line 3 (1 widget)'
+                ]);
             });
             expect(view.onLinesUpdate).toHaveBeenLastCalledWith([EMPTY, TWO_WIDGETS, ONE_WIDGET]);
 
