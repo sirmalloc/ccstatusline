@@ -125,4 +125,22 @@ describe('restoreBackgroundAfterResets', () => {
 
         expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
     });
+
+    it.each([
+        '0;40', '0;41', '0;47', '0;100', '0;107',
+        '49;41', ';41', '0;48;5;49', '0;48;2;0;49;0',
+        '41;0;42', '0;41;38;5;0', '0;41;58;5;49'
+    ])('keeps the explicit background after a reset in SGR %s', (params) => {
+        const text = `\x1b[${params}mtext`;
+
+        expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
+    });
+
+    it.each([
+        '41;0', '107;49', '48;5;49;0', '48;2;0;49;0;49',
+        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0'
+    ])('restores the background when the final background operation clears it in SGR %s', (params) => {
+        expect(restoreBackgroundAfterResets(`\x1b[${params}mtext`, BG))
+            .toBe(`\x1b[${params}m${BG}text`);
+    });
 });

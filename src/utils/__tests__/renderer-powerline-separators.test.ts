@@ -240,6 +240,17 @@ describe('powerline widgets that preserve their own colors', () => {
 
         expect(render(widgets, { 0: content })).toBe(`${A_BG_CODE}${content}\x1b[0m`);
     });
+
+    it.each(['0;41', '49;101', '0;48;5;49', '0;48;2;0;49;0'])(
+        'preserves the command background in SGR %s and restores the segment background after a later reset',
+        (params) => {
+            const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG }];
+            const content = `\x1b[${params}mcolored\x1b[0mplain`;
+
+            expect(render(widgets, { 0: content }))
+                .toBe(`${A_BG_CODE}\x1b[${params}mcolored\x1b[0m${A_BG_CODE}plain\x1b[0m`);
+        }
+    );
 });
 
 describe('powerline merged widgets', () => {
