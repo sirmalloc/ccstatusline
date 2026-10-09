@@ -108,7 +108,10 @@ function normalizeDirectory(candidate: string): string | null {
 function readGitDirFile(gitFilePath: string): string | null {
     try {
         const content = fs.readFileSync(gitFilePath, 'utf-8').trim();
-        const match = /^gitdir:\s*(.+)$/i.exec(content);
+        // The path starts at a non-space. With `.+`, a long run of whitespace
+        // could be split between `\s*` and the path at every position, each
+        // split rescanning the rest of the line.
+        const match = /^gitdir:\s*(\S.*)$/i.exec(content);
         if (!match?.[1]) {
             return null;
         }
