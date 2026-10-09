@@ -15,6 +15,6 @@ export interface SpeedMetrics {
     /** Total tokens (input + output) */
     totalTokens: number;
 
-    /** Number of assistant usage entries included in speed aggregation */
+    /** Number of distinct API responses included in speed aggregation */
     requestCount: number;
 }
