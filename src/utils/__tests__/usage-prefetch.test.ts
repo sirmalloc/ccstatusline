@@ -329,7 +329,7 @@ describe('usage prefetch', () => {
 
     it('reads the forecast widgets\' data from rate_limits without fetching', async () => {
         const lines = makeLines(
-            [{ id: '1', type: 'session-forecast' }, { id: '2', type: 'session-limit-timer' }]
+            [{ id: '1', type: 'block-forecast' }, { id: '2', type: 'block-limit-timer' }]
         );
 
         const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42, resets_at: 1774020000 } } });
@@ -338,7 +338,7 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
     });
 
-    it.each(['session-forecast', 'session-limit-timer'])('fetches the reset time %s needs and keeps quiet when that fails', async (type) => {
+    it.each(['block-forecast', 'block-limit-timer'])('fetches the reset time %s needs and keeps quiet when that fails', async (type) => {
         mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
 
         const lines = makeLines([{ id: '1', type }]);

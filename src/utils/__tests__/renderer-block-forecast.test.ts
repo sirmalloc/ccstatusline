@@ -25,7 +25,7 @@ function renderLine(widgets: WidgetItem[], settings: Settings, context: RenderCo
 }
 
 const usage: WidgetItem = { id: 'usage', type: 'session-usage' };
-const forecast: WidgetItem = { id: 'forecast', type: 'session-forecast' };
+const forecast: WidgetItem = { id: 'forecast', type: 'block-forecast' };
 const model: WidgetItem = { id: 'model', type: 'model' };
 const context: RenderContext = {
     isPreview: false,
@@ -34,7 +34,7 @@ const context: RenderContext = {
     data: { model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } }
 };
 
-describe('Session Forecast between Session Usage and another widget', () => {
+describe('Block Forecast between Session Usage and another widget', () => {
     it.each([
         ['plain', plainSettings],
         ['Powerline', powerlineSettings]

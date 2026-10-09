@@ -20,13 +20,13 @@ import {
 } from './shared/usage-display';
 
 const LABEL = '→';
-// On pace for the limit, so the preview reads with Session Limit Timer's
+// On pace for the limit, so the preview reads with Block Limit Timer's
 const PREVIEW_PROJECTED_PERCENT = 100;
 
-export class SessionForecastWidget implements Widget {
+export class BlockForecastWidget implements Widget {
     getDefaultColor(): string { return 'brightBlue'; }
-    getDescription(): string { return 'Projected 5-hour usage at reset, from the recent pace; hidden until there\'s a forecast'; }
-    getDisplayName(): string { return 'Session Forecast'; }
+    getDescription(): string { return 'Projected usage of the 5-hour block at its reset, from the recent pace; hidden until there\'s a forecast'; }
+    getDisplayName(): string { return 'Block Forecast'; }
     getCategory(): string { return 'Usage'; }
     getLabelPrefix(): string { return LABEL; }
 

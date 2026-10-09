@@ -7,20 +7,20 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { SessionForecastWidget } from '../SessionForecast';
+import { BlockForecastWidget } from '../BlockForecast';
 
-const ITEM: WidgetItem = { id: 'forecast', type: 'session-forecast' };
+const ITEM: WidgetItem = { id: 'forecast', type: 'block-forecast' };
 const REMAINING: WidgetItem = { ...ITEM, metadata: { invert: 'true' } };
 
 function render(item: WidgetItem, context: RenderContext = {}): string | null {
-    return new SessionForecastWidget().render(item, context, DEFAULT_SETTINGS);
+    return new BlockForecastWidget().render(item, context, DEFAULT_SETTINGS);
 }
 
 function live(sessionUsage: number, projectedPercent: number, limitInMs: number | null = null): RenderContext {
     return { usageData: { sessionUsage }, sessionForecast: { projectedPercent, limitInMs } };
 }
 
-describe('SessionForecastWidget', () => {
+describe('BlockForecastWidget', () => {
     it('shows the projected usage at reset', () => {
         expect(render(ITEM, live(42, 83.2))).toBe('→83.2%');
     });
@@ -55,16 +55,16 @@ describe('SessionForecastWidget', () => {
         expect(render({ ...ITEM, numberFormat: { style: 'whole' } }, live(42, 42.4))).toBeNull();
     });
 
-    // On pace for the limit, so it reads with Session Limit Timer's preview
+    // On pace for the limit, so it reads with Block Limit Timer's preview
     it('shows a sample in the preview', () => {
         expect(render(ITEM, { isPreview: true })).toBe('→100.0%');
         expect(render(REMAINING, { isPreview: true })).toBe('→0.0%');
     });
 
     it('describes itself for the line editor', () => {
-        const widget = new SessionForecastWidget();
+        const widget = new BlockForecastWidget();
 
-        expect(widget.getDisplayName()).toBe('Session Forecast');
+        expect(widget.getDisplayName()).toBe('Block Forecast');
         expect(widget.getCategory()).toBe('Usage');
         expect(widget.getDefaultColor()).toBe('brightBlue');
         expect(widget.getEditorDisplay(ITEM).modifierText).toBe('(used)');
@@ -72,7 +72,7 @@ describe('SessionForecastWidget', () => {
     });
 
     it('toggles remaining mode with u', () => {
-        const widget = new SessionForecastWidget();
+        const widget = new BlockForecastWidget();
 
         expect(widget.getCustomKeybinds(ITEM)).toEqual([{ key: 'u', label: '(u) show remaining', action: 'toggle-invert' }]);
         expect(widget.getCustomKeybinds(REMAINING)).toEqual([{ key: 'u', label: '(u) show used', action: 'toggle-invert' }]);

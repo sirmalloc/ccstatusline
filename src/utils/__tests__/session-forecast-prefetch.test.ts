@@ -81,7 +81,7 @@ describe('computeSessionForecastIfNeeded', () => {
         expect(deps.reads).toBe(0);
     });
 
-    it.each(['session-forecast', 'session-limit-timer'])('records and forecasts for %s', (type) => {
+    it.each(['block-forecast', 'block-limit-timer'])('records and forecasts for %s', (type) => {
         const deps = makeDeps({
             version: 1,
             profiles: { [path.resolve(PROFILE)]: [{ resetAt: RESET_AT, readings: [[at(12, 20), at(12, 52), 30], [at(12, 53), at(13, 16), 42]] }] }
@@ -97,14 +97,14 @@ describe('computeSessionForecastIfNeeded', () => {
     it('files readings under the Claude config directory', () => {
         const deps = makeDeps();
 
-        computeSessionForecastIfNeeded([[{ id: '1', type: 'session-forecast' }]], usageData, deps);
+        computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], usageData, deps);
 
         expect(storedProfiles(deps)).toEqual([path.resolve(PROFILE)]);
     });
 
     it('shares one history whether or not the config directory has a trailing slash', () => {
         const deps = makeDeps();
-        const lines: WidgetItem[][] = [[{ id: '1', type: 'session-forecast' }]];
+        const lines: WidgetItem[][] = [[{ id: '1', type: 'block-forecast' }]];
 
         process.env.CLAUDE_CONFIG_DIR = `${PROFILE}/`;
         computeSessionForecastIfNeeded(lines, usageData, deps);
@@ -123,14 +123,14 @@ describe('computeSessionForecastIfNeeded', () => {
     ])('does nothing with %s', (_label, data: RenderUsageData | null) => {
         const deps = makeDeps();
 
-        expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'session-forecast' }]], data, deps)).toBeNull();
+        expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], data, deps)).toBeNull();
         expect(deps.reads).toBe(0);
     });
 
     it('clamps a session percent over 100 and has nothing to forecast', () => {
         const deps = makeDeps();
 
-        expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'session-forecast' }]], { ...usageData, sessionUsage: 104 }, deps)).toBeNull();
+        expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], { ...usageData, sessionUsage: 104 }, deps)).toBeNull();
         expect(deps.files.get(CACHE_PATH)).toContain(`[${NOW},${NOW},100]`);
     });
 });

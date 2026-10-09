@@ -21,10 +21,10 @@ const PREVIEW_LIMIT_IN_MS = 73 * 60 * 1000;
 // Rounded down like the reset timers, but never "0m": the limit hasn't been hit yet.
 const MIN_SHOWN_MS = 60 * 1000;
 
-export class SessionLimitTimerWidget implements Widget {
+export class BlockLimitTimerWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
-    getDescription(): string { return 'Time until the 5-hour limit at the current pace; shown only when that comes before the reset'; }
-    getDisplayName(): string { return 'Session Limit Timer'; }
+    getDescription(): string { return 'Time until the 5-hour block\'s limit at the current pace; shown only when that comes before the reset'; }
+    getDisplayName(): string { return 'Block Limit Timer'; }
     getCategory(): string { return 'Usage'; }
     getLabelPrefix(): string { return LABEL; }
 

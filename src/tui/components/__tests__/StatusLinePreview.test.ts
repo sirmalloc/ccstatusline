@@ -162,8 +162,8 @@ describe('StatusLinePreview helpers', () => {
         const stderr = createMockStdout();
         const lines: WidgetItem[][] = [[
             { id: 'usage', type: 'session-usage' },
-            { id: 'forecast', type: 'session-forecast' },
-            { id: 'limit', type: 'session-limit-timer' }
+            { id: 'forecast', type: 'block-forecast' },
+            { id: 'limit', type: 'block-limit-timer' }
         ]];
 
         const instance = render(

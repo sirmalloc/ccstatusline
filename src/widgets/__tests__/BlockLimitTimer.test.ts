@@ -10,20 +10,20 @@ import type { WidgetItem } from '../../types/Widget';
 // Imported before the widget, as the reset timer tests do: loading a widget first
 // enters the usage -> config -> widget registry import cycle midway under Node.
 import { formatUsageDuration } from '../../utils/usage';
-import { SessionLimitTimerWidget } from '../SessionLimitTimer';
+import { BlockLimitTimerWidget } from '../BlockLimitTimer';
 
-const ITEM: WidgetItem = { id: 'limit', type: 'session-limit-timer' };
+const ITEM: WidgetItem = { id: 'limit', type: 'block-limit-timer' };
 const COMPACT: WidgetItem = { ...ITEM, metadata: { compact: 'true' } };
 
 function render(item: WidgetItem, context: RenderContext = {}): string | null {
-    return new SessionLimitTimerWidget().render(item, context, DEFAULT_SETTINGS);
+    return new BlockLimitTimerWidget().render(item, context, DEFAULT_SETTINGS);
 }
 
 function limitIn(limitInMs: number | null): RenderContext {
     return { sessionForecast: { projectedPercent: 100, limitInMs } };
 }
 
-describe('SessionLimitTimerWidget', () => {
+describe('BlockLimitTimerWidget', () => {
     it('shows the time until the limit, rounded down to the minute', () => {
         expect(render(ITEM, limitIn(4_387_500))).toBe('Limit: 1hr 13m');
     });
@@ -59,9 +59,9 @@ describe('SessionLimitTimerWidget', () => {
     });
 
     it('describes itself for the line editor', () => {
-        const widget = new SessionLimitTimerWidget();
+        const widget = new BlockLimitTimerWidget();
 
-        expect(widget.getDisplayName()).toBe('Session Limit Timer');
+        expect(widget.getDisplayName()).toBe('Block Limit Timer');
         expect(widget.getCategory()).toBe('Usage');
         expect(widget.getDefaultColor()).toBe('red');
         expect(widget.getEditorDisplay(ITEM).modifierText).toBeUndefined();
@@ -69,7 +69,7 @@ describe('SessionLimitTimerWidget', () => {
     });
 
     it('toggles the short form with s', () => {
-        const widget = new SessionLimitTimerWidget();
+        const widget = new BlockLimitTimerWidget();
 
         expect(widget.getCustomKeybinds()).toEqual([{ key: 's', label: '(s)hort time', action: 'toggle-compact' }]);
         expect(widget.handleEditorAction('toggle-compact', ITEM)?.metadata?.compact).toBe('true');

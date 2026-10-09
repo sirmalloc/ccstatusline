@@ -17,8 +17,8 @@ import {
 // that adding a model bucket can't desync one of these tables from the others.
 const BASE_USAGE_WIDGET_TYPES = [
     'session-usage',
-    'session-forecast',
-    'session-limit-timer',
+    'block-forecast',
+    'block-limit-timer',
     'weekly-usage',
     'block-timer',
     'reset-timer',
@@ -59,8 +59,8 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'session-usage': [{ field: 'sessionUsage' }],
     // The forecast widgets render nothing without data, so a failed fetch made only
     // for them isn't an error for the rest of the line.
-    'session-forecast': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
-    'session-limit-timer': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
+    'block-forecast': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
+    'block-limit-timer': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
     'weekly-usage': [{ field: 'weeklyUsage' }],
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, [{ field: bucket.usageField }]])),
     'block-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],

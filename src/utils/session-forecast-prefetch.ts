@@ -10,11 +10,11 @@ import {
     type SessionUsageHistoryDeps
 } from './session-usage-history';
 
-const SESSION_FORECAST_WIDGET_TYPES = new Set(['session-forecast', 'session-limit-timer']);
+const SESSION_FORECAST_WIDGET_TYPES = new Set(['block-forecast', 'block-limit-timer']);
 
 /**
  * Records this render's session percent and forecasts the 5-hour window, once
- * per status line, for Session Forecast and Session Limit Timer to read. Each
+ * per status line, for Block Forecast and Block Limit Timer to read. Each
  * Claude config directory keeps its own history: its account has its own window.
  */
 export function computeSessionForecastIfNeeded(
