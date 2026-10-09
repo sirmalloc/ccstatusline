@@ -42,6 +42,7 @@ interface ProbeOptions {
     claudeConfigDir?: string;
     home: string;
     httpsProxy?: string;
+    lockWrittenDuringRequest?: string;
     lowercaseHttpsProxy?: string;
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
@@ -103,6 +104,12 @@ https.request = (...args) => {
         },
         destroy() {},
         end() {
+            // Simulates a concurrent render replacing the lock while this
+            // request is in flight.
+            if (process.env.TEST_LOCK_DURING_REQUEST) {
+                fs.writeFileSync(lockFile, process.env.TEST_LOCK_DURING_REQUEST);
+            }
+
             if (mode === 'error') {
                 const handlers = requestHandlers.get('error') || [];
                 for (const handler of handlers) {
@@ -224,6 +231,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.httpsProxy !== undefined) {
             env.HTTPS_PROXY = options.httpsProxy;
+        }
+
+        if (options.lockWrittenDuringRequest !== undefined) {
+            env.TEST_LOCK_DURING_REQUEST = options.lockWrittenDuringRequest;
         }
 
         if (options.lowercaseHttpsProxy !== undefined) {
@@ -886,6 +897,35 @@ describe('fetchUsageData error handling', () => {
             expect(result.cacheExists).toBe(true);
             expect(result.lockExists).toBe(false);
             expect(result.lockContents).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps a rate-limit lock that a concurrent render wrote during the fetch', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('success-keeps-foreign-lock');
+            // Another render got a 429 while this request was in flight. Deleting
+            // its lock would let the next render fetch inside the Retry-After window.
+            const rateLimitedLock = JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + 300,
+                error: 'rate-limited'
+            });
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                lockWrittenDuringRequest: rateLimitedLock,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.cacheExists).toBe(true);
+            expect(result.lockContents).toBe(rateLimitedLock);
         } finally {
             harness.cleanup();
         }

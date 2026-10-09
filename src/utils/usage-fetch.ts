@@ -670,18 +670,26 @@ function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageDat
     }
 }
 
-function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
+function writeUsageLock(blockedUntil: number, error: UsageLockError): string {
+    const contents = JSON.stringify({ blockedUntil, error });
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+        fs.writeFileSync(LOCK_FILE, contents);
     } catch {
         // Ignore lock file errors
     }
+    return contents;
 }
 
-function clearUsageLock(): void {
+// Remove the lock only while it still holds the in-flight record this process
+// wrote. A concurrent render may have replaced it with a 429 Retry-After lock
+// in the meantime; deleting that would let the next render fetch inside the
+// server's backoff window.
+function clearOwnUsageLock(ownContents: string): void {
     try {
-        fs.rmSync(LOCK_FILE, { force: true });
+        if (fs.readFileSync(LOCK_FILE, 'utf8') === ownContents) {
+            fs.rmSync(LOCK_FILE, { force: true });
+        }
     } catch {
         // Ignore lock file errors
     }
@@ -896,7 +904,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         );
     }
 
-    writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
+    const inFlightLock = writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
 
     // Fetch from API using Node's https module
     try {
@@ -935,7 +943,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // the caller's requested fields. Incomplete 200 responses are cached but
         // still need the short throttle so later renders do not refetch every time.
         if (hasRequiredUsageFields(usageData, requiredFields)) {
-            clearUsageLock();
+            clearOwnUsageLock(inFlightLock);
         }
 
         return cacheUsageData(usageData, now);
