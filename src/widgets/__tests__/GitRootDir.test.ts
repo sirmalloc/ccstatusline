@@ -57,6 +57,11 @@ describe('GitRootDirWidget', () => {
         expect(render({ isPreview: true })).toBe('my-repo');
     });
 
+    // A sample long enough for the limit to show, cut the way a real name is
+    it('should apply the max width to the preview', () => {
+        expect(render({ isPreview: true, maxWidth: 10 })).toBe('my-long...');
+    });
+
     it('should render preview for vscode IDE links', () => {
         const widget = new GitRootDirWidget();
 

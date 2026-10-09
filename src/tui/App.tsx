@@ -372,7 +372,8 @@ function getPinnedGlobalRelaunchCommand(packageManager: GlobalPackageManager): s
 export function getPinnedVersionMismatch(
     installation: ResolvedInstallationMetadata,
     runningVersion: string,
-    relaunchCommand: string
+    relaunchCommand: string,
+    versionInstalledThisSession: string | null = null
 ): PinnedVersionMismatch | null {
     if (
         installation.method !== 'pinned'
@@ -380,6 +381,9 @@ export function getPinnedVersionMismatch(
         || installation.packageManager === 'unknown'
         || !runningVersion
         || installation.installedVersion === runningVersion
+        // This session's own update installed it. The settings being edited were loaded
+        // before that update, so saving them now is the same as saving just before it.
+        || installation.installedVersion === versionInstalledThisSession
     ) {
         return null;
     }
@@ -455,7 +459,8 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
 
 export function buildInvalidConfigSaveConfirm(
     configLoadError: string | null,
-    onConfirm: () => void
+    onConfirm: () => void,
+    returnScreen: Exclude<AppScreen, 'confirm'> = 'main'
 ): ConfirmDialogState | null {
     if (!configLoadError) {
         return null;
@@ -467,7 +472,7 @@ export function buildInvalidConfigSaveConfirm(
             onConfirm();
             return Promise.resolve();
         },
-        cancelScreen: 'main'
+        cancelScreen: returnScreen
     };
 }
 
@@ -496,6 +501,7 @@ export const App: React.FC = () => {
     const [flowNotice, setFlowNotice] = useState<FlowNoticeState | null>(null);
     const [globalPackageInstallations, setGlobalPackageInstallations] = useState<GlobalPackageInstallation[]>([]);
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
+    const [versionInstalledThisSession, setVersionInstalledThisSession] = useState<string | null>(null);
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
@@ -581,7 +587,12 @@ export const App: React.FC = () => {
                 ? inspectActiveGlobalCommand({ commandAvailability })
                 : null;
             const effectiveInstallation = getPathInferredInstallation(installation, activeCommand);
-            const mismatch = getPinnedVersionMismatch(effectiveInstallation, getPackageVersion(), 'ccstatusline');
+            const mismatch = getPinnedVersionMismatch(
+                effectiveInstallation,
+                getPackageVersion(),
+                'ccstatusline',
+                versionInstalledThisSession
+            );
             if (mismatch) {
                 return;
             }
@@ -607,14 +618,16 @@ export const App: React.FC = () => {
                 })();
             };
 
+            // Ctrl+S works on any screen, so both answers return to the one it was pressed on
+            const returnScreen = screen;
             const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
                 // The confirm dialog doesn't self-dismiss; its action must navigate away
-                // (matching the other confirm flows in this file). Return to the main menu
-                // before saving so the success flash isn't hidden behind the dialog.
+                // (matching the other confirm flows in this file). Navigate back before
+                // saving so the success flash isn't hidden behind the dialog.
                 setConfirmDialog(null);
-                setScreen('main');
+                setScreen(returnScreen);
                 performSave();
-            });
+            }, returnScreen);
             if (saveGuard) {
                 setConfirmDialog(saveGuard);
                 setScreen('confirm');
@@ -751,6 +764,7 @@ export const App: React.FC = () => {
             action: async () => {
                 try {
                     await runGlobalUpdateAction(action);
+                    setVersionInstalledThisSession(action.version);
                     const installation = {
                         method: 'pinned' as const,
                         installedVersion: action.version
@@ -864,7 +878,8 @@ export const App: React.FC = () => {
         ? getPinnedVersionMismatch(
             effectiveInstallation,
             runningVersion,
-            getPinnedGlobalRelaunchCommand(effectiveInstallation.packageManager)
+            getPinnedGlobalRelaunchCommand(effectiveInstallation.packageManager),
+            versionInstalledThisSession
         )
         : null;
 

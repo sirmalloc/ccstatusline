@@ -6,7 +6,10 @@ import {
 import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import { shouldInsertInput } from '../../utils/input-guards';
+import {
+    getPlainInput,
+    shouldInsertInput
+} from '../../utils/input-guards';
 
 export type EditorMode = 'separator' | 'startCap' | 'endCap';
 
@@ -38,8 +41,10 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     };
 
     const separators = getItems();
+    // One entry per separator: the saved list can be shorter (its default is [false]),
+    // and writing past its end would leave holes that save as null and fail to load
     const invertBgs = mode === 'separator'
-        ? powerlineConfig.separatorInvertBackground
+        ? separators.map((_, i) => powerlineConfig.separatorInvertBackground[i] ?? false)
         : [];
 
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -111,6 +116,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     };
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (hexInputMode) {
             // Hex input mode
             if (key.escape) {
@@ -184,7 +190,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 }
 
                 updateSeparators(newSeparators, mode === 'separator' ? newInvertBgs : undefined);
-            } else if (input === 'a' || input === 'A') {
+            } else if (shortcut === 'a' || shortcut === 'A') {
                 // Add after current
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
@@ -207,7 +213,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(selectedIndex + 1);
                 }
-            } else if (input === 'i' || input === 'I') {
+            } else if (shortcut === 'i' || shortcut === 'I') {
                 // Insert before current
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
@@ -230,13 +236,13 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, newInvertBgs);
                     // Keep selection on the newly inserted item (which is now at selectedIndex)
                 }
-            } else if ((input === 'd' || input === 'D') && (mode !== 'separator' || separators.length > 1)) {
+            } else if ((shortcut === 'd' || shortcut === 'D') && (mode !== 'separator' || separators.length > 1)) {
                 // Delete current (min 1 for separator, no min for caps)
                 const newSeparators = separators.filter((_, i) => i !== selectedIndex);
                 const newInvertBgs = mode === 'separator' ? invertBgs.filter((_, i) => i !== selectedIndex) : [];
                 updateSeparators(newSeparators, newInvertBgs);
                 setSelectedIndex(Math.min(selectedIndex, Math.max(0, newSeparators.length - 1)));
-            } else if (input === 'c' || input === 'C') {
+            } else if (shortcut === 'c' || shortcut === 'C') {
                 // Clear all
                 if (mode === 'separator') {
                     // Reset to default right-facing separator with no inversion
@@ -245,12 +251,12 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators([]);
                 }
                 setSelectedIndex(0);
-            } else if (input === 'h' || input === 'H') {
+            } else if (shortcut === 'h' || shortcut === 'H') {
                 // Enter hex input mode
                 setHexInputMode(true);
                 setHexInput('');
                 setCursorPos(0);
-            } else if ((input === 't' || input === 'T') && mode === 'separator') {
+            } else if ((shortcut === 't' || shortcut === 'T') && mode === 'separator') {
                 // Toggle background inversion (for all separators in separator mode)
                 const newInvertBgs = [...invertBgs];
                 newInvertBgs[selectedIndex] = !(newInvertBgs[selectedIndex] ?? false);

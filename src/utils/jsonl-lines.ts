@@ -81,6 +81,15 @@ class JsonlLineSplitter {
     }
 }
 
+/**
+ * Index of the last LF before `end`, or -1 when there is none. Buffer.lastIndexOf
+ * counts a negative offset from the end of the buffer, so `end === 0` must not
+ * reach it: the search would wrap around to the chunk's last newline.
+ */
+function lastNewlineBefore(chunk: Buffer, end: number): number {
+    return end > 0 ? chunk.lastIndexOf(0x0a, end - 1) : -1;
+}
+
 function decodeReverseLine(segments: Buffer[], totalBytes: number, stripBom: boolean): string | null {
     let lineBuffer: Buffer;
     if (segments.length === 1) {
@@ -180,7 +189,7 @@ export function* iterateJsonlLinesReverseSync(filePath: string): Generator<strin
             const chunk = Buffer.allocUnsafe(readSize);
             fs.readSync(fd, chunk, 0, readSize, position);
             let end = chunk.length;
-            let newline = chunk.lastIndexOf(0x0a, end - 1);
+            let newline = lastNewlineBefore(chunk, end);
 
             while (newline !== -1) {
                 const segment = chunk.subarray(newline + 1, end);
@@ -197,7 +206,7 @@ export function* iterateJsonlLinesReverseSync(filePath: string): Generator<strin
                 }
 
                 end = newline;
-                newline = chunk.lastIndexOf(0x0a, end - 1);
+                newline = lastNewlineBefore(chunk, end);
             }
 
             if (end > 0) {
