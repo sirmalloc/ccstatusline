@@ -198,6 +198,35 @@ describe('CustomCommandWidget', () => {
 
         expect(mockSpawnSync.mock.calls).toHaveLength(2);
     });
+
+    it('uses a per-widget TTL when the global TTL is off, then reruns after it expires', () => {
+        const originalNow = Date.now;
+        let now = 10_000;
+        Date.now = () => now;
+        try {
+            const item = { ...createItem(), ttlMs: 500 };
+            const context = createContext(142, 0);
+
+            widget.render(item, context, settings);
+            now += 499;
+            widget.render(item, context, settings);
+            expect(mockSpawnSync.mock.calls).toHaveLength(1);
+
+            now += 2;
+            widget.render(item, context, settings);
+            expect(mockSpawnSync.mock.calls).toHaveLength(2);
+        } finally {
+            Date.now = originalNow;
+        }
+    });
+
+    it('does not cache a widget whose TTL is 0 even when the global TTL is set', () => {
+        const item = { ...createItem(), ttlMs: 0 };
+        widget.render(item, createContext(142, 5), settings);
+        widget.render(item, createContext(142, 5), settings);
+
+        expect(mockSpawnSync.mock.calls).toHaveLength(2);
+    });
     describe('maxWidth truncation', () => {
         const SGR_ORANGE = '\x1b[38;5;208m';
         const SGR_RESET = '\x1b[0m';

@@ -55,7 +55,7 @@ ccstatusline --version
 ### Tokens, Usage & Context
 
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts. Input/output prefer cumulative transcript metrics and fall back to `context_window.total_input_tokens` / `context_window.total_output_tokens` when transcript metrics are unavailable; cached/total use transcript metrics.
-- **Cache Hit Rate** / **Cache Read** / **Cache Write** - Show prompt-cache efficiency. Cache Hit Rate uses cache reads divided by cache reads plus cache writes; Cache Read and Cache Write include each value's share of prompt context. They default to the latest turn from `context_window.current_usage`, can switch to cumulative session totals, and can hide when empty.
+- **Cache Hit Rate** / **Cache Read Rate** / **Cache Read** / **Cache Write** / **Cache Savings** / **Cache ROI** - Show prompt-cache efficiency. Cache Hit Rate uses cache reads divided by cache reads plus cache writes. Cache Read Rate uses cache reads divided by all input tokens (`input + cache read + cache creation`). Cache Read and Cache Write include each value's share of prompt context. Cache Savings estimates net USD savings versus uncached input using standard Anthropic API rates and assumes 5-minute cache writes; unknown models show `n/a`. The estimate excludes discounts and provider-specific pricing. Cache ROI is cache-read tokens divided by cache-creation tokens. These widgets default to the latest turn, can switch to cumulative session totals, and can hide when there is no cache activity.
 - **Cache Timer** - Estimate time remaining before the current prompt-cache entry expires. It shows `HOT` while a main-chain turn is active, then counts down from the latest assistant request with cache activity and becomes `COLD` just before expiry. The default TTL is 5 minutes; it can switch to 1 hour, hide when no cache anchor is available, and customize the glyph for each state. Because Claude Code transcripts expose cache token activity rather than the actual expiry timestamp, the countdown is best effort.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar. The window size is taken from Claude Code's reported `context_window.context_window_size` when present, then from a model-name hint (e.g. a `[1m]` suffix), and finally from a fixed fallback. Set `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` to a positive integer to override that last-resort fallback (defaults to `200000`) — useful when an older Claude Code does not report the window size for a 1M-context model, so the bar would otherwise read against 200k. Immediately after `/compact`, transcript fallback uses the latest `compact_boundary.postTokens` value until a new main-chain turn reports the current size, so the widgets do not retain the pre-compaction context.
@@ -285,7 +285,7 @@ Widget-specific shortcuts:
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `o` toggle hours-only in time mode, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Context Bar**: `p` cycle medium/full/short/short-only progress bar
 - **Compaction Counter**: `v` cycle value (count/auto/manual/unknown/reclaimed), `f` cycle format, `n` toggle Nerd Font icon in icon mode, `s` toggle trigger split (auto/manual/unknown), `t` toggle tokens reclaimed
-- **Cache widgets** (Cache Hit Rate, Cache Read, Cache Write): `t` toggle turn/session scope
+- **Cache widgets** (Cache Hit Rate, Cache Read Rate, Cache Read, Cache Write, Cache Savings, Cache ROI): `t` toggle turn/session scope
 - **Cache Timer**: `t` cycle 5-minute/1-hour TTL, `g` customize the working/fresh/draining/urgent/cold glyphs
 - **Sandbox Status**: `f` cycle glyph/text/word format, `n` toggle Nerd Font lock icons in glyph mode
 - **Claude Status**: `h` toggle the 48-hour incident-history strip
@@ -294,7 +294,7 @@ Widget-specific shortcuts:
 - **Skills**: `v` cycle view mode, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
 - **Custom Text / Custom Symbol**: `e` edit text or symbol
-- **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
+- **Custom Command**: `e` command, `w` max width, `t` timeout, `y` per-widget cache TTL, `p` preserve ANSI colors
 - **Link**: `u` URL, `e` link text
 - **Vim Mode**: `f` cycle format, `n` toggle Nerd Font icons
 
@@ -326,7 +326,7 @@ Supported states by widget family:
 - **Skills**: `empty` hides the widget before any skill is used
 - **Extra Usage widgets**: `disabled` hides the `n/a` display when extra usage is off, `no-data` hides the error placeholder when usage data is unavailable
 - **Session / Weekly / Weekly Sonnet / Weekly Opus / Weekly Fable Usage**: `no-data` hides the error placeholder (`[No credentials]`, `[Timeout]`, `[Rate limited]`, `[API Error]`, `[Parse Error]`) when usage data is unavailable
-- **Cache widgets** (`Cache Hit Rate`, `Cache Read`, `Cache Write`, `Cache Timer`): `empty` hides the widget when there is no cache activity, and on Cache Timer when no cache anchor is available
+- **Cache widgets** (`Cache Hit Rate`, `Cache Read Rate`, `Cache Read`, `Cache Write`, `Cache Savings`, `Cache ROI`, `Cache Timer`): `empty` hides the widget when there is no cache activity, and on Cache Timer when no cache anchor is available
 - **Custom Text / Custom Symbol**: `merge-target-hidden` hides the item when the widget it is merged with renders nothing, so icon prefixes/suffixes disappear together with their widget
 
 In `settings.json`, the enabled states are stored as a comma-separated list in
@@ -360,7 +360,7 @@ Add a single symbol or emoji to your status line when you want a compact visual 
 
 Execute shell commands and display their output dynamically:
 
-- Runs whenever Claude Code updates the status line by default; optionally reuse output with **Custom Command Cache TTL** under **Configure Status Line** (`customCommandCacheTtlSeconds`, `0-60` seconds, default `0`)
+- Runs whenever Claude Code updates the status line by default; optionally reuse output with **Custom Command Cache TTL** under **Configure Status Line** (`customCommandCacheTtlSeconds`, `0-60` seconds, default `0`). Press `y` on a Custom Command widget to override that global TTL in milliseconds (`ttlMs`, max `60000`). Blank follows the global setting; `0` disables caching for that widget. `c` remains Clear Line.
 - Receives the full Claude Code JSON data via stdin (model info, session ID, transcript path, etc.)
 - Also includes `terminal_width` — the detected terminal width in columns, added by ccstatusline (omitted when it can't be determined) — so scripts can adapt their output to the available space
 - Displays command output inline in your status line
