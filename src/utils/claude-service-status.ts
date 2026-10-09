@@ -24,6 +24,8 @@ const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 mi
 const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed fetch
 
 const STATUS_HOST = 'status.claude.com';
+/** The status page itself, which the widget can link to. */
+export const CLAUDE_STATUS_PAGE_URL = `https://${STATUS_HOST}`;
 const STATUS_PATH = '/api/v2/status.json';
 const INCIDENTS_PATH = '/api/v2/incidents.json';
 const STATUS_TIMEOUT_MS = 5000;
