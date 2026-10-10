@@ -1,79 +1,24 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { TokenMetrics } from '../types/TokenMetrics';
 import { getContextWindowOutputTotalTokens } from '../utils/context-window';
-import { resolveNumberFormat } from '../utils/number-format';
-import { formatTokens } from '../utils/renderer';
-import {
-    SUBAGENTS_MARKER,
-    isWidgetSubagentsEnabled,
-    tokenMetricsForWidget,
-    withWidgetSubagentsEnabled
-} from '../utils/token-subagents';
 
-import { isHidden } from './shared/hideable';
-import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import { TokenCountWidget } from './shared/token-count-widget';
 
-const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when token count is zero' };
+export class TokensOutputWidget extends TokenCountWidget {
+    protected readonly label = 'Out: ';
+    protected readonly previewTokens = 3400;
 
-export class TokensOutputWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
     getDescription(): string { return 'Shows output token count for the current session'; }
     getDisplayName(): string { return 'Tokens Output'; }
-    getCategory(): string { return 'Tokens'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return isWidgetSubagentsEnabled(item)
-            ? { displayText: this.getDisplayName(), modifierText: '[+sub]' }
-            : { displayText: this.getDisplayName() };
-    }
 
-    getHideableStates(): HideableState[] {
-        return [ZERO_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        const format = resolveNumberFormat('token', item, settings);
-        const subagents = isWidgetSubagentsEnabled(item);
-        const label = subagents ? `${SUBAGENTS_MARKER}Out: ` : 'Out: ';
-        if (context.isPreview) {
-            return formatRawOrLabeledValue(item, label, formatTokens(3400, format));
-        }
-
-        // The status JSON's context_window is main-agent only, so it is only a
-        // fallback while this widget counts the main agent.
-        const outputTotalTokens = tokenMetricsForWidget(item, context)?.outputTokens
-            ?? (subagents ? null : getContextWindowOutputTotalTokens(context.data))
+    protected getTokenCount(context: RenderContext): number | null {
+        return context.tokenMetrics?.outputTokens
+            ?? getContextWindowOutputTotalTokens(context.data)
             ?? null;
-        if (outputTotalTokens === null) {
-            return null;
-        }
-
-        if (outputTotalTokens === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
-            return null;
-        }
-
-        return formatRawOrLabeledValue(item, label, formatTokens(outputTotalTokens, format));
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
-        return [{ key: 's', label: '(s)ubagents', action: 'toggle-subagents' }];
+    protected selectTokens(metrics: TokenMetrics): number {
+        return metrics.outputTokens;
     }
-
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action !== 'toggle-subagents') {
-            return null;
-        }
-
-        return withWidgetSubagentsEnabled(item, !isWidgetSubagentsEnabled(item));
-    }
-
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
-    supportsNumberFormat(): boolean { return true; }
 }

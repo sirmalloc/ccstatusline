@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import { getSkillsFilePath } from './skills';
 
@@ -38,6 +38,9 @@ export function handleHookInput(input: string | null): void {
         }
 
         const filePath = getSkillsFilePath(sessionId);
+        if (!filePath) {
+            return;
+        }
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         const entry = JSON.stringify({
             timestamp: new Date().toISOString(),

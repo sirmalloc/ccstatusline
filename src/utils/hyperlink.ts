@@ -1,3 +1,5 @@
+import { isSafeHyperlinkUrl } from './terminal-sanitize';
+
 export const IDE_LINK_MODES = [
     'vscode',
     'cursor'
@@ -5,7 +7,13 @@ export const IDE_LINK_MODES = [
 
 export type IdeLinkMode = (typeof IDE_LINK_MODES)[number];
 
+// A URL holding control characters (from a remote, a PR or settings) could end
+// the sequence early and start one of its own, so it gets no link
 export function renderOsc8Link(url: string, text: string): string {
+    if (!isSafeHyperlinkUrl(url)) {
+        return text;
+    }
+
     return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
