@@ -103,6 +103,7 @@ interface TokenMetricState {
     metrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
     lastUsageEntry: TokenMetricEntry | null;
+    lastCountedMessageId: string | undefined;
     sawCompactBoundary: boolean;
     boundaryAfterLastUsage: boolean;
     lastCompactBoundaryPostTokens: number | null;
@@ -170,10 +171,29 @@ function createTokenMetricState(): TokenMetricState {
         metrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
         lastUsageEntry: null,
+        lastCountedMessageId: undefined,
         sawCompactBoundary: false,
         boundaryAfterLastUsage: false,
         lastCompactBoundaryPostTokens: null
     };
+}
+
+/**
+ * One API response is written to the transcript once per content block - a
+ * `thinking` line, a `tool_use` line, and so on - and every one of those lines
+ * repeats the same `usage` object, the same `message.id` and an increasing
+ * `apiBlockIndex`. Counting each line would multiply a single response's cost
+ * by its block count, so continuation blocks are skipped: `apiBlockIndex` when
+ * the transcript carries it, the repeated message id otherwise.
+ */
+function isUsageContinuationBlock(data: TranscriptLine | null, lastCountedMessageId: string | undefined): boolean {
+    const blockIndex = data?.apiBlockIndex;
+    if (typeof blockIndex === 'number' && blockIndex > 0) {
+        return true;
+    }
+
+    const messageId = data?.message?.id;
+    return messageId !== undefined && messageId === lastCountedMessageId;
 }
 
 function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
@@ -187,7 +207,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
 
     const message = data?.message;
     const usage = message?.usage;
-    if (usage) {
+    if (usage && !isUsageContinuationBlock(data, state.lastCountedMessageId)) {
         const entry: TokenMetricEntry = {
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
@@ -202,6 +222,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
         }
         if (!state.hasStopReasonField || entry.stopReason) {
             accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+            state.lastCountedMessageId = message.id;
         }
         state.lastUsageEntry = entry;
         state.boundaryAfterLastUsage = compactBoundary;
@@ -317,13 +338,17 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
+    lastUserTimestampMs: number | null;
+    lastCountedMessageId: string | undefined;
+}
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
     return {
         requests: [],
         latestTimestampMs: null,
-        lastUserTimestampMs: null
+        lastUserTimestampMs: null,
+        lastCountedMessageId: undefined
     };
 }
 
@@ -355,6 +380,28 @@ function collectSpeedMetricRecord(
         interval = { startMs: state.lastUserTimestampMs, endMs: timestampMs };
     }
 
+    // A continuation block is part of the request already recorded, so it only
+    // stretches that request's interval to when the later block landed.
+    if (isUsageContinuationBlock(data, state.lastCountedMessageId)) {
+        const pending = state.requests[state.requests.length - 1];
+        if (pending) {
+            // The later line carries the response's final usage: identical for a
+            // block repeat, complete for a streamed one.
+            const latest = parseUsageTokens(data.message.usage);
+            pending.inputTokens = latest.input;
+            pending.outputTokens = latest.output;
+
+            if (timestampMs !== null) {
+                pending.assistantTimestampMs = timestampMs;
+                if (pending.interval && timestampMs > pending.interval.endMs) {
+                    pending.interval = { startMs: pending.interval.startMs, endMs: timestampMs };
+                }
+            }
+        }
+
+        return;
+    }
+
     const usage = parseUsageTokens(data.message.usage);
     state.requests.push({
         inputTokens: usage.input,
@@ -362,6 +409,7 @@ function collectSpeedMetricRecord(
         assistantTimestampMs: timestampMs,
         interval
     });
+    state.lastCountedMessageId = data.message.id;
 }
 
 async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
