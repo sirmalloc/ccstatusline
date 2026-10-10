@@ -107,7 +107,10 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     stripManagedHooks(hooks);
 
     const statusCommand = await getExistingStatusLine();
-    if (!statusCommand) {
+    // Hooks run the status line command with --hook, so only add them when that command
+    // runs ccstatusline (however it is invoked or wrapped). Another tool's script would
+    // run on every hooked event, and UserPromptSubmit output is added to the prompt.
+    if (!statusCommand?.includes('ccstatusline')) {
         claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
         await saveClaudeSettings(claudeSettings);
         return;

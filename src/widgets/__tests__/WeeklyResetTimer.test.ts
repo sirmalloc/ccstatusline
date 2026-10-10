@@ -148,6 +148,7 @@ describe('WeeklyResetTimerWidget', () => {
 
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer' }, { usageData: {} })).toBe('Weekly Reset: [Loading]');
         expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
+        expect(render(widget, { id: 'weekly-reset', type: 'weekly-reset-timer', metadata: { display: 'progress' } }, { usageData: {} })).toBe('Weekly Reset [Loading]');
     });
 
     it('declares the no-data hideable state', () => {

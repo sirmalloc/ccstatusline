@@ -1,7 +1,7 @@
-import { execFileSync } from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { Mock } from 'vitest';
 import {
     afterEach,
@@ -20,7 +20,7 @@ import {
     parseMacKeychainCredentialCandidates
 } from '../usage-fetch';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -240,6 +240,32 @@ describe('getUsageToken', () => {
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-hashed -w'
         ]);
+    });
+
+    it('bounds every macOS keychain read with a timeout', () => {
+        const dump = makeKeychainBlock('Claude Code-credentials-hashed', { quoted: '20240301010101Z' });
+
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command === 'security' && args?.[0] === 'dump-keychain') {
+                return dump;
+            }
+
+            throw new Error('security timed out');
+        });
+
+        expect(getUsageToken()).toBeNull();
+        expect(getSecurityCallLog()).toEqual([
+            'find-generic-password -s Claude Code-credentials -w',
+            'dump-keychain',
+            'find-generic-password -s Claude Code-credentials-hashed -w'
+        ]);
+        // A blocked `security` (e.g. waiting on a keychain unlock prompt)
+        // must not hold the status line until someone answers it.
+        for (const call of mockedExecFileSync.mock.calls) {
+            expect(call[2]).toEqual(expect.objectContaining({ timeout: 5000 }));
+        }
     });
 
     it('uses the credentials file on non-macOS', () => {
