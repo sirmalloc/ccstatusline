@@ -1,6 +1,6 @@
-import { execFileSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import { probeTerminalNative } from './terminal-native';
 import {
@@ -46,7 +46,7 @@ function probeTerminalWidth(): number | null {
     }
 
     // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Inconclusive
-    // on other platforms and falls through to the portable ps/stty/tput walk below.
+    // on other platforms and falls through to the portable ps/stty walk below.
     const native = probeTerminalNative();
     if (native.width !== null) {
         return native.width;
@@ -54,7 +54,7 @@ function probeTerminalWidth(): number | null {
 
     // When /proc already showed that no ancestor has a controlling terminal,
     // `ps -o tty=` would print "?" for every one of them, so the ps walk (two
-    // spawns per ancestor, on every render) cannot find a width. Skip it.
+    // spawns per ancestor) cannot find a width. Skip it.
     if (!native.noControllingTTY) {
         const width = probeAncestorWidth();
         if (width !== null) {
@@ -62,19 +62,9 @@ function probeTerminalWidth(): number | null {
         }
     }
 
-    // Fallback: try tput cols which might work in some environments
-    try {
-        const width = execFileSync('tput', ['cols'], {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            windowsHide: true
-        }).trim();
-
-        return parsePositiveInteger(width);
-    } catch {
-        // tput also failed
-    }
-
+    // No `tput cols` fallback: with no terminal on its stdio, tput prints
+    // terminfo's default (80) rather than a real width, and a made-up width
+    // truncates the line where null leaves it whole.
     return null;
 }
 
@@ -106,8 +96,8 @@ function probeAncestorWidth(): number | null {
 }
 
 function parsePositiveInteger(value: string): number | null {
-    const parsed = parseInt(value, 10);
-    if (isNaN(parsed) || parsed <= 0) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
         return null;
     }
 

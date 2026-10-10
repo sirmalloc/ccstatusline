@@ -1,5 +1,5 @@
-import { execFileSync } from 'child_process';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import * as path from 'node:path';
 
 import {
     getPackageManagerExecutable,

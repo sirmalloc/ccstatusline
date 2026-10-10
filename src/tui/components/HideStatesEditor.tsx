@@ -9,6 +9,7 @@ import type {
     HideableState,
     WidgetItem
 } from '../../types/Widget';
+import { getPlainInput } from '../../utils/input-guards';
 import {
     MERGE_TARGET_HIDDEN_HIDEABLE_STATE,
     getEnabledHideStates,
@@ -27,6 +28,7 @@ export const HideStatesEditor: React.FC<HideStatesEditorProps> = ({ widget, stat
     const [enabledKeys, setEnabledKeys] = useState<string[]>(() => getEnabledHideStates(widget, states));
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (key.return) {
             onComplete(setEnabledHideStates(widget, states, enabledKeys));
         } else if (key.escape) {
@@ -35,7 +37,7 @@ export const HideStatesEditor: React.FC<HideStatesEditorProps> = ({ widget, stat
             setSelectedIndex(selectedIndex - 1 < 0 ? states.length - 1 : selectedIndex - 1);
         } else if (key.downArrow && states.length > 0) {
             setSelectedIndex(selectedIndex + 1 > states.length - 1 ? 0 : selectedIndex + 1);
-        } else if (input === ' ') {
+        } else if (shortcut === ' ') {
             const state = states[selectedIndex];
             if (state) {
                 setEnabledKeys(enabledKeys.includes(state.key)

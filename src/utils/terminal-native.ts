@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as tty from 'tty';
+import * as fs from 'node:fs';
+import * as tty from 'node:tty';
 
 const MAX_ANCESTOR_DEPTH = 8;
 const STDIO_FDS = [0, 1, 2] as const;
@@ -46,8 +46,8 @@ export function parsePpidFromStat(stat: string): number | null {
 
     // After "(comm)" the remaining fields are: state, ppid, ...
     const fields = stat.slice(commEnd + 1).trim().split(/\s+/);
-    const ppid = parseInt(fields[1] ?? '', 10);
-    if (isNaN(ppid) || ppid <= 0) {
+    const ppid = Number.parseInt(fields[1] ?? '', 10);
+    if (Number.isNaN(ppid) || ppid <= 0) {
         return null;
     }
 
@@ -67,8 +67,8 @@ export function parseTtyNrFromStat(stat: string): number | null {
 
     // After "(comm)": state, ppid, pgrp, session, tty_nr, ...
     const fields = stat.slice(commEnd + 1).trim().split(/\s+/);
-    const ttyNr = parseInt(fields[4] ?? '', 10);
-    return isNaN(ttyNr) ? null : ttyNr;
+    const ttyNr = Number.parseInt(fields[4] ?? '', 10);
+    return Number.isNaN(ttyNr) ? null : ttyNr;
 }
 
 function readStat(pid: number, deps: NativeProbeDeps): string | null {
@@ -137,7 +137,7 @@ export interface NativeProbeResult {
 /**
  * Probe terminal width with zero subprocesses, using /proc and TIOCGWINSZ.
  * Linux only; anywhere else the result is inconclusive so the caller falls
- * back to the portable ps/stty/tput path.
+ * back to the portable ps/stty path.
  */
 export function probeTerminalNative(deps: NativeProbeDeps = defaultDeps): NativeProbeResult {
     const inconclusive: NativeProbeResult = { width: null, noControllingTTY: false };
