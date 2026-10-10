@@ -13,6 +13,7 @@ import {
     getTerminalWidth,
     resetTerminalWidthCache
 } from '../terminal';
+import * as terminalNative from '../terminal-native';
 import * as terminalWidthCache from '../terminal-width-cache';
 
 vi.mock('node:child_process', () => ({
@@ -349,6 +350,46 @@ describe('terminal utils', () => {
 
         resetTerminalWidthCache();
         expect(getTerminalWidth()).toBe(175);
+    });
+
+    describe('native /proc probe result', () => {
+        it('skips the ps/stty walk and spawns nothing when /proc shows no ancestor has a controlling terminal', () => {
+            setPlatform('linux');
+            vi.spyOn(terminalNative, 'probeTerminalNative').mockReturnValue({ width: null, noControllingTTY: true });
+
+            expect(getTerminalWidth()).toBeNull();
+            expect(mockExecFileSync).not.toHaveBeenCalled();
+        });
+
+        it('still walks ancestors with ps when the /proc probe is inconclusive', () => {
+            setPlatform('linux');
+            vi.spyOn(terminalNative, 'probeTerminalNative').mockReturnValue({ width: null, noControllingTTY: false });
+            mockExecFileSync.mockImplementation((file: string, args: string[]) => {
+                if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
+                    return '1234\n';
+                }
+
+                if (file === 'ps' && args.join(' ') === '-o tty= -p 1234') {
+                    return 'pts/3\n';
+                }
+
+                if (file === 'stty' && args.join(' ') === '-F /dev/pts/3 size') {
+                    return '24 132\n';
+                }
+
+                throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
+            });
+
+            expect(getTerminalWidth()).toBe(132);
+        });
+
+        it('returns the native width without spawning anything', () => {
+            setPlatform('linux');
+            vi.spyOn(terminalNative, 'probeTerminalNative').mockReturnValue({ width: 209, noControllingTTY: false });
+
+            expect(getTerminalWidth()).toBe(209);
+            expect(mockExecFileSync).not.toHaveBeenCalled();
+        });
     });
 
     // Wiring coverage for the sessionId/ttlSeconds L2-cache integration: unlike
