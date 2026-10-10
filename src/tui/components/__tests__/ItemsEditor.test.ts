@@ -369,7 +369,7 @@ describe('ItemsEditor', () => {
             stdout.clearOutput();
             stdin.write('e');
             await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('"\u{1F469}\u200D\u{1F4BB}  " (default: "Model: ")');
+            expect(stripAnsi(stdout.getOutput())).toContain('"\u{1F469}\u200D\u{1F4BB} │" (default: "Model: ")');
         } finally {
             instance.unmount();
             instance.cleanup();
