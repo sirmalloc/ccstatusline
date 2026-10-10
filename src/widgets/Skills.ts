@@ -24,7 +24,7 @@ export const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
 const EMPTY_HIDEABLE_STATE: HideableState = { key: 'empty', label: 'when no skills have been used' };
 
 export function parseListLimit(item: WidgetItem): number {
-    const parsed = parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
+    const parsed = Number.parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
     if (Number.isNaN(parsed) || parsed < 0) {
         return 0;
     }

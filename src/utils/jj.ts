@@ -1,8 +1,13 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 
 import type { RenderContext } from '../types/RenderContext';
 
+import { resolveExecutable } from './executable-path';
 import { resolveGitCwd } from './git';
+
+// Same as git's: a jj call that blocks (a held working-copy lock, a slow
+// snapshot) must not hold up the status line
+const JJ_COMMAND_TIMEOUT_MS = 5_000;
 
 export interface JjChangeCounts {
     insertions: number;
@@ -12,9 +17,10 @@ export interface JjChangeCounts {
 export function runJjArgs(args: string[], context: RenderContext, allowEmpty = false): string | null {
     try {
         const cwd = resolveGitCwd(context);
-        const output = execFileSync('jj', args, {
+        const output = execFileSync(resolveExecutable('jj'), args, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: JJ_COMMAND_TIMEOUT_MS,
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
@@ -34,8 +40,8 @@ function parseDiffStat(stat: string): JjChangeCounts {
     const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
 
     return {
-        insertions: insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0,
-        deletions: deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0
+        insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,
+        deletions: deleteMatch?.[1] ? Number.parseInt(deleteMatch[1], 10) : 0
     };
 }
 

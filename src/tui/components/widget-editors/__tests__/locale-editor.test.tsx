@@ -12,6 +12,7 @@ import {
 import type { WidgetItem } from '../../../../types/Widget';
 import { canonicalizeLocale } from '../../../../utils/locales';
 import { LOCALE_EDITOR_ACTION } from '../../../../widgets/shared/locale-editor';
+import { waitFor } from '../../../__tests__/helpers/wait-for-ink';
 import { UsageLocaleEditor } from '../UsageLocaleEditor';
 
 class MockTtyStream extends PassThrough {
@@ -32,7 +33,10 @@ class MockTtyStream extends PassThrough {
     }
 }
 
-interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+interface CapturedWriteStream extends NodeJS.WriteStream {
+    clearOutput: () => void;
+    getOutput: () => string;
+}
 
 function createMockStdin(): NodeJS.ReadStream {
     return new MockTtyStream() as unknown as NodeJS.ReadStream;
@@ -47,15 +51,29 @@ function createMockStdout(): CapturedWriteStream {
     });
 
     return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        clearOutput() {
+            chunks.length = 0;
+        },
         getOutput() {
             return chunks.join('');
         }
     });
 }
 
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
+// The editor's first frame ends with the result count
+async function waitForEditor(stdout: CapturedWriteStream): Promise<void> {
+    await waitFor(() => {
+        expect(stripAnsi(stdout.getOutput())).toMatch(/Showing \d+-\d+ of \d+/);
+    });
+}
+
+// Types a search and waits for the redraw that shows it with the expected result
+async function search(rendered: { stdin: NodeJS.ReadStream; stdout: CapturedWriteStream }, query: string, expected: string): Promise<void> {
+    rendered.stdout.clearOutput();
+    rendered.stdin.write(query);
+    await waitFor(() => {
+        expect(rendered.stdout.getOutput()).toContain(query);
+        expect(rendered.stdout.getOutput()).toContain(expected);
     });
 }
 
@@ -107,7 +125,7 @@ describe('UsageLocaleEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
+            await waitForEditor(rendered.stdout);
 
             const output = getPlainOutput(rendered.stdout.getOutput());
             expect(output).toMatch(/\n\nShowing \d+-\d+ of \d+/);
@@ -120,14 +138,13 @@ describe('UsageLocaleEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
-            rendered.stdin.write('japan');
-            await flushInk();
-
-            expect(rendered.stdout.getOutput()).toContain('ja-JP');
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'japan', 'ja-JP');
 
             rendered.stdin.write('\r');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
             expect(updated?.metadata?.locale).toBe('ja-JP');
@@ -144,11 +161,12 @@ describe('UsageLocaleEditor', () => {
         });
 
         try {
-            await flushInk();
-            rendered.stdin.write('en-us');
-            await flushInk();
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'en-us', 'en-US');
             rendered.stdin.write('\r');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
             expect(updated?.metadata?.locale).toBeUndefined();
@@ -166,14 +184,13 @@ describe('UsageLocaleEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
-            rendered.stdin.write('en-au');
-            await flushInk();
-
-            expect(rendered.stdout.getOutput()).toContain(`Use ${customLocale}`);
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'en-au', `Use ${customLocale}`);
 
             rendered.stdin.write('\r');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
             expect(updated?.metadata?.locale).toBe(customLocale);
@@ -186,11 +203,11 @@ describe('UsageLocaleEditor', () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
-            await flushInk();
+            await waitForEditor(rendered.stdout);
             rendered.stdin.write('\u001B');
-            await flushInk();
-
-            expect(rendered.onCancel).toHaveBeenCalledOnce();
+            await waitFor(() => {
+                expect(rendered.onCancel).toHaveBeenCalledOnce();
+            });
             expect(rendered.onComplete).not.toHaveBeenCalled();
         } finally {
             cleanupEditor(rendered);

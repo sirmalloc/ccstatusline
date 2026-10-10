@@ -139,6 +139,10 @@ export function getUsagePercentWidgetDisplayName(kind: UsagePercentWidgetKind): 
     return USAGE_PERCENT_WIDGET_CONFIG[kind].displayName;
 }
 
+export function getUsagePercentWidgetLabel(kind: UsagePercentWidgetKind): string {
+    return USAGE_PERCENT_WIDGET_CONFIG[kind].label;
+}
+
 export function getUsagePercentWidgetDescription(kind: UsagePercentWidgetKind): string {
     return USAGE_PERCENT_WIDGET_CONFIG[kind].description;
 }
@@ -146,7 +150,7 @@ export function getUsagePercentWidgetDescription(kind: UsagePercentWidgetKind): 
 export function getUsagePercentWidgetEditorDisplay(kind: UsagePercentWidgetKind, item: WidgetItem): WidgetEditorDisplay {
     return {
         displayText: getUsagePercentWidgetDisplayName(kind),
-        modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true })
+        modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true, includeCursor: true })
     };
 }
 

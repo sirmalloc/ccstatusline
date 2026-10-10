@@ -50,8 +50,8 @@ export const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
             }
         } else if (mode === 'width') {
             if (key.return) {
-                const width = parseInt(widthInput, 10);
-                if (!isNaN(width) && width > 0) {
+                const width = Number.parseInt(widthInput, 10);
+                if (!Number.isNaN(width) && width > 0) {
                     onComplete({ ...widget, maxWidth: width });
                 } else {
                     const { maxWidth, ...rest } = widget;
@@ -66,8 +66,8 @@ export const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onCom
             }
         } else if (mode === 'timeout') {
             if (key.return) {
-                const timeout = parseInt(timeoutInput, 10);
-                if (!isNaN(timeout) && timeout > 0) {
+                const timeout = Number.parseInt(timeoutInput, 10);
+                if (!Number.isNaN(timeout) && timeout > 0) {
                     onComplete({ ...widget, timeout });
                 } else {
                     const { timeout, ...rest } = widget;

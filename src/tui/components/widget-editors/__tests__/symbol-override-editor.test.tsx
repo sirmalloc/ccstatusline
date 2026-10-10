@@ -14,6 +14,7 @@ import {
     renderSymbolSlotsEditor,
     type SymbolSlot
 } from '../../../../widgets/shared/symbol-override';
+import { waitFor } from '../../../__tests__/helpers/wait-for-ink';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -33,7 +34,10 @@ class MockTtyStream extends PassThrough {
     }
 }
 
-interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+interface CapturedWriteStream extends NodeJS.WriteStream {
+    clearOutput: () => void;
+    getOutput: () => string;
+}
 
 function createMockStdin(): NodeJS.ReadStream {
     return new MockTtyStream() as unknown as NodeJS.ReadStream;
@@ -48,15 +52,12 @@ function createMockStdout(): CapturedWriteStream {
     });
 
     return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        clearOutput() {
+            chunks.length = 0;
+        },
         getOutput() {
             return chunks.join('');
         }
-    });
-}
-
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
     });
 }
 
@@ -115,14 +116,14 @@ describe('SymbolSlotsEditor', () => {
         const rendered = renderEditor({ id: 'git-status', type: 'git-status' });
 
         try {
-            await flushInk();
-
-            const lines = getPlainOutput(rendered.stdout.getOutput())
+            const slotLines = () => getPlainOutput(rendered.stdout.getOutput())
                 .split('\n')
                 .filter(line => gitStatusSlots.some(slot => line.includes(`${slot.label}:`)));
-            const colonColumns = lines.map(line => line.indexOf(':'));
+            await waitFor(() => {
+                expect(slotLines()).toHaveLength(gitStatusSlots.length);
+            });
 
-            expect(lines).toHaveLength(gitStatusSlots.length);
+            const colonColumns = slotLines().map(line => line.indexOf(':'));
             expect(new Set(colonColumns)).toHaveLength(1);
         } finally {
             cleanupEditor(rendered);
@@ -137,11 +138,19 @@ describe('SymbolSlotsEditor', () => {
         });
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
+            // Any new frame after Tab means the reset was handled
+            rendered.stdout.clearOutput();
             rendered.stdin.write('\t');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
             rendered.stdin.write('\r');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledTimes(1);
+            });
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
             expect(updated?.metadata).toBeUndefined();

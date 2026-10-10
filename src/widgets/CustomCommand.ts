@@ -8,8 +8,13 @@ import type {
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import { getVisibleText } from '../utils/ansi';
+import {
+    getVisibleText,
+    stripSgrCodes
+} from '../utils/ansi';
 import { runCustomCommand } from '../utils/custom-command';
+
+import { applyMaxWidth } from './shared/max-width';
 
 export class CustomCommandWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -77,8 +82,15 @@ export class CustomCommandWidget implements Widget {
                 output = getVisibleText(output);
             }
 
-            if (item.maxWidth && output.length > item.maxWidth) {
-                output = output.substring(0, item.maxWidth - 3) + '...';
+            // Truncate by display columns, skipping escape sequences and never
+            // splitting a grapheme. A cut can drop the command's own trailing
+            // reset, so close any SGR styling it left open; otherwise the
+            // colour bleeds into the separators and widgets that follow.
+            const truncated = applyMaxWidth(output, item.maxWidth);
+            if (truncated !== output && stripSgrCodes(truncated) !== truncated) {
+                output = `${truncated}\x1b[0m`;
+            } else {
+                output = truncated;
             }
 
             return output || null;

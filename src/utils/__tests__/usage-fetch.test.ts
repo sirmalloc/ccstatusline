@@ -1,11 +1,13 @@
-import type * as childProcess from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import { createRequire } from 'module';
-import * as os from 'os';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import type * as childProcess from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
@@ -16,6 +18,11 @@ import {
     parseUsageApiResponse
 } from '../usage-fetch';
 import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
+
+import {
+    startStalledProxy,
+    type StalledProxy
+} from './proxy-test-helpers';
 
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
@@ -42,7 +49,9 @@ interface ProbeOptions {
     claudeConfigDir?: string;
     home: string;
     httpsProxy?: string;
+    lockWrittenDuringRequest?: string;
     lowercaseHttpsProxy?: string;
+    noProxy?: string;
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
@@ -58,13 +67,13 @@ function createProbeHarness() {
     const usageModulePath = fileURLToPath(new URL('../usage.ts', import.meta.url));
 
     const probeScript = `
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { createRequire } from 'module';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const https = require('https');
+const https = require('node:https');
 const mode = process.env.TEST_REQUEST_MODE || 'success';
 const responseBody = process.env.TEST_RESPONSE_BODY || '';
 const responseHeaders = JSON.parse(process.env.TEST_RESPONSE_HEADERS_JSON || '{}');
@@ -103,6 +112,12 @@ https.request = (...args) => {
         },
         destroy() {},
         end() {
+            // Simulates a concurrent render replacing the lock while this
+            // request is in flight.
+            if (process.env.TEST_LOCK_DURING_REQUEST) {
+                fs.writeFileSync(lockFile, process.env.TEST_LOCK_DURING_REQUEST);
+            }
+
             if (mode === 'error') {
                 const handlers = requestHandlers.get('error') || [];
                 for (const handler of handlers) {
@@ -200,7 +215,8 @@ process.stdout.write(JSON.stringify({
             const normalizedKey = key.toUpperCase();
             return normalizedKey !== 'CLAUDE_CONFIG_DIR'
                 && normalizedKey !== 'CLAUDE_SECURESTORAGE_CONFIG_DIR'
-                && normalizedKey !== 'HTTPS_PROXY';
+                && normalizedKey !== 'HTTPS_PROXY'
+                && normalizedKey !== 'NO_PROXY';
         }));
 
         Object.assign(env, {
@@ -226,8 +242,16 @@ process.stdout.write(JSON.stringify({
             env.HTTPS_PROXY = options.httpsProxy;
         }
 
+        if (options.lockWrittenDuringRequest !== undefined) {
+            env.TEST_LOCK_DURING_REQUEST = options.lockWrittenDuringRequest;
+        }
+
         if (options.lowercaseHttpsProxy !== undefined) {
             env.https_proxy = options.lowercaseHttpsProxy;
+        }
+
+        if (options.noProxy !== undefined) {
+            env.NO_PROXY = options.noProxy;
         }
 
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
@@ -416,6 +440,34 @@ describe('fetchUsageData error handling', () => {
         error: {
             message: 'Rate limited. Please try again later.',
             type: 'rate_limit_error'
+        }
+    });
+
+    // The request carries the account's bearer token, so a host the user kept
+    // off the proxy must stay off it
+    it('connects directly when NO_PROXY lists api.anthropic.com', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const noProxyHome = harness.createTokenHome('no-proxy');
+
+            const result = harness.runProbe({
+                claudeConfigDir: noProxyHome.claudeConfig,
+                home: noProxyHome.home,
+                httpsProxy: 'http://proxy.local:8080',
+                noProxy: 'localhost,.anthropic.com',
+                mode: 'success',
+                nowMs,
+                pathDir: noProxyHome.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toMatchObject({ sessionUsage: 42, weeklyUsage: 17 });
+            expect(result.requestCount).toBe(1);
+            expect(result.proxyAgentConfigured).toBe(false);
+            expect(result.requestHost).toBe('api.anthropic.com');
+        } finally {
+            harness.cleanup();
         }
     });
 
@@ -891,6 +943,35 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('keeps a rate-limit lock that a concurrent render wrote during the fetch', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('success-keeps-foreign-lock');
+            // Another render got a 429 while this request was in flight. Deleting
+            // its lock would let the next render fetch inside the Retry-After window.
+            const rateLimitedLock = JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + 300,
+                error: 'rate-limited'
+            });
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                lockWrittenDuringRequest: rateLimitedLock,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.cacheExists).toBe(true);
+            expect(result.lockContents).toBe(rateLimitedLock);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('ignores a lock whose deadline is implausibly far in the future', () => {
         const harness = createProbeHarness();
 
@@ -951,6 +1032,47 @@ describe('fetchUsageData error handling', () => {
             // The horizon must not undercut a genuine Retry-After backoff.
             expect(result.requestCount).toBe(0);
             expect(result.first).toEqual({ error: 'rate-limited' });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('backs off credential lookups across renders after finding none, per profile', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('no-credentials-backoff');
+            const otherProfile = harness.createTokenHome('no-credentials-backoff-other');
+            const credentialsFile = path.join(home.claudeConfig, '.credentials.json');
+            fs.rmSync(credentialsFile);
+            const renderAt = (probeNowMs: number, claudeConfig = home.claudeConfig) => harness.runProbe({
+                claudeConfigDir: claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(renderAt(nowMs).first).toEqual({ error: 'no-credentials' });
+
+            // An API-key user has no OAuth login to find, and on macOS each
+            // lookup spawns `security` twice, a full keychain dump included.
+            // Later renders inside the window skip the lookup entirely, so a
+            // login made meanwhile is only picked up once it ends.
+            fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+            const backedOff = renderAt(nowMs + 10000);
+            expect(backedOff.first).toEqual({ error: 'no-credentials' });
+            expect(backedOff.requestCount).toBe(0);
+
+            // Another profile's lookup is not suppressed by this one's miss.
+            const other = renderAt(nowMs + 10000, otherProfile.claudeConfig);
+            expect(other.first.sessionUsage).toBe(42);
+            expect(other.requestCount).toBe(1);
+
+            const retried = renderAt(nowMs + 31000);
+            expect(retried.first.sessionUsage).toBe(42);
+            expect(retried.requestCount).toBe(1);
         } finally {
             harness.cleanup();
         }
@@ -1115,6 +1237,39 @@ describe('fetchUsageData error handling', () => {
             // Fingerprint matches and the cache is fresh, so it is served with no API call.
             expect(result.requestCount).toBe(0);
             expect(result.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['a day', 24 * 60 * 60 * 1000, 1, 42],
+        ['a few seconds', 2000, 0, 5]
+    ])('refetches a cache dated %s in the future only when the date cannot be right', (_label, aheadMs, expectedRequests, expectedSessionUsage) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('future-dated-cache');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: matchingHash });
+            // A day ahead: written while the system clock ran fast, since
+            // corrected. A few seconds ahead: a concurrent render wrote it
+            // after this one read the clock.
+            const futureSeconds = (mtimeMs + aheadMs) / 1000;
+            fs.utimesSync(cacheFile, futureSeconds, futureSeconds);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(expectedRequests);
+            expect(result.first.sessionUsage).toBe(expectedSessionUsage);
         } finally {
             harness.cleanup();
         }
@@ -1741,6 +1896,35 @@ describe('fetchUsageData error handling', () => {
 // missing from the other would parse fine from a live API fetch, then vanish
 // the moment that response round-trips through the on-disk cache. This test
 // makes that drift fail loudly instead.
+describe('usage API request behind a proxy that never answers CONNECT', () => {
+    let originalProxy: string | undefined;
+    let proxy: StalledProxy | null = null;
+
+    beforeEach(() => {
+        originalProxy = process.env.HTTPS_PROXY;
+    });
+
+    afterEach(async () => {
+        await proxy?.stop();
+        proxy = null;
+        if (originalProxy === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = originalProxy;
+        }
+    });
+
+    // The request's socket timeout can't fire before the proxy answers CONNECT,
+    // and the agent's own connection to the proxy would keep the process alive
+    it('gives up at the deadline and closes its connection to the proxy', async () => {
+        proxy = await startStalledProxy();
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 50)).toEqual({ kind: 'error' });
+        await proxy.connectionClosed;
+    });
+});
+
 describe('WEEKLY_MODEL_USAGE_BUCKETS schema parity', () => {
     it('declares every registry bucket field in CachedUsageDataSchema', () => {
         const cachedKeys = new Set(Object.keys(__testing.CachedUsageDataSchema.shape));
