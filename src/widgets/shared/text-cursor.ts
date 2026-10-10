@@ -67,18 +67,13 @@ export function applyTextCursorInput(state: TextCursorState, input: string, key:
     return null;
 }
 
-/** The text with the grapheme under the cursor in inverse video (a trailing block at the end). */
-export function renderTextWithCursor({ text, cursor }: TextCursorState): string {
-    let offset = 0;
-    const rendered = getGraphemes(text)
-        .map((grapheme) => {
-            const underCursor = offset === cursor;
-            offset += grapheme.length;
-            return underCursor ? `\x1b[7m${grapheme}\x1b[27m` : grapheme;
-        })
-        .join('');
+// A bar between characters rather than a block over one, so a trailing space
+// shows as a gap before it, and the end of the text doesn't look like a space
+const CURSOR_BAR = '\x1b[1;36m│\x1b[22;39m';
 
-    return cursor === text.length ? `${rendered}\x1b[7m \x1b[27m` : rendered;
+/** The text with a bar at the cursor. */
+export function renderTextWithCursor({ text, cursor }: TextCursorState): string {
+    return `${text.slice(0, cursor)}${CURSOR_BAR}${text.slice(cursor)}`;
 }
 
 export function useTextCursor(initialText: string) {
