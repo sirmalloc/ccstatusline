@@ -184,7 +184,7 @@ describe('StatusLinePreview helpers', () => {
 
         try {
             await waitFor(() => {
-                expect(stdout.getOutput()).toContain('Limit: 1hr 13m');
+                expect(stdout.getOutput()).toContain('Limit in: 1hr 13m');
             });
 
             expect(stdout.getOutput()).toContain('→100.0%');

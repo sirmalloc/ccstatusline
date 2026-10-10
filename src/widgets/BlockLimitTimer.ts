@@ -16,7 +16,7 @@ import {
     toggleUsageCompact
 } from './shared/usage-display';
 
-const LABEL = 'Limit: ';
+const LABEL = 'Limit in: ';
 const PREVIEW_LIMIT_IN_MS = 73 * 60 * 1000;
 // Rounded down like the reset timers, but never "0m": the limit hasn't been hit yet.
 const MIN_SHOWN_MS = 60 * 1000;

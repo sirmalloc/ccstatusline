@@ -25,16 +25,16 @@ function limitIn(limitInMs: number | null): RenderContext {
 
 describe('BlockLimitTimerWidget', () => {
     it('shows the time until the limit, rounded down to the minute', () => {
-        expect(render(ITEM, limitIn(4_387_500))).toBe('Limit: 1hr 13m');
+        expect(render(ITEM, limitIn(4_387_500))).toBe('Limit in: 1hr 13m');
     });
 
     it('formats durations like the reset timers', () => {
-        expect(render(ITEM, limitIn(4_387_500))).toBe(`Limit: ${formatUsageDuration(4_387_500)}`);
-        expect(render(COMPACT, limitIn(4_387_500))).toBe(`Limit: ${formatUsageDuration(4_387_500, true)}`);
+        expect(render(ITEM, limitIn(4_387_500))).toBe(`Limit in: ${formatUsageDuration(4_387_500)}`);
+        expect(render(COMPACT, limitIn(4_387_500))).toBe(`Limit in: ${formatUsageDuration(4_387_500, true)}`);
     });
 
     it('shows the short form with s', () => {
-        expect(render(COMPACT, limitIn(4_387_500))).toBe('Limit: 1h13m');
+        expect(render(COMPACT, limitIn(4_387_500))).toBe('Limit in: 1h13m');
     });
 
     it('drops the label in raw value mode', () => {
@@ -42,8 +42,8 @@ describe('BlockLimitTimerWidget', () => {
     });
 
     it('never shows 0m in the last minute', () => {
-        expect(render(ITEM, limitIn(30_000))).toBe('Limit: 1m');
-        expect(render(COMPACT, limitIn(30_000))).toBe('Limit: 1m');
+        expect(render(ITEM, limitIn(30_000))).toBe('Limit in: 1m');
+        expect(render(COMPACT, limitIn(30_000))).toBe('Limit in: 1m');
     });
 
     it.each([
@@ -54,8 +54,8 @@ describe('BlockLimitTimerWidget', () => {
     });
 
     it('shows a sample in the preview', () => {
-        expect(render(ITEM, { isPreview: true })).toBe('Limit: 1hr 13m');
-        expect(render(COMPACT, { isPreview: true })).toBe('Limit: 1h13m');
+        expect(render(ITEM, { isPreview: true })).toBe('Limit in: 1hr 13m');
+        expect(render(COMPACT, { isPreview: true })).toBe('Limit in: 1h13m');
     });
 
     it('describes itself for the line editor', () => {
