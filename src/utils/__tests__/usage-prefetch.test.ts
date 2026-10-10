@@ -380,7 +380,7 @@ describe('usage prefetch', () => {
 
         const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 97, resets_at: 1774020000 } } });
 
-        // Session Usage keeps the payload's percent; only the hide state reads the API's
+        // The usage widgets keep the payload's percent; only the hide state reads the API's
         expect(usageData).toEqual({ sessionUsage: 97, sessionResetAt: epochToIso(1774020000), apiSessionUsage: 100 });
         expect(mockFetchUsageData.mock.calls).toEqual([
             [{ requiredFields: ['sessionUsage'] }]

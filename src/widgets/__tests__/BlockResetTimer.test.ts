@@ -162,7 +162,7 @@ describe('BlockResetTimerWidget', () => {
             mockFormatUsageDuration.mockReturnValue('1hr 43m');
         });
 
-        // The raw percent decides, so 99.7% that a whole-number Session Usage shows as
+        // The raw percent decides, so 99.7% that a whole-number usage percent shows as
         // "100%" still counts as under the limit.
         it.each([
             ['under 100%', { sessionUsage: 60 }],
