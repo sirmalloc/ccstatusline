@@ -144,6 +144,24 @@ describe('jj utils', () => {
             });
         });
 
+        it('ignores insertion counts in filenames before the summary', () => {
+            mockExecFileSync.mockReturnValue('777 insertions.txt | 1 +\n1 file changed, 1 insertion(+), 0 deletions(-)\n');
+
+            expect(getJjChangeCounts({})).toEqual({
+                insertions: 1,
+                deletions: 0
+            });
+        });
+
+        it('ignores deletion counts in filenames before the summary', () => {
+            mockExecFileSync.mockReturnValue('888 deletions.txt | 1 -\n1 file changed, 0 insertions(+), 1 deletion(-)\n');
+
+            expect(getJjChangeCounts({})).toEqual({
+                insertions: 0,
+                deletions: 1
+            });
+        });
+
         it('returns zero counts when jj diff --stat returns empty', () => {
             mockExecFileSync.mockReturnValue('');
 
