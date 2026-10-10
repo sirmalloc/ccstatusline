@@ -30,6 +30,7 @@ export class JjBookmarksWidget extends JjWidgetBase {
         // back, so two bookmarked heads (@ on a merge) would run together
         const output = runJjArgs([
             'log',
+            '--ignore-working-copy',
             '--no-graph',
             '-r',
             'heads(::@ & bookmarks())',

@@ -29,6 +29,7 @@ export class JjWorkspaceWidget extends JjWidgetBase {
         const output = runJjArgs([
             'workspace',
             'list',
+            '--ignore-working-copy',
             '--template',
             CURRENT_WORKSPACE_TEMPLATE
         ], context);
