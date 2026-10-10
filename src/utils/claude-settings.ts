@@ -25,6 +25,8 @@ export type { ClaudeSettings };
 const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
+const stat = fs.promises.stat;
+const unlink = fs.promises.unlink;
 
 export const CCSTATUSLINE_COMMANDS = {
     AUTO_NPX: 'npx -y ccstatusline@latest',
@@ -140,6 +142,16 @@ export function getClaudeSettingsPath(): string {
     return path.join(getClaudeConfigDir(), 'settings.json');
 }
 
+async function removeIfExists(filePath: string): Promise<void> {
+    try {
+        await unlink(filePath);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+        }
+    }
+}
+
 /**
  * Creates a backup of the current Claude settings file.
  */
@@ -149,7 +161,12 @@ async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
     try {
         if (fs.existsSync(settingsPath)) {
             const content = await readFile(settingsPath, 'utf-8');
-            await writeFile(backupPath, content, 'utf-8');
+            // The backup holds the same secrets (env, apiKeyHelper) as the
+            // settings, so it gets their permissions. It's recreated because
+            // an existing file keeps its own permissions when overwritten.
+            const mode = (await stat(settingsPath)).mode & 0o777;
+            await removeIfExists(backupPath);
+            await writeFile(backupPath, content, { encoding: 'utf-8', mode });
             return backupPath;
         }
     } catch (error) {
@@ -405,14 +422,17 @@ export async function installStatusLine({
 }: InstallStatusLineOptions): Promise<void> {
     let settings: ClaudeSettings;
 
-    const backupPath = await backupClaudeSettings('.orig');
+    // A missing settings file loads as {}; any error here means the file exists
+    // but could not be read or parsed. Abort rather than overwrite it with only
+    // our statusLine, which would discard the user's other Claude Code settings.
     try {
         settings = await loadClaudeSettings({ logErrors: false });
-    } catch {
-        const fallbackBackupPath = `${getClaudeSettingsPath()}.orig`;
-        console.error(`Warning: Could not read existing Claude settings. A backup exists at ${backupPath ?? fallbackBackupPath}.`);
-        settings = {};
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then install again.`, { cause: error });
     }
+
+    await backupClaudeSettings('.orig');
 
     // Update settings with our status line (confirmation already handled in TUI)
     const existingRefreshInterval = settings.statusLine?.refreshInterval;
