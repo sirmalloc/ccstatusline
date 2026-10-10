@@ -35,7 +35,7 @@ const context: RenderContext = {
     data: { model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' } }
 };
 
-describe('Block Forecast between Session Usage and another widget', () => {
+describe('Block Forecast between the 5-hour usage widget and another widget', () => {
     it.each([
         ['plain', plainSettings],
         ['Powerline', powerlineSettings]

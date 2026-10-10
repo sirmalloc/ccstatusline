@@ -45,7 +45,7 @@ describe('BlockForecastWidget', () => {
     it.each([
         ['there is no forecast', { usageData: { sessionUsage: 42 } }],
         ['nothing is known', {}],
-        ['session usage is unknown', { sessionForecast: { projectedPercent: 83.2, limitInMs: null } }],
+        ['the 5-hour usage is unknown', { sessionForecast: { projectedPercent: 83.2, limitInMs: null } }],
         ['the projection reads the same as current usage', live(42, 42.04)]
     ])('renders nothing when %s', (_label, context: RenderContext) => {
         expect(render(ITEM, context)).toBeNull();
