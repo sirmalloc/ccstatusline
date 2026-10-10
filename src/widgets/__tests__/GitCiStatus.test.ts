@@ -136,6 +136,9 @@ describe('GitCiStatusWidget', () => {
     it('uses process cwd when repo path is omitted', () => {
         const getCachedGitReviewData = vi.fn(() => PASSING_PR);
         render({}, { getCachedGitReviewData, resolveGitCwd: () => undefined });
-        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', { includeChecks: true });
+        expect(getCachedGitReviewData).toHaveBeenCalledWith('/tmp/process-cwd', {
+            includeChecks: true,
+            context: expect.objectContaining({}) as unknown
+        });
     });
 });

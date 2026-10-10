@@ -1073,4 +1073,47 @@ describe('git-review-cache', () => {
         );
         expect(glabMrCalls).toHaveLength(1);
     });
+
+    it('keys the cache through the render context runGit without spawning git for the ref', () => {
+        const harness = createHarness();
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+        harness.execCalls.length = 0;
+
+        const runGitCalls: string[] = [];
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                runGitCalls.push(command);
+                return command === 'symbolic-ref --short HEAD' ? 'feature/cache-a' : null;
+            }
+        };
+
+        expect(getCachedGitReviewData('/tmp/repo', { context: { data: { cwd: '/tmp/repo' } } }, deps)).toBeNull();
+
+        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD']);
+        expect(harness.execCalls.filter(call => call.cmd === 'git')).toEqual([]);
+        // Same cache file (and so the same lock the refresh child releases)
+        // as the uncached lookup.
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
+    });
+
+    it('falls back to rev-parse through runGit on a detached HEAD', () => {
+        const harness = createHarness();
+        harness.setCurrentRef('');
+        const lockPathFromSpawn = prepareCachePath(harness) + '.lock';
+
+        const runGitCalls: string[] = [];
+        const deps: GitReviewCacheDeps = {
+            ...harness.deps,
+            runGit: (command) => {
+                runGitCalls.push(command);
+                return command === 'rev-parse --short HEAD' ? 'abc123' : null;
+            }
+        };
+
+        getCachedGitReviewData('/tmp/repo', { context: {} }, deps);
+
+        expect(runGitCalls).toEqual(['symbolic-ref --short HEAD', 'rev-parse --short HEAD']);
+        expect(harness.cacheFiles.has(lockPathFromSpawn)).toBe(true);
+    });
 });
