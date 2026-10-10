@@ -6,7 +6,8 @@ import {
     afterEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import type { RenderContext } from '../../types/RenderContext';
@@ -21,8 +22,18 @@ const tempPaths: string[] = [];
 const ORIGINAL_HOME = process.env.HOME;
 const ORIGINAL_USERPROFILE = process.env.USERPROFILE;
 
+function useTempHome(): string {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-home-'));
+    tempPaths.push(home);
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    vi.spyOn(os, 'homedir').mockReturnValue(home);
+    return home;
+}
+
 afterEach(() => {
     clearGitCache();
+    vi.restoreAllMocks();
     if (ORIGINAL_HOME === undefined) {
         delete process.env.HOME;
     } else {
@@ -35,6 +46,7 @@ afterEach(() => {
     }
     for (const tempPath of tempPaths.splice(0)) {
         fs.rmSync(tempPath, { recursive: true, force: true });
+        expect(fs.existsSync(tempPath)).toBe(false);
     }
 });
 
@@ -44,10 +56,7 @@ describe('getGitConflictCount with a real index', () => {
         ['single.txt'],
         ['tab\tname.txt', 'line\nname.txt', ' leading.txt', 'trailing.txt ', 'dir/file.txt']
     ])('counts exact filenames and deduplicates stages: %j', (...filenames: string[]) => {
-        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-home-'));
-        tempPaths.push(home);
-        process.env.HOME = home;
-        process.env.USERPROFILE = home;
+        const home = useTempHome();
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-conflicts-'));
         tempPaths.push(root);
         const git = (args: string[], input?: string) => execFileSync('git', args, {
@@ -69,5 +78,10 @@ describe('getGitConflictCount with a real index', () => {
             { id: 'conflicts', type: 'git-conflicts' }, context, DEFAULT_SETTINGS
         );
         expect({ count, rendered }).toEqual({ count: filenames.length, rendered: `⚠${filenames.length}` });
+        const cacheDir = path.join(home, '.cache', 'ccstatusline', 'git-cache');
+        const cacheFiles = fs.readdirSync(cacheDir);
+        expect(cacheFiles).toHaveLength(1);
+        const cache = JSON.parse(fs.readFileSync(path.join(cacheDir, cacheFiles[0] ?? ''), 'utf8')) as { cwd?: string };
+        expect(cache.cwd).toBe(root);
     });
 });
