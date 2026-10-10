@@ -242,6 +242,32 @@ describe('getUsageToken', () => {
         ]);
     });
 
+    it('bounds every macOS keychain read with a timeout', () => {
+        const dump = makeKeychainBlock('Claude Code-credentials-hashed', { quoted: '20240301010101Z' });
+
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command === 'security' && args?.[0] === 'dump-keychain') {
+                return dump;
+            }
+
+            throw new Error('security timed out');
+        });
+
+        expect(getUsageToken()).toBeNull();
+        expect(getSecurityCallLog()).toEqual([
+            'find-generic-password -s Claude Code-credentials -w',
+            'dump-keychain',
+            'find-generic-password -s Claude Code-credentials-hashed -w'
+        ]);
+        // A blocked `security` (e.g. waiting on a keychain unlock prompt)
+        // must not hold the status line until someone answers it.
+        for (const call of mockedExecFileSync.mock.calls) {
+            expect(call[2]).toEqual(expect.objectContaining({ timeout: 5000 }));
+        }
+    });
+
     it('uses the credentials file on non-macOS', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
         mockCredentialsFile(makeTokenPayload('linux-file-token'));

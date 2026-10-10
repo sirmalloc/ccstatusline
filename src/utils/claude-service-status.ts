@@ -1,4 +1,3 @@
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as os from 'node:os';
@@ -9,6 +8,11 @@ import type { ColorLevelString } from '../types/ColorLevel';
 import type { WidgetItem } from '../types/Widget';
 
 import { getColorAnsiCode } from './colors';
+import { isExcludedFromProxy } from './no-proxy';
+import {
+    createProxyAgent,
+    type ClosableProxyAgent
+} from './proxy-agent';
 
 // Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
 // across statusline invocations, plus a failure lock so an unreachable status
@@ -259,7 +263,7 @@ function clearFailureLock(): void {
 
 function getStatusPageProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    return proxyUrl?.length ? proxyUrl : null;
+    return proxyUrl?.length && !isExcludedFromProxy(STATUS_HOST) ? proxyUrl : null;
 }
 
 interface StatusPageResponse {
@@ -284,8 +288,25 @@ const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.re
 
 function fetchStatusPagePath(
     pathName: string,
-    requestFn: StatusPageRequestFn = requestStatusPage
+    requestFn: StatusPageRequestFn = requestStatusPage,
+    deadlineMs = STATUS_TIMEOUT_MS
 ): Promise<string | null> {
+    let requestOptions: https.RequestOptions;
+    let proxy: ClosableProxyAgent | null;
+    try {
+        const proxyUrl = getStatusPageProxyUrl();
+        proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
+        requestOptions = {
+            hostname: STATUS_HOST,
+            path: pathName,
+            method: 'GET',
+            timeout: STATUS_TIMEOUT_MS,
+            ...(proxy ? { agent: proxy.agent } : {})
+        };
+    } catch {
+        return Promise.resolve(null);
+    }
+
     return new Promise((resolve) => {
         let settled = false;
 
@@ -294,23 +315,9 @@ function fetchStatusPagePath(
                 return;
             }
             settled = true;
+            clearTimeout(deadline);
             resolve(value);
         };
-
-        let requestOptions: https.RequestOptions;
-        try {
-            const proxyUrl = getStatusPageProxyUrl();
-            requestOptions = {
-                hostname: STATUS_HOST,
-                path: pathName,
-                method: 'GET',
-                timeout: STATUS_TIMEOUT_MS,
-                ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
-            };
-        } catch {
-            finish(null);
-            return;
-        }
 
         const request = requestFn(requestOptions, (response) => {
             let data = '';
@@ -330,6 +337,13 @@ function fetchStatusPagePath(
             request.destroy();
             finish(null);
         });
+        // `timeout` only covers an idle socket, and behind a proxy the request
+        // has none until the proxy answers CONNECT
+        const deadline = setTimeout(() => {
+            request.destroy();
+            proxy?.close();
+            finish(null);
+        }, deadlineMs);
         request.end();
     });
 }

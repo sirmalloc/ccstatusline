@@ -1,8 +1,10 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type { RenderContext } from '../types/RenderContext';
 
+import { resolveExecutable } from './executable-path';
 import {
     getCommandCachePath,
     getGitCacheTtlMs,
@@ -12,6 +14,10 @@ import {
     runCachedCommand,
     type GitRepoMetadata
 } from './git';
+
+// Same as git's: a jj call that blocks (a held working-copy lock, a slow
+// snapshot) must not hold up the status line
+const JJ_COMMAND_TIMEOUT_MS = 5_000;
 
 export interface JjChangeCounts {
     insertions: number;
@@ -60,9 +66,9 @@ function resolveJjRepoDir(jjDir: string): string {
 // Every jj operation (including a working-copy snapshot) adds a new op head
 // and rewrites this workspace's checkout file, so their mtimes invalidate
 // cached output the same way .git/HEAD and .git/index do for git.
-function getJjRepoMetadata(jjDir: string): GitRepoMetadata {
+function getJjRepoMetadata(jjDir: string, cwd: string): GitRepoMetadata {
     return {
-        cachePath: getCommandCachePath('jj', jjDir),
+        cachePath: getCommandCachePath('jj', jjDir, cwd),
         headMtimeMs: getMtimeMs(path.join(resolveJjRepoDir(jjDir), 'op_heads', 'heads')),
         indexMtimeMs: getMtimeMs(path.join(jjDir, 'working_copy', 'checkout'))
     };
@@ -85,14 +91,20 @@ export function runJjArgs(args: string[], context: RenderContext, allowEmpty = f
     const maySnapshot = args[0] !== 'root' && !args.includes('--ignore-working-copy');
 
     return runCachedCommand({
-        file: 'jj',
-        args,
+        tool: 'jj',
+        exec: () => execFileSync(resolveExecutable('jj'), args, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: JJ_COMMAND_TIMEOUT_MS,
+            windowsHide: true,
+            ...(cwd ? { cwd } : {})
+        }),
         cacheToken: `${args.join('\0')}${allowEmpty ? '\0allow-empty' : ''}`,
         cwd,
-        metadata: jjDir ? getJjRepoMetadata(jjDir) : null,
+        metadata: jjDir && cwd ? getJjRepoMetadata(jjDir, cwd) : null,
         ttlMs: getGitCacheTtlMs(context),
         allowEmpty,
-        ...(jjDir && maySnapshot ? { refreshMetadata: () => getJjRepoMetadata(jjDir) } : {})
+        ...(jjDir && cwd && maySnapshot ? { refreshMetadata: () => getJjRepoMetadata(jjDir, cwd) } : {})
     });
 }
 

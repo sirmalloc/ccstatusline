@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import * as path from 'node:path';
 import {
     beforeEach,
     describe,
@@ -8,10 +9,13 @@ import {
 } from 'vitest';
 
 import type {
+    RenderContext,
     Widget,
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjBookmarksWidget } from '../JjBookmarks';
 import { JjChangesWidget } from '../JjChanges';
 import { JjDeletionsWidget } from '../JjDeletions';
@@ -49,6 +53,25 @@ function makeItem(itemType: string, overrides: Partial<WidgetItem> = {}): Widget
 }
 
 const HIDE_NO_JJ = { metadata: { hide: 'no-jj' } };
+
+// Every test gets a fresh `.jj` workspace (found without spawning) and an empty
+// command cache; its parent directory has no `.jj`, so jj is never run there.
+const workspace = useJjTestWorkspace();
+
+function inRepo(): RenderContext {
+    return { data: { cwd: workspace.root } };
+}
+
+function outsideRepo(): RenderContext {
+    return { data: { cwd: path.dirname(workspace.root) } };
+}
+
+// What the `jj root` repo check prints before the widget's own command fails.
+// JJ Root Dir's own command is that same cached `jj root` call, so for it the
+// command can only fail together with the repo check.
+function repoCheckBeforeFailedCommand(itemType: string): string[] {
+    return itemType === 'jj-root-dir' ? [] : ['/tmp/repo\n'];
+}
 
 const cases: {
     name: string;
@@ -105,6 +128,8 @@ const slotCases: {
     { name: 'JjDeletionsWidget', itemType: 'jj-deletions', widget: new JjDeletionsWidget(), defaultValue: '-2', overriddenValue: '▼2', clearedValue: '2' }
 ];
 
+mockExecutableResolution();
+
 describe('JJ widget shared behavior', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -149,31 +174,31 @@ describe('JJ widget shared behavior', () => {
         expect(mockExecFileSync.mock.calls).toHaveLength(0);
     });
 
-    it.each(cases)('$name should show $noJj outside a jj repo without running its own command', ({ widget, itemType, noJj }) => {
+    it.each(cases)('$name should show $noJj outside a jj repo without running jj', ({ widget, itemType, noJj }) => {
         mockJjOutputs();
 
-        expect(widget.render(makeItem(itemType), {}, DEFAULT_SETTINGS)).toBe(noJj);
-        expect(mockExecFileSync.mock.calls).toHaveLength(1);
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(widget.render(makeItem(itemType), outsideRepo(), DEFAULT_SETTINGS)).toBe(noJj);
+        expect(mockExecFileSync.mock.calls).toHaveLength(0);
     });
 
     it.each(cases)('$name should hide its placeholder outside a jj repo with no-jj', ({ widget, itemType }) => {
         mockJjOutputs();
 
-        expect(widget.render(makeItem(itemType, HIDE_NO_JJ), {}, DEFAULT_SETTINGS)).toBeNull();
+        expect(widget.render(makeItem(itemType, HIDE_NO_JJ), outsideRepo(), DEFAULT_SETTINGS)).toBeNull();
     });
 
     it.each(cases)('$name should show $commandFailed when its jj command fails', ({ widget, itemType, commandFailed }) => {
-        mockJjOutputs('/tmp/repo\n');
+        const repoCheck = repoCheckBeforeFailedCommand(itemType);
+        mockJjOutputs(...repoCheck);
 
-        expect(widget.render(makeItem(itemType), {}, DEFAULT_SETTINGS)).toBe(commandFailed);
-        expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        expect(widget.render(makeItem(itemType), inRepo(), DEFAULT_SETTINGS)).toBe(commandFailed);
+        expect(mockExecFileSync.mock.calls).toHaveLength(repoCheck.length + 1);
     });
 
     it.each(cases)('$name should apply no-jj to a failed jj command only when it shows a placeholder', ({ widget, itemType, commandFailed, hidesCommandFailed }) => {
-        mockJjOutputs('/tmp/repo\n');
+        mockJjOutputs(...repoCheckBeforeFailedCommand(itemType));
 
-        expect(widget.render(makeItem(itemType, HIDE_NO_JJ), {}, DEFAULT_SETTINGS)).toBe(hidesCommandFailed ? null : commandFailed);
+        expect(widget.render(makeItem(itemType, HIDE_NO_JJ), inRepo(), DEFAULT_SETTINGS)).toBe(hidesCommandFailed ? null : commandFailed);
     });
 });
 
@@ -185,29 +210,29 @@ describe('JJ widget glyph prefixes', () => {
     it.each(glyphCases)('$name should prefix a live value with a glyph override', ({ widget, itemType, output, value }) => {
         mockJjOutputs('/tmp/repo\n', output);
 
-        expect(widget.render(makeItem(itemType, { character: '★' }), {}, DEFAULT_SETTINGS)).toBe(`★ ${value}`);
+        expect(widget.render(makeItem(itemType, { character: '★' }), inRepo(), DEFAULT_SETTINGS)).toBe(`★ ${value}`);
     });
 
     it.each(glyphCases)('$name should drop the glyph and its space on an empty override', ({ widget, itemType, output, value }) => {
         mockJjOutputs('/tmp/repo\n', output);
 
-        expect(widget.render(makeItem(itemType, { character: '' }), {}, DEFAULT_SETTINGS)).toBe(value);
+        expect(widget.render(makeItem(itemType, { character: '' }), inRepo(), DEFAULT_SETTINGS)).toBe(value);
     });
 
     it.each(glyphCases)('$name should drop the glyph from a raw value', ({ widget, itemType, output, value }) => {
         mockJjOutputs('/tmp/repo\n', output);
 
-        expect(widget.render(makeItem(itemType, { character: '★', rawValue: true }), {}, DEFAULT_SETTINGS)).toBe(value);
+        expect(widget.render(makeItem(itemType, { character: '★', rawValue: true }), inRepo(), DEFAULT_SETTINGS)).toBe(value);
     });
 
     it.each(glyphCases)('$name should keep the glyph on placeholders in raw mode', ({ widget, itemType, commandFailedText }) => {
         const item = makeItem(itemType, { character: '★', rawValue: true });
 
         mockJjOutputs();
-        expect(widget.render(item, {}, DEFAULT_SETTINGS)).toBe('★ no jj');
+        expect(widget.render(item, outsideRepo(), DEFAULT_SETTINGS)).toBe('★ no jj');
 
         mockJjOutputs('/tmp/repo\n');
-        expect(widget.render(item, {}, DEFAULT_SETTINGS)).toBe(`★ ${commandFailedText}`);
+        expect(widget.render(item, inRepo(), DEFAULT_SETTINGS)).toBe(`★ ${commandFailedText}`);
     });
 });
 
@@ -219,27 +244,27 @@ describe('JJ widget symbol slots', () => {
     it.each(slotCases)('$name should render live counts with its default symbols', ({ widget, itemType, defaultValue }) => {
         mockJjOutputs('/tmp/repo\n', DIFF_STAT);
 
-        expect(widget.render(makeItem(itemType), {}, DEFAULT_SETTINGS)).toBe(defaultValue);
+        expect(widget.render(makeItem(itemType), inRepo(), DEFAULT_SETTINGS)).toBe(defaultValue);
     });
 
     it.each(slotCases)('$name should render live counts with slot overrides', ({ widget, itemType, overriddenValue }) => {
         mockJjOutputs('/tmp/repo\n', DIFF_STAT);
         const item = makeItem(itemType, { metadata: { symbolInsertions: '▲', symbolDeletions: '▼' } });
 
-        expect(widget.render(item, {}, DEFAULT_SETTINGS)).toBe(overriddenValue);
+        expect(widget.render(item, inRepo(), DEFAULT_SETTINGS)).toBe(overriddenValue);
     });
 
     it.each(slotCases)('$name should render live counts without symbols on empty overrides', ({ widget, itemType, clearedValue }) => {
         mockJjOutputs('/tmp/repo\n', DIFF_STAT);
         const item = makeItem(itemType, { metadata: { symbolInsertions: '', symbolDeletions: '' } });
 
-        expect(widget.render(item, {}, DEFAULT_SETTINGS)).toBe(clearedValue);
+        expect(widget.render(item, inRepo(), DEFAULT_SETTINGS)).toBe(clearedValue);
     });
 
     it.each(slotCases)('$name should not put slot symbols on its placeholder', ({ widget, itemType }) => {
         mockJjOutputs();
         const item = makeItem(itemType, { metadata: { symbolInsertions: '▲', symbolDeletions: '▼' } });
 
-        expect(widget.render(item, {}, DEFAULT_SETTINGS)).toBe('(no jj)');
+        expect(widget.render(item, outsideRepo(), DEFAULT_SETTINGS)).toBe('(no jj)');
     });
 });

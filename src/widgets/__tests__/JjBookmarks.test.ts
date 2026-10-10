@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjBookmarksWidget } from '../JjBookmarks';
 
@@ -44,6 +45,8 @@ function render(options: {
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
 
 describe('JjBookmarksWidget', () => {
     beforeEach(() => {
@@ -80,7 +83,7 @@ describe('JjBookmarksWidget', () => {
             '-r',
             'heads(::@ & bookmarks())',
             '--template',
-            'bookmarks'
+            String.raw`bookmarks ++ "\n"`
         ]);
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
@@ -96,6 +99,16 @@ describe('JjBookmarksWidget', () => {
         mockExecFileSync.mockReturnValueOnce('main feature-branch');
 
         expect(render()).toBe('🔖 main, feature-branch');
+    });
+
+    it('should separate bookmarks on different heads', () => {
+        // @ on a merge of two bookmarked heads: jj prints one template output
+        // per head, back to back, so each ends with the template's newline
+        mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
+        mockExecFileSync.mockReturnValueOnce('feature-a\nfeature-b\n');
+
+        expect(render()).toBe('🔖 feature-a, feature-b');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toContain(String.raw`bookmarks ++ "\n"`);
     });
 
     it('should render raw bookmark value', () => {

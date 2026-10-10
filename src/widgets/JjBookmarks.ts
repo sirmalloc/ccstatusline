@@ -26,6 +26,8 @@ export class JjBookmarksWidget extends JjWidgetBase {
     getDisplayName(): string { return 'JJ Bookmarks'; }
 
     protected getValue(context: RenderContext): string | null {
+        // One line per head: jj prints each commit's template output back to
+        // back, so two bookmarked heads (@ on a merge) would run together
         const output = runJjArgs([
             'log',
             '--ignore-working-copy',
@@ -33,7 +35,7 @@ export class JjBookmarksWidget extends JjWidgetBase {
             '-r',
             'heads(::@ & bookmarks())',
             '--template',
-            'bookmarks'
+            String.raw`bookmarks ++ "\n"`
         ], context);
         if (!output) {
             return null;

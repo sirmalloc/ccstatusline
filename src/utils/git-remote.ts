@@ -66,8 +66,10 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
             return null;
         }
 
-        // Remove leading/trailing slashes and .git suffix
-        const pathname = parsedUrl.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+        // Remove empty segments (leading, trailing or repeated slashes) and the
+        // .git suffix. Splitting stays linear where a trailing-slash regex
+        // would rescan every run of slashes from each position in it.
+        const pathname = parsedUrl.pathname.split('/').filter(Boolean).join('/').replace(/\.git$/, '');
         const segments = pathname.split('/').filter(Boolean);
 
         const repo = segments.at(-1);

@@ -38,6 +38,9 @@ export function handleHookInput(input: string | null): void {
         }
 
         const filePath = getSkillsFilePath(sessionId);
+        if (!filePath) {
+            return;
+        }
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         const entry = JSON.stringify({
             timestamp: new Date().toISOString(),

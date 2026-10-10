@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjRootDirWidget } from '../JjRootDir';
 
@@ -42,6 +43,8 @@ function render(options: {
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
 
 describe('JjRootDirWidget', () => {
     beforeEach(() => {
