@@ -33,17 +33,17 @@ ccstatusline --version
 - **Voice Status** - Show whether Claude Code voice input is enabled. It can render as an icon, icon plus text, plain text, or `voice on/off`, with optional Nerd Font microphone icons.
 - **Sandbox Status** - Show the effective `sandbox.enabled` value from Claude Code's layered project and user settings. It can render as a glyph, `SB: ON/OFF`, or `Sandbox: ON/OFF`, with optional Nerd Font lock icons. The value is refreshed after `/sandbox` changes, but is best effort when managed or CLI settings override files or sandbox initialization fails.
 - **Thinking Effort** / **Vim Mode** / **Skills** - Show Claude thinking effort, the current vim editing mode, and skill activity from hook data. Thinking Effort reads live status JSON first, then `/model` or `/effort` transcript output, then settings fallback; it supports `low`, `medium`, `high`, `xhigh`, and `max`, shows `default` when no effort is set, and marks unknown future values with `?`. Claude Code reports Ultracode as `xhigh` in status line data; it does not expose Ultracode as a separate effort level.
-- **Session Clock** / **Session Cost** - Show elapsed session time and the current session cost in USD.
+- **Session Clock** / **Session Cost** / **Session Cost Rate** - Show elapsed session time, the current session cost in USD, and that cost per hour (`Rate: $5.00/hr`). Session Cost Rate divides by the time Claude spent working (API time) by default, or by the whole session with clock time on, and shows nothing until a full minute of that time has passed.
 
 ### Git
 
-- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. Git Branch and Git Root Dir can cap their visible labels to a per-widget maximum width; truncation keeps OSC 8 hyperlink targets intact. Works with GitHub (`gh`) and GitLab (`glab`); SSH remote aliases are resolved with `ssh -G` before provider detection, while canonical GitHub/GitLab remotes keep their original forge hosts. For self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
+- **Git Branch** / **Git Root Dir** / **Git PR** - Show the current branch, repository root directory, and PR/MR details for the current branch with optional links. With a detached HEAD, Git Branch shows the short commit SHA in parentheses. Git Branch and Git Root Dir can cap their visible labels to a per-widget maximum width; truncation keeps OSC 8 hyperlink targets intact. Works with GitHub (`gh`) and GitLab (`glab`); SSH remote aliases are resolved with `ssh -G` before provider detection, while canonical GitHub/GitLab remotes keep their original forge hosts. For self-hosted hosts whose name contains neither token, whichever CLI is authenticated against that host (`gh auth status --hostname <h>` / `glab auth status --hostname <h>`) is used.
 - **Git CI Status** - Summarize GitHub checks for the current branch's pull request as failing (`✗`), pending (`●`), and successful (`✓`) counts. Raw-value mode renders `failing`, `pending`, or `passing`; `-` means no pull request or readable check rollup. This widget is GitHub-only and uses the same cached `gh` lookup as Git PR.
 - **Git Changes** / **Git Insertions** / **Git Deletions** - Show combined or separate insertion/deletion counts, with customizable signs through `g`.
 - **Git Status** / **Git Staged** / **Git Unstaged** / **Git Untracked** / **Git Ahead/Behind** / **Git Conflicts** / **Git SHA** - Show compact repo-state indicators, upstream divergence, merge-conflict count, and the current short commit SHA.
 - **Git Staged Files** / **Git Unstaged Files** / **Git Untracked Files** / **Git Clean Status** - Show file-level status counts and clean/dirty state. Git Clean Status supports custom clean/dirty glyphs through `g`; raw mode shows the words `clean` or `dirty`.
 - **Git Origin Owner** / **Git Origin Repo** / **Git Origin Owner/Repo** - Show parsed `origin` remote metadata.
-- **Git Upstream Owner** / **Git Upstream Repo** / **Git Upstream Owner/Repo** / **Git Is Fork** - Show upstream remote metadata and whether the current repo is a fork.
+- **Git Upstream Owner** / **Git Upstream Repo** / **Git Upstream Owner/Repo** / **Git Is Fork** - Show upstream remote metadata and whether the current repo is a fork. Git Is Fork displays `⑂` for forks by default; press `g` to customize it, or use raw mode for `true`/`false`.
 - **Git Worktree** / **Git Worktree Mode** / **Git Worktree Name** / **Git Worktree Branch** / **Git Worktree Original Branch** - Show worktree status plus the active worktree's name and branch metadata.
 
 ### Jujutsu (JJ)
@@ -56,17 +56,17 @@ ccstatusline --version
 
 - **Tokens Input** / **Tokens Output** / **Tokens Cached** / **Tokens Total** - Show current-session token counts. Input/output prefer cumulative transcript metrics and fall back to `context_window.total_input_tokens` / `context_window.total_output_tokens` when transcript metrics are unavailable; cached/total use transcript metrics.
 - **Cache Hit Rate** / **Cache Read** / **Cache Write** - Show prompt-cache efficiency. Cache Hit Rate uses cache reads divided by cache reads plus cache writes; Cache Read and Cache Write include each value's share of prompt context. They default to the latest turn from `context_window.current_usage`, can switch to cumulative session totals, and can hide when empty.
-- **Cache Timer** - Estimate time remaining before the current prompt-cache entry expires. It shows `HOT` while a main-chain turn is active, then counts down from the latest assistant request with cache activity and becomes `COLD` just before expiry. The default TTL is 5 minutes; it can switch to 1 hour, hide when no cache anchor is available, and customize the glyph for each state. Because Claude Code transcripts expose cache token activity rather than the actual expiry timestamp, the countdown is best effort.
+- **Cache Timer** - Estimate time remaining before the current prompt-cache entry expires. It shows `HOT` while a main-chain turn is active, then counts down from the latest assistant request with cache activity and becomes `COLD` just before expiry. Interrupts and local slash commands such as `/cost` end the working state without refreshing that cache anchor. The default TTL is 5 minutes; it can switch to 1 hour, hide when no cache anchor is available, and customize the glyph for each state. Because Claude Code transcripts expose cache token activity rather than the actual expiry timestamp, the countdown is best effort.
 - **Input Speed** / **Output Speed** / **Total Speed** - Show session-average token throughput with an optional per-widget rolling window (`0-120` seconds; `0` = full-session average).
 - **Context Length** / **Context Window** / **Context %** / **Context % (usable)** / **Context Bar** - Show current context length, total context window size, used/remaining percentage, usable-window percentage, or a progress bar. The window size is taken from Claude Code's reported `context_window.context_window_size` when present, then from a model-name hint (e.g. a `[1m]` suffix), and finally from a fixed fallback. Set `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` to a positive integer to override that last-resort fallback (defaults to `200000`) — useful when an older Claude Code does not report the window size for a 1M-context model, so the bar would otherwise read against 200k. Immediately after `/compact`, transcript fallback uses the latest `compact_boundary.postTokens` value until a new main-chain turn reports the current size, so the widgets do not retain the pre-compaction context.
 - **Compaction Counter** - Show how many context compactions have been detected in the current session by scanning transcript compaction markers. It can render as icon plus number, text plus number, or number-only, and can hide while the count is zero. Two optional, independent per-item add-ons toggle extra detail: a trigger split (`↻ 3 (2 auto, 1 manual)`; a compaction whose trigger is missing or unrecognized is bucketed as `unknown`) and tokens reclaimed (`↻ 3 ↓887.0k`, each compaction's `preTokens - postTokens` floored at 0 and summed, shown only when greater than 0 — so very old transcripts predating the `postTokens` field display nothing). Its value selector can instead render the total count, one trigger count (`auto`, `manual`, or `unknown`), or reclaimed tokens as a standalone value; hide-when-zero applies to the selected value.
-- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Weekly Fable Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Extra Usage Used** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. Session and all-model weekly usage read the legacy flat API buckets when available and fall back per field to `session` and `weekly_all` entries in the newer `limits[]` response. The per-model widgets prefer `weekly_scoped` entries for Sonnet, Opus, and Fable, with legacy Sonnet/Opus buckets as fallbacks; Weekly Fable Usage renders nothing when the API reports no Fable quota. Session Usage, the weekly percentage widgets, and Extra Usage Utilization can show either used or remaining percentage in every display mode. Session and weekly usage bars can also show a time cursor. Extra usage widgets accept known extra-usage state as complete when an account has no monthly limit configured, avoid repeated refetches and stale `[Timeout]` output, and format amounts with the API-reported billing currency when available. Reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls; while reset data is still arriving at startup, they show a labeled loading placeholder instead of a transient API error.
+- **Session Usage** / **Weekly Usage** / **Weekly Sonnet Usage** / **Weekly Opus Usage** / **Weekly Fable Usage** / **Extra Usage Utilization** / **Extra Usage Remaining** / **Extra Usage Used** / **Extra Usage Daily Budget** / **Block Timer** / **Block Reset Timer** / **Weekly Reset Timer** - Show usage percentages, monthly pay-as-you-go overage usage, and current block/reset timing. Session and all-model weekly usage read the legacy flat API buckets when available and fall back per field to `session` and `weekly_all` entries in the newer `limits[]` response. The per-model widgets prefer `weekly_scoped` entries for Sonnet, Opus, and Fable, with legacy Sonnet/Opus buckets as fallbacks; Weekly Fable Usage renders nothing when the API reports no Fable quota. Session Usage, the weekly percentage widgets, and Extra Usage Utilization can show either used or remaining percentage in every display mode. Session and weekly usage bars can also show a time cursor. Extra usage widgets accept known extra-usage state as complete when an account has no monthly limit configured, avoid repeated refetches and stale `[Timeout]` output, and format amounts with the API-reported billing currency when available. On accounts with no plan limits (usage-based Enterprise plans), extra usage is all of the account's spend rather than overage beyond a plan; the label editor can change the Extra Usage widgets' `Overage` labels to read `Spend`. Before the first charge of the month the API reports no utilization, so Extra Usage Utilization works it out from the amount spent and the monthly limit. Extra Usage Daily Budget divides what's left of the monthly limit by the days left in the month, today included, optionally skipping future weekend days (today always counts). It requires a monthly limit and amount spent, and displays zero once the limit is exhausted. Days are UTC days, since monthly limits reset at 00:00 UTC on the 1st. Reset timers can show remaining time, progress, or exact reset date/time with timezone and locale controls; while reset data is still arriving at startup, they show a labeled loading placeholder instead of a transient API error.
 
 An explicit per-model quota at 0% is shown even when its reset timestamp is still missing; the time cursor appears only once a usable window is available. Weekly Fable Usage uses the label `Weekly Fable:` and stays empty when the API reports no Fable quota.
 
 ### Environment, Layout & Custom
 
-- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label.
+- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label. When combining home abbreviation with a segment limit, `~` is preserved without counting toward that limit.
 - **Custom Text** / **Custom Symbol** / **Custom Command** / **Link** - Add user-defined text, a single symbol or emoji, custom command output, or a clickable OSC 8 hyperlink.
 - **Separator** / **Flex Separator** - Add a manual divider or a width-filling flexible spacer. Manual separators are disabled in Powerline mode, but flex separators still work there as layout spacers.
 
@@ -90,7 +90,7 @@ CCSTATUSLINE_WIDTH=160 ccstatusline
 
 The override is checked before automatic width detection, so it also works in wrapper processes, IDE integrations, nested PTYs, and Windows environments where probing may be unavailable. Invalid values such as `0`, negative numbers, or non-numeric strings are ignored and ccstatusline falls back to normal detection.
 
-On Linux, width detection first uses `/proc` and the terminal device directly, avoiding subprocesses when that probe succeeds. Portable `ps`/`stty`/`tput` fallbacks run without shell wrappers. A probe result is reused throughout one render. If no width is found, that result can also be cached for the same session across renders (default: 5 seconds); a detected width is always re-probed on the next render so resizes take effect immediately. Adjust **Terminal Width Cache TTL** under **Configure Status Line**, or set `terminalWidthCacheTtlSeconds` to `0-300` in `settings.json`; `0` disables the cache across renders.
+On Linux, width detection first uses `/proc` and the terminal device directly, avoiding subprocesses when that probe succeeds. Portable `ps`/`stty` fallbacks run without shell wrappers. A probe result is reused throughout one render. If no width is found, that result can also be cached for the same session across renders (default: 5 seconds); a detected width is always re-probed on the next render so resizes take effect immediately. Adjust **Terminal Width Cache TTL** under **Configure Status Line**, or set `terminalWidthCacheTtlSeconds` to `0-300` in `settings.json`; `0` disables the cache across renders.
 
 ## Powerline Auto-Alignment
 
@@ -174,13 +174,29 @@ The same menu controls these ccstatusline cache settings, saved with **Save & Ex
 | Custom Command Cache TTL | `customCommandCacheTtlSeconds` | 0 seconds | 0–60 seconds | Run commands on every render |
 | Terminal Width Cache TTL | `terminalWidthCacheTtlSeconds` | 5 seconds | 0–300 seconds | Re-probe on every render, even after no width was found |
 
-Git commands run on cache misses with a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
+Git commands run on cache misses with a five-second timeout. Persistent caches are separate for each repository and working directory, so sessions in different subdirectories do not evict each other's results. Calls are skipped when ccstatusline can determine that the directory is outside any repository. JJ commands also have a five-second timeout. A timed-out command follows the normal missing-data path for its widget.
+
+### Status line empty in one folder but fine elsewhere
+
+Claude Code only runs a custom `statusLine` command in a workspace whose trust dialog has been accepted (since Claude Code 2.1.51). Since 2.1.232, a git repository nested under an already-trusted parent folder no longer inherits that trust, and Claude Code does not always show the trust dialog again. In such a folder, ccstatusline is never invoked, so the status line renders as an empty row even though running `ccstatusline` by hand in the same folder works and other folders still show it.
+
+To confirm, look up the project path in `~/.claude.json` under `projects` and check its `hasTrustDialogAccepted` value. Setting it to `true` (or accepting the trust dialog when Claude Code shows it) and starting a new session restores the status line.
 
 ## Usage Credentials and Cache
 
 Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials`, then matching suffixed services, then the credentials file.
 
 The usage cache uses a fingerprint of the refresh token when available, falling back to the access token. Access-token rotation with an unchanged refresh token preserves fresh and stale usage snapshots, including during rate-limit backoff; a changed login fingerprint invalidates the old account's cache.
+
+Each macOS Keychain command has a five-second timeout. When no OAuth credentials are found, the lookup backs off for 30 seconds for that profile, so a newly signed-in account may take up to 30 seconds to appear. Usage cache files dated more than 180 seconds into the future are treated as stale.
+
+### Proxy Settings
+
+Usage requests to `api.anthropic.com` and Claude Status requests to `status.claude.com` honor uppercase `HTTPS_PROXY`. Both `NO_PROXY` and `no_proxy` supply exclusions; matching either variable sends the request directly.
+
+Exclusions are separated by commas or whitespace and matched without regard to case. Use `*` for all hosts, a hostname such as `api.anthropic.com`, or a domain such as `anthropic.com`, `.anthropic.com`, or `*.anthropic.com` to match that domain and its subdomains. An optional `:443` suffix is supported; entries for other ports do not match these HTTPS requests.
+
+Each request has a total five-second deadline, including the wait for a proxy to answer CONNECT. The usual stale-cache and error-display behavior applies when the deadline expires.
 
 ## Configuration Import and Export
 
@@ -196,9 +212,15 @@ The import preview follows the highlighted action:
 
 Both modes keep machine-local installation metadata and ignore schema/update metadata from the imported file. Applying an import updates only the TUI's working configuration; review the result, then choose **Save & Exit** or press `Ctrl+S` to persist it.
 
+If the selected mode adds Custom Command shell commands that are not already in the current configuration, the preview lists each new command in full. Choosing **Replace All** or **Merge** then opens a confirmation with **Cancel** selected by default. Choose **Apply and run these commands** to accept, or Cancel/Escape to return to the preview. Imports without new commands apply immediately. Preview values, paths, and commands display control characters as `\uXXXX`, making them visible without executing terminal controls.
+
 ## Settings Recovery
 
 If `settings.json` is unreadable or invalid, ccstatusline leaves the file unchanged, renders with built-in defaults for that run, and prepends an invalid-config warning badge to the status line. The TUI shows the same warning and asks for confirmation before either **Save & Exit** or `Ctrl+S` replaces the invalid file. Fix the JSON to preserve its contents, or confirm the save to replace it with the configuration currently shown in the TUI.
+
+Installation also stops if Claude Code's own `settings.json` cannot be read or parsed, leaving that file unchanged and showing the error. Correct the file before trying the installation again.
+
+On systems with POSIX file permissions, saving an existing ccstatusline settings file preserves restrictive permissions such as `0600`, including when saving through a symlink. Claude Code settings backups (`.bak` and `.orig`) are created with the source file's permissions, subject to the process umask.
 
 ## Block Timer Widget
 
@@ -226,6 +248,8 @@ Some widgets support "raw value" mode which displays just the value without a la
 - Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
 - Normal: `Ctx: 18.6k` → Raw: `18.6k`
 
+To keep a label but change it, select the widget and press `e` (`(e)dit label…`) instead. The label is replaced verbatim, so include any trailing space or colon yourself (e.g. `M ` renders `M Claude 3.5 Sonnet`); an empty label drops it, and Tab in the editor resets it to the default. Widgets whose label changes with their mode (e.g. `Ctx Used:`/`Ctx Left:`, or `Block:` vs `Block ` before a progress bar) use the one custom label in every mode, even one that matches the current mode's default. The editor row shows `(label: "M ")` while a custom label is set; `e` is hidden while raw value is on, since the label isn't rendered then.
+
 ## Number Formatting
 
 Numeric widgets support three display styles without changing their underlying values:
@@ -249,8 +273,9 @@ Common controls in the line editor:
 - `c` clear the current line
 - `Space` cycle a manual separator character
 - `r` toggle raw value (supported widgets)
+- `e` edit the label shown before the value when raw value is off (labeled widgets)
 - `.` cycle precise/compact/whole number formatting (supported widgets)
-- `m` cycle merge mode (`off` → `merge` → `merge no padding`)
+- `m` cycle merge mode (`off` → `merge` → `merge no padding`); on the last widget, clear an existing merge
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back
 
@@ -259,10 +284,10 @@ Widget picker:
 - supports substring, initialism, and fuzzy matching
 - `↑/↓` change selection, `Enter` continue/apply, `Esc` clear search/back/cancel
 
-The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget.
+The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget. Plain-letter shortcuts ignore Ctrl and Alt/Option modifiers, so combinations such as `Ctrl+S` do not also trigger the letter action.
 
 Widget-specific shortcuts:
-- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status) edit each part in one list
+- **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, Git Is Fork, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted), `w` set a maximum visible width (blank removes the limit)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`), `w` set a maximum visible width (blank removes the limit)
 - **Git PR**: `s` toggle review status, `t` toggle title (renders "MR" for GitLab origins)
@@ -270,7 +295,9 @@ Widget-specific shortcuts:
 - **Git Origin Owner/Repo**: `o` show only the owner when the repo is a fork
 - **Git Conflicts**: `z` toggles how a visible conflict-free tree renders (`⚠0` or the clean glyph); `g` edits the conflict and clean glyphs
 - **Context % widgets**: `u` toggle used vs remaining display, `p` cycle percentage/short bar/short bar only
+- **Session Cost Rate**: `t` switch between active time (how long Claude spent working, the default) and clock time (the whole session)
 - **Session Usage / Weekly Usage / Weekly Sonnet Usage / Weekly Opus Usage / Weekly Fable Usage / Extra Usage Utilization**: `p` cycle percentage/full bar/medium bar/short bar/short bar only and `u` switch between used and remaining percentage in every display mode. The editor row labels the current direction as `used` or `remaining`, while the `u` helper names the direction it will switch to. Session and weekly usage widgets use `t` to toggle the time cursor in bar modes.
+- **Extra Usage Daily Budget**: `w` toggle counting weekdays only (Saturday and Sunday, UTC, are skipped; today always counts)
 - **Block Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time, `v` invert fill in progress mode
 - **Block Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
 - **Weekly Reset Timer**: `p` cycle time/full bar/short bar, `s` toggle compact time/date, `t` toggle exact reset date/time, `o` toggle hours-only in time mode, `f` toggle 12/24-hour display in date mode, `z` edit timezone in date mode, `l` edit locale in date mode, `v` invert fill in progress mode
@@ -370,6 +397,8 @@ Execute shell commands and display their output dynamically:
 With caching enabled, both output and failure markers are reused until the TTL expires. Entries are separated by command, working directory, session ID, terminal width, and timeout. Other stdin changes, such as token counts, do not invalidate an entry, so choose a TTL that suits how often the output needs to change. Without a session ID, reuse is limited to the current process. TUI previews show a command placeholder without executing it.
 
 > ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands are terminated at the configured timeout, and inherited output pipes cannot keep capture waiting indefinitely after that deadline. On Linux/macOS, timeout termination targets the command's process group; on Windows, it targets the shell process. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
+
+Rendered widget output filters terminal controls such as clipboard writes, title changes, cursor movement, and screen clearing. With **preserve colors** enabled, ANSI styling and OSC 8 hyperlinks remain supported; Powerline backgrounds are restored after command output resets its styling.
 
 Output capture is limited to 1 MiB; exceeding it displays `[Error]`. Successful output is limited to 16,384 characters before color handling and optional max-width truncation.
 

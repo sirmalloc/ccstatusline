@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
@@ -22,6 +22,8 @@ import {
     renderSymbolSlotsEditor,
     type SymbolSlot
 } from './shared/symbol-override';
+
+const LABEL = 'Cache: ';
 
 // Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
 // also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
@@ -50,6 +52,7 @@ interface TranscriptEntry {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     message?: {
+        content?: string | { type?: string; text?: string }[];
         usage?: {
             cache_read_input_tokens?: number;
             cache_creation_input_tokens?: number;
@@ -66,6 +69,31 @@ function hasCacheActivity(entry: TranscriptEntry): boolean {
         return true;
     }
     return (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) > 0;
+}
+
+// User-role rows Claude Code writes without sending an API request: the
+// marker left when a request is interrupted (Esc), and the bookkeeping rows of
+// local slash commands (/cost, /model, ...), which are answered in-process.
+// Prompt commands start with <command-message> instead and do reach the model.
+const INTERRUPT_MARKER_PREFIX = '[Request interrupted by user';
+const LOCAL_COMMAND_PREFIXES = ['<command-name>', '<local-command-stdout>', '<local-command-stderr>', '<local-command-caveat>'];
+
+// Whether this user row closes the exchange instead of starting or continuing
+// a request. Rows with unrecognized content are assumed to be requests.
+function endsTurnWithoutResponse(entry: TranscriptEntry): boolean {
+    const content = entry.message?.content;
+    let text: string | undefined;
+    if (typeof content === 'string') {
+        text = content;
+    } else if (Array.isArray(content) && content.length === 1 && content[0]?.type === 'text') {
+        text = content[0].text;
+    }
+    if (typeof text !== 'string') {
+        return false;
+    }
+    const trimmed = text.trimStart();
+    return trimmed.startsWith(INTERRUPT_MARKER_PREFIX)
+        || LOCAL_COMMAND_PREFIXES.some(prefix => trimmed.startsWith(prefix));
 }
 
 // A single transcript record can exceed the initial tail read (pasted prompts
@@ -101,8 +129,9 @@ type TranscriptState = { isWorking: true } | { isWorking: false; lastAssistant: 
  * Find the cache state from the newest main-chain rows in the transcript tail.
  * A trailing user-role row (a prompt or a tool result, both recorded as role
  * 'user' by Claude Code) means a turn is in flight and the cache is being
- * refreshed, so report { isWorking: true }. Once an assistant row has ended
- * the turn, the countdown anchors on the newest assistant row whose request
+ * refreshed, so report { isWorking: true }. Interrupt markers and local
+ * slash-command rows are the exception: nothing is sent for them, so like an
+ * assistant row they end the turn. Once the turn has ended, the countdown anchors on the newest assistant row whose request
  * actually read or wrote the cache.
  * The tail read grows until a relevant record fits in view, so a trailing
  * record larger than the initial read still resolves to a state.
@@ -157,8 +186,16 @@ function scanTailForState(tail: string): TranscriptState | null {
                 }
                 continue;
             }
-            if (entry.type === 'user' && !turnFinished) {
-                return { isWorking: true };
+            if (entry.type === 'user') {
+                // An interrupted request or a local command sends nothing,
+                // so the exchange is over but refreshed no cache.
+                if (endsTurnWithoutResponse(entry)) {
+                    turnFinished = true;
+                    continue;
+                }
+                if (!turnFinished) {
+                    return { isWorking: true };
+                }
             }
         } catch {
             continue;
@@ -237,6 +274,7 @@ export class CacheTimerWidget implements Widget {
     getDescription(): string { return 'Shows time remaining on the prompt cache TTL (5m by default, 1h configurable)'; }
     getDisplayName(): string { return 'Cache Timer'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const modifiers: string[] = [];
@@ -267,30 +305,30 @@ export class CacheTimerWidget implements Widget {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
         }
 
         const transcriptPath = context.data?.transcript_path;
         if (!transcriptPath) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
 
         const state = getTranscriptState(transcriptPath);
 
         if (state.isWorking) {
-            return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
         }
 
         const { lastAssistant } = state;
         if (!lastAssistant) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, 'Cache: ', 'n/a');
+            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
 
         const ttlSeconds = getTtlSeconds(item);
         const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
         const glyph = getStateSymbol(item, remaining, ttlSeconds);
 
-        return formatRawOrLabeledValue(item, 'Cache: ', withGlyph(glyph, formatCountdown(remaining)));
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(remaining)));
     }
 
     getCustomKeybinds(): CustomKeybind[] {

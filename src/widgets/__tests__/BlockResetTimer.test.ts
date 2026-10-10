@@ -117,6 +117,7 @@ describe('BlockResetTimerWidget', () => {
 
         expect(render(widget, { id: 'reset', type: 'reset-timer' }, { usageData: {} })).toBe('Reset: [Loading]');
         expect(render(widget, { id: 'reset', type: 'reset-timer', rawValue: true }, { usageData: {} })).toBe('[Loading]');
+        expect(render(widget, { id: 'reset', type: 'reset-timer', metadata: { display: 'progress' } }, { usageData: {} })).toBe('Reset [Loading]');
     });
 
     it('declares the no-data hideable state', () => {
@@ -311,6 +312,21 @@ describe('BlockResetTimerWidget', () => {
             type: 'reset-timer',
             metadata: { display: 'slider-only' }
         }).modifierText).toBe('(short bar only)');
+    });
+
+    it('does not show a time cursor carried over from a usage widget', () => {
+        // A usage bar's cursor metadata survives a type change in the picker,
+        // but this timer never draws a cursor
+        const widget = new BlockResetTimerWidget();
+
+        const modifierText = widget.getEditorDisplay({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { display: 'progress', cursor: 'true' }
+        }).modifierText;
+
+        expect(modifierText).toContain('bar');
+        expect(modifierText).not.toContain('time cursor');
     });
 
     runUsageTimerEditorSuite({
