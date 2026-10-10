@@ -1,4 +1,5 @@
 import type { RenderContext } from '../types/RenderContext';
+import type { TokenMetrics } from '../types/TokenMetrics';
 import { getContextWindowInputTotalTokens } from '../utils/context-window';
 
 import { TokenCountWidget } from './shared/token-count-widget';
@@ -15,5 +16,9 @@ export class TokensInputWidget extends TokenCountWidget {
         return context.tokenMetrics?.inputTokens
             ?? getContextWindowInputTotalTokens(context.data)
             ?? null;
+    }
+
+    protected selectTokens(metrics: TokenMetrics): number {
+        return metrics.inputTokens;
     }
 }
