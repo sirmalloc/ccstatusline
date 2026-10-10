@@ -42,6 +42,12 @@ describe('LinkWidget', () => {
         expect(result).toBe('\x1b]8;;https://example.com/docs\x1b\\🔗 https://example.com/docs\x1b]8;;\x1b\\');
     });
 
+    it('percent-encodes characters a link can\'t carry as they are', () => {
+        const result = renderLink({ url: 'https://example.com/a b/\x1b]52;c;AAAA\x07/docs', text: 'Docs' });
+
+        expect(result).toBe('\x1b]8;;https://example.com/a%20b/%1B]52;c;AAAA%07/docs\x1b\\🔗 Docs\x1b]8;;\x1b\\');
+    });
+
     it('falls back to plain text for non-http URL schemes', () => {
         const result = renderLink({
             url: 'file:///tmp/report.txt',

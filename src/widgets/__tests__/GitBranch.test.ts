@@ -10,8 +10,10 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitBranchWidget } from '../GitBranch';
 
@@ -24,6 +26,7 @@ vi.mock('node:child_process', () => ({
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
     mockImplementation: (impl: () => never) => void;
+    mockImplementationOnce: (impl: () => never) => void;
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
@@ -58,6 +61,8 @@ function render(options: {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
+mockExecutableResolution();
+
 describe('GitBranchWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -72,29 +77,35 @@ describe('GitBranchWidget', () => {
         expect(render({ isPreview: true, rawValue: true })).toBe('main');
     });
 
+    // A sample long enough for the limit to show, cut the way a real branch is
+    it('should apply the max width to the preview', () => {
+        expect(render({ isPreview: true, maxWidth: 12 })).toBe('⎇ feature...');
+        expect(render({ isPreview: true, rawValue: true, maxWidth: 12 })).toBe('feature/l...');
+    });
+
     it('should render branch name', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('feature/worktree');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/feature/worktree\n');
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('⎇ feature/worktree');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--is-inside-work-tree']);
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['symbolic-ref', '--short', 'HEAD']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'symbolic-ref', 'HEAD']);
         expectGitExecOptions(mockExecFileSync.mock.calls[1]?.[2], '/tmp/worktree');
     });
 
     it('should render raw branch value', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('feature/worktree');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/feature/worktree\n');
 
         expect(render({ rawValue: true })).toBe('feature/worktree');
     });
 
     it('should render encoded GitHub branch links', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('feature/issue#1');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/feature/issue#1\n');
         mockExecFileSync.mockReturnValueOnce('ssh://git@github.com/owner/repo.git');
 
         expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
@@ -105,7 +116,7 @@ describe('GitBranchWidget', () => {
 
     it('should render encoded GitLab branch links', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('feature/issue#1');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/feature/issue#1\n');
         mockExecFileSync.mockReturnValueOnce('git@gitlab.com:owner/repo.git');
 
         expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
@@ -116,12 +127,44 @@ describe('GitBranchWidget', () => {
 
     it('should render links for self-hosted git remotes', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/main\n');
         mockExecFileSync.mockReturnValueOnce('https://git.example.com/group/subgroup/repo.git');
 
         expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
             'https://git.example.com/group/subgroup/repo/tree/main',
             '⎇ main'
+        ));
+    });
+
+    it('should render the branch name when a tag has the same name', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/release\n');
+        mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
+
+        expect(render({ linkToRepo: true })).toBe(renderOsc8Link(
+            'https://github.com/owner/repo/tree/release',
+            '⎇ release'
+        ));
+    });
+
+    it('should render the short commit on a detached HEAD', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
+
+        expect(render({ hideNoGit: true })).toBe('⎇ (ddfb2de)');
+        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+    });
+
+    it('should link a detached HEAD to its commit', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
+        mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
+
+        expect(render({ linkToRepo: true, rawValue: true })).toBe(renderOsc8Link(
+            'https://github.com/owner/repo/tree/ddfb2de',
+            '(ddfb2de)'
         ));
     });
 
@@ -137,8 +180,9 @@ describe('GitBranchWidget', () => {
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
-    it('should render no git when branch lookup is empty', () => {
+    it('should render no git when branch and commit lookups are empty', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
 
         expect(render()).toBe('⎇ no git');
@@ -152,7 +196,7 @@ describe('GitBranchWidget', () => {
 
     it('should keep plain text when origin remote cannot be parsed', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('feature/worktree');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/feature/worktree\n');
         mockExecFileSync.mockReturnValueOnce('not-a-valid-remote-url');
 
         expect(render({ linkToRepo: true })).toBe('⎇ feature/worktree');
@@ -160,7 +204,7 @@ describe('GitBranchWidget', () => {
 
     it('should render a link when only the legacy linkToGitHub flag is set', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/main\n');
         mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
 
         expect(render({ metadata: { linkToGitHub: 'true' } })).toBe(renderOsc8Link(
@@ -171,7 +215,7 @@ describe('GitBranchWidget', () => {
 
     it('should prefer explicit linkToRepo:false over legacy linkToGitHub:true', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
-        mockExecFileSync.mockReturnValueOnce('main');
+        mockExecFileSync.mockReturnValueOnce('refs/heads/main\n');
 
         expect(render({ metadata: { linkToRepo: 'false', linkToGitHub: 'true' } })).toBe('⎇ main');
     });
@@ -184,14 +228,14 @@ describe('GitBranchWidget', () => {
             { name: 'leaves the branch untouched when it fits', maxWidth: 100, expected: 'feature/worktree' }
         ])('$name', ({ maxWidth, expected }) => {
             mockExecFileSync.mockReturnValueOnce('true\n');
-            mockExecFileSync.mockReturnValueOnce('feature/worktree');
+            mockExecFileSync.mockReturnValueOnce('refs/heads/feature/worktree\n');
 
             expect(render({ rawValue: true, maxWidth })).toBe(expected);
         });
 
         it('truncates the visible link label but keeps the full link target', () => {
             mockExecFileSync.mockReturnValueOnce('true\n');
-            mockExecFileSync.mockReturnValueOnce('feature/worktree');
+            mockExecFileSync.mockReturnValueOnce('refs/heads/feature/worktree\n');
             mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
 
             expect(render({ rawValue: true, linkToRepo: true, maxWidth: 10 })).toBe(renderOsc8Link(
