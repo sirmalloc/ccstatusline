@@ -24,6 +24,7 @@ import {
     parseJsonlLine
 } from './jsonl-lines';
 import {
+    THINKING_EFFORT_STDOUT_MARKER,
     getThinkingEffortUpdate,
     type ResolvedThinkingEffort
 } from './jsonl-metadata';
@@ -252,6 +253,40 @@ function collectAgentIds(value: unknown, agentIds: Set<string>) {
 
         collectAgentIds(nestedValue, agentIds);
     }
+}
+
+// Raw-text markers of the records each collector reads. Every marker is
+// printable ASCII, which JSON can only spell differently with a \u0020-\u007e
+// escape (no short escape covers these characters), so a line with neither
+// such an escape nor a marker cannot affect that collector and does not need
+// to be parsed. Other escapes, such as the \u001b of ANSI-colored tool output,
+// cannot form a marker.
+const JSON_PRINTABLE_ASCII_ESCAPE = /\\u00[2-7]/;
+const TOKEN_METRIC_MARKERS = ['"usage"', '"compact_boundary"'];
+const COMPACTION_MARKERS = ['"compact_boundary"'];
+const THINKING_EFFORT_MARKERS = [THINKING_EFFORT_STDOUT_MARKER];
+const SESSION_NAME_MARKERS = ['"custom-title"'];
+const AGENT_ID_MARKERS = ['"agentId"'];
+
+function lineMayContain(line: string, markers: readonly string[]): boolean {
+    return JSON_PRINTABLE_ASCII_ESCAPE.test(line) || markers.some(marker => line.includes(marker));
+}
+
+/**
+ * Markers of the records the enabled collectors read, or null when every record
+ * matters (session duration and speed metrics read every timestamp).
+ */
+function getRecordMarkers(options: TranscriptScanOptions): string[] | null {
+    if (options.includeSessionDuration || options.includeSpeedMetrics) {
+        return null;
+    }
+
+    return [
+        ...(options.includeTokenMetrics ? TOKEN_METRIC_MARKERS : []),
+        ...(options.includeCompactionStats ? COMPACTION_MARKERS : []),
+        ...(options.includeThinkingEffort ? THINKING_EFFORT_MARKERS : []),
+        ...(options.includeSessionName ? SESSION_NAME_MARKERS : [])
+    ];
 }
 
 function parseTimestampMs(value: string | undefined): number | null {
@@ -539,9 +574,16 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
     let lastTimestampMs: number | null = null;
     let thinkingEffort: ResolvedThinkingEffort | undefined;
     let sessionName: string | null = null;
+    const recordMarkers = getRecordMarkers(options);
 
     try {
         for await (const line of iterateJsonlLines(transcriptPath)) {
+            // Skipping JSON.parse for records no collector reads is most of the
+            // cost of a scan: tool results and attachments dominate transcripts.
+            if (recordMarkers && !lineMayContain(line, recordMarkers)) {
+                continue;
+            }
+
             const data = parseJsonlLine(line) as TranscriptLine | null;
             const needsTimestamp = options.includeSessionDuration === true
                 || speedState !== null
@@ -558,7 +600,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
             if (speedState) {
                 collectSpeedMetricRecord(speedState, data, timestampMs, true);
             }
-            if (referencedAgentIds) {
+            if (referencedAgentIds && lineMayContain(line, AGENT_ID_MARKERS)) {
                 collectAgentIds(data, referencedAgentIds);
             }
             if (compactionData) {
