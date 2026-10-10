@@ -4,7 +4,8 @@ import React from 'react';
 import {
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import {
@@ -14,6 +15,7 @@ import {
 import type { WidgetItem } from '../../../types/Widget';
 import { getVisibleWidth } from '../../../utils/ansi';
 import { renderOsc8Link } from '../../../utils/hyperlink';
+import * as sessionUsageHistory from '../../../utils/session-usage-history';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     StatusLinePreview,
@@ -148,6 +150,52 @@ describe('StatusLinePreview helpers', () => {
             stdin.destroy();
             stdout.destroy();
             stderr.destroy();
+        }
+    });
+
+    // The forecast widgets show samples here; only a real status-line render records
+    // a reading, so browsing the TUI never adds to the history.
+    it('previews the forecast widgets without recording a reading', async () => {
+        const recordSpy = vi.spyOn(sessionUsageHistory, 'recordSessionUsageReading').mockReturnValue([]);
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const lines: WidgetItem[][] = [[
+            { id: 'usage', type: 'session-usage' },
+            { id: 'forecast', type: 'block-forecast' },
+            { id: 'limit', type: 'block-limit-timer' }
+        ]];
+
+        const instance = render(
+            React.createElement(StatusLinePreview, {
+                lines,
+                terminalWidth: 160,
+                settings: DEFAULT_SETTINGS
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Limit in: 1hr 13m');
+            });
+
+            expect(stdout.getOutput()).toContain('→100.0%');
+            expect(recordSpy).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+            recordSpy.mockRestore();
         }
     });
 });
