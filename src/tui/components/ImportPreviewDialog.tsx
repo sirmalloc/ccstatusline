@@ -51,6 +51,14 @@ export function getImportPreviewSettings(
     return applyImport(current, validation.data, mode, validation.presentKeys);
 }
 
+/**
+ * Control characters as `\uXXXX`: an imported file's text is shown, never sent
+ * to the terminal as escape sequences, and hidden characters stay visible.
+ */
+export function escapeControlCharacters(text: string): string {
+    return text.replace(/[\x00-\x1f\x7f-\x9f]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 function formatScalar(value: unknown): string {
     if (value === null || value === undefined) {
         return 'none';
@@ -59,9 +67,25 @@ function formatScalar(value: unknown): string {
         return String(value);
     }
     if (typeof value === 'string') {
-        return value || '(empty)';
+        return escapeControlCharacters(value) || '(empty)';
     }
-    return JSON.stringify(value);
+    return escapeControlCharacters(JSON.stringify(value));
+}
+
+function getCustomCommands(settings: Settings): string[] {
+    return settings.lines
+        .flat()
+        .filter(widget => widget.type === 'custom-command' && widget.commandPath)
+        .map(widget => widget.commandPath ?? '');
+}
+
+/**
+ * Shell commands the imported settings would run that the current settings
+ * don't: a Custom Command runs its command on every status line render.
+ */
+export function getImportedCommands(current: Settings, preview: Settings): string[] {
+    const existing = new Set(getCustomCommands(current));
+    return [...new Set(getCustomCommands(preview).filter(command => !existing.has(command)))];
 }
 
 function diffObject(current: Record<string, unknown>, imported: Record<string, unknown>, prefix: string): DiffEntry[] {
@@ -139,8 +163,11 @@ export function ImportPreviewDialog({
     onCancel
 }: ImportPreviewDialogProps): React.JSX.Element {
     const [previewMode, setPreviewMode] = useState<Exclude<ImportMode, 'cancel'>>('replace');
+    // The mode waiting for the user to confirm the shell commands it adds
+    const [pendingMode, setPendingMode] = useState<Exclude<ImportMode, 'cancel'> | null>(null);
     const previewSettings = getImportPreviewSettings(currentSettings, validation, previewMode);
     const topLevelKeys = getImportPreviewKeys(currentSettings, previewSettings);
+    const importedCommands = getImportedCommands(currentSettings, previewSettings);
 
     const items: ListEntry<ImportMode>[] = [
         { label: 'Replace All', value: 'replace', description: 'Overwrite all settings with the imported config' },
@@ -152,9 +179,47 @@ export function ImportPreviewDialog({
     function handleSelect(value: ImportMode | 'back'): void {
         if (value === 'cancel' || value === 'back') {
             onCancel();
-        } else {
-            onApply(value);
+            return;
         }
+
+        const commands = getImportedCommands(currentSettings, getImportPreviewSettings(currentSettings, validation, value));
+        if (commands.length > 0) {
+            setPendingMode(value);
+            return;
+        }
+        onApply(value);
+    }
+
+    if (pendingMode) {
+        const commands = getImportedCommands(currentSettings, getImportPreviewSettings(currentSettings, validation, pendingMode));
+        const confirmItems: ListEntry<'cancel' | 'confirm'>[] = [
+            { label: 'Cancel', value: 'cancel', description: 'Go back to the preview without importing' },
+            { label: 'Apply and run these commands', value: 'confirm', description: 'Import the settings, including the commands above' }
+        ];
+
+        return (
+            <Box flexDirection='column'>
+                <Text bold>Import Preview</Text>
+                <Text color='yellow'>
+                    {`Apply this import? It adds ${commands.length === 1 ? 'a shell command' : `${commands.length} shell commands`} that will run on every status line render:`}
+                </Text>
+                <Box flexDirection='column' marginLeft={4}>
+                    {commands.map((command, index) => (
+                        <Text key={index}>{`$ ${escapeControlCharacters(command)}`}</Text>
+                    ))}
+                </Box>
+                <List
+                    items={confirmItems}
+                    onSelect={(choice) => {
+                        if (choice === 'confirm') {
+                            onApply(pendingMode);
+                            return;
+                        }
+                        setPendingMode(null);
+                    }}
+                />
+            </Box>
+        );
     }
 
     function handleSelectionChange(value: ImportMode | 'back'): void {
@@ -186,7 +251,7 @@ export function ImportPreviewDialog({
                     <Text>{`  ${key}:`}</Text>
                     {entries.map((e, i) => (
                         <Box key={i} marginLeft={4}>
-                            <Text>{`${e.path}: `}</Text>
+                            <Text>{`${escapeControlCharacters(e.path)}: `}</Text>
                             <Text color='red'>{formatScalar(e.current)}</Text>
                             <Text>{' → '}</Text>
                             <Text color='green'>{formatScalar(e.imported)}</Text>
@@ -208,7 +273,7 @@ export function ImportPreviewDialog({
                     <Text>{`  ${key}:`}</Text>
                     {entries.map((e, i) => (
                         <Box key={i} marginLeft={4}>
-                            <Text>{`${e.path}: `}</Text>
+                            <Text>{`${escapeControlCharacters(e.path)}: `}</Text>
                             <Text color='red'>{formatScalar(e.current)}</Text>
                             <Text>{' → '}</Text>
                             <Text color='green'>{formatScalar(e.imported)}</Text>
@@ -221,7 +286,7 @@ export function ImportPreviewDialog({
 
         diffRows.push(
             <Box key={key}>
-                <Text>{`  ${key}: `}</Text>
+                <Text>{`  ${escapeControlCharacters(key)}: `}</Text>
                 <Text color='red'>{formatScalar(current)}</Text>
                 <Text>{' → '}</Text>
                 <Text color='green'>{formatScalar(imported)}</Text>
@@ -236,6 +301,16 @@ export function ImportPreviewDialog({
             <Box flexDirection='column'>
                 {diffRows}
             </Box>
+            {importedCommands.length > 0 && (
+                <Box flexDirection='column' marginTop={1}>
+                    <Text color='yellow'>This import adds shell commands that run on every status line render:</Text>
+                    <Box flexDirection='column' marginLeft={4}>
+                        {importedCommands.map((command, index) => (
+                            <Text key={index}>{`$ ${escapeControlCharacters(command)}`}</Text>
+                        ))}
+                    </Box>
+                </Box>
+            )}
             <List
                 items={items}
                 onSelect={handleSelect}

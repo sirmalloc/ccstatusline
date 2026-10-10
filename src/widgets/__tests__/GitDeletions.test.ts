@@ -10,7 +10,11 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
-import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import {
+    expectGitExecOptions,
+    isolateGitWorkingDirectory
+} from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitDeletionsWidget } from '../GitDeletions';
 
@@ -46,6 +50,9 @@ function render(options: {
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
+isolateGitWorkingDirectory();
 
 describe('GitDeletionsWidget', () => {
     beforeEach(() => {

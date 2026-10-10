@@ -13,6 +13,8 @@ import type {
     Widget,
     WidgetItem
 } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import { gitCommandOf } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitOriginOwnerWidget } from '../GitOriginOwner';
@@ -52,7 +54,8 @@ const REMOTE_URLS: Record<string, Record<string, string>> = {
 beforeEach(() => {
     clearGitCache();
     mockExecFileSync.mockImplementation((_command, args, options) => {
-        const url = args[0] === 'remote' && args[1] === 'get-url' ? REMOTE_URLS[options?.cwd ?? '']?.[args[3] ?? ''] : undefined;
+        const [subcommand, action, , remote] = gitCommandOf(args).split(' ');
+        const url = subcommand === 'remote' && action === 'get-url' ? REMOTE_URLS[options?.cwd ?? '']?.[remote ?? ''] : undefined;
         if (url === undefined) {
             throw new Error('fatal: no such remote');
         }
@@ -81,6 +84,8 @@ const WIDGETS = [
     { type: 'git-upstream-repo', preview: ['upstream-repo', 'https://github.com/upstream-owner/upstream-repo'], fork: 'proj', clone: null, missing: 'no upstream', hideKey: 'no-upstream' },
     { type: 'git-upstream-owner-repo', preview: ['upstream-owner/upstream-repo', 'https://github.com/upstream-owner/upstream-repo'], fork: 'them/proj', clone: null, missing: 'no upstream', hideKey: 'no-upstream' }
 ] as const;
+
+mockExecutableResolution();
 
 describe.each(WIDGETS)('$type', ({ type, preview: [previewText, previewUrl], fork, clone, missing, hideKey }) => {
     it('shows sample text in the preview, linked when asked', () => {
