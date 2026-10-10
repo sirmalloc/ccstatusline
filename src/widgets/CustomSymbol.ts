@@ -1,24 +1,16 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
-
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
     HideableState,
     Widget,
+    WidgetEditorDescriptor,
     WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import { shouldInsertInput } from '../utils/input-guards';
 
 import { MERGE_TARGET_HIDDEN_HIDEABLE_STATE } from './shared/hideable';
-import { getGraphemes } from './shared/text-cursor';
 
 export class CustomSymbolWidget implements Widget {
     getDefaultColor(): string { return 'white'; }
@@ -49,43 +41,10 @@ export class CustomSymbolWidget implements Widget {
         return [MERGE_TARGET_HIDDEN_HIDEABLE_STATE];
     }
 
-    renderEditor(props: WidgetEditorProps): React.ReactElement {
-        return <CustomSymbolEditor {...props} />;
+    renderEditor(props: WidgetEditorProps): WidgetEditorDescriptor {
+        return { kind: 'custom-symbol', props };
     }
 
     supportsRawValue(): boolean { return false; }
     supportsColors(item: WidgetItem): boolean { return true; }
 }
-
-const CustomSymbolEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
-    const [symbol, setSymbol] = useState(widget.customSymbol ?? '');
-
-    useInput((input, key) => {
-        if (key.return) {
-            onComplete({ ...widget, customSymbol: symbol });
-        } else if (key.escape) {
-            onCancel();
-        } else if (key.backspace || key.delete) {
-            setSymbol('');
-        } else if (shouldInsertInput(input, key)) {
-            // Take only the first grapheme (handles multi-byte emojis correctly)
-            const firstGrapheme = getGraphemes(input)[0] ?? '';
-            setSymbol(firstGrapheme);
-        }
-    });
-
-    return (
-        <Box flexDirection='column'>
-            <Text>
-                Enter custom symbol:
-                {' '}
-                {symbol ? (
-                    <Text inverse>{symbol}</Text>
-                ) : (
-                    <Text inverse dimColor>(empty)</Text>
-                )}
-            </Text>
-            <Text dimColor>Type any character or emoji, Backspace clear, Enter save, ESC cancel</Text>
-        </Box>
-    );
-};

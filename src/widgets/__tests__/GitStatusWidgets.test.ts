@@ -156,10 +156,10 @@ describe.each(WIDGETS)('$type', ({ type, widget, name, color, raw, glyphs, previ
     });
 });
 
-// The glyph editor's rows, as passed to the shared symbol editor
+// The glyph editor's rows, as its editor descriptor passes them to the shared symbol editor
 function editorSlots(widget: Widget, type: string): SymbolSlot[] {
-    const element = widget.renderEditor?.({ widget: { id: 'w', type }, onComplete: vi.fn(), onCancel: vi.fn() });
-    return (element?.props as { slots: SymbolSlot[] }).slots;
+    const editor = widget.renderEditor?.({ widget: { id: 'w', type }, onComplete: vi.fn(), onCancel: vi.fn() });
+    return editor?.kind === 'symbol-slots' ? editor.slots : [];
 }
 
 describe('Git Staged, Unstaged and Untracked', () => {

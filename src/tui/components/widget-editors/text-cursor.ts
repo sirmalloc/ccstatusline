@@ -4,7 +4,7 @@ import {
     useState
 } from 'react';
 
-import { shouldInsertInput } from '../../utils/input-guards';
+import { shouldInsertInput } from '../../../utils/input-guards';
 
 // cursor is a string index that always sits on a grapheme boundary, so
 // multi-codepoint emoji move and delete as a single character

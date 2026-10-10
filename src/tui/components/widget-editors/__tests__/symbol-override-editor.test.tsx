@@ -8,12 +8,13 @@ import {
     vi
 } from 'vitest';
 
-import { waitFor } from '../../../tui/__tests__/helpers/wait-for-ink';
-import type { WidgetItem } from '../../../types/Widget';
+import { renderWidgetEditor } from '..';
+import type { WidgetItem } from '../../../../types/Widget';
 import {
     renderSymbolSlotsEditor,
     type SymbolSlot
-} from '../symbol-override';
+} from '../../../../widgets/shared/symbol-override';
+import { waitFor } from '../../../__tests__/helpers/wait-for-ink';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -72,12 +73,12 @@ function renderEditor(widget: WidgetItem, slots: SymbolSlot[] = gitStatusSlots, 
     const stdout = createMockStdout();
     const stderr = createMockStdout();
     const instance = render(
-        renderSymbolSlotsEditor({
+        renderWidgetEditor(renderSymbolSlotsEditor({
             widget,
             onComplete,
             onCancel,
             action: 'edit-symbol-override'
-        }, slots),
+        }, slots)),
         {
             stdin,
             stdout,

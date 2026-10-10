@@ -1,24 +1,19 @@
 import { Text } from 'ink';
 import React, { useMemo } from 'react';
 
-import type { WidgetEditorProps } from '../../types/Widget';
+import type { WidgetEditorProps } from '../../../types/Widget';
 import {
     filterTimezoneOptions,
     getTimezoneMatchSegments,
     getTimezoneOptions
-} from '../../utils/timezones';
-
-import { SearchableOptionEditor } from './searchable-option-editor';
+} from '../../../utils/timezones';
+import { TIMEZONE_EDITOR_ACTION } from '../../../widgets/shared/timezone-editor';
 import {
     getUsageTimezone,
     setUsageTimezone
-} from './usage-display';
+} from '../../../widgets/shared/usage-display';
 
-export const TIMEZONE_EDITOR_ACTION = 'edit-timezone';
-
-export function renderUsageTimezoneEditor(props: WidgetEditorProps): React.ReactElement {
-    return <UsageTimezoneEditor {...props} />;
-}
+import { SearchableOptionEditor } from './SearchableOptionEditor';
 
 export const UsageTimezoneEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel, action }) => {
     const currentTimezone = getUsageTimezone(widget);

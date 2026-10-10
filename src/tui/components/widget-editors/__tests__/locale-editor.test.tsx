@@ -9,12 +9,11 @@ import {
     vi
 } from 'vitest';
 
-import { waitFor } from '../../../tui/__tests__/helpers/wait-for-ink';
-import type { WidgetItem } from '../../../types/Widget';
-import {
-    TIMEZONE_EDITOR_ACTION,
-    UsageTimezoneEditor
-} from '../timezone-editor';
+import type { WidgetItem } from '../../../../types/Widget';
+import { canonicalizeLocale } from '../../../../utils/locales';
+import { LOCALE_EDITOR_ACTION } from '../../../../widgets/shared/locale-editor';
+import { waitFor } from '../../../__tests__/helpers/wait-for-ink';
+import { UsageLocaleEditor } from '../UsageLocaleEditor';
 
 class MockTtyStream extends PassThrough {
     isTTY = true;
@@ -83,11 +82,11 @@ function renderEditor(widget: WidgetItem, onComplete = vi.fn(), onCancel = vi.fn
     const stdout = createMockStdout();
     const stderr = createMockStdout();
     const instance = render(
-        React.createElement(UsageTimezoneEditor, {
+        React.createElement(UsageLocaleEditor, {
             widget,
             onComplete,
             onCancel,
-            action: TIMEZONE_EDITOR_ACTION
+            action: LOCALE_EDITOR_ACTION
         }),
         {
             stdin,
@@ -121,22 +120,64 @@ function getPlainOutput(output: string): string {
     return stripAnsi(output).replace(/\r\n/g, '\n');
 }
 
-describe('UsageTimezoneEditor', () => {
-    it('adds spacing between the timezone list and result count', async () => {
+describe('UsageLocaleEditor', () => {
+    it('adds spacing between the locale list and result count', async () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
         try {
             await waitForEditor(rendered.stdout);
 
             const output = getPlainOutput(rendered.stdout.getOutput());
-            expect(output).toMatch(/IANA timezone\n\nShowing \d+-\d+ of \d+/);
+            expect(output).toMatch(/\n\nShowing \d+-\d+ of \d+/);
         } finally {
             cleanupEditor(rendered);
         }
     });
 
-    it('searches native timezones and saves the selected timezone', async () => {
-        if (typeof Intl.supportedValuesOf !== 'function') {
+    it('searches common locales and saves the selected locale', async () => {
+        const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
+
+        try {
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'japan', 'ja-JP');
+
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.locale).toBe('ja-JP');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('selecting the default locale clears locale metadata', async () => {
+        const rendered = renderEditor({
+            id: 'reset',
+            type: 'reset-timer',
+            metadata: { locale: 'ja-JP' }
+        });
+
+        try {
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'en-us', 'en-US');
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.locale).toBeUndefined();
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('accepts a valid custom locale from the search query', async () => {
+        const customLocale = canonicalizeLocale('en-AU');
+        if (!customLocale) {
             return;
         }
 
@@ -144,7 +185,7 @@ describe('UsageTimezoneEditor', () => {
 
         try {
             await waitForEditor(rendered.stdout);
-            await search(rendered, 'tokyo', 'Asia/Tokyo');
+            await search(rendered, 'en-au', `Use ${customLocale}`);
 
             rendered.stdin.write('\r');
             await waitFor(() => {
@@ -152,29 +193,7 @@ describe('UsageTimezoneEditor', () => {
             });
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
-            expect(updated?.metadata?.timezone).toBe('Asia/Tokyo');
-        } finally {
-            cleanupEditor(rendered);
-        }
-    });
-
-    it('selecting UTC clears timezone metadata', async () => {
-        const rendered = renderEditor({
-            id: 'reset',
-            type: 'reset-timer',
-            metadata: { timezone: 'Asia/Tokyo' }
-        });
-
-        try {
-            await waitForEditor(rendered.stdout);
-            await search(rendered, 'utc', 'UTC');
-            rendered.stdin.write('\r');
-            await waitFor(() => {
-                expect(rendered.onComplete).toHaveBeenCalledOnce();
-            });
-
-            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
-            expect(updated?.metadata?.timezone).toBeUndefined();
+            expect(updated?.metadata?.locale).toBe(customLocale);
         } finally {
             cleanupEditor(rendered);
         }
