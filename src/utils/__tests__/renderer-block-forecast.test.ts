@@ -24,7 +24,8 @@ function renderLine(widgets: WidgetItem[], settings: Settings, context: RenderCo
     return stripSgrCodes(renderStatusLine(widgets, settings, context, preRendered, []));
 }
 
-const usage: WidgetItem = { id: 'usage', type: 'session-usage' };
+// Raw value, so the line doesn't depend on the usage widget's label
+const usage: WidgetItem = { id: 'usage', type: 'session-usage', rawValue: true };
 const forecast: WidgetItem = { id: 'forecast', type: 'block-forecast' };
 const model: WidgetItem = { id: 'model', type: 'model' };
 const context: RenderContext = {
@@ -48,6 +49,6 @@ describe('Block Forecast between Session Usage and another widget', () => {
     ])('takes its own place on the %s line once shown', (_mode, settings) => {
         const line = renderLine([usage, forecast, model], settings, { ...context, sessionForecast: { projectedPercent: 83.2, limitInMs: null } });
 
-        expect(line).toMatch(/Session: 42\.0%.*→83\.2%.*Opus 5\.5/);
+        expect(line).toMatch(/42\.0%.*→83\.2%.*Opus 5\.5/);
     });
 });
