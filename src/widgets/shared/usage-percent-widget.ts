@@ -56,9 +56,9 @@ interface UsagePercentWidgetKindConfig {
 
 const USAGE_PERCENT_WIDGET_CONFIG: Record<UsagePercentWidgetKind, UsagePercentWidgetKindConfig> = {
     'session': {
-        label: 'Session: ',
-        displayName: 'Session Usage',
-        description: 'Shows daily/session API usage percentage',
+        label: '5h: ',
+        displayName: 'Block Usage',
+        description: 'Shows the current 5-hour block\'s usage percentage',
         previewPercent: 20,
         usageField: 'sessionUsage'
     },

@@ -55,12 +55,12 @@ describe('SessionUsageWidget', () => {
             id: 'session',
             type: 'session-usage',
             metadata: { cursor: 'true', display: 'slider' }
-        }, context)).toBe('Session: ▓▓░░░│░░░░ 20.0%');
+        }, context)).toBe('5h: ▓▓░░░│░░░░ 20.0%');
         expect(render(widget, {
             id: 'session',
             type: 'session-usage',
             metadata: { cursor: 'true', display: 'slider-only' }
-        }, context)).toBe('Session: ▓▓░░░│░░░░');
+        }, context)).toBe('5h: ▓▓░░░│░░░░');
     });
 
     it('applies the label override to every display mode', () => {
@@ -68,7 +68,7 @@ describe('SessionUsageWidget', () => {
         const context: RenderContext = { usageData: { sessionUsage: 20 } };
         const metadata = { label: '5h ' };
 
-        expect(widget.getLabelPrefix()).toBe('Session: ');
+        expect(widget.getLabelPrefix()).toBe('5h: ');
         expect(render(widget, { id: 'session', type: 'session-usage', metadata }, context)).toBe('5h 20.0%');
         expect(render(widget, {
             id: 'session',
@@ -77,19 +77,31 @@ describe('SessionUsageWidget', () => {
         }, context)).toBe('5h ▓▓░░░░░░░░');
     });
 
+    // The widget was Session Usage, labeled "Session: ", which Session Clock and
+    // Session Name use for the conversation; "Block: " is Block Timer's. The old
+    // label is an override away.
+    it('is Block Usage, labeled "5h: ", and takes "Session: " back as an override', () => {
+        const widget = new SessionUsageWidget();
+        const context: RenderContext = { usageData: { sessionUsage: 20 } };
+
+        expect(widget.getDisplayName()).toBe('Block Usage');
+        expect(render(widget, { id: 'session', type: 'session-usage' }, context)).toBe('5h: 20.0%');
+        expect(render(widget, { id: 'session', type: 'session-usage', metadata: { label: 'Session: ' } }, context)).toBe('Session: 20.0%');
+    });
+
     runUsagePercentWidgetSuite({
         baseItem: { id: 'session', type: 'session-usage' },
         createWidget: () => new SessionUsageWidget(),
         errorMessageMock: usageErrorMessageMock,
-        expectedInvertedTime: 'Session: 76.5%',
+        expectedInvertedTime: '5h: 76.5%',
         expectedModifierText: '(medium bar, remaining)',
-        expectedPreviewInvertedTime: 'Session: 80.0%',
-        expectedProgress: 'Session: [████████████░░░░] 76.5%',
+        expectedPreviewInvertedTime: '5h: 80.0%',
+        expectedProgress: '5h: [████████████░░░░] 76.5%',
         expectedRawInvertedTime: '76.5%',
         expectedRawProgress: '[████████░░░░░░░░░░░░░░░░░░░░░░░░] 23.4%',
         expectedRawTime: '23.4%',
-        expectedTime: 'Session: 23.4%',
-        expectedWholePercentTime: 'Session: 23%',
+        expectedTime: '5h: 23.4%',
+        expectedWholePercentTime: '5h: 23%',
         modifierItem: {
             id: 'session',
             type: 'session-usage',
