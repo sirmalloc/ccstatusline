@@ -132,7 +132,11 @@ function getDirectoryName(filePath: string): string {
 }
 
 function getComparablePath(filePath: string): string {
-    return filePath.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+    const normalized = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    return isWindowsStylePath(normalized) || normalized.startsWith('/mnt/')
+        ? normalized.toLowerCase()
+        : normalized;
 }
 
 function getUniqueResolvedDirs(resolvedPaths: string[]): string[] {
