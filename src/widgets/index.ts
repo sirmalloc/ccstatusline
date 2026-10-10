@@ -88,3 +88,4 @@ export { SandboxStatusWidget } from './SandboxStatus';
 export { VoiceStatusWidget } from './VoiceStatus';
 export { RemoteControlStatusWidget } from './RemoteControlStatus';
 export { CacheTimerWidget } from './CacheTimer';
+export { RCloneQueueWidget } from './RCloneQueue';
