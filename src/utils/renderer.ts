@@ -16,6 +16,7 @@ import {
     MERGE_TARGET_HIDDEN_HIDEABLE_STATE,
     isHidden
 } from '../widgets/shared/hideable';
+import { withGlobalCompactLabels } from '../widgets/shared/raw-or-labeled';
 
 import {
     applyLineGradient,
@@ -906,7 +907,9 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            const effectiveWidget = context.minimalist
+                ? { ...widget, rawValue: true }
+                : withGlobalCompactLabels(widget, settings);
             // Widget text can come from the repository, the session or imported
             // settings: only colors and safe links may reach the terminal
             const widgetText = sanitizeTerminalText(widgetImpl.render(effectiveWidget, context, settings) ?? '');
