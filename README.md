@@ -346,9 +346,11 @@ The localizations in this section are third-party forks maintained outside this 
 # Run the configuration TUI with npm
 npx -y ccstatusline@latest
 
-# Or with Bun (faster)
+# Or use bunx, Bun's alternative to npx
 bunx -y ccstatusline@latest
 ```
+
+Startup time can vary with the package runner (`npx` or `bunx`), its cache, and your platform. If repeated status line launches are slow, consider the **Pinned global install** option described below to run `ccstatusline` directly.
 
 Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
 
