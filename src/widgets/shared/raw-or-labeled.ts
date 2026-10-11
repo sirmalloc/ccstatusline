@@ -4,6 +4,41 @@ import type {
     WidgetItem
 } from '../../types/Widget';
 
+import { removeMetadataKeys } from './metadata';
+
+const LABEL_METADATA_KEY = 'label';
+export const EDIT_LABEL_ACTION = 'edit-label';
+
+// The key Custom Text, Custom Command, Custom Symbol and Link use to edit their
+// own text. None of them has a label, so it's free on every labeled widget.
+const LABEL_KEYBIND: CustomKeybind = {
+    key: 'e',
+    label: '(e)dit label…',
+    action: EDIT_LABEL_ACTION
+};
+
+/** The item's label override, or the widget's default label for its current mode. */
+export function getLabel(item: WidgetItem, defaultLabel: string): string {
+    return item.metadata?.[LABEL_METADATA_KEY] ?? defaultLabel;
+}
+
+export function clearLabel(item: WidgetItem): WidgetItem {
+    return removeMetadataKeys(item, [LABEL_METADATA_KEY]);
+}
+
+// Kept even when it equals the current default: widgets whose default changes
+// with their mode apply one override in every mode. An empty override means
+// "no label" rather than "default".
+export function setLabel(item: WidgetItem, value: string): WidgetItem {
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            [LABEL_METADATA_KEY]: value
+        }
+    };
+}
+
 // Abbreviated label presets applied when compact labels are enabled. Keys are
 // exact default label prefixes as passed to formatRawOrLabeledValue; labels
 // without an entry keep their default form. An empty replacement strips the
@@ -81,6 +116,12 @@ export function isCompactLabelEnabled(item: WidgetItem): boolean {
 export function formatRawOrLabeledValue(item: WidgetItem, labelPrefix: string, value: string): string {
     if (item.rawValue) {
         return value;
+    }
+    // A user label override (the `e` editor) wins over compact presets; an
+    // empty override means "no label".
+    const override = item.metadata?.[LABEL_METADATA_KEY];
+    if (override !== undefined) {
+        return `${override}${value}`;
     }
     if (isCompactLabelEnabled(item)) {
         const compact = COMPACT_LABELS[labelPrefix];
@@ -161,4 +202,13 @@ export function withGlobalCompactLabels(widget: WidgetItem, settings: Settings):
             [COMPACT_LABEL_METADATA_KEY]: 'true'
         }
     };
+}
+
+export function getLabelKeybind(): CustomKeybind {
+    return LABEL_KEYBIND;
+}
+
+export function getLabelModifierText(item: WidgetItem): string | undefined {
+    const label = item.metadata?.[LABEL_METADATA_KEY];
+    return label === undefined ? undefined : `(label: ${JSON.stringify(label)})`;
 }

@@ -17,6 +17,7 @@ import {
     getUsagePercentWidgetDescription,
     getUsagePercentWidgetDisplayName,
     getUsagePercentWidgetEditorDisplay,
+    getUsagePercentWidgetLabel,
     handleUsagePercentWidgetEditorAction,
     renderUsagePercentWidgetValue
 } from './shared/usage-percent-widget';
@@ -26,6 +27,7 @@ export class FableWeeklyUsageWidget implements Widget {
     getDescription(): string { return getUsagePercentWidgetDescription('fable-weekly'); }
     getDisplayName(): string { return getUsagePercentWidgetDisplayName('fable-weekly'); }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return getUsagePercentWidgetLabel('fable-weekly'); }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return getUsagePercentWidgetEditorDisplay('fable-weekly', item);

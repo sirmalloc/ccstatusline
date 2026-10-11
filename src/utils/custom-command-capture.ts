@@ -1,7 +1,7 @@
 import type {
     ChildProcessWithoutNullStreams,
     spawn
-} from 'child_process';
+} from 'node:child_process';
 
 import type {
     CustomCommandRequest,

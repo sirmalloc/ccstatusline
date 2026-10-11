@@ -10,6 +10,7 @@ import Gradient from 'ink-gradient';
 import React, {
     useCallback,
     useEffect,
+    useRef,
     useState
 } from 'react';
 
@@ -184,6 +185,7 @@ interface PinnedVersionMismatch {
 interface PinnedVersionMismatchScreenProps {
     mismatch: PinnedVersionMismatch;
     canRunPackageManager: boolean;
+    updating: boolean;
     onUpdate: () => void;
     onExit: () => void;
 }
@@ -246,11 +248,12 @@ function getPinnedMismatchItems(
 const PinnedVersionMismatchScreen: React.FC<PinnedVersionMismatchScreenProps> = ({
     mismatch,
     canRunPackageManager,
+    updating,
     onUpdate,
     onExit
 }) => {
     useInput((_, key) => {
-        if (key.escape) {
+        if (key.escape && !updating) {
             onExit();
         }
     });
@@ -278,23 +281,31 @@ const PinnedVersionMismatchScreen: React.FC<PinnedVersionMismatchScreenProps> = 
                     {mismatch.relaunchCommand}
                 </Text>
             </Box>
-            <List
-                marginTop={1}
-                items={getPinnedMismatchItems(mismatch, canRunPackageManager)}
-                onSelect={(value) => {
-                    if (value === 'back') {
-                        return;
-                    }
+            {updating ? (
+                <Box marginTop={1}>
+                    <Text color='yellow'>
+                        {`Updating ${mismatch.packageManager} global install to v${mismatch.runningVersion}... This may take a moment.`}
+                    </Text>
+                </Box>
+            ) : (
+                <List
+                    marginTop={1}
+                    items={getPinnedMismatchItems(mismatch, canRunPackageManager)}
+                    onSelect={(value) => {
+                        if (value === 'back') {
+                            return;
+                        }
 
-                    if (value === 'update') {
-                        onUpdate();
-                        return;
-                    }
+                        if (value === 'update') {
+                            onUpdate();
+                            return;
+                        }
 
-                    onExit();
-                }}
-                color='cyan'
-            />
+                        onExit();
+                    }}
+                    color='cyan'
+                />
+            )}
         </Box>
     );
 };
@@ -379,7 +390,8 @@ function getPinnedGlobalRelaunchCommand(packageManager: GlobalPackageManager): s
 export function getPinnedVersionMismatch(
     installation: ResolvedInstallationMetadata,
     runningVersion: string,
-    relaunchCommand: string
+    relaunchCommand: string,
+    versionInstalledThisSession: string | null = null
 ): PinnedVersionMismatch | null {
     if (
         installation.method !== 'pinned'
@@ -387,6 +399,9 @@ export function getPinnedVersionMismatch(
         || installation.packageManager === 'unknown'
         || !runningVersion
         || installation.installedVersion === runningVersion
+        // This session's own update installed it. The settings being edited were loaded
+        // before that update, so saving them now is the same as saving just before it.
+        || installation.installedVersion === versionInstalledThisSession
     ) {
         return null;
     }
@@ -462,7 +477,8 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
 
 export function buildInvalidConfigSaveConfirm(
     configLoadError: string | null,
-    onConfirm: () => void
+    onConfirm: () => void,
+    returnScreen: Exclude<AppScreen, 'confirm'> = 'main'
 ): ConfirmDialogState | null {
     if (!configLoadError) {
         return null;
@@ -474,7 +490,7 @@ export function buildInvalidConfigSaveConfirm(
             onConfirm();
             return Promise.resolve();
         },
-        cancelScreen: 'main'
+        cancelScreen: returnScreen
     };
 }
 
@@ -527,9 +543,13 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
     const [flowNotice, setFlowNotice] = useState<FlowNoticeState | null>(null);
     const [globalPackageInstallations, setGlobalPackageInstallations] = useState<GlobalPackageInstallation[]>([]);
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
+    const [versionInstalledThisSession, setVersionInstalledThisSession] = useState<string | null>(null);
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
     const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
+    const [actionInFlight, setActionInFlight] = useState(false);
+    // The ref blocks a second start synchronously, before the busy screen re-renders
+    const actionInFlightRef = useRef(false);
 
     useEffect(() => {
         void loadClaudeStatusLineState()
@@ -609,7 +629,12 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
                 ? inspectActiveGlobalCommand({ commandAvailability })
                 : null;
             const effectiveInstallation = getPathInferredInstallation(installation, activeCommand);
-            const mismatch = getPinnedVersionMismatch(effectiveInstallation, getPackageVersion(), 'ccstatusline');
+            const mismatch = getPinnedVersionMismatch(
+                effectiveInstallation,
+                getPackageVersion(),
+                'ccstatusline',
+                versionInstalledThisSession
+            );
             if (mismatch) {
                 return;
             }
@@ -635,14 +660,16 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
                 })();
             };
 
+            // Ctrl+S works on any screen, so both answers return to the one it was pressed on
+            const returnScreen = screen;
             const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
                 // The confirm dialog doesn't self-dismiss; its action must navigate away
-                // (matching the other confirm flows in this file). Return to the main menu
-                // before saving so the success flash isn't hidden behind the dialog.
+                // (matching the other confirm flows in this file). Navigate back before
+                // saving so the success flash isn't hidden behind the dialog.
                 setConfirmDialog(null);
-                setScreen('main');
+                setScreen(returnScreen);
                 performSave();
-            });
+            }, returnScreen);
             if (saveGuard) {
                 setConfirmDialog(saveGuard);
                 setScreen('confirm');
@@ -759,12 +786,15 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
                                 color: 'green'
                             });
                         }
-                    } catch {
-                        setFlashMessage({
-                            text: '✗ Install failed',
-                            color: 'red'
+                    } catch (err) {
+                        setFlashMessage(null);
+                        setFlowNotice({
+                            title: 'Install Failed',
+                            message: err instanceof Error ? err.message : String(err),
+                            color: 'red',
+                            continueScreen: 'install'
                         });
-                        setScreen('install');
+                        setScreen('flowNotice');
                     }
                     setConfirmDialog(null);
                 }
@@ -806,6 +836,7 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
             action: async () => {
                 try {
                     await runGlobalUpdateAction(action);
+                    setVersionInstalledThisSession(action.version);
                     const installation = {
                         method: 'pinned' as const,
                         installedVersion: action.version
@@ -926,9 +957,26 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
         ? getPinnedVersionMismatch(
             effectiveInstallation,
             runningVersion,
-            getPinnedGlobalRelaunchCommand(effectiveInstallation.packageManager)
+            getPinnedGlobalRelaunchCommand(effectiveInstallation.packageManager),
+            versionInstalledThisSession
         )
         : null;
+
+    // Install, uninstall and update run a package manager and write settings files.
+    // Run one at a time and hold its screen until it settles, so a second Enter
+    // can't start it again and ESC can't leave it finishing behind another screen.
+    const runActionOnce = (action: () => Promise<void>) => {
+        if (actionInFlightRef.current) {
+            return;
+        }
+
+        actionInFlightRef.current = true;
+        setActionInFlight(true);
+        void action().finally(() => {
+            actionInFlightRef.current = false;
+            setActionInFlight(false);
+        });
+    };
 
     const handlePinnedVersionMismatchUpdate = async (mismatch: PinnedVersionMismatch) => {
         try {
@@ -1181,8 +1229,9 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
                 <PinnedVersionMismatchScreen
                     mismatch={pinnedVersionMismatch}
                     canRunPackageManager={commandAvailability[pinnedVersionMismatch.packageManager]}
+                    updating={actionInFlight}
                     onUpdate={() => {
-                        void handlePinnedVersionMismatchUpdate(pinnedVersionMismatch);
+                        runActionOnce(() => handlePinnedVersionMismatchUpdate(pinnedVersionMismatch));
                     }}
                     onExit={exit}
                 />
@@ -1409,7 +1458,10 @@ export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
                                 onSelect: () => void confirmDialog.additionalAction?.onSelect()
                             }
                             : undefined}
-                        onConfirm={() => void confirmDialog.action()}
+                        busy={actionInFlight}
+                        onConfirm={() => {
+                            runActionOnce(confirmDialog.action);
+                        }}
                         onCancel={() => {
                             setScreen(getConfirmCancelScreen(confirmDialog));
                             setConfirmDialog(null);

@@ -33,12 +33,17 @@ import {
     getHideModifierText
 } from '../../widgets/shared/hideable';
 import {
+    EDIT_LABEL_ACTION,
+    clearLabel,
     getCompactLabelKeybind,
-    getCompactLabelModifierText
+    getCompactLabelModifierText,
+    getLabelKeybind,
+    getLabelModifierText
 } from '../../widgets/shared/raw-or-labeled';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { HideStatesEditor } from './HideStatesEditor';
+import { LabelEditor } from './LabelEditor';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -137,6 +142,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             keybinds.push(getHideKeybind());
         }
 
+        // The label only shows when raw value is off, so the editor is offered
+        // only then. Like 'h', widgets must leave this key unbound.
+        if (widgetImpl.getLabelPrefix && !widget.rawValue) {
+            keybinds.push(getLabelKeybind());
+        }
+
         // Labeled widgets whose label has a compact preset share a single
         // compact-label toggle here, mirroring the (h)ide… keybind.
         if (getCompactLabelCapableTypes().has(widget.type)) {
@@ -173,7 +184,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             const currentWidget = widgets[selectedIndex];
             if (currentWidget) {
                 const newWidgets = [...widgets];
-                newWidgets[selectedIndex] = { ...currentWidget, type: selectedType };
+                // Other metadata carries over, but a label names the old widget's value
+                newWidgets[selectedIndex] = currentWidget.type === selectedType
+                    ? currentWidget
+                    : { ...clearLabel(currentWidget), type: selectedType };
                 onUpdate(newWidgets);
             }
         } else {
@@ -213,7 +227,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
     }
 
-    const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
+    // On the last widget, m only clears a merge left there
+    const canMerge = currentWidget && (selectedIndex < widgets.length - 1 || Boolean(currentWidget.merge))
+        && !isSeparator && !isFlexSeparator;
     const canExcludeAlign = Boolean(currentWidget) && !isSeparator && !isFlexSeparator
         && settings.powerline.enabled && settings.powerline.autoAlign
         && !isMergedIntoPreviousWidget(widgets, selectedIndex);
@@ -356,6 +372,17 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
             <HideStatesEditor
                 widget={customEditorWidget.widget}
                 states={customEditorWidget.impl.getHideableStates?.() ?? []}
+                onComplete={handleEditorComplete}
+                onCancel={handleEditorCancel}
+            />
+        );
+    }
+
+    if (customEditorWidget?.action === EDIT_LABEL_ACTION && customEditorWidget.impl.getLabelPrefix) {
+        return (
+            <LabelEditor
+                widget={customEditorWidget.widget}
+                defaultLabel={customEditorWidget.impl.getLabelPrefix(customEditorWidget.widget)}
                 onComplete={handleEditorComplete}
                 onCancel={handleEditorCancel}
             />
@@ -594,6 +621,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                     ? getNumberFormatModifierText(widget)
                                     : undefined;
                                 const hideModifierText = widgetImpl ? getHideModifierText(widget, widgetImpl.getHideableStates?.() ?? []) : undefined;
+                                const labelModifierText = widgetImpl?.getLabelPrefix && !widget.rawValue ? getLabelModifierText(widget) : undefined;
                                 const compactModifierText = widgetImpl && getCompactLabelCapableTypes().has(widget.type)
                                     ? getCompactLabelModifierText(widget, settings)
                                     : undefined;
@@ -624,6 +652,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                                             <Text dimColor>
                                                 {' '}
                                                 {hideModifierText}
+                                            </Text>
+                                        )}
+                                        {labelModifierText && (
+                                            <Text dimColor>
+                                                {' '}
+                                                {labelModifierText}
                                             </Text>
                                         )}
                                         {compactModifierText && (

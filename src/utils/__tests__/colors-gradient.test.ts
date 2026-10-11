@@ -66,3 +66,17 @@ describe('getColorAnsiCode gradient first-stop fallback (powerline / ansi16 path
         expect(getColorAnsiCode('gradient:not-a-color', 'truecolor', false)).toBe('');
     });
 });
+
+describe('getColorAnsiCode custom colors at ansi16 (Basic / No Color)', () => {
+    it('returns empty for hex and ansi256 colors, as for gradients', () => {
+        expect(getColorAnsiCode('hex:FF0000', 'ansi16', false)).toBe('');
+        expect(getColorAnsiCode('hex:0000FF', 'ansi16', true)).toBe('');
+        expect(getColorAnsiCode('ansi256:100', 'ansi16', false)).toBe('');
+        expect(getColorAnsiCode('ansi256:100', 'ansi16', true)).toBe('');
+    });
+
+    it('still emits them at 256-color and truecolor levels', () => {
+        expect(getColorAnsiCode('ansi256:100', 'ansi256', false)).toBe('\x1b[38;5;100m');
+        expect(getColorAnsiCode('hex:0000FF', 'truecolor', true)).toBe('\x1b[48;2;0;0;255m');
+    });
+});

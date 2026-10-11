@@ -22,7 +22,7 @@ const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCance
         }
 
         if (key.return) {
-            const parsed = parseInt(limitInput, 10);
+            const parsed = Number.parseInt(limitInput, 10);
             const limit = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
             onComplete(setListLimit(widget, limit));
         } else if (key.escape) {

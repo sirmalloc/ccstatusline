@@ -9,7 +9,10 @@ import {
     type Settings
 } from '../../types/Settings';
 import { getHideKeybind } from '../../widgets/shared/hideable';
-import { getCompactLabelKeybind } from '../../widgets/shared/raw-or-labeled';
+import {
+    getCompactLabelKeybind,
+    getLabelKeybind
+} from '../../widgets/shared/raw-or-labeled';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
@@ -154,7 +157,7 @@ describe('legacy widget type aliases', () => {
     });
 });
 
-describe('hideable state keybind reservation', () => {
+describe('shared keybind reservation', () => {
     // Widgets vary their keybinds by display mode, so an item-free call sees
     // only one branch. These cover the metadata the usage and timer widgets
     // branch on, so a bind offered in just one mode still gets caught.
@@ -192,6 +195,31 @@ describe('hideable state keybind reservation', () => {
                 // binding would shadow the hide editor
                 const item = metadata === undefined ? undefined : { id: '1', type, metadata };
                 const keys = (widget?.getCustomKeybinds?.(item) ?? []).map(keybind => keybind.key);
+                expect(`${type}/${JSON.stringify(metadata)} binds ${keys.includes(reservedKey) ? reservedKey : 'nothing reserved'}`)
+                    .toBe(`${type}/${JSON.stringify(metadata)} binds nothing reserved`);
+            }
+        }
+    });
+
+    it('widgets declaring a label prefix leave the shared label key free in every mode', () => {
+        const reservedKey = getLabelKeybind().key;
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+        const runtimeTypes = getAllWidgetTypes(settings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            if (!widget?.getLabelPrefix) {
+                continue;
+            }
+
+            for (const metadata of KEYBIND_MODE_PROBES) {
+                const item = metadata === undefined ? undefined : { id: '1', type, metadata };
+                const keys = (widget.getCustomKeybinds?.(item) ?? []).map(keybind => keybind.key);
                 expect(`${type}/${JSON.stringify(metadata)} binds ${keys.includes(reservedKey) ? reservedKey : 'nothing reserved'}`)
                     .toBe(`${type}/${JSON.stringify(metadata)} binds nothing reserved`);
             }
@@ -373,5 +401,39 @@ describe('getMatchSegments', () => {
     it('is case-insensitive but preserves original casing in output', () => {
         const segments = getMatchSegments('Git Branch', 'GIT');
         expect(segments[0]).toEqual({ text: 'Git', matched: true });
+    });
+});
+
+describe('label prefix', () => {
+    const LABEL_MODE_PROBES: Record<string, string>[] = [
+        {},
+        { absolute: 'true' },
+        { display: 'progress' },
+        { display: 'progress-short' },
+        { display: 'slider' },
+        { display: 'slider-only' },
+        { inverse: 'true' }
+    ];
+
+    it('widgets render the label their prefix declares in every mode', () => {
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+
+        for (const type of getAllWidgetTypes(settings)) {
+            const widget = getWidget(type);
+            if (!widget?.getLabelPrefix) {
+                continue;
+            }
+
+            for (const metadata of LABEL_MODE_PROBES) {
+                const item = { id: '1', type, metadata };
+                const label = widget.getLabelPrefix(item);
+                const rendered = widget.render(item, { isPreview: true }, settings) ?? '';
+                expect(`${type}/${JSON.stringify(metadata)}: ${rendered.includes(label) ? 'has' : 'lacks'} "${label}"`)
+                    .toBe(`${type}/${JSON.stringify(metadata)}: has "${label}"`);
+            }
+        }
     });
 });

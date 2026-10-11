@@ -52,6 +52,7 @@ export class ClaudeStatusWidget implements Widget {
     getDescription(): string { return 'Shows Claude service status from status.claude.com with an optional 48h incident history strip'; }
     getDisplayName(): string { return 'Claude Status'; }
     getCategory(): string { return 'Core'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
@@ -90,11 +91,11 @@ export class ClaudeStatusWidget implements Widget {
 
         if (context.isPreview) {
             if (!showHistory) {
-                return formatRawOrLabeledValue(item, LABEL, 'ok');
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'ok');
             }
             const previewBuckets: ClaudeIncidentImpact[] = ['none', 'none', 'minor', 'none', 'major', 'none', 'critical', 'none'];
             const previewBar = previewBuckets.map(bucket => colorize(HISTORY_BAR_CHAR, bucket)).join('');
-            const previewStatus = colorize(formatRawOrLabeledValue(item, LABEL, 'ok'), 'none');
+            const previewStatus = colorize(formatRawOrLabeledValue(item, this.getLabelPrefix(), 'ok'), 'none');
             return `${previewStatus} ${previewBar}`;
         }
 
@@ -102,21 +103,21 @@ export class ClaudeStatusWidget implements Widget {
         if (!data || data.error || data.indicator === undefined) {
             // Degrade quietly on fetch/parse failures instead of breaking the line.
             if (showHistory) {
-                return colorize(formatRawOrLabeledValue(item, LABEL, '?'), 'unknown');
+                return colorize(formatRawOrLabeledValue(item, this.getLabelPrefix(), '?'), 'unknown');
             }
-            return formatRawOrLabeledValue(item, LABEL, '?');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), '?');
         }
 
         const statusText = INDICATOR_TEXT[data.indicator] ?? data.indicator;
         if (!showHistory) {
-            return formatRawOrLabeledValue(item, LABEL, statusText);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), statusText);
         }
 
         // Color the label together with the status. The renderer deliberately
         // skips its theme foreground while preserving the multi-colored strip,
         // so leaving the label uncolored could make it unreadable in Powerline.
         const coloredStatus = colorize(
-            formatRawOrLabeledValue(item, LABEL, statusText),
+            formatRawOrLabeledValue(item, this.getLabelPrefix(), statusText),
             getIndicatorColorKey(data.indicator)
         );
         const buckets = computeIncidentHistoryBuckets(data.incidents ?? [], Date.now());

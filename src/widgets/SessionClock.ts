@@ -10,8 +10,9 @@ import type {
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Session: ';
+
 const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when under 1 minute' };
-const SESSION_LABEL = 'Session: ';
 
 function formatDurationFromMs(durationMs: number): string {
     const totalMinutes = Math.floor(durationMs / (1000 * 60));
@@ -38,6 +39,7 @@ export class SessionClockWidget implements Widget {
     getDescription(): string { return 'Shows elapsed time since current session started'; }
     getDisplayName(): string { return 'Session Clock'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -48,7 +50,7 @@ export class SessionClockWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, SESSION_LABEL, '2hr 15m');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), '2hr 15m');
         }
 
         const hideZero = isHidden(item, ZERO_HIDEABLE_STATE.key);
@@ -59,14 +61,14 @@ export class SessionClockWidget implements Widget {
                 return null;
             }
             const formatted = formatDurationFromMs(durationMs);
-            return formatRawOrLabeledValue(item, SESSION_LABEL, formatted);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatted);
         }
 
         const duration = context.sessionDuration ?? '0m';
         if ((duration === '0m' || duration === '<1m') && hideZero) {
             return null;
         }
-        return formatRawOrLabeledValue(item, SESSION_LABEL, duration);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), duration);
     }
 
     supportsRawValue(): boolean { return true; }

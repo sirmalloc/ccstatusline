@@ -1,14 +1,13 @@
-import type { ExecFileOptionsWithStringEncoding } from 'child_process';
+import type { ExecFileOptionsWithStringEncoding } from 'node:child_process';
 import {
     execFile,
     execFileSync
-} from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import * as https from 'https';
-import type { HttpsProxyAgent } from 'https-proxy-agent';
-import * as os from 'os';
-import * as path from 'path';
+} from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { promisify } from 'util';
 import { z } from 'zod';
 
@@ -21,6 +20,10 @@ const execFileAsync = promisify(execFile) as (
 ) => Promise<{ stdout: string; stderr: string }>;
 
 import { getClaudeConfigDir } from './claude-settings';
+import { isExcludedFromProxy } from './no-proxy';
+// type-only: the agent module itself is loaded on demand in
+// getUsageApiRequestOptions so the render path stays lean (#397)
+import type { ClosableProxyAgent } from './proxy-agent';
 import type {
     UsageData,
     UsageDataField,
@@ -48,11 +51,11 @@ const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
 const MAX_LOCK_HORIZON = 24 * 60 * 60; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
-// Bound for each async `security` probe. The sync probes run without an
-// explicit timeout in the one-shot path (execFileSync default = none) — the
-// daemon path must not leave a hung keychain read pending forever, so the
-// async variants enforce the same 5s budget the other CLI providers use.
-const MACOS_KEYCHAIN_TIMEOUT_MS = 5_000;
+// Keychain reads normally take milliseconds. A `security` call blocked on an
+// unlock prompt must not hold the status line until someone answers it, and
+// the daemon path must not leave a hung keychain read pending forever — sync
+// and async probes share the same 5s budget.
+const MACOS_SECURITY_TIMEOUT_MS = 5_000;
 const MACOS_KEYCHAIN_MISS_FILE = path.join(CACHE_DIR, 'keychain-fallback-empty');
 const MACOS_KEYCHAIN_MISS_TTL_MS = 30_000;
 
@@ -195,6 +198,7 @@ const UsageApiResponseSchema = z.looseObject({
 export const __testing = {
     CachedUsageDataSchema,
     UsageApiResponseSchema,
+    fetchFromUsageApi,
     parseUsageApiResponse
 };
 
@@ -582,7 +586,7 @@ function readMacKeychainSecret(service: string): string | null {
         return execFileSync(
             'security',
             ['find-generic-password', '-s', service, '-w'],
-            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: MACOS_SECURITY_TIMEOUT_MS, windowsHide: true }
         ).trim();
     } catch {
         return null;
@@ -603,6 +607,7 @@ function listMacKeychainCredentialCandidates(): string[] {
                 encoding: 'utf8',
                 maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
                 stdio: ['pipe', 'pipe', 'ignore'],
+                timeout: MACOS_SECURITY_TIMEOUT_MS,
                 windowsHide: true
             }
         );
@@ -702,7 +707,7 @@ async function readMacKeychainSecretAsync(service: string, signal?: AbortSignal)
     try {
         const options: ExecFileOptionsWithStringEncoding = {
             encoding: 'utf8',
-            timeout: MACOS_KEYCHAIN_TIMEOUT_MS,
+            timeout: MACOS_SECURITY_TIMEOUT_MS,
             windowsHide: true,
             ...(signal !== undefined ? { signal } : {})
         };
@@ -722,7 +727,7 @@ async function listMacKeychainCredentialCandidatesAsync(signal?: AbortSignal): P
         const options: ExecFileOptionsWithStringEncoding = {
             encoding: 'utf8',
             maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
-            timeout: MACOS_KEYCHAIN_TIMEOUT_MS,
+            timeout: MACOS_SECURITY_TIMEOUT_MS,
             windowsHide: true,
             ...(signal !== undefined ? { signal } : {})
         };
@@ -768,6 +773,47 @@ export function getUsageToken(): string | null {
     return getUsageCredentials()?.accessToken ?? null;
 }
 
+// A lookup that finds no OAuth login (an API-key user, a logged-out profile)
+// stands for LOCK_MAX_AGE across renders, as it already does within one
+// process: on macOS the default profile's lookup runs `security` twice, once
+// for a full keychain dump. The record names the credential stores it
+// covers, so one profile's miss never suppresses another profile's lookup.
+const NO_CREDENTIALS_LOCK_FILE = path.join(CACHE_DIR, 'usage-credentials.lock');
+const NoCredentialsLockSchema = z.object({
+    blockedUntil: z.number(),
+    source: z.string()
+});
+
+function getUsageCredentialsSource(): string {
+    return JSON.stringify([getMacKeychainConfigDirService(), getClaudeConfigDir()]);
+}
+
+function getUsageCredentialsWithBackoff(now: number, env?: NodeJS.ProcessEnv): UsageCredentials | null {
+    const source = getUsageCredentialsSource();
+    try {
+        const lock = parseJsonWithSchema(fs.readFileSync(NO_CREDENTIALS_LOCK_FILE, 'utf8'), NoCredentialsLockSchema);
+        // Bounded like the usage lock, so a deadline written before the clock
+        // was set back cannot stretch the backoff.
+        if (lock?.source === source && lock.blockedUntil > now && lock.blockedUntil <= now + LOCK_MAX_AGE) {
+            return null;
+        }
+    } catch {
+        // No recorded miss - look the credentials up
+    }
+
+    const credentials = getUsageCredentials(env);
+    if (!credentials) {
+        try {
+            ensureCacheDirExists();
+            fs.writeFileSync(NO_CREDENTIALS_LOCK_FILE, JSON.stringify({ blockedUntil: now + LOCK_MAX_AGE, source }));
+        } catch {
+            // Ignore lock file errors
+        }
+    }
+
+    return credentials;
+}
+
 function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageData | null {
     try {
         const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
@@ -780,18 +826,26 @@ function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageDat
     }
 }
 
-function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
+function writeUsageLock(blockedUntil: number, error: UsageLockError): string {
+    const contents = JSON.stringify({ blockedUntil, error });
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+        fs.writeFileSync(LOCK_FILE, contents);
     } catch {
         // Ignore lock file errors
     }
+    return contents;
 }
 
-function clearUsageLock(): void {
+// Remove the lock only while it still holds the in-flight record this process
+// wrote. A concurrent render may have replaced it with a 429 Retry-After lock
+// in the meantime; deleting that would let the next render fetch inside the
+// server's backoff window.
+function clearOwnUsageLock(ownContents: string): void {
     try {
-        fs.rmSync(LOCK_FILE, { force: true });
+        if (fs.readFileSync(LOCK_FILE, 'utf8') === ownContents) {
+            fs.rmSync(LOCK_FILE, { force: true });
+        }
     } catch {
         // Ignore lock file errors
     }
@@ -867,45 +921,48 @@ const USAGE_API_TIMEOUT_MS = 5000;
 
 function getUsageApiProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
     const proxyUrl = env.HTTPS_PROXY?.trim();
-    if (proxyUrl === '') {
+    if (proxyUrl === '' || proxyUrl === undefined || isExcludedFromProxy(USAGE_API_HOST)) {
         return null;
     }
 
-    return proxyUrl ?? null;
+    return proxyUrl;
 }
 
-async function getUsageApiRequestOptions(token: string, env: NodeJS.ProcessEnv): Promise<https.RequestOptions | null> {
+async function getUsageApiRequest(token: string, env: NodeJS.ProcessEnv): Promise<{ options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null> {
     const proxyUrl = getUsageApiProxyUrl(env);
 
     try {
-        let agent: InstanceType<typeof HttpsProxyAgent> | undefined;
+        let proxy: ClosableProxyAgent | null = null;
         if (proxyUrl) {
             // Loaded on demand: the agent (and its transitive module graph) only
             // matters when a proxy is actually configured, and the statusline
             // entry point is re-run on every repaint (#397).
-            const { HttpsProxyAgent: ProxyAgent } = await import('https-proxy-agent');
-            agent = new ProxyAgent(proxyUrl);
+            const { createProxyAgent } = await import('./proxy-agent');
+            proxy = createProxyAgent(proxyUrl);
         }
 
         return {
-            hostname: USAGE_API_HOST,
-            path: USAGE_API_PATH,
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'anthropic-beta': 'oauth-2025-04-20'
+            options: {
+                hostname: USAGE_API_HOST,
+                path: USAGE_API_PATH,
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'anthropic-beta': 'oauth-2025-04-20'
+                },
+                timeout: USAGE_API_TIMEOUT_MS,
+                ...(proxy ? { agent: proxy.agent } : {})
             },
-            timeout: USAGE_API_TIMEOUT_MS,
-            ...(agent ? { agent } : {})
+            proxy
         };
     } catch {
         return null;
     }
 }
 
-async function fetchFromUsageApi(token: string, signal?: AbortSignal, env: NodeJS.ProcessEnv = process.env): Promise<UsageApiFetchResult> {
-    const requestOptions = await getUsageApiRequestOptions(token, env);
-    if (!requestOptions) {
+async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS, signal?: AbortSignal, env: NodeJS.ProcessEnv = process.env): Promise<UsageApiFetchResult> {
+    const usageRequest = await getUsageApiRequest(token, env);
+    if (!usageRequest) {
         return { kind: 'error' };
     }
 
@@ -917,6 +974,10 @@ async function fetchFromUsageApi(token: string, signal?: AbortSignal, env: NodeJ
                 return;
             }
             settled = true;
+            clearTimeout(deadline);
+            // The one-shot agent must not hold the daemon alive after the
+            // request settled (success or failure).
+            usageRequest.proxy?.close();
             if (signal) {
                 signal.removeEventListener('abort', onAbort);
             }
@@ -928,7 +989,7 @@ async function fetchFromUsageApi(token: string, signal?: AbortSignal, env: NodeJ
             finish({ kind: 'error' });
         };
 
-        const request = https.request(requestOptions, (response) => {
+        const request = https.request(usageRequest.options, (response) => {
             let data = '';
             response.setEncoding('utf8');
 
@@ -959,6 +1020,12 @@ async function fetchFromUsageApi(token: string, signal?: AbortSignal, env: NodeJ
             request.destroy();
             finish({ kind: 'error' });
         });
+        // `timeout` only covers an idle socket, and behind a proxy the request
+        // has none until the proxy answers CONNECT
+        const deadline = setTimeout(() => {
+            request.destroy();
+            finish({ kind: 'error' });
+        }, deadlineMs);
         if (signal) {
             if (signal.aborted) {
                 finish({ kind: 'error' });
@@ -984,7 +1051,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions): Promise<Us
     // including the no-credentials profile selecting a logged-in entry.
     const credentials = options.credentials
         ?? (options.resolveCredentials ? await options.resolveCredentials() : null)
-        ?? getUsageCredentials(options.env);
+        ?? getUsageCredentialsWithBackoff(now, options.env);
     const token = credentials?.accessToken ?? null;
     const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
     const identity = cacheIdentity?.preferredHash ?? null;
@@ -1005,7 +1072,11 @@ export async function fetchUsageData(options: FetchUsageDataOptions): Promise<Us
     try {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
-        if (fileAge < CACHE_MAX_AGE) {
+        // A file dated ahead of now still counts within one cache lifetime: a
+        // concurrent render may have written it after this one read the clock.
+        // Further ahead, it was written under a clock since set back, and
+        // trusting it would keep that data on screen until real time caught up.
+        if (Math.abs(fileAge) < CACHE_MAX_AGE) {
             const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
@@ -1035,11 +1106,11 @@ export async function fetchUsageData(options: FetchUsageDataOptions): Promise<Us
         );
     }
 
-    writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
+    const inFlightLock = writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
 
     // Fetch from API using Node's https module
     try {
-        const response = await fetchFromUsageApi(token, options.signal, options.env);
+        const response = await fetchFromUsageApi(token, USAGE_API_TIMEOUT_MS, options.signal, options.env);
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
@@ -1074,7 +1145,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions): Promise<Us
         // the caller's requested fields. Incomplete 200 responses are cached but
         // still need the short throttle so later renders do not refetch every time.
         if (hasRequiredUsageFields(usageData, requiredFields)) {
-            clearUsageLock();
+            clearOwnUsageLock(inFlightLock);
         }
 
         return cacheUsageData(cache, usageData, now, identity);

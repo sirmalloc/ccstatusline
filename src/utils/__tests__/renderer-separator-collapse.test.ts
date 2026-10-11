@@ -11,7 +11,10 @@ import {
 } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { stripSgrCodes } from '../ansi';
-import { renderStatusLine } from '../renderer';
+import {
+    preRenderAllWidgets,
+    renderStatusLine
+} from '../renderer';
 
 interface PreRenderedWidget {
     content: string;
@@ -94,6 +97,24 @@ describe('renderer separator collapse around empty widgets', () => {
         // both 'b' and 'c' render empty
         const out = render(widgets, { 0: 'A', 2: '', 4: '', 6: 'D' });
         expect((out.match(/\|/g) ?? []).length).toBe(1);
+    });
+
+    it('treats a widget type this version does not know as empty, keeping later widgets aligned', () => {
+        // e.g. a settings file written by a newer ccstatusline
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', customText: 'A' },
+            SEP,
+            { id: 'future', type: 'widget-from-a-newer-version' },
+            SEP,
+            { id: 'c', type: 'custom-text', customText: 'C' }
+        ];
+        const settings = createSettings({ colorLevel: 0 });
+        const context: RenderContext = { isPreview: false, terminalWidth: 200 };
+
+        const preRendered = preRenderAllWidgets([widgets], settings, context)[0] ?? [];
+
+        expect(preRendered.map(entry => entry.content)).toEqual(['A', '', '', '', 'C']);
+        expect(stripSgrCodes(renderStatusLine(widgets, settings, context, preRendered, []))).toBe('A | C');
     });
 
     it('suppresses a leading separator when no prior widget has rendered (existing behavior)', () => {

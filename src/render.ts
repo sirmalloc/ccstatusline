@@ -36,6 +36,7 @@ import {
     getWidgetSpeedWindowSeconds,
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
+import { sanitizeTerminalText } from './utils/terminal-sanitize';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 
 export interface RenderedStatusLines {
@@ -223,8 +224,11 @@ export async function renderStatusLines(
                     configBadgePrepended = true;
                 }
 
-                // Replace all spaces with non-breaking spaces to prevent VSCode trimming
-                let outputLine = line.replace(/ /g, '\u00A0');
+                // Sanitize, then replace all spaces with non-breaking spaces to
+                // prevent VSCode trimming. The renderer's own output is colors
+                // and links; this is the last stop before the terminal for
+                // anything else (separators, settings)
+                let outputLine = sanitizeTerminalText(line).replace(/ /g, '\u00A0');
 
                 // Add reset code at the beginning to override Claude Code's dim setting
                 outputLine = '\x1b[0m' + outputLine;
@@ -256,7 +260,7 @@ export async function renderStatusLines(
         && settings.updatemessage.remaining
         && settings.updatemessage.remaining > 0) {
         // Display the message
-        outputLines.push(settings.updatemessage.message);
+        outputLines.push(sanitizeTerminalText(settings.updatemessage.message));
 
         // Decrement the remaining count
         const newRemaining = settings.updatemessage.remaining - 1;

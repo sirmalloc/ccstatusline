@@ -15,6 +15,7 @@ import type { WidgetItem } from '../../../types/Widget';
 import { getVisibleWidth } from '../../../utils/ansi';
 import { getColorAnsiCode } from '../../../utils/colors';
 import { renderOsc8Link } from '../../../utils/hyperlink';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     StatusLinePreview,
     preparePreviewLineForTerminal
@@ -59,6 +60,7 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
+// Ink batches renders; one macrotask is enough for these small trees.
 function flushInk() {
     return new Promise((resolve) => {
         setTimeout(resolve, 25);
@@ -137,7 +139,9 @@ describe('StatusLinePreview helpers', () => {
         );
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Cache Write');
+            });
             const output = stdout.getOutput();
             const dimIndex = output.indexOf('\x1b[2m(64.0%)');
             const resetIndex = output.indexOf('\x1b[22;1m', dimIndex);

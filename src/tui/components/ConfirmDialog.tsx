@@ -22,13 +22,15 @@ export interface ConfirmDialogProps {
     inline?: boolean;
     /** Optional middle choice (e.g. "Keep existing") shown between Yes and No. */
     additionalAction?: ConfirmDialogAdditionalAction;
+    // While the confirmed action runs: replace Yes/No with a working line and ignore ESC
+    busy?: boolean;
 }
 
 type ConfirmOptionValue = boolean | 'additional';
 
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCancel, inline = false, additionalAction }) => {
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm, onCancel, inline = false, additionalAction, busy = false }) => {
     useInput((_, key) => {
-        if (key.escape) {
+        if (key.escape && !busy) {
             onCancel();
         }
     });
@@ -78,11 +80,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ message, onConfirm
         <Box flexDirection='column'>
             <Text>{message}</Text>
             <Box marginTop={1}>
-                <List
-                    items={options}
-                    onSelect={handleSelect}
-                    color='cyan'
-                />
+                {busy ? (
+                    <Text color='yellow'>Working... This may take a moment.</Text>
+                ) : (
+                    <List
+                        items={options}
+                        onSelect={handleSelect}
+                        color='cyan'
+                    />
+                )}
             </Box>
         </Box>
     );

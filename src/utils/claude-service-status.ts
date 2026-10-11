@@ -1,13 +1,17 @@
-import * as fs from 'fs';
-import * as https from 'https';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { z } from 'zod';
 
 import type { ColorLevelString } from '../types/ColorLevel';
 import type { WidgetItem } from '../types/Widget';
 
 import { getColorAnsiCode } from './colors';
+import { isExcludedFromProxy } from './no-proxy';
+// type-only: the agent module itself is loaded on demand in
+// getStatusPageRequestOptions so the render path stays lean (#397)
+import type { ClosableProxyAgent } from './proxy-agent';
 
 // Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
 // across statusline invocations, plus a failure lock so an unreachable status
@@ -258,7 +262,7 @@ function clearFailureLock(): void {
 
 function getStatusPageProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
     const proxyUrl = env.HTTPS_PROXY?.trim();
-    return proxyUrl?.length ? proxyUrl : null;
+    return proxyUrl?.length && !isExcludedFromProxy(STATUS_HOST) ? proxyUrl : null;
 }
 
 interface StatusPageResponse {
@@ -281,25 +285,28 @@ type StatusPageRequestFn = (
 
 const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.request(options, onResponse);
 
-async function getStatusPageRequestOptions(env: NodeJS.ProcessEnv): Promise<https.RequestOptions | null> {
+async function getStatusPageRequestOptions(env: NodeJS.ProcessEnv): Promise<{ options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null> {
     const proxyUrl = getStatusPageProxyUrl(env);
 
     try {
-        let agent: https.RequestOptions['agent'] | undefined;
+        let proxy: ClosableProxyAgent | null = null;
         if (proxyUrl) {
             // Loaded on demand: the agent (and its transitive module graph) is
             // only needed when a proxy is actually configured, and the
             // statusline entry point re-runs on every repaint (#397).
-            const { HttpsProxyAgent: ProxyAgent } = await import('https-proxy-agent');
-            agent = new ProxyAgent(proxyUrl);
+            const { createProxyAgent } = await import('./proxy-agent');
+            proxy = createProxyAgent(proxyUrl);
         }
 
         return {
-            hostname: STATUS_HOST,
-            path: '',
-            method: 'GET',
-            timeout: STATUS_TIMEOUT_MS,
-            ...(agent ? { agent } : {})
+            options: {
+                hostname: STATUS_HOST,
+                path: '',
+                method: 'GET',
+                timeout: STATUS_TIMEOUT_MS,
+                ...(proxy ? { agent: proxy.agent } : {})
+            },
+            proxy
         };
     } catch {
         return null;
@@ -309,13 +316,15 @@ async function getStatusPageRequestOptions(env: NodeJS.ProcessEnv): Promise<http
 function fetchStatusPagePath(
     pathName: string,
     requestFn: StatusPageRequestFn = requestStatusPage,
+    deadlineMs = STATUS_TIMEOUT_MS,
     signal?: AbortSignal,
     env: NodeJS.ProcessEnv = process.env
 ): Promise<string | null> {
-    return getStatusPageRequestOptions(env).then((baseOptions) => {
-        if (!baseOptions) {
+    return getStatusPageRequestOptions(env).then((requestSetup) => {
+        if (!requestSetup) {
             return null;
         }
+        const { options: baseOptions, proxy } = requestSetup;
 
         return new Promise<string | null>((resolve) => {
             let settled = false;
@@ -325,6 +334,10 @@ function fetchStatusPagePath(
                     return;
                 }
                 settled = true;
+                clearTimeout(deadline);
+                // The one-shot agent must not hold the daemon alive after the
+                // request settled (success or failure).
+                proxy?.close();
                 if (signal) {
                     signal.removeEventListener('abort', onAbort);
                 }
@@ -359,6 +372,12 @@ function fetchStatusPagePath(
                 request.destroy();
                 finish(null);
             });
+            // `timeout` only covers an idle socket, and behind a proxy the request
+            // has none until the proxy answers CONNECT
+            const deadline = setTimeout(() => {
+                request.destroy();
+                finish(null);
+            }, deadlineMs);
             if (signal) {
                 if (signal.aborted) {
                     finish(null);
@@ -418,8 +437,8 @@ async function fetchClaudeServiceStatus(
     }
 
     const [statusBody, incidentsBody] = await Promise.all([
-        fetchStatusPagePath(STATUS_PATH, requestStatusPage, scope.signal, scope.env),
-        includeIncidents ? fetchStatusPagePath(INCIDENTS_PATH, requestStatusPage, scope.signal, scope.env) : Promise.resolve(null)
+        fetchStatusPagePath(STATUS_PATH, requestStatusPage, STATUS_TIMEOUT_MS, scope.signal, scope.env),
+        includeIncidents ? fetchStatusPagePath(INCIDENTS_PATH, requestStatusPage, STATUS_TIMEOUT_MS, scope.signal, scope.env) : Promise.resolve(null)
     ]);
 
     const indicator = statusBody !== null ? parseClaudeStatusResponse(statusBody) : null;

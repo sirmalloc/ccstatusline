@@ -9,6 +9,7 @@ import type {
     WidgetItem
 } from '../types/Widget';
 import {
+    getGitShortSha,
     isInsideGitWorkTree,
     runGit
 } from '../utils/git';
@@ -44,6 +45,7 @@ const DEFAULT_SYMBOL = '⎇';
 const LINK_KEY = 'linkToRepo';
 const LEGACY_LINK_KEY = 'linkToGitHub';
 const TOGGLE_LINK_ACTION = 'toggle-link';
+const BRANCH_REF_PREFIX = 'refs/heads/';
 
 function isLinkEnabled(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, LINK_KEY)
@@ -116,28 +118,31 @@ export class GitBranchWidget implements Widget {
         const prefix = formatSymbolPrefix(item, DEFAULT_SYMBOL);
 
         if (context.isPreview) {
-            const preview = this.abbreviateBranch('main', fishStyle);
-            const text = item.rawValue ? preview : `${prefix}${preview}`;
-            return isLink ? renderOsc8Link('https://github.com/owner/repo/tree/main', text) : text;
+            return this.renderPreview(item, prefix, isLink, fishStyle);
         }
 
         if (!isInsideGitWorkTree(context)) {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
+        // A detached HEAD (rebase, bisect, tag checkout) has no branch, so
+        // show its commit in parentheses, as git prompts do
         const branch = this.getGitBranch(context);
-        if (!branch) {
+        const ref = branch ?? getGitShortSha(context);
+        if (!ref) {
             return hideNoGit ? null : `${prefix}no git`;
         }
 
-        const displayBranch = this.abbreviateBranch(branch, fishStyle);
-        const displayText = applyMaxWidth(item.rawValue ? displayBranch : `${prefix}${displayBranch}`, item.maxWidth);
+        // A detached HEAD renders as "(sha)" and must not be fish-abbreviated
+        const value = branch ?? `(${ref})`;
+        const displayValue = branch === null ? value : this.abbreviateBranch(value, fishStyle);
+        const displayText = applyMaxWidth(item.rawValue ? displayValue : `${prefix}${displayValue}`, item.maxWidth);
 
         if (isLink) {
             const origin = getRemoteInfo('origin', context);
             if (origin) {
                 return renderOsc8Link(
-                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(branch)),
+                    buildBranchWebUrl(origin, encodeGitRefForUrlPath(ref)),
                     displayText
                 );
             }
@@ -146,8 +151,19 @@ export class GitBranchWidget implements Widget {
         return displayText;
     }
 
+    private renderPreview(item: WidgetItem, prefix: string, isLink: boolean, fishStyle: boolean): string {
+        // With a width limit, a sample long enough for the limit to show
+        const sample = item.maxWidth ? 'feature/long-branch-name' : 'main';
+        const display = this.abbreviateBranch(sample, fishStyle);
+        const text = applyMaxWidth(item.rawValue ? display : `${prefix}${display}`, item.maxWidth);
+        return isLink ? renderOsc8Link(`https://github.com/owner/repo/tree/${sample}`, text) : text;
+    }
+
     private getGitBranch(context: RenderContext): string | null {
-        return runGit('symbolic-ref --short HEAD', context);
+        // The full ref, since --short turns it into "heads/<name>" when a tag
+        // has the same name
+        const ref = runGit('symbolic-ref HEAD', context);
+        return ref?.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
     }
 
     // Fish-style branch abbreviation: every segment but the last collapses to

@@ -21,6 +21,8 @@ import { makeUsageProgressBar } from '../utils/usage';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import { makeSliderBar } from './shared/usage-display';
 
+const LABEL = 'Context: ';
+
 type DisplayMode = 'progress' | 'progress-short' | 'slider' | 'slider-only';
 
 function getDisplayMode(item: WidgetItem): DisplayMode {
@@ -40,6 +42,7 @@ export class ContextBarWidget implements Widget {
     getDescription(): string { return 'Shows context usage as a progress bar'; }
     getDisplayName(): string { return 'Context Bar'; }
     getCategory(): string { return 'Context'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         const mode = getDisplayMode(item);
@@ -94,11 +97,11 @@ export class ContextBarWidget implements Widget {
             if (isBarSliderMode(displayMode)) {
                 const slider = makeSliderBar(25);
                 const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${percentDisplay})` : slider;
-                return formatRawOrLabeledValue(item, 'Context: ', sliderDisplay);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
             }
             const barWidth = displayMode === 'progress' ? 32 : 16;
             const previewDisplay = `${makeUsageProgressBar(25, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
-            return formatRawOrLabeledValue(item, 'Context: ', previewDisplay);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), previewDisplay);
         }
 
         const contextWindowMetrics = getContextWindowMetrics(context.data);
@@ -112,7 +115,7 @@ export class ContextBarWidget implements Widget {
 
         if (total === null && context.tokenMetrics) {
             const modelIdentifier = getModelContextIdentifier(context.data?.model);
-            total = getContextConfig(modelIdentifier, undefined, context.env).maxTokens;
+            total = getContextConfig(modelIdentifier).maxTokens;
         }
 
         if (used === null || total === null || total <= 0) {
@@ -128,13 +131,13 @@ export class ContextBarWidget implements Widget {
         if (isBarSliderMode(displayMode)) {
             const slider = makeSliderBar(clampedPercent);
             const sliderDisplay = displayMode === 'slider' ? `${slider} ${usedDisplay}/${totalDisplay} (${percentDisplay})` : slider;
-            return formatRawOrLabeledValue(item, 'Context: ', sliderDisplay);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), sliderDisplay);
         }
 
         const barWidth = displayMode === 'progress' ? 32 : 16;
         const display = `${makeUsageProgressBar(clampedPercent, barWidth)} ${usedDisplay}/${totalDisplay} (${percentDisplay})`;
 
-        return formatRawOrLabeledValue(item, 'Context: ', display);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), display);
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -144,6 +147,7 @@ export class ContextBarWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return true; }
+
     supportsColors(item: WidgetItem): boolean { return true; }
     supportsNumberFormat(): boolean { return true; }
 }

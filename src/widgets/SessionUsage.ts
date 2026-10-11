@@ -17,6 +17,7 @@ import {
     getUsagePercentWidgetDescription,
     getUsagePercentWidgetDisplayName,
     getUsagePercentWidgetEditorDisplay,
+    getUsagePercentWidgetLabel,
     handleUsagePercentWidgetEditorAction,
     renderUsagePercentWidgetValue
 } from './shared/usage-percent-widget';
@@ -26,6 +27,7 @@ export class SessionUsageWidget implements Widget {
     getDescription(): string { return getUsagePercentWidgetDescription('session'); }
     getDisplayName(): string { return getUsagePercentWidgetDisplayName('session'); }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return getUsagePercentWidgetLabel('session'); }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return getUsagePercentWidgetEditorDisplay('session', item);

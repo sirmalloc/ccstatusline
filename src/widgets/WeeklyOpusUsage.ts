@@ -17,6 +17,7 @@ import {
     getUsagePercentWidgetDescription,
     getUsagePercentWidgetDisplayName,
     getUsagePercentWidgetEditorDisplay,
+    getUsagePercentWidgetLabel,
     handleUsagePercentWidgetEditorAction,
     renderUsagePercentWidgetValue
 } from './shared/usage-percent-widget';
@@ -26,6 +27,7 @@ export class WeeklyOpusUsageWidget implements Widget {
     getDescription(): string { return getUsagePercentWidgetDescription('weekly-opus'); }
     getDisplayName(): string { return getUsagePercentWidgetDisplayName('weekly-opus'); }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return getUsagePercentWidgetLabel('weekly-opus'); }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return getUsagePercentWidgetEditorDisplay('weekly-opus', item);

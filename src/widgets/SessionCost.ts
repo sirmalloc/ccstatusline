@@ -14,6 +14,8 @@ import {
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Cost: ';
+
 const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when cost is $0.00' };
 
 export class SessionCostWidget implements Widget {
@@ -21,6 +23,7 @@ export class SessionCostWidget implements Widget {
     getDescription(): string { return 'Shows the total session cost in USD'; }
     getDisplayName(): string { return 'Session Cost'; }
     getCategory(): string { return 'Session'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -32,7 +35,8 @@ export class SessionCostWidget implements Widget {
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const format = resolveNumberFormat('cost', item, settings);
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Cost: ', formatCost(2.45, format));
+            const value = formatCost(2.45, format);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const totalCost = context.data?.cost?.total_cost_usd;
@@ -48,7 +52,7 @@ export class SessionCostWidget implements Widget {
         }
 
         const formattedCost = formatCost(totalCost, format);
-        return formatRawOrLabeledValue(item, 'Cost: ', formattedCost);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formattedCost);
     }
 
     supportsRawValue(): boolean { return true; }

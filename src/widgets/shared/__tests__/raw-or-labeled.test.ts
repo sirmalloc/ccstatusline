@@ -7,15 +7,24 @@ import {
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
 import {
+    clearLabel,
     formatRawOrLabeledValue,
     getCompactLabelKeybind,
     getCompactLabelModifierText,
+    getLabel,
+    getLabelKeybind,
+    getLabelModifierText,
+    setLabel,
     startsWithCompactLabel,
     toggleCompactLabel,
     withGlobalCompactLabels
 } from '../raw-or-labeled';
 
 const ITEM: WidgetItem = { id: '1', type: 'model' };
+
+function makeItem(overrides: Partial<WidgetItem> = {}): WidgetItem {
+    return { id: '1', type: 'model', ...overrides };
+}
 
 describe('formatRawOrLabeledValue', () => {
     it('keeps the default label when compact labels are off', () => {
@@ -38,6 +47,64 @@ describe('formatRawOrLabeledValue', () => {
 
     it('rawValue wins over compact labels', () => {
         expect(formatRawOrLabeledValue({ ...ITEM, rawValue: true, metadata: { compactLabel: 'true' } }, 'Model: ', 'Opus')).toBe('Opus');
+    });
+
+    it('prepends the label override verbatim', () => {
+        expect(formatRawOrLabeledValue(makeItem({ metadata: { label: 'M ' } }), 'Model: ', 'Opus')).toBe('M Opus');
+    });
+
+    it('treats an empty override as no label', () => {
+        expect(formatRawOrLabeledValue(makeItem({ metadata: { label: '' } }), 'Model: ', 'Opus')).toBe('Opus');
+    });
+
+    it('ignores the override in raw value mode', () => {
+        expect(formatRawOrLabeledValue(makeItem({ rawValue: true, metadata: { label: 'M ' } }), 'Model: ', 'Opus')).toBe('Opus');
+    });
+
+    it('the label override wins over a compact preset', () => {
+        const item = toggleCompactLabel(makeItem({ metadata: { label: 'M ' } }));
+        expect(formatRawOrLabeledValue(item, 'Model: ', 'Opus')).toBe('M Opus');
+    });
+});
+
+describe('setLabel', () => {
+    it('stores an override that differs from the default', () => {
+        const item = setLabel(makeItem(), 'M ');
+        expect(item.metadata).toEqual({ label: 'M ' });
+        expect(getLabel(item, 'Model: ')).toBe('M ');
+    });
+
+    it('keeps an empty override', () => {
+        expect(setLabel(makeItem(), '').metadata).toEqual({ label: '' });
+    });
+
+    it('stores an override even when it matches the default', () => {
+        expect(setLabel(makeItem(), 'Model: ').metadata).toEqual({ label: 'Model: ' });
+    });
+});
+
+describe('clearLabel', () => {
+    it('drops the override, preserving other metadata', () => {
+        expect(clearLabel(makeItem({ metadata: { label: 'M ', hide: 'zero' } })).metadata).toEqual({ hide: 'zero' });
+        expect(clearLabel(makeItem({ metadata: { label: 'M ' } })).metadata).toBeUndefined();
+    });
+});
+
+describe('getLabelModifierText', () => {
+    it('quotes an override so trailing spaces are visible', () => {
+        expect(getLabelModifierText(makeItem({ metadata: { label: 'M ' } }))).toBe('(label: "M ")');
+        expect(getLabelModifierText(makeItem())).toBeUndefined();
+    });
+
+    it('escapes quotes inside the override', () => {
+        expect(getLabelModifierText(makeItem({ metadata: { label: 'a" b' } }))).toBe('(label: "a\\" b")');
+    });
+});
+
+// The key Custom Text, Custom Command, Custom Symbol and Link use to edit their own text
+describe('getLabelKeybind', () => {
+    it('edits the label with (e)', () => {
+        expect(getLabelKeybind()).toEqual({ key: 'e', label: '(e)dit label…', action: 'edit-label' });
     });
 });
 

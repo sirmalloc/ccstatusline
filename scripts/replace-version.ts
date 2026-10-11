@@ -5,8 +5,8 @@ import {
     readFileSync,
     readdirSync,
     writeFileSync
-} from 'fs';
-import { join } from 'path';
+} from 'node:fs';
+import { join } from 'node:path';
 
 interface PackageJson {
     version: string;

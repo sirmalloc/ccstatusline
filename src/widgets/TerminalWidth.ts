@@ -9,11 +9,14 @@ import { getTerminalWidth } from '../utils/terminal';
 
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Term: ';
+
 export class TerminalWidthWidget implements Widget {
     getDefaultColor(): string { return 'gray'; }
     getDescription(): string { return 'Shows current terminal width in columns'; }
     getDisplayName(): string { return 'Terminal Width'; }
     getCategory(): string { return 'Environment'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -22,9 +25,9 @@ export class TerminalWidthWidget implements Widget {
         const width = context.terminalWidth ?? getTerminalWidth();
         if (context.isPreview) {
             const detectedWidth = width ?? '??';
-            return formatRawOrLabeledValue(item, 'Term: ', `${detectedWidth}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${detectedWidth}`);
         } else if (width) {
-            return formatRawOrLabeledValue(item, 'Term: ', `${width}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), `${width}`);
         }
         return null;
     }

@@ -1,8 +1,8 @@
 import {
     execFile,
     execFileSync
-} from 'child_process';
-import * as fs from 'fs';
+} from 'node:child_process';
+import * as fs from 'node:fs';
 
 import type { PackageCommandAvailability } from './claude-settings';
 import {

@@ -14,8 +14,8 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
     useInput((input, key) => {
         if (action === 'edit-segments') {
             if (key.return) {
-                const segments = parseInt(segmentsInput, 10);
-                if (!isNaN(segments) && segments > 0) {
+                const segments = Number.parseInt(segmentsInput, 10);
+                if (!Number.isNaN(segments) && segments > 0) {
                     onComplete({
                         ...widget,
                         metadata: {

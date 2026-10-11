@@ -17,6 +17,7 @@ import {
     getUsagePercentWidgetDescription,
     getUsagePercentWidgetDisplayName,
     getUsagePercentWidgetEditorDisplay,
+    getUsagePercentWidgetLabel,
     handleUsagePercentWidgetEditorAction,
     renderUsagePercentWidgetValue
 } from './shared/usage-percent-widget';
@@ -26,6 +27,7 @@ export class WeeklySonnetUsageWidget implements Widget {
     getDescription(): string { return getUsagePercentWidgetDescription('weekly-sonnet'); }
     getDisplayName(): string { return getUsagePercentWidgetDisplayName('weekly-sonnet'); }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return getUsagePercentWidgetLabel('weekly-sonnet'); }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return getUsagePercentWidgetEditorDisplay('weekly-sonnet', item);

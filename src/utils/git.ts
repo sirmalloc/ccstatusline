@@ -1,8 +1,8 @@
-import type { ExecFileOptionsWithStringEncoding } from 'child_process';
+import type { ExecFileOptionsWithStringEncoding } from 'node:child_process';
 import {
     execFile,
     execFileSync
-} from 'child_process';
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -11,6 +11,14 @@ import { promisify } from 'util';
 
 import { capMap } from '../daemon/provider-scope';
 import type { RenderContext } from '../types/RenderContext';
+
+import { resolveExecutable } from './executable-path';
+import {
+    GIT_HARDENING_ARGS,
+    getFilterOverrideArgs,
+    parseFilterConfig,
+    type FilterConfigEntry
+} from './git-hardening';
 
 // Promise-based execFile with string decoding (see usage-fetch.ts for the shape).
 const execFileAsync = promisify(execFile) as (
@@ -62,8 +70,11 @@ const GIT_COMMAND_TIMEOUT_MS = 5_000;
 // the async prefetch does not turn a big-but-valid listing into a cache miss.
 const GIT_ASYNC_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
-// In-process cache keeps cwd in the key; the persistent cache stores cwd once
-// at the file level and keys entries by command.
+// In-process cache keeps cwd in the key; the persistent cache uses one file
+// per (repo, cwd) pair, stores cwd once at the file level and keys entries by
+// command. Per-cwd files matter because some outputs are cwd-scoped (e.g.
+// `ls-files --unmerged`) and because sessions in the same repo at different
+// cwds (root vs a subdirectory) would otherwise evict each other every render.
 const gitCommandCache = new Map<string, GitCacheEntry>();
 // Same cap as the daemon provider caches (#18): a long-lived process could
 // otherwise accumulate one entry per (command, cwd) pair forever.
@@ -84,13 +95,26 @@ function recordExecutedGitCommand(cwd: string, cacheToken: string, args: string[
     capMap(executedGitCommands, 32);
 }
 
+const filterOverrideCache = new Map<string, string[] | null>();
+
+// Commands that re-read work tree files, and so can run filter drivers, with the
+// options that keep them from running external diff tools or recursing into
+// submodules, whose own config isn't checked
+const WORK_TREE_COMMAND_ARGS = new Map<string, string[]>([
+    ['status', ['--ignore-submodules=dirty']],
+    ['diff', ['--no-ext-diff', '--no-textconv', '--ignore-submodules=dirty']]
+]);
+
+// `git config --get-regexp` exits with 1 when nothing matches
+const GIT_CONFIG_NO_MATCH_STATUS = 1;
+
 function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
 }
 
-function getCachePath(gitDir: string): string {
+function getCachePath(gitDir: string, cwd: string): string {
     const repoHash = createHash('sha256')
-        .update(gitDir)
+        .update(`${gitDir}\0${cwd}`)
         .digest('hex')
         .slice(0, 16);
 
@@ -120,7 +144,10 @@ function normalizeDirectory(candidate: string): string | null {
 function readGitDirFile(gitFilePath: string): string | null {
     try {
         const content = fs.readFileSync(gitFilePath, 'utf-8').trim();
-        const match = /^gitdir:\s*(.+)$/i.exec(content);
+        // The path starts at a non-space. With `.+`, a long run of whitespace
+        // could be split between `\s*` and the path at every position, each
+        // split rescanning the rest of the line.
+        const match = /^gitdir:\s*(\S.*)$/i.exec(content);
         if (!match?.[1]) {
             return null;
         }
@@ -157,6 +184,135 @@ function discoverGitDir(startDir: string): string | null {
     }
 }
 
+// The directory holding the .git entry that git would find from startDir
+function findWorkTreeRoot(startDir: string): string | null {
+    let current = startDir;
+
+    for (;;) {
+        if (fs.existsSync(path.join(current, '.git'))) {
+            return current;
+        }
+
+        const parent = path.dirname(current);
+        if (parent === current) {
+            return null;
+        }
+        current = parent;
+    }
+}
+
+function readTextFile(filePath: string): string {
+    try {
+        return fs.readFileSync(filePath, 'utf-8');
+    } catch {
+        return '';
+    }
+}
+
+// Whether the repository's own config files could define a filter driver,
+// directly or through an include. Reading them is far cheaper than asking git,
+// and most repositories have none.
+function mayDefineFilters(gitDir: string): boolean {
+    const commonDir = readTextFile(path.join(gitDir, 'commondir')).trim();
+    const configDirs = [gitDir, ...(commonDir ? [path.resolve(gitDir, commonDir)] : [])];
+    const configText = configDirs
+        .flatMap(dir => [path.join(dir, 'config'), path.join(dir, 'config.worktree')])
+        .map(readTextFile)
+        .join('\n');
+
+    return /filter|include/i.test(configText);
+}
+
+function gitExecOptions(cwd: string | undefined, env?: NodeJS.ProcessEnv) {
+    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
+    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
+    // git process is writing it.
+    // We use the environment variable instead of the CLI flag because older Git
+    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
+    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
+    // The env snapshot comes from the render context so the daemon serves
+    // concurrent requests without swapping process.env (#18).
+    return {
+        encoding: 'utf8' as const,
+        stdio: ['pipe', 'pipe', 'ignore'] as ['pipe', 'pipe', 'ignore'],
+        env: { ...(env ?? process.env), GIT_OPTIONAL_LOCKS: '0' },
+        timeout: GIT_COMMAND_TIMEOUT_MS,
+        windowsHide: true,
+        ...(cwd ? { cwd } : {})
+    };
+}
+
+// '' when nothing matches; null when git couldn't read the config
+function readFilterConfig(args: string[], cwd: string | undefined, env?: NodeJS.ProcessEnv): string | null {
+    try {
+        return execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, 'config', ...args, '-z', '--get-regexp', '^filter\\.'], gitExecOptions(cwd, env));
+    } catch (error) {
+        return (error as { status?: unknown }).status === GIT_CONFIG_NO_MATCH_STATUS ? '' : null;
+    }
+}
+
+function readRepositoryFilterConfig(cwd: string | undefined, env?: NodeJS.ProcessEnv): FilterConfigEntry[] | null {
+    const scoped = readFilterConfig(['--includes', '--show-scope'], cwd, env);
+    if (scoped !== null) {
+        return parseFilterConfig(scoped, true);
+    }
+
+    // git before 2.26 has no --show-scope: read the repository's own files
+    // instead. --worktree is newer still; without it, --local covers them.
+    const local = readFilterConfig(['--local', '--includes'], cwd, env);
+    if (local === null) {
+        return null;
+    }
+    const worktree = readFilterConfig(['--worktree', '--includes'], cwd, env) ?? '';
+    return [...parseFilterConfig(local, false), ...parseFilterConfig(worktree, false)];
+}
+
+// The -c arguments that turn off the repository's own filter drivers for
+// commands that re-read the work tree; null when that isn't possible
+function getRepositoryFilterOverrideArgs(cwd: string | undefined, env?: NodeJS.ProcessEnv): string[] | null {
+    const cacheKey = cwd ?? '';
+    const cached = filterOverrideCache.get(cacheKey);
+    if (cached !== undefined || filterOverrideCache.has(cacheKey)) {
+        return cached ?? null;
+    }
+
+    // Without a .git to read, git could only be using a bare repository found by
+    // searching upward, which safe.bareRepository refuses (git 2.38 and later)
+    const startDir = normalizeDirectory(cwd ?? process.cwd()) ?? process.cwd();
+    const gitDir = discoverGitDir(startDir);
+    let overrides: string[] | null = [];
+    if (gitDir && mayDefineFilters(gitDir)) {
+        const entries = readRepositoryFilterConfig(cwd, env);
+        overrides = entries === null
+            ? null
+            : getFilterOverrideArgs(entries, findWorkTreeRoot(startDir) ?? startDir);
+    }
+
+    filterOverrideCache.set(cacheKey, overrides);
+    return overrides;
+}
+
+/**
+ * Runs git as every status line call should: with fsmonitor off, no bare
+ * repository found by searching upward, and, for commands that re-read work tree
+ * files, none of the repository's own filter drivers or external diff tools.
+ * Throws when git fails, or when the repository's filters can't be turned off.
+ */
+export function execGit(args: string[], cwd: string | undefined, env?: NodeJS.ProcessEnv): string {
+    const [subcommand = '', ...rest] = args;
+    const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
+    const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd, env) : [];
+    if (filterArgs === null) {
+        throw new Error('The repository\'s filter drivers could not be turned off');
+    }
+
+    return execFileSync(
+        resolveExecutable('git'),
+        [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
+        gitExecOptions(cwd, env)
+    );
+}
+
 function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     if (!cwd) {
         return null;
@@ -173,10 +329,56 @@ function getGitRepoMetadata(cwd: string | undefined): GitRepoMetadata | null {
     }
 
     return {
-        cachePath: getCachePath(gitDir),
+        cachePath: getCachePath(gitDir, cwd),
         headMtimeMs: getMtimeMs(path.join(gitDir, 'HEAD')),
         indexMtimeMs: getMtimeMs(path.join(gitDir, 'index'))
     };
+}
+
+// True only when git is certain to fail with "not a git repository" in cwd,
+// so runGitArgs can skip the spawn (every command it runs needs a repo). This
+// is deliberately more conservative than discoverGitDir: it walks the
+// physical path (git discovers from getcwd() after chdir), treats any `.git`
+// entry (even a malformed gitfile) or any `HEAD` (bare repo, or cwd inside a
+// git dir) as a possible repo, and bails out when GIT_DIR / GIT_WORK_TREE /
+// GIT_COMMON_DIR could point git elsewhere. GIT_CEILING_DIRECTORIES and
+// filesystem boundaries only make git stop earlier, so walking to the root
+// is the safe direction.
+function isDefinitelyOutsideGitRepository(cwd: string): boolean {
+    if (
+        process.env.GIT_DIR !== undefined
+        || process.env.GIT_WORK_TREE !== undefined
+        || process.env.GIT_COMMON_DIR !== undefined
+    ) {
+        return false;
+    }
+
+    let current: string;
+    try {
+        current = fs.realpathSync(cwd);
+        if (!fs.statSync(current).isDirectory()) {
+            return false;
+        }
+    } catch {
+        return false;
+    }
+
+    for (;;) {
+        for (const marker of ['.git', 'HEAD']) {
+            try {
+                fs.lstatSync(path.join(current, marker));
+                return false;
+            } catch {
+                // Not present; keep looking.
+            }
+        }
+
+        const parent = path.dirname(current);
+        if (parent === current) {
+            return true;
+        }
+        current = parent;
+    }
 }
 
 function getGitCacheTtlMs(context: RenderContext): number {
@@ -356,6 +558,12 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
     const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
     const persistentCacheKey = cacheToken;
     const metadata = getGitRepoMetadata(cwd);
+    if (!metadata && cwd && isDefinitelyOutsideGitRepository(cwd)) {
+        // Outside any repository git would only exit 128; nothing to cache
+        // either, since there is no git dir to key a persistent entry on.
+        return null;
+    }
+
     const ttlMs = getGitCacheTtlMs(context);
     const now = Date.now();
 
@@ -371,24 +579,10 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
         return persistentEntry.output;
     }
 
-    // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
-    // (diff, status, rev-list, ...) from racing on .git/index.lock when another
-    // git process is writing it.
-    // We use the environment variable instead of the CLI flag because older Git
-    // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
-    // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
-    // The env snapshot comes from the render context so the daemon serves
-    // concurrent requests without swapping process.env (#18).
-
     try {
-        const output = execFileSync('git', args, {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            env: { ...(context.env ?? process.env), GIT_OPTIONAL_LOCKS: '0' },
-            timeout: GIT_COMMAND_TIMEOUT_MS,
-            windowsHide: true,
-            ...(cwd ? { cwd } : {})
-        }).trimEnd();
+        // Hardening, filter overrides and the env snapshot (daemon #18) all
+        // live in execGit; GIT_OPTIONAL_LOCKS is applied inside it too.
+        const output = execGit(args, cwd, context.env).trimEnd();
 
         const result = output.length > 0 ? output : null;
         const entry = createCacheEntry(result, metadata, now);
@@ -435,6 +629,15 @@ export async function runGitArgsAsync(args: string[], context: RenderContext, ca
     }
 
     try {
+        // Same hardening as the sync path (execGit): fsmonitor off, no bare
+        // repository discovery, no repository filter drivers. The async twin
+        // only differs in buffering and the non-blocking runtime.
+        const [subcommand = '', ...rest] = args;
+        const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
+        const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd, context.env) : [];
+        if (filterArgs === null) {
+            throw new Error('The repository\'s filter drivers could not be turned off');
+        }
         const execOptions: ExecFileOptionsWithStringEncoding = {
             encoding: 'utf8',
             maxBuffer: GIT_ASYNC_MAX_BUFFER_BYTES,
@@ -444,7 +647,11 @@ export async function runGitArgsAsync(args: string[], context: RenderContext, ca
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         };
-        const output = (await execFileAsync('git', args, execOptions)).stdout.trimEnd();
+        const output = (await execFileAsync(
+            resolveExecutable('git'),
+            [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
+            execOptions
+        )).stdout.trimEnd();
 
         const result = output.length > 0 ? output : null;
         const entry = createCacheEntry(result, metadata, Date.now());
@@ -475,6 +682,7 @@ export function getExecutedGitCommands(cwd: string): string[][] {
 export function clearGitCache(): void {
     gitCommandCache.clear();
     executedGitCommands.clear();
+    filterOverrideCache.clear();
 }
 
 export function isInsideGitWorkTree(context: RenderContext): boolean {
@@ -486,8 +694,8 @@ function parseDiffShortStat(stat: string): GitChangeCounts {
     const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
 
     return {
-        insertions: insertMatch?.[1] ? parseInt(insertMatch[1], 10) : 0,
-        deletions: deleteMatch?.[1] ? parseInt(deleteMatch[1], 10) : 0
+        insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,
+        deletions: deleteMatch?.[1] ? Number.parseInt(deleteMatch[1], 10) : 0
     };
 }
 
@@ -601,10 +809,10 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
     if (parts.length !== 2 || !parts[0] || !parts[1])
         return null;
 
-    const ahead = parseInt(parts[0], 10);
-    const behind = parseInt(parts[1], 10);
+    const ahead = Number.parseInt(parts[0], 10);
+    const behind = Number.parseInt(parts[1], 10);
 
-    if (isNaN(ahead) || isNaN(behind))
+    if (Number.isNaN(ahead) || Number.isNaN(behind))
         return null;
 
     return { ahead, behind };

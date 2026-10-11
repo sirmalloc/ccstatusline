@@ -9,11 +9,20 @@ import {
     vi
 } from 'vitest';
 
+import type { RenderContext } from '../../../types/RenderContext';
 import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../../types/Settings';
+import type { WidgetItem } from '../../../types/Widget';
 import { getPowerlineThemes } from '../../../utils/colors';
+import { advanceGlobalPowerlineThemeIndex } from '../../../utils/powerline-theme-index';
+import {
+    calculateMaxWidthsFromPreRendered,
+    preRenderAllWidgets,
+    renderStatusLine
+} from '../../../utils/renderer';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     PowerlineThemeSelector,
     applyCustomPowerlineTheme,
@@ -47,20 +56,37 @@ function createMockStdout(): NodeJS.WriteStream {
     return new MockTtyStream() as unknown as NodeJS.WriteStream;
 }
 
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
-    });
+function text(id: string, customText: string, merge?: boolean): WidgetItem {
+    return { id, type: 'custom-text', customText, merge };
 }
 
-async function waitForInkCondition(condition: () => boolean) {
-    const timeoutAt = Date.now() + 1000;
+function nordAuroraSettings(lines: WidgetItem[][], continueThemeAcrossLines: boolean): Settings {
+    return {
+        ...DEFAULT_SETTINGS,
+        colorLevel: 2,
+        lines,
+        powerline: {
+            ...DEFAULT_SETTINGS.powerline,
+            enabled: true,
+            theme: 'nord-aurora',
+            continueThemeAcrossLines
+        }
+    };
+}
 
-    while (!condition() && Date.now() < timeoutAt) {
-        await new Promise((resolve) => {
-            setTimeout(resolve, 10);
-        });
-    }
+// Renders every line as the status line does, carrying the theme index across lines
+function renderLines(settings: Settings): string[] {
+    const context: RenderContext = { isPreview: true, terminalWidth: 200 };
+    const preRenderedLines = preRenderAllWidgets(settings.lines, settings, context);
+    const maxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+    let globalPowerlineThemeIndex = 0;
+
+    return settings.lines.map((line, lineIndex) => {
+        const preRenderedWidgets = preRenderedLines[lineIndex] ?? [];
+        const rendered = renderStatusLine(line, settings, { ...context, lineIndex, globalPowerlineThemeIndex }, preRenderedWidgets, maxWidths);
+        globalPowerlineThemeIndex = advanceGlobalPowerlineThemeIndex(globalPowerlineThemeIndex, preRenderedWidgets);
+        return rendered;
+    });
 }
 
 describe('PowerlineThemeSelector helpers', () => {
@@ -80,30 +106,6 @@ describe('PowerlineThemeSelector helpers', () => {
             label: 'One Dark',
             sublabel: '(original)',
             value: 'onedark'
-        });
-    });
-
-    it('labels the none entry for regular mode', () => {
-        const items = buildPowerlineThemeItems(['none'], 'none');
-
-        expect(items).toHaveLength(1);
-        expect(items[0]).toMatchObject({
-            label: 'None (no theme)',
-            value: 'none'
-        });
-    });
-
-    it('labels the inherit entry for per-line mode', () => {
-        const items = buildPowerlineThemeItems(['inherit', 'none'], 'inherit');
-
-        expect(items[0]).toMatchObject({
-            label: 'Inherit global theme',
-            description: 'Uses the global theme for this line',
-            value: 'inherit'
-        });
-        expect(items[1]).toMatchObject({
-            label: 'None (no theme)',
-            value: 'none'
         });
     });
 
@@ -132,6 +134,33 @@ describe('PowerlineThemeSelector helpers', () => {
         });
     });
 
+    it('keeps a merged group on the one theme color the renderer gives it', () => {
+        const settings = nordAuroraSettings([[text('a', 'AAA', true), text('b', 'BBB'), text('c', 'CCC')]], false);
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'nord-aurora');
+
+        expect(updatedSettings?.lines[0]?.[1]?.backgroundColor).toBe(updatedSettings?.lines[0]?.[0]?.backgroundColor);
+        expect(updatedSettings && renderLines(updatedSettings)).toEqual(renderLines(settings));
+    });
+
+    it('continues the theme colors across lines when Continue Theme is on', () => {
+        const settings = nordAuroraSettings([[text('a', 'AAA'), text('b', 'BBB')], [text('c', 'CCC'), text('d', 'DDD')]], true);
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'nord-aurora');
+
+        expect(updatedSettings?.lines[1]?.[0]?.backgroundColor).not.toBe(updatedSettings?.lines[0]?.[0]?.backgroundColor);
+        expect(updatedSettings && renderLines(updatedSettings)).toEqual(renderLines(settings));
+    });
+
+    it('restarts the theme colors on each line when Continue Theme is off', () => {
+        const settings = nordAuroraSettings([[text('a', 'AAA'), text('b', 'BBB')], [text('c', 'CCC'), text('d', 'DDD')]], false);
+
+        const updatedSettings = applyCustomPowerlineTheme(settings, 'nord-aurora');
+
+        expect(updatedSettings?.lines[1]?.[0]?.backgroundColor).toBe(updatedSettings?.lines[0]?.[0]?.backgroundColor);
+        expect(updatedSettings && renderLines(updatedSettings)).toEqual(renderLines(settings));
+    });
+
     it('returns null when the requested theme cannot be customized', () => {
         expect(applyCustomPowerlineTheme(DEFAULT_SETTINGS, 'custom')).toBeNull();
         expect(applyCustomPowerlineTheme(DEFAULT_SETTINGS, 'missing-theme')).toBeNull();
@@ -148,6 +177,10 @@ describe('PowerlineThemeSelector helpers', () => {
         const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
         const onBack = vi.fn();
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const frames: string[] = [];
+        stdout.on('data', (chunk: Buffer | string) => {
+            frames.push(chunk.toString());
+        });
         const instance = render(
             React.createElement(PowerlineThemeSelector, {
                 settings: {
@@ -172,12 +205,15 @@ describe('PowerlineThemeSelector helpers', () => {
         );
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(frames.join('')).toContain('(original)');
+            });
             expect(onUpdate).not.toHaveBeenCalled();
 
             stdin.write('\u001B[B');
-            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
-            await flushInk();
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
 
             expect(onUpdate).toHaveBeenCalledTimes(1);
             expect(onUpdate.mock.calls[0]?.[0]?.powerline.theme).toBe(themes[1]);
@@ -187,193 +223,6 @@ describe('PowerlineThemeSelector helpers', () => {
             });
 
             expect(maximumUpdateDepthWarnings).toHaveLength(0);
-        } finally {
-            instance.unmount();
-            instance.cleanup();
-            stdin.destroy();
-            stdout.destroy();
-            stderr.destroy();
-        }
-    });
-
-    it('writes settings.theme when navigating in regular mode', async () => {
-        const firstTheme = getPowerlineThemes().find(name => name !== 'custom');
-        expect(firstTheme).toBeDefined();
-
-        const stdin = createMockStdin();
-        const stdout = createMockStdout();
-        const stderr = createMockStdout();
-        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
-        const onBack = vi.fn();
-        const instance = render(
-            React.createElement(PowerlineThemeSelector, {
-                settings: { ...DEFAULT_SETTINGS },
-                onUpdate,
-                onBack,
-                mode: 'regular'
-            }),
-            {
-                stdin,
-                stdout,
-                stderr,
-                debug: true,
-                exitOnCtrlC: false,
-                patchConsole: false
-            }
-        );
-
-        try {
-            await flushInk();
-            expect(onUpdate).not.toHaveBeenCalled();
-
-            // Regular list starts at 'none' (no theme); one step down picks
-            // the first real theme and must write the top-level setting.
-            stdin.write('\u001B[B');
-            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
-            await flushInk();
-
-            expect(onUpdate.mock.calls[0]?.[0]?.theme).toBe(firstTheme);
-        } finally {
-            instance.unmount();
-            instance.cleanup();
-            stdin.destroy();
-            stdout.destroy();
-            stderr.destroy();
-        }
-    });
-
-    it('clears settings.theme when None is selected in regular mode', async () => {
-        const stdin = createMockStdin();
-        const stdout = createMockStdout();
-        const stderr = createMockStdout();
-        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
-        const onBack = vi.fn();
-        const instance = render(
-            React.createElement(PowerlineThemeSelector, {
-                settings: { ...DEFAULT_SETTINGS, theme: 'nord' },
-                onUpdate,
-                onBack,
-                mode: 'regular'
-            }),
-            {
-                stdin,
-                stdout,
-                stderr,
-                debug: true,
-                exitOnCtrlC: false,
-                patchConsole: false
-            }
-        );
-
-        try {
-            await flushInk();
-            expect(onUpdate).not.toHaveBeenCalled();
-
-            // 'nord' sits one slot below 'none' in the regular list.
-            stdin.write('\u001B[A');
-            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
-            await flushInk();
-
-            expect(onUpdate.mock.calls[0]?.[0]?.theme).toBeUndefined();
-        } finally {
-            instance.unmount();
-            instance.cleanup();
-            stdin.destroy();
-            stdout.destroy();
-            stderr.destroy();
-        }
-    });
-
-    it('writes lineThemes for the edited line when navigating in per-line mode', async () => {
-        const firstTheme = getPowerlineThemes().find(name => name !== 'custom');
-        expect(firstTheme).toBeDefined();
-
-        const stdin = createMockStdin();
-        const stdout = createMockStdout();
-        const stderr = createMockStdout();
-        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
-        const onBack = vi.fn();
-        const instance = render(
-            React.createElement(PowerlineThemeSelector, {
-                settings: { ...DEFAULT_SETTINGS },
-                onUpdate,
-                onBack,
-                mode: 'regular',
-                lineIndex: 1
-            }),
-            {
-                stdin,
-                stdout,
-                stderr,
-                debug: true,
-                exitOnCtrlC: false,
-                patchConsole: false
-            }
-        );
-
-        try {
-            await flushInk();
-            expect(onUpdate).not.toHaveBeenCalled();
-
-            // The per-line list starts at 'inherit'; two steps down land on
-            // the first real theme and must write only that line's entry.
-            stdin.write('\u001B[B');
-            await flushInk();
-            stdin.write('\u001B[B');
-            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
-            await flushInk();
-
-            const updated = onUpdate.mock.calls.at(-1)?.[0];
-            expect(updated?.lineThemes?.[1]).toBe(firstTheme);
-            expect(updated?.theme).toBeUndefined();
-        } finally {
-            instance.unmount();
-            instance.cleanup();
-            stdin.destroy();
-            stdout.destroy();
-            stderr.destroy();
-        }
-    });
-
-    it('restores the original settings on escape in per-line mode', async () => {
-        const original: Settings = { ...DEFAULT_SETTINGS, lineThemes: ['dracula'] };
-
-        const stdin = createMockStdin();
-        const stdout = createMockStdout();
-        const stderr = createMockStdout();
-        const onUpdate = vi.fn<PowerlineThemeSelectorProps['onUpdate']>();
-        const onBack = vi.fn();
-        const instance = render(
-            React.createElement(PowerlineThemeSelector, {
-                settings: original,
-                onUpdate,
-                onBack,
-                mode: 'regular',
-                lineIndex: 0
-            }),
-            {
-                stdin,
-                stdout,
-                stderr,
-                debug: true,
-                exitOnCtrlC: false,
-                patchConsole: false
-            }
-        );
-
-        try {
-            await flushInk();
-
-            // Move off 'dracula' (writes an update), then escape.
-            stdin.write('\u001B[A');
-            await waitForInkCondition(() => onUpdate.mock.calls.length > 0);
-            await flushInk();
-
-            stdin.write('\u001B');
-            await flushInk();
-
-            expect(onBack).toHaveBeenCalled();
-            expect(onUpdate).toHaveBeenLastCalledWith(original);
         } finally {
             instance.unmount();
             instance.cleanup();

@@ -3,8 +3,8 @@ import {
     Text,
     useInput
 } from 'ink';
-import * as os from 'os';
-import * as path from 'path';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import React, { useState } from 'react';
 
 import { shouldInsertInput } from '../../utils/input-guards';

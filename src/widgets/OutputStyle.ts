@@ -10,6 +10,8 @@ import type {
 import { isHidden } from './shared/hideable';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
+const LABEL = 'Style: ';
+
 const DEFAULT_VALUE_HIDEABLE_STATE: HideableState = { key: 'default-value', label: 'when style is \'default\'' };
 
 export class OutputStyleWidget implements Widget {
@@ -17,6 +19,7 @@ export class OutputStyleWidget implements Widget {
     getDescription(): string { return 'Shows the current Claude Code output style'; }
     getDisplayName(): string { return 'Output Style'; }
     getCategory(): string { return 'Core'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -27,13 +30,13 @@ export class OutputStyleWidget implements Widget {
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Style: ', 'default');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'default');
         } else if (context.data?.output_style?.name) {
             const styleName = context.data.output_style.name;
             if (styleName === 'default' && isHidden(item, DEFAULT_VALUE_HIDEABLE_STATE.key)) {
                 return null;
             }
-            return formatRawOrLabeledValue(item, 'Style: ', styleName);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), styleName);
         }
         return null;
     }
