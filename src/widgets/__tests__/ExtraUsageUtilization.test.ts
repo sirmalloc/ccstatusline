@@ -162,6 +162,10 @@ describe('ExtraUsageUtilizationWidget', () => {
         const nonZeroContext: RenderContext = { usageData: { extraUsageEnabled: true, extraUsageUtilization: 25 } };
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero' } }, nonZeroContext)).toBe('Overage: 25.0%');
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, zeroContext)).toBe('Overage: 0.0%');
+
+        const derivedZeroContext: RenderContext = { usageData: { extraUsageEnabled: true, extraUsageUsed: 0, extraUsageLimit: 5000 } };
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization', metadata: { hide: 'zero' } }, derivedZeroContext)).toBeNull();
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, derivedZeroContext)).toBe('Overage: 0.0%');
     });
 
     it('does not show a time cursor carried over from a usage widget', () => {
