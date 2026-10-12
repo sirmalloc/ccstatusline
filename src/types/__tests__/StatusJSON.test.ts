@@ -70,6 +70,27 @@ describe('StatusJSONSchema numeric coercion', () => {
         expect(result.data.vim).toBeNull();
     });
 
+    it('accepts null version, cost, workspace and output_style payloads', () => {
+        const result = StatusJSONSchema.safeParse({
+            model: { id: 'claude-opus-4-6' },
+            version: null,
+            cost: null,
+            workspace: null,
+            output_style: null
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.version).toBeNull();
+        expect(result.data.cost).toBeNull();
+        expect(result.data.workspace).toBeNull();
+        expect(result.data.output_style).toBeNull();
+        expect(result.data.model).toEqual({ id: 'claude-opus-4-6' });
+    });
+
     it('parses rate_limits with valid data', () => {
         const result = StatusJSONSchema.safeParse({
             rate_limits: {

@@ -20,6 +20,13 @@ const REGIONAL_INDICATOR_START = 0x1f1e6;
 const REGIONAL_INDICATOR_END = 0x1f1ff;
 
 const SGR_REGEX = /\x1b\[[0-9;]*m/g;
+// Lowest code point that can extend a display cluster (U+0300 is the first
+// \p{Mark}; ZWJ, variation selectors, the keycap and emoji modifiers are all
+// higher), so a printable ASCII character followed by anything below it is a
+// one-column cluster on its own.
+const FIRST_CLUSTER_EXTENDER = 0x300;
+const CLUSTER_WIDTH_CACHE_LIMIT = 4096;
+const clusterWidthCache = new Map<string, number>();
 const EXTENDED_PICTOGRAPHIC_REGEX = createUnicodePropertyRegex('\\p{Extended_Pictographic}');
 const EMOJI_PRESENTATION_REGEX = createUnicodePropertyRegex('\\p{Emoji_Presentation}');
 const EMOJI_MODIFIER_REGEX = createUnicodePropertyRegex('\\p{Emoji_Modifier}');
@@ -142,8 +149,8 @@ function isZeroWidthStandaloneCluster(cluster: string): boolean {
     });
 }
 
-function shouldTreatClusterAsNarrowTextPictograph(cluster: string): boolean {
-    if (stringWidth(cluster) <= 1) {
+function shouldTreatClusterAsNarrowTextPictograph(cluster: string, clusterStringWidth: number): boolean {
+    if (clusterStringWidth <= 1) {
         return false;
     }
 
@@ -171,16 +178,42 @@ function shouldTreatClusterAsNarrowTextPictograph(cluster: string): boolean {
     return characters.some(character => matchesUnicodeProperty(character, EXTENDED_PICTOGRAPHIC_REGEX));
 }
 
-function getClusterWidth(cluster: string): number {
+function isPrintableAscii(charCode: number): boolean {
+    return charCode >= 0x20 && charCode <= 0x7e;
+}
+
+function computeClusterWidth(cluster: string): number {
     if (cluster.length === 0 || isZeroWidthStandaloneCluster(cluster)) {
         return 0;
     }
 
-    if (shouldTreatClusterAsNarrowTextPictograph(cluster)) {
+    const clusterStringWidth = stringWidth(cluster);
+    if (shouldTreatClusterAsNarrowTextPictograph(cluster, clusterStringWidth)) {
         return 1;
     }
 
-    return stringWidth(cluster);
+    return clusterStringWidth;
+}
+
+// A cluster's width depends only on its text, and a render measures the same
+// handful of clusters (separators, bar glyphs, icons) many times over, so the
+// Unicode property checks and string-width calls are memoised per process.
+function getClusterWidth(cluster: string): number {
+    if (cluster.length === 1 && isPrintableAscii(cluster.charCodeAt(0))) {
+        return 1;
+    }
+
+    const cached = clusterWidthCache.get(cluster);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const width = computeClusterWidth(cluster);
+    if (clusterWidthCache.size >= CLUSTER_WIDTH_CACHE_LIMIT) {
+        clusterWidthCache.clear();
+    }
+    clusterWidthCache.set(cluster, width);
+    return width;
 }
 
 function getTextDisplayWidth(text: string): number {
@@ -188,6 +221,17 @@ function getTextDisplayWidth(text: string): number {
     let index = 0;
 
     while (index < text.length) {
+        // Fast path: a printable ASCII character that nothing can extend is a
+        // one-column cluster, so skip the cluster scan entirely.
+        if (isPrintableAscii(text.charCodeAt(index))) {
+            const nextIndex = index + 1;
+            if (nextIndex >= text.length || text.charCodeAt(nextIndex) < FIRST_CLUSTER_EXTENDER) {
+                width += 1;
+                index = nextIndex;
+                continue;
+            }
+        }
+
         const cluster = consumeDisplayCluster(text, index);
         if (!cluster) {
             break;
@@ -337,8 +381,44 @@ function getOsc8CloseSequence(terminator: OscTerminator): string {
     return `${ESC}]8;;${ESC}\\`;
 }
 
+function nextOsc8Terminator(escape: ParsedEscapeSequence, current: OscTerminator | null): OscTerminator | null {
+    if (escape.osc8Action === 'open') {
+        return escape.osc8Terminator ?? 'st';
+    }
+    if (escape.osc8Action === 'close') {
+        return null;
+    }
+    return current;
+}
+
 export function stripSgrCodes(text: string): string {
     return text.replace(SGR_REGEX, '');
+}
+
+// Track background operations in order: a later explicit color overrides a
+// reset (0, an empty parameter, or 49). Skip extended color arguments so their
+// values aren't mistaken for resets or background operations.
+function sgrClearsBackground(sequence: string): boolean {
+    const params = sequence.slice(2, -1).split(';').map(param => Number.parseInt(param || '0', 10));
+    let clearsBackground = false;
+    for (let i = 0; i < params.length; i++) {
+        const param = params[i];
+        if (param === 0 || param === 49) {
+            clearsBackground = true;
+        } else if (param !== undefined && ((param >= 40 && param <= 47) || (param >= 100 && param <= 107) || param === 48)) {
+            clearsBackground = false;
+        }
+        if (param === 38 || param === 48 || param === 58) {
+            i += params[i + 1] === 5 ? 2 : 4;
+        }
+    }
+    return clearsBackground;
+}
+
+// Re-apply a background after each SGR sequence in the text that clears it,
+// so text that resets its own styling stays on the background it's drawn on.
+export function restoreBackgroundAfterResets(text: string, backgroundCode: string): string {
+    return text.replace(SGR_REGEX, sequence => (sgrClearsBackground(sequence) ? sequence + backgroundCode : sequence));
 }
 
 export function stripOscCodes(text: string): string {
@@ -369,6 +449,10 @@ export function stripOscCodes(text: string): string {
     return result;
 }
 
+function isEscapeIntroducer(character: string | undefined): boolean {
+    return character === ESC || character === C1_CSI || character === C1_OSC;
+}
+
 export function getVisibleText(text: string): string {
     let result = '';
     let index = 0;
@@ -380,14 +464,15 @@ export function getVisibleText(text: string): string {
             continue;
         }
 
-        const codePoint = text.codePointAt(index);
-        if (codePoint === undefined) {
-            break;
+        // Copy the whole run up to the next escape introducer in one slice
+        // rather than one code point at a time.
+        let runEnd = index + 1;
+        while (runEnd < text.length && !isEscapeIntroducer(text[runEnd])) {
+            runEnd++;
         }
 
-        const character = String.fromCodePoint(codePoint);
-        result += character;
-        index += character.length;
+        result += text.slice(index, runEnd);
+        index = runEnd;
     }
 
     return result;
@@ -432,32 +517,24 @@ export function truncateStyledText(
     let didTruncate = false;
     let openOsc8Terminator: OscTerminator | null = null;
 
+    // Measure clusters on the escape-stripped text, exactly as getVisibleWidth
+    // does. Measuring each run between escapes separately splits a cluster
+    // that straddles an escape (U+2764, SGR, U+FE0F) into narrower pieces, so
+    // the loop could finish without overshooting and return the whole,
+    // over-wide input below.
+    const visibleText = getVisibleText(text);
+    let visibleIndex = 0;
+
     while (index < text.length) {
         const escape = parseEscapeSequence(text, index);
         if (escape) {
             output += escape.sequence;
             index = escape.nextIndex;
-
-            if (escape.osc8Action === 'open') {
-                openOsc8Terminator = escape.osc8Terminator ?? 'st';
-            } else if (escape.osc8Action === 'close') {
-                openOsc8Terminator = null;
-            }
+            openOsc8Terminator = nextOsc8Terminator(escape, openOsc8Terminator);
             continue;
         }
 
-        let visibleSegmentEnd = index;
-        while (visibleSegmentEnd < text.length && !parseEscapeSequence(text, visibleSegmentEnd)) {
-            const codePoint = text.codePointAt(visibleSegmentEnd);
-            if (codePoint === undefined) {
-                break;
-            }
-
-            visibleSegmentEnd += String.fromCodePoint(codePoint).length;
-        }
-
-        const visibleSegment = text.slice(index, visibleSegmentEnd);
-        const cluster = consumeDisplayCluster(visibleSegment, 0);
+        const cluster = consumeDisplayCluster(visibleText, visibleIndex);
         if (!cluster) {
             break;
         }
@@ -469,9 +546,30 @@ export function truncateStyledText(
             break;
         }
 
-        output += cluster.text;
+        // Copy the cluster's code units, and any escapes that sit inside it.
+        let remaining = cluster.text.length;
+        while (remaining > 0 && index < text.length) {
+            const inner = parseEscapeSequence(text, index);
+            if (inner) {
+                output += inner.sequence;
+                index = inner.nextIndex;
+                openOsc8Terminator = nextOsc8Terminator(inner, openOsc8Terminator);
+                continue;
+            }
+
+            const codePoint = text.codePointAt(index);
+            if (codePoint === undefined) {
+                break;
+            }
+
+            const character = String.fromCodePoint(codePoint);
+            output += character;
+            index += character.length;
+            remaining -= character.length;
+        }
+
         currentWidth += clusterWidth;
-        index += cluster.text.length;
+        visibleIndex = cluster.nextIndex;
     }
 
     if (!didTruncate) {

@@ -56,32 +56,24 @@ export class GitWorktreeWidget implements Widget {
     }
 
     private getGitWorktree(context: RenderContext): string | null {
-        const worktreeDir = runGit('rev-parse --git-dir', context);
-        if (!worktreeDir)
+        const output = runGit('rev-parse --git-dir --git-common-dir', context);
+        const [gitDir, commonDir] = (output ?? '')
+            .split('\n')
+            .map(dir => dir.trim().replace(/\\/g, '/'));
+        if (!gitDir)
             return null;
 
-        const normalizedGitDir = worktreeDir.replace(/\\/g, '/');
-
-        // /some/path/.git or .git (main worktree of regular repo)
-        if (normalizedGitDir.endsWith('/.git') || normalizedGitDir === '.git')
-            return 'main';
-
-        // /some/path/.git/worktrees/some-worktree or /some/path/.git/worktrees/some-dir/some-worktree
-        const repoMarker = '.git/worktrees/';
-        const repoMarkerIndex = normalizedGitDir.lastIndexOf(repoMarker);
-        if (repoMarkerIndex !== -1) {
-            const worktree = normalizedGitDir.slice(repoMarkerIndex + repoMarker.length);
+        // A linked worktree's git dir is <common dir>/worktrees/<name>, where the
+        // common dir is the main repo's (.git, or the bare repo itself)
+        const linkedPrefix = `${commonDir}/worktrees/`;
+        if (commonDir && gitDir.startsWith(linkedPrefix)) {
+            const worktree = gitDir.slice(linkedPrefix.length);
             return worktree.length > 0 ? worktree : null;
         }
 
-        // /some/path/worktrees/some-worktree or /some/path/worktrees/some-dir/some-worktree
-        const bareMarker = '/worktrees/';
-        const bareMarkerIndex = normalizedGitDir.lastIndexOf(bareMarker);
-        if (bareMarkerIndex === -1)
-            return null;
-
-        const worktree = normalizedGitDir.slice(bareMarkerIndex + bareMarker.length);
-        return worktree.length > 0 ? worktree : null;
+        // Any other git dir is the main worktree's: .git, a submodule's
+        // .git/modules/<name>, or a --separate-git-dir path
+        return 'main';
     }
 
     getCustomKeybinds(): CustomKeybind[] {

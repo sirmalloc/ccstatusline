@@ -218,7 +218,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         }
     }
 
-    const canMerge = currentWidget && selectedIndex < widgets.length - 1 && !isSeparator && !isFlexSeparator;
+    // On the last widget, m only clears a merge left there
+    const canMerge = currentWidget && (selectedIndex < widgets.length - 1 || Boolean(currentWidget.merge))
+        && !isSeparator && !isFlexSeparator;
     const canExcludeAlign = Boolean(currentWidget) && !isSeparator && !isFlexSeparator
         && settings.powerline.enabled && settings.powerline.autoAlign
         && !isMergedIntoPreviousWidget(widgets, selectedIndex);

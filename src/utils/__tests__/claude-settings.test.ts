@@ -489,6 +489,23 @@ describe('backup and error handling behavior', () => {
         expect(orig.statusLine?.command).toBe('old-command');
     });
 
+    // settings.json can hold secrets (env, apiKeyHelper), so its backups must
+    // not be readable by anyone who can't read it
+    it.skipIf(process.platform === 'win32')('gives .bak and .orig backups the permissions of a private settings file', async () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        const settingsPath = getClaudeSettingsPath();
+        fs.chmodSync(settingsPath, 0o600);
+        // A backup left from before keeps its own permissions when overwritten
+        fs.writeFileSync(`${settingsPath}.bak`, '{}', 'utf-8');
+        fs.chmodSync(`${settingsPath}.bak`, 0o644);
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.orig`).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.bak`).mode & 0o777).toBe(0o600);
+    });
+
     it('loadClaudeSettings should return empty object when settings file is missing', async () => {
         await expect(loadClaudeSettings()).resolves.toEqual({});
     });
@@ -518,25 +535,16 @@ describe('backup and error handling behavior', () => {
         }
     });
 
-    it('installStatusLine should warn and recover when existing settings are invalid', async () => {
+    it('installStatusLine should abort without touching existing settings that cannot be parsed', async () => {
         writeRawClaudeSettings('{ invalid json');
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        try {
-            await installStatusLine({ commandMode: 'auto-npx' });
+        const settingsPath = getClaudeSettingsPath();
 
-            const settingsPath = getClaudeSettingsPath();
-            const installed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { statusLine?: { command?: string; padding?: number } };
-            expect(installed.statusLine?.command).toBe(buildStatusLineCommand('auto-npx'));
-            expect(installed.statusLine?.padding).toBe(0);
-            expect(fs.existsSync(`${settingsPath}.orig`)).toBe(true);
-            expect(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')).toBe('{ invalid json');
+        const installPromise = installStatusLine({ commandMode: 'auto-npx' });
+        await expect(installPromise).rejects.toThrow(settingsPath);
 
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `Warning: Could not read existing Claude settings. A backup exists at ${settingsPath}.orig.`
-            );
-        } finally {
-            consoleErrorSpy.mockRestore();
-        }
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe('{ invalid json');
+        expect(fs.existsSync(`${settingsPath}.bak`)).toBe(false);
+        expect(fs.existsSync(`${settingsPath}.orig`)).toBe(false);
     });
 
     it('uninstallStatusLine should warn and return without modifying invalid settings', async () => {

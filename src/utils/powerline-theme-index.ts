@@ -5,28 +5,49 @@ export interface PowerlineThemeSlotEntry {
     widget: WidgetItem;
 }
 
-export function countPowerlineThemeSlots(entries: PowerlineThemeSlotEntry[]): number {
-    let previousVisibleWidget: WidgetItem | null = null;
-    let slotCount = 0;
+export interface PowerlineThemeSlots {
+    slots: (number | null)[];
+    nextSlot: number;
+}
 
-    for (const entry of entries) {
-        if (entry.widget.type === 'separator' || entry.widget.type === 'flex-separator') {
+// Theme color slot of each widget in a line, numbered from startSlot. A widget
+// merged into the previous shown widget shares its slot; separators and hidden
+// widgets get none. nextSlot is where the following line continues.
+export function assignPowerlineThemeSlots(
+    widgets: WidgetItem[],
+    startSlot = 0,
+    isShown: (index: number) => boolean = () => true
+): PowerlineThemeSlots {
+    let previousVisibleWidget: WidgetItem | null = null;
+    let nextSlot = startSlot;
+
+    const slots = widgets.map((widget, index) => {
+        if (widget.type === 'separator' || widget.type === 'flex-separator') {
             previousVisibleWidget = null;
-            continue;
+            return null;
         }
 
-        if (!entry.content) {
-            continue;
+        if (!isShown(index)) {
+            return null;
         }
 
         if (!previousVisibleWidget?.merge) {
-            slotCount++;
+            nextSlot++;
         }
 
-        previousVisibleWidget = entry.widget;
-    }
+        previousVisibleWidget = widget;
+        return nextSlot - 1;
+    });
 
-    return slotCount;
+    return { slots, nextSlot };
+}
+
+export function countPowerlineThemeSlots(entries: PowerlineThemeSlotEntry[]): number {
+    return assignPowerlineThemeSlots(
+        entries.map(entry => entry.widget),
+        0,
+        index => Boolean(entries[index]?.content)
+    ).nextSlot;
 }
 
 export function advanceGlobalPowerlineThemeIndex(currentIndex: number, entries: PowerlineThemeSlotEntry[]): number {

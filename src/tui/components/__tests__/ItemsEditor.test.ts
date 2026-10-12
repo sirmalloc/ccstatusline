@@ -183,10 +183,10 @@ describe('ItemsEditor', () => {
 
         try {
             await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('la(b)el…');
+            expect(stripAnsi(stdout.getOutput())).toContain('(e)dit label…');
 
             stdout.clearOutput();
-            stdin.write('b');
+            stdin.write('e');
             await flushInk();
             expect(stripAnsi(stdout.getOutput())).toContain('(default: "Model: ")');
 
@@ -207,7 +207,7 @@ describe('ItemsEditor', () => {
             await flushInk();
             const rawOutput = stripAnsi(stdout.getOutput());
             expect(rawOutput).toContain('(raw value)');
-            expect(rawOutput).not.toContain('la(b)el…');
+            expect(rawOutput).not.toContain('(e)dit label…');
             expect(rawOutput).not.toContain('(label:');
         } finally {
             instance.unmount();
@@ -286,7 +286,7 @@ describe('ItemsEditor', () => {
 
         try {
             await flushInk();
-            stdin.write('b');
+            stdin.write('e');
             await flushInk();
 
             // One macrotask apart: separate keypresses, but no re-render between them
@@ -308,8 +308,8 @@ describe('ItemsEditor', () => {
     });
 
     it.each([
-        { type: 'model', openKey: 'b', prompt: '(default: "Model: ")', edit: 'X', expected: '1. Model (label: "Model: X")' },
-        { type: 'model', openKey: 'b', prompt: '(default: "Model: ")', edit: '\x7f', expected: '1. Model (label: "Model:")' },
+        { type: 'model', openKey: 'e', prompt: '(default: "Model: ")', edit: 'X', expected: '1. Model (label: "Model: X")' },
+        { type: 'model', openKey: 'e', prompt: '(default: "Model: ")', edit: '\x7f', expected: '1. Model (label: "Model:")' },
         { type: 'custom-text', openKey: 'e', prompt: 'Enter custom text:', edit: 'X', expected: '1. Custom Text (HelloX)' },
         { type: 'custom-text', openKey: 'e', prompt: 'Enter custom text:', edit: '\x7f', expected: '1. Custom Text (Hell)' }
     ])('saves the latest $type edit when Enter arrives before a redraw ($edit)', async ({ type, openKey, prompt, edit, expected }) => {
@@ -367,7 +367,7 @@ describe('ItemsEditor', () => {
         try {
             await flushInk();
             stdout.clearOutput();
-            stdin.write('b');
+            stdin.write('e');
             await flushInk();
             expect(stripAnsi(stdout.getOutput())).toContain('"\u{1F469}\u200D\u{1F4BB}  " (default: "Model: ")');
         } finally {
@@ -398,19 +398,72 @@ describe('ItemsEditor', () => {
 
         try {
             await flushInk();
-            stdin.write('b');
+            stdin.write('e');
             await flushInk();
             stdout.clearOutput();
             stdin.write('\r');
             await flushInk();
             expect(stripAnsi(stdout.getOutput())).toContain('(label: "Block ")');
 
-            stdin.write('b');
+            stdin.write('e');
             await flushInk();
             stdout.clearOutput();
             stdin.write('\t');
             await flushInk();
             expect(stripAnsi(stdout.getOutput())).not.toContain('(label:');
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('offers (m)erge on the last widget only to clear a merge left on it', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // Debug mode writes whole frames; the last one starts at the last title
+        const lastFrame = () => {
+            const output = stripAnsi(stdout.getOutput());
+            return output.slice(output.lastIndexOf('Edit Line 1'));
+        };
+
+        const instance = render(
+            React.createElement(StatefulItemsEditor, {
+                initialWidgets: [
+                    { id: '1', type: 'model' },
+                    { id: '2', type: 'git-branch', merge: true }
+                ]
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  1. Model');
+            });
+
+            stdin.write('\u001B[B');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  2. Git Branch (merged→)');
+            });
+            expect(lastFrame()).toContain('(m)erge');
+
+            stdin.write('m');
+            await waitFor(() => {
+                expect(lastFrame()).toContain('▶  2. Git Branch');
+                expect(lastFrame()).not.toContain('(merged→)');
+            });
+            expect(lastFrame()).not.toContain('(m)erge');
         } finally {
             instance.unmount();
             instance.cleanup();

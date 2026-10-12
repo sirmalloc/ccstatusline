@@ -208,6 +208,49 @@ describe('powerline widgets that preserve their own colors', () => {
 
         expect(line).toBe(`${A_BG_CODE}\x1b[31mred\x1b[39m\x1b[0m`);
     });
+
+    it('re-applies the background after the command\'s own reset, so its padding stays in the segment', () => {
+        const widgets: WidgetItem[] = [
+            { id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG },
+            text('b', { color: B_FG, backgroundColor: B_BG })
+        ];
+        const settings = { ...powerlineSettings(), defaultPadding: ' ' };
+        const context: RenderContext = { isPreview: false, terminalWidth: 0 };
+
+        const line = renderStatusLine(widgets, settings, context, preRender(widgets, { 0: '\x1b[31mred\x1b[0m', 1: 'B' }), []);
+
+        expect(line).toBe(
+            `${A_BG_CODE} \x1b[31mred\x1b[0m${A_BG_CODE} \x1b[0m`
+            + `${A_BG_AS_FG_CODE}${B_BG_CODE}>\x1b[39m\x1b[49m`
+            + `${B_FG_CODE}${B_BG_CODE} B ${COLOR_RESET}`
+        );
+    });
+
+    it('re-applies the background after resets combined with a color and after the default-background code', () => {
+        const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG }];
+
+        const line = render(widgets, { 0: '\x1b[0;32mok\x1b[49m then\x1b[m' });
+
+        expect(line).toBe(`${A_BG_CODE}\x1b[0;32m${A_BG_CODE}ok\x1b[49m${A_BG_CODE} then\x1b[m${A_BG_CODE}\x1b[0m`);
+    });
+
+    it('does not mistake a 0 or 49 inside an extended color for a reset', () => {
+        const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG }];
+        const content = '\x1b[38;5;0mk\x1b[38;2;0;49;0mg\x1b[48;5;49mb';
+
+        expect(render(widgets, { 0: content })).toBe(`${A_BG_CODE}${content}\x1b[0m`);
+    });
+
+    it.each(['0;41', '49;101', '0;48;5;49', '0;48;2;0;49;0'])(
+        'preserves the command background in SGR %s and restores the segment background after a later reset',
+        (params) => {
+            const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG }];
+            const content = `\x1b[${params}mcolored\x1b[0mplain`;
+
+            expect(render(widgets, { 0: content }))
+                .toBe(`${A_BG_CODE}\x1b[${params}mcolored\x1b[0m${A_BG_CODE}plain\x1b[0m`);
+        }
+    );
 });
 
 describe('powerline merged widgets', () => {

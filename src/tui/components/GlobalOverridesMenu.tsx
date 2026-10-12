@@ -23,7 +23,10 @@ import {
     getColorDisplayName
 } from '../../utils/colors';
 import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
-import { shouldInsertInput } from '../../utils/input-guards';
+import {
+    getPlainInput,
+    shouldInsertInput
+} from '../../utils/input-guards';
 import { getNextNumberStyle } from '../../utils/number-format';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -90,6 +93,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const currentFgIndex = fgColors.indexOf(settings.overrideForegroundColor ?? 'none');
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (editingPadding) {
             if (key.return) {
                 const updatedSettings = {
@@ -213,11 +217,11 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
         } else {
             if (key.escape) {
                 onBack();
-            } else if (input === 'p' || input === 'P') {
+            } else if (shortcut === 'p' || shortcut === 'P') {
                 setEditingPadding(true);
-            } else if ((input === 's' || input === 'S') && !isPowerlineEnabled && !key.ctrl) {
+            } else if ((shortcut === 's' || shortcut === 'S') && !isPowerlineEnabled) {
                 setEditingSeparator(true);
-            } else if ((input === 'i' || input === 'I') && !isPowerlineEnabled) {
+            } else if ((shortcut === 'i' || shortcut === 'I') && !isPowerlineEnabled) {
                 const newInheritColors = !inheritColors;
                 setInheritColors(newInheritColors);
                 const updatedSettings = {
@@ -225,7 +229,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     inheritSeparatorColors: newInheritColors
                 };
                 onUpdate(updatedSettings);
-            } else if ((input === 'b' || input === 'B') && !isPowerlineEnabled) {
+            } else if ((shortcut === 'b' || shortcut === 'B') && !isPowerlineEnabled) {
                 // Cycle through background colors
                 const nextIndex = (currentBgIndex + 1) % bgColors.length;
                 const nextBgColor = bgColors[nextIndex];
@@ -234,14 +238,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideBackgroundColor: nextBgColor === 'none' ? undefined : nextBgColor
                 };
                 onUpdate(updatedSettings);
-            } else if ((input === 'c' || input === 'C') && !isPowerlineEnabled) {
+            } else if ((shortcut === 'c' || shortcut === 'C') && !isPowerlineEnabled) {
                 // Clear override background color
                 const updatedSettings = {
                     ...settings,
                     overrideBackgroundColor: undefined
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'o' || input === 'O') {
+            } else if (shortcut === 'o' || shortcut === 'O') {
                 // Toggle global bold
                 const newGlobalBold = !globalBold;
                 setGlobalBold(newGlobalBold);
@@ -250,7 +254,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     globalBold: newGlobalBold
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'm' || input === 'M') {
+            } else if (shortcut === 'm' || shortcut === 'M') {
                 // Toggle minimalist mode
                 const newMinimalistMode = !minimalistMode;
                 setMinimalistMode(newMinimalistMode);
@@ -259,10 +263,10 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     minimalistMode: newMinimalistMode
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'n' || input === 'N') {
+            } else if (shortcut === 'n' || shortcut === 'N') {
                 setNumberFormatMode(true);
                 setNumberFormatKindIndex(0);
-            } else if (input === 'f' || input === 'F') {
+            } else if (shortcut === 'f' || shortcut === 'F') {
                 // Cycle through foreground colors
                 const nextIndex = (currentFgIndex + 1) % fgColors.length;
                 const nextFgColor = fgColors[nextIndex];
@@ -271,21 +275,21 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideForegroundColor: nextFgColor === 'none' ? undefined : nextFgColor
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'g' || input === 'G') {
+            } else if (shortcut === 'g' || shortcut === 'G') {
                 // Enter gradient selection mode
                 setGradientMode(true);
                 setGradientIndex(0);
                 setGradientCustomStep(null);
                 setGradientStartHex('');
                 setGradientHexInput('');
-            } else if (input === 'x' || input === 'X') {
+            } else if (shortcut === 'x' || shortcut === 'X') {
                 // Clear override foreground color
                 const updatedSettings = {
                     ...settings,
                     overrideForegroundColor: undefined
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'd' || input === 'D') {
+            } else if (shortcut === 'd' || shortcut === 'D') {
                 // Cycle through padding sides: both -> left -> right -> both
                 const paddingSides = DefaultPaddingSideSchema.options;
                 const currentIndex = paddingSides.indexOf(settings.defaultPaddingSide);

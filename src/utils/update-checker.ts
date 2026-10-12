@@ -69,6 +69,15 @@ export interface CheckForUpdatesOptions extends Omit<BuildUpdateCheckResultOptio
 
 export interface RunGlobalPackageInstallOptions { platform?: NodeJS.Platform }
 
+// A plain release version (semver). The version goes into the install
+// commands the TUI shows and, for npm on Windows, into a cmd.exe command line,
+// so nothing that a shell could read as syntax gets through.
+const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+function isReleaseVersion(version: string): boolean {
+    return RELEASE_VERSION.test(version);
+}
+
 function parseVersion(version: string): number[] {
     return version.split(/[.-]/).map((part) => {
         const parsed = Number.parseInt(part, 10);
@@ -227,6 +236,10 @@ export async function checkForUpdates({
 }: CheckForUpdatesOptions): Promise<UpdateCheckResult> {
     try {
         const latestVersion = await latestVersionFetcher(timeoutMs);
+        if (!isReleaseVersion(latestVersion)) {
+            throw new Error('npm registry returned an invalid version');
+        }
+
         return buildUpdateCheckResult({
             currentVersion,
             latestVersion,
@@ -298,6 +311,10 @@ export function runGlobalPackageInstall(
     version: string,
     { platform = process.platform }: RunGlobalPackageInstallOptions = {}
 ): Promise<void> {
+    if (!isReleaseVersion(version)) {
+        return Promise.reject(new Error('Not a release version of ccstatusline'));
+    }
+
     const executable = getPackageManagerExecutable(packageManager, platform);
     const args = packageManager === 'npm'
         ? ['install', '-g', `ccstatusline@${version}`]

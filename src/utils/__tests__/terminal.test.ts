@@ -38,7 +38,7 @@ describe('terminal utils', () => {
     // process.platform is read by the width probe. Pin it with defineProperty
     // and restore after each test; vi.spyOn on the getter does not reliably
     // re-apply across tests. Probing is disabled on win32, so the
-    // ancestor-walk/stty/tput tests pin POSIX and the win32 tests pin win32.
+    // ancestor-walk/stty tests pin POSIX and the win32 tests pin win32.
     const ORIGINAL_PLATFORM = process.platform;
     const setPlatform = (value: NodeJS.Platform): void => {
         Object.defineProperty(process, 'platform', { value, configurable: true, writable: true, enumerable: true });
@@ -144,17 +144,23 @@ describe('terminal utils', () => {
         expect(getTerminalWidth()).toBe(142);
     });
 
-    it('falls back to tput cols when ancestor probing fails', () => {
+    it('returns null rather than a terminfo default when no ancestor has a terminal', () => {
         pinPosixPlatform();
-        mockExecFileSync.mockImplementationOnce(() => { throw new Error('ps unavailable'); });
-        mockExecFileSync.mockReturnValueOnce('90\n');
+        mockExecFileSync.mockImplementation((file: string) => {
+            if (file === 'tput') {
+                // Run with piped stdio, tput cannot see a terminal and prints
+                // terminfo's default for $TERM.
+                return '80\n';
+            }
 
-        expect(getTerminalWidth()).toBe(90);
-        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('tput');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['cols']);
+            throw new Error('ps unavailable');
+        });
+
+        expect(getTerminalWidth()).toBeNull();
+        expect(mockExecFileSync.mock.calls.map(call => call[0])).not.toContain('tput');
     });
 
-    it('returns null when ancestor and fallback probes fail', () => {
+    it('returns null when ancestor probes fail', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementation((file: string, args: string[]) => {
             if (file === 'ps' && args.join(' ') === `-o ppid= -p ${process.pid}`) {
@@ -171,10 +177,6 @@ describe('terminal utils', () => {
 
             if (file === 'ps' && args.join(' ') === '-o ppid= -p 1234') {
                 return '0\n';
-            }
-
-            if (file === 'tput') {
-                throw new Error('tput unavailable');
             }
 
             throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
@@ -215,7 +217,6 @@ describe('terminal utils', () => {
     it('returns false for availability when all probes fail', () => {
         pinPosixPlatform();
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('tty unavailable'); });
-        mockExecFileSync.mockImplementationOnce(() => { throw new Error('tput unavailable'); });
 
         expect(canDetectTerminalWidth()).toBe(false);
     });

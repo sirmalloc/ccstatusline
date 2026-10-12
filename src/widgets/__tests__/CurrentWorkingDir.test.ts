@@ -126,6 +126,19 @@ describe('CurrentWorkingDirWidget', () => {
             expect(result).toBe('~/.../Projects/my-project');
         });
 
+        it.each([
+            { path: 'Projects/my-project', segments: '2', expected: '~/Projects/my-project' },
+            { path: 'Projects', segments: '1', expected: '~/Projects' }
+        ])('should not count ~ as a segment ($segments of ~/$path)', ({ path, segments, expected }) => {
+            const item = createItem({ abbreviateHome: 'true', segments }, true);
+            const result = widget.render(
+                item,
+                createContext(`${defaultHomeDir}/${path}`),
+                defaultSettings
+            );
+            expect(result).toBe(expected);
+        });
+
         it('should show correct preview when abbreviateHome is enabled', () => {
             const item = createItem({ abbreviateHome: 'true' }, true);
             const result = widget.render(
@@ -167,6 +180,27 @@ describe('CurrentWorkingDirWidget', () => {
             );
 
             expect(result).toBe('~\\...\\Projects\\app');
+        });
+    });
+
+    describe('segments preview', () => {
+        it.each([
+            { segments: '1', expected: '.../my-project' },
+            { segments: '2', expected: '.../Projects/my-project' },
+            { segments: '3', expected: '.../Documents/Projects/my-project' },
+            { segments: '4', expected: '.../example/Documents/Projects/my-project' },
+            { segments: '5', expected: '/Users/example/Documents/Projects/my-project' }
+        ])('should preview segments=$segments on the sample path', ({ segments, expected }) => {
+            const item = createItem({ segments }, true);
+            expect(widget.render(item, createContext(undefined, true), defaultSettings)).toBe(expected);
+        });
+
+        it.each([
+            { segments: '3', expected: '~/Documents/Projects/my-project' },
+            { segments: '4', expected: '~/Documents/Projects/my-project' }
+        ])('should preview segments=$segments on the sample path after ~', ({ segments, expected }) => {
+            const item = createItem({ abbreviateHome: 'true', segments }, true);
+            expect(widget.render(item, createContext(undefined, true), defaultSettings)).toBe(expected);
         });
     });
 
