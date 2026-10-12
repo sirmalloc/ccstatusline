@@ -157,4 +157,69 @@ describe('SymbolSlotsEditor', () => {
             cleanupEditor(rendered);
         }
     });
+
+    it('blanks every slot on Shift+Tab', async () => {
+        const rendered = renderEditor({ id: 'git-status', type: 'git-status' });
+
+        try {
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
+            // Any new frame after Shift+Tab means the toggle was handled
+            rendered.stdout.clearOutput();
+            rendered.stdin.write('\x1B[Z');
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledTimes(1);
+            });
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata).toEqual({
+                symbolConflicts: '',
+                symbolStaged: '',
+                symbolUnstaged: '',
+                symbolUntracked: ''
+            });
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
+    it('restores every default on a second Shift+Tab', async () => {
+        const rendered = renderEditor({
+            id: 'git-status',
+            type: 'git-status',
+            metadata: {
+                symbolConflicts: '',
+                symbolStaged: '',
+                symbolUnstaged: '',
+                symbolUntracked: ''
+            }
+        });
+
+        try {
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
+            // Any new frame after Shift+Tab means the toggle was handled
+            rendered.stdout.clearOutput();
+            rendered.stdin.write('\x1B[Z');
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledTimes(1);
+            });
+
+            // Every slot back at its default stores no overrides at all.
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata).toBeUndefined();
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
 });

@@ -103,6 +103,12 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             setSelectedIndex(selectedIndex - 1 < 0 ? slots.length - 1 : selectedIndex - 1);
         } else if (key.downArrow && slots.length > 1) {
             setSelectedIndex(selectedIndex + 1 > slots.length - 1 ? 0 : selectedIndex + 1);
+        } else if (key.tab && key.shift) {
+            // Widgets with several glyphs are mostly blanked whole to save
+            // width on the status line, which is one Backspace per row
+            // otherwise. Blanked rows toggle back so the key is reversible.
+            const allBlank = values.every(value => value.length === 0);
+            setValues(values.map((_, index) => (allBlank ? slots[index]?.defaultSymbol ?? '' : '')));
         } else if (key.tab) {
             setValues(values.map((value, index) => (
                 index === selectedIndex ? slots[selectedIndex]?.defaultSymbol ?? '' : value
@@ -121,7 +127,7 @@ const SymbolSlotsEditor: React.FC<WidgetEditorProps & { slots: SymbolSlot[] }> =
             <Text bold>Glyphs</Text>
             <Text dimColor>
                 {slots.length > 1
-                    ? '↑↓ row, type to set, Tab default, Backspace none, Enter save, ESC cancel'
+                    ? '↑↓ row, type to set, Tab default, Backspace none, Shift+Tab toggle all none/default, Enter save, ESC cancel'
                     : 'Type any character or emoji, Tab default, Backspace none, Enter save, ESC cancel'}
             </Text>
             <Box marginTop={1} flexDirection='column'>
