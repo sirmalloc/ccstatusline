@@ -8,6 +8,7 @@ import { defineConfig } from 'vitest/config';
 // mutation scope is narrowed. Regular runs use vitest.config.ts.
 export default defineConfig({
     test: {
+        globalSetup: ['./vitest.stryker.global-setup.ts'],
         include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
         exclude: [
             '**/node_modules/**',
