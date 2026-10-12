@@ -38,4 +38,4 @@ __pycache__/
 
 # mutation testing (Stryker)
 .stryker-tmp
-reports
+/reports/

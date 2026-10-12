@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import {
     chmodSync,
     existsSync,
@@ -25,67 +24,18 @@ import {
     withGitHardeningEnv
 } from '../git-hardening';
 
-interface BunSpawnResult {
-    exitCode: number | null;
-    stderr: Buffer;
-}
-
-interface BunRuntime { spawnSync(command: string[], options: { env: NodeJS.ProcessEnv; stdout: 'pipe'; stderr: 'pipe' }): BunSpawnResult }
-
-// Other suites mock node:child_process and that mock leaks across files under
-// the bun runner, so git is invoked through Bun.spawnSync there. Vitest/Node
-// keeps test files isolated and takes the real spawnSync.
-function gitSync(args: string[], env?: NodeJS.ProcessEnv): void {
-    const runEnv = env ?? process.env;
-    const bun = (globalThis as { Bun?: BunRuntime }).Bun;
-
-    if (bun) {
-        const result = bun.spawnSync(['git', ...args], { env: runEnv, stdout: 'pipe', stderr: 'pipe' });
-        if (result.exitCode !== 0) {
-            throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
-        }
-        return;
-    }
-
-    const result = spawnSync('git', args, { env: runEnv });
-    if (result.status !== 0) {
-        throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
-    }
-}
+import {
+    COMMIT_ENV,
+    gitSync,
+    probeRealRunGitAvailable
+} from './git-test-helpers';
 
 // Upstream 810d424 (GHSA-rf4f-gc2h-c9vp): status-line Git calls must not
 // execute commands a repository controls. core.fsmonitor points at a
 // repository-controlled command; hardened Git calls override it with an
 // empty value, so the command must never run.
 
-// Sibling suites mock node:child_process and, when this file shares the bun
-// runner's single process with them, that mock can reach git.ts's own
-// spawnSync (the copy of the module loaded after their vi.mock call), making
-// every runGit resolve to null. Probe runGit end to end once and skip the
-// real-git suites when it is broken; vitest isolates test files and always
-// runs them, as does an isolated `bun test <file>`.
-const realRunGitAvailable = (() => {
-    try {
-        const probeRepo = mkdtempSync(join(tmpdir(), 'ccsl-run-git-probe-'));
-        gitSync(['init', '-q', probeRepo]);
-        gitSync(['-C', probeRepo, 'remote', 'add', 'origin', 'https://example.com/x.git']);
-        clearGitCache();
-        const remotes = runGit('remote', { data: { cwd: probeRepo }, gitCacheTtlSeconds: 0 });
-        clearGitCache();
-        // an empty output resolves to null too, hence the dummy remote
-        return remotes !== null;
-    } catch {
-        return false;
-    }
-})();
-
-const COMMIT_ENV = {
-    ...process.env,
-    GIT_AUTHOR_NAME: 't',
-    GIT_AUTHOR_EMAIL: 't@example.com',
-    GIT_COMMITTER_NAME: 't',
-    GIT_COMMITTER_EMAIL: 't@example.com'
-};
+const realRunGitAvailable = probeRealRunGitAvailable();
 
 describe.skipIf(!realRunGitAvailable)('upstream 810d424: git calls ignore repository-controlled commands', () => {
     let savedEnv: Record<string, string | undefined> = {};

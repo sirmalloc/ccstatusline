@@ -1,5 +1,4 @@
 import { ok } from 'node:assert';
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,10 +10,7 @@ import {
     it
 } from 'vitest';
 
-import {
-    clearGitCache,
-    runGit
-} from '../git';
+import { clearGitCache } from '../git';
 import {
     buildBranchWebUrl,
     buildRepoWebUrl,
@@ -24,6 +20,12 @@ import {
     listRemotes,
     parseRemoteUrl
 } from '../git-remote';
+
+import {
+    COMMIT_ENV,
+    gitSync,
+    probeRealRunGitAvailable
+} from './git-test-helpers';
 
 // Upstream ae9721e: both parsers used to backtrack quadratically on input a
 // repository controls. Remote URLs come from the repository's own config, so a
@@ -36,14 +38,6 @@ import {
 
 const ORIGIN_URL = 'https://github.com/axisrow/ccstatusline.git';
 const UPSTREAM_URL = 'git@github.com:sirmalloc/ccstatusline.git';
-
-const COMMIT_ENV = {
-    ...process.env,
-    GIT_AUTHOR_NAME: 't',
-    GIT_AUTHOR_EMAIL: 't@example.com',
-    GIT_COMMITTER_NAME: 't',
-    GIT_COMMITTER_EMAIL: 't@example.com'
-};
 
 describe('upstream ae9721e: git parsers run in linear time', () => {
     it('parses a remote URL with a long run of slashes in linear time', () => {
@@ -112,7 +106,7 @@ describe('parseRemoteUrl', () => {
         ['git://github.com/owner/repo', 'git']
     ])('parses the url form %s', (url, protocol) => {
         expect(parseRemoteUrl(url)).toEqual({
-            host: protocol === 'https' || protocol === 'http' ? 'github.com' : 'github.com',
+            host: 'github.com',
             owner: 'owner',
             repo: 'repo'
         });
@@ -159,54 +153,13 @@ describe('parseRemoteUrl', () => {
     });
 });
 
-interface BunSpawnResult {
-    exitCode: number | null;
-    stderr: Buffer;
-}
-
-interface BunRuntime { spawnSync(command: string[], options: { env: NodeJS.ProcessEnv; stdout: 'pipe'; stderr: 'pipe' }): BunSpawnResult }
-
-// Other suites mock node:child_process and that mock leaks across files under
-// the bun runner, so git is invoked through Bun.spawnSync there. Vitest/Node
-// keeps test files isolated and takes the real spawnSync.
-function gitSync(args: string[], env?: NodeJS.ProcessEnv): void {
-    const runEnv = env ?? process.env;
-    const bun = (globalThis as { Bun?: BunRuntime }).Bun;
-
-    if (bun) {
-        const result = bun.spawnSync(['git', ...args], { env: runEnv, stdout: 'pipe', stderr: 'pipe' });
-        if (result.exitCode !== 0) {
-            throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
-        }
-        return;
-    }
-
-    const result = spawnSync('git', args, { env: runEnv });
-    if (result.status !== 0) {
-        throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
-    }
-}
-
 // Sibling suites mock node:child_process and, when this file shares the bun
 // runner's single process with them, that mock can reach git.ts's own
 // spawnSync (the copy of the module loaded after their vi.mock call), making
 // every runGit resolve to null. Probe runGit end to end once and skip the
 // real-git suite when it is broken; vitest isolates test files and always
 // runs it, as does an isolated `bun test <file>`.
-const realRunGitAvailable = (() => {
-    try {
-        const probeRepo = mkdtempSync(join(tmpdir(), 'ccsl-run-git-probe-'));
-        gitSync(['init', '-q', probeRepo]);
-        gitSync(['-C', probeRepo, 'remote', 'add', 'origin', 'https://example.com/x.git']);
-        clearGitCache();
-        const remotes = runGit('remote', { data: { cwd: probeRepo }, gitCacheTtlSeconds: 0 });
-        clearGitCache();
-        // an empty output resolves to null too, hence the dummy remote
-        return remotes !== null;
-    } catch {
-        return false;
-    }
-})();
+const realRunGitAvailable = probeRealRunGitAvailable();
 
 describe.skipIf(!realRunGitAvailable)('remote lookups against a real repository', () => {
     let savedEnv: Record<string, string | undefined> = {};
