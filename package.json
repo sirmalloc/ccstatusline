@@ -40,6 +40,8 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@remotion/cli": "^4.0.459",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
     "@stylistic/eslint-plugin": "^5.2.3",
     "@types/bun": "latest",
     "@types/pluralize": "^0.0.33",
