@@ -211,8 +211,7 @@ const CustomCommandEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, 
                 } else if (!Number.isNaN(ttlMs) && ttlMs === 0) {
                     onComplete({ ...widget, ttlMs: 0 });
                 } else {
-                    const { ttlMs: unused, ...rest } = widget;
-                    void unused;
+                    const { ttlMs: _unused, ...rest } = widget;
                     onComplete(rest);
                 }
             } else if (key.escape) {
