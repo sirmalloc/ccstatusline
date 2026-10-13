@@ -209,6 +209,8 @@ describe('CacheTimer widget', () => {
         const widget = new CacheTimerWidget();
         expect(widget.getCustomKeybinds()).toEqual([
             { key: 't', label: '(t)tl', action: 'toggle-ttl' },
+            { key: 'o', label: 'minutes (o)nly', action: 'toggle-minutes' },
+            { key: 'w', label: '(w)orking shows fresh', action: 'toggle-working-fresh' },
             { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' }
         ]);
         expect(widget.getHideableStates().map(state => state.key)).toEqual(['empty']);
@@ -264,5 +266,50 @@ describe('CacheTimer widget', () => {
         const widget = new CacheTimerWidget();
         expect(widget.getEditorDisplay(item({ metadata: { ttlSeconds: '3600' } })).modifierText).toBe('(ttl 1h)');
         expect(widget.getEditorDisplay(item({ metadata: { ttlSeconds: '3600', hide: 'empty' } })).modifierText).toBe('(ttl 1h)');
+    });
+
+    describe('minutes only', () => {
+        const minutes: Partial<WidgetItem> = { metadata: { minutes: 'true' } };
+
+        it('rounds the countdown up to whole minutes', () => {
+            const widget = new CacheTimerWidget();
+            // 300 - 5 - 10 = 285s left -> 5m; 300 - 5 - 250 = 45s left -> 1m, never 0m.
+            expect(widget.render(item(minutes), transcriptContext([assistant(10)]), DEFAULT_SETTINGS)).toBe('Cache: 🟢 5m');
+            expect(widget.render(item(minutes), transcriptContext([assistant(250)]), DEFAULT_SETTINGS)).toBe('Cache: 🔴 1m');
+        });
+
+        it('keeps COLD and applies to the preview', () => {
+            const widget = new CacheTimerWidget();
+            expect(widget.render(item(minutes), transcriptContext([assistant(400)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+            expect(widget.render(item(minutes), { isPreview: true }, DEFAULT_SETTINGS)).toBe('Cache: 🟢 5m');
+        });
+    });
+
+    it.each([
+        ['toggle-minutes', 'minutes', '(minutes)'],
+        ['toggle-working-fresh', 'workingFresh', '(no HOT)']
+    ])('%s toggles its flag, annotates the editor, and removes the key when off', (action, key, modifierText) => {
+        const widget = new CacheTimerWidget();
+        const on = widget.handleEditorAction(action, item()) ?? item();
+        expect(on.metadata?.[key]).toBe('true');
+        expect(widget.getEditorDisplay(on).modifierText).toBe(modifierText);
+        expect(widget.handleEditorAction(action, on)?.metadata?.[key]).toBeUndefined();
+    });
+
+    describe('working shows fresh', () => {
+        const workingFresh: Partial<WidgetItem> = { metadata: { workingFresh: 'true' } };
+
+        it('renders the Fresh glyph and the full TTL instead of HOT while a turn is in flight', () => {
+            const widget = new CacheTimerWidget();
+            const context = transcriptContext([assistant(60), pendingUser]);
+            const hourInMinutes = item({ metadata: { workingFresh: 'true', minutes: 'true', ttlSeconds: '3600' } });
+            expect(widget.render(item(workingFresh), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4:55');
+            expect(widget.render(hourInMinutes, context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 60m');
+        });
+
+        it('leaves the idle countdown unchanged', () => {
+            const widget = new CacheTimerWidget();
+            expect(widget.render(item(workingFresh), transcriptContext([assistant(400)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        });
     });
 });
