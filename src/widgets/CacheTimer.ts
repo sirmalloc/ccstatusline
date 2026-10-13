@@ -14,7 +14,10 @@ import type {
 import { CACHE_EMPTY_HIDEABLE_STATE } from './shared/cache-scope';
 import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
-import { removeMetadataKeys } from './shared/metadata';
+import {
+    isMetadataFlagEnabled,
+    removeMetadataKeys
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getSlotSymbol,
@@ -36,6 +39,17 @@ const TTL_OPTIONS = [300, 3600] as const; // 5 minutes, 1 hour
 const TOGGLE_TTL_ACTION = 'toggle-ttl';
 
 const SAFETY_MARGIN = 5; // display as COLD 5s before actual expiry
+const PREVIEW_REMAINING_SECONDS = 292; // 4:52 in the editor preview
+
+// Whole minutes (rounded up) instead of m:ss, for layouts that only need a
+// glance and should not change every second.
+const MINUTES_METADATA_KEY = 'minutes';
+const TOGGLE_MINUTES_ACTION = 'toggle-minutes';
+
+// While a turn is in flight the cache is being refreshed, so it can render as
+// Fresh with the full TTL instead of the separate HOT state.
+const WORKING_FRESH_METADATA_KEY = 'workingFresh';
+const TOGGLE_WORKING_FRESH_ACTION = 'toggle-working-fresh';
 
 // One editable glyph per display state, so nerd-font / ASCII users can replace
 // the emoji (which ignore the widget's color) with symbols that respect it.
@@ -231,6 +245,14 @@ function cycleTtl(item: WidgetItem): WidgetItem {
     };
 }
 
+// Off is stored as the absence of the key, so untouched items keep no metadata.
+function toggleFlag(item: WidgetItem, key: string): WidgetItem {
+    if (isMetadataFlagEnabled(item, key)) {
+        return removeMetadataKeys(item, [key]);
+    }
+    return { ...item, metadata: { ...item.metadata, [key]: 'true' } };
+}
+
 function formatTtlLabel(ttlSeconds: number): string {
     return ttlSeconds % 3600 === 0 ? `${ttlSeconds / 3600}h` : `${Math.round(ttlSeconds / 60)}m`;
 }
@@ -240,9 +262,12 @@ function getRemainingSeconds(lastAssistant: Date, ttlSeconds: number): number {
     return ttlSeconds - SAFETY_MARGIN - elapsedSeconds;
 }
 
-function formatCountdown(remaining: number): string {
+function formatCountdown(remaining: number, minutes: boolean): string {
     if (remaining <= 0) {
         return 'COLD';
+    }
+    if (minutes) {
+        return `${Math.ceil(remaining / 60)}m`;
     }
     const m = Math.floor(remaining / 60);
     const s = Math.floor(remaining % 60);
@@ -283,6 +308,12 @@ export class CacheTimerWidget implements Widget {
         if (ttlSeconds !== DEFAULT_TTL_SECONDS) {
             modifiers.push(`ttl ${formatTtlLabel(ttlSeconds)}`);
         }
+        if (isMetadataFlagEnabled(item, MINUTES_METADATA_KEY)) {
+            modifiers.push('minutes');
+        }
+        if (isMetadataFlagEnabled(item, WORKING_FRESH_METADATA_KEY)) {
+            modifiers.push('no HOT');
+        }
         return {
             displayText: this.getDisplayName(),
             modifierText: makeModifierText(modifiers)
@@ -297,43 +328,54 @@ export class CacheTimerWidget implements Widget {
         if (action === TOGGLE_TTL_ACTION) {
             return cycleTtl(item);
         }
+        if (action === TOGGLE_MINUTES_ACTION) {
+            return toggleFlag(item, MINUTES_METADATA_KEY);
+        }
+        if (action === TOGGLE_WORKING_FRESH_ACTION) {
+            return toggleFlag(item, WORKING_FRESH_METADATA_KEY);
+        }
 
         return null;
     }
 
     render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
         const hideWhenEmpty = isHidden(item, CACHE_EMPTY_HIDEABLE_STATE.key);
+        const minutes = isMetadataFlagEnabled(item, MINUTES_METADATA_KEY);
+        const show = (text: string, glyph = ''): string => formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, text));
 
         if (context.isPreview) {
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), '4:52'));
+            return show(formatCountdown(PREVIEW_REMAINING_SECONDS, minutes), getSlotSymbol(item, FRESH_SLOT));
         }
 
         const transcriptPath = context.data?.transcript_path;
         if (!transcriptPath) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
+            return hideWhenEmpty ? null : show('n/a');
         }
 
         const state = getTranscriptState(transcriptPath);
+        const ttlSeconds = getTtlSeconds(item);
+        let remaining: number;
 
         if (state.isWorking) {
-            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, HOT_SLOT), 'HOT'));
+            if (!isMetadataFlagEnabled(item, WORKING_FRESH_METADATA_KEY)) {
+                return show('HOT', getSlotSymbol(item, HOT_SLOT));
+            }
+            // An in-flight turn is refreshing the cache: show it as just written.
+            remaining = ttlSeconds - SAFETY_MARGIN;
+        } else if (state.lastAssistant) {
+            remaining = getRemainingSeconds(state.lastAssistant, ttlSeconds);
+        } else {
+            return hideWhenEmpty ? null : show('n/a');
         }
 
-        const { lastAssistant } = state;
-        if (!lastAssistant) {
-            return hideWhenEmpty ? null : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
-        }
-
-        const ttlSeconds = getTtlSeconds(item);
-        const remaining = getRemainingSeconds(lastAssistant, ttlSeconds);
-        const glyph = getStateSymbol(item, remaining, ttlSeconds);
-
-        return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(remaining)));
+        return show(formatCountdown(remaining, minutes), getStateSymbol(item, remaining, ttlSeconds));
     }
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
             { key: 't', label: '(t)tl', action: TOGGLE_TTL_ACTION },
+            { key: 'o', label: 'minutes (o)nly', action: TOGGLE_MINUTES_ACTION },
+            { key: 'w', label: '(w)orking shows fresh', action: TOGGLE_WORKING_FRESH_ACTION },
             getSymbolKeybind()
         ];
     }
