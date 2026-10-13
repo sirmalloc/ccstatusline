@@ -17,6 +17,7 @@ import {
     clearGitCache,
     execGit,
     getGitChangeCounts,
+    getGitConflictCount,
     getGitFileStatusCounts,
     getGitStatus,
     isInsideGitWorkTree,
@@ -117,6 +118,29 @@ describe('git utils', () => {
                 fs.rmSync(tempPath, { recursive: true, force: true });
             }
         }
+    });
+
+    describe('getGitConflictCount', () => {
+        it('preserves whitespace in paths and deduplicates stages', () => {
+            const filenames = ['a b.txt', 'a  b.txt', 'tab\tname.txt', 'line\nname.txt', 'trailing.txt '];
+            mockExecFileSync.mockReturnValueOnce(filenames.flatMap(filename => [1, 2, 3].map(stage => `100644 hash ${stage}\t${filename}\0`)).join(''));
+
+            expect(getGitConflictCount({})).toBe(filenames.length);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['ls-files', '--unmerged', '-z']);
+            expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2]);
+        });
+
+        it('returns zero when there are no conflicts', () => {
+            mockExecFileSync.mockReturnValueOnce('');
+
+            expect(getGitConflictCount({})).toBe(0);
+        });
+
+        it('returns zero when git fails', () => {
+            mockExecFileSync.mockImplementation(() => { throw new Error('git failed'); });
+
+            expect(getGitConflictCount({})).toBe(0);
+        });
     });
 
     describe('resolveGitCwd', () => {
