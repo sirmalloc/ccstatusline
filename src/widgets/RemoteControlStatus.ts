@@ -29,8 +29,6 @@ const SATELLITE_EMOJI = '📡';
 const SATELLITE_NERD_FONT = '';
 const SATELLITE_SLASH_NERD_FONT = '';
 
-// The Nerd Font icons differ per state, so each gets an editable slot: fonts
-// and tastes vary (e.g. a matching nf-md-wifi / nf-md-wifi_off pair).
 const ON_SLOT: SymbolSlot = { id: 'symbolOn', label: 'On', defaultSymbol: SATELLITE_NERD_FONT };
 const OFF_SLOT: SymbolSlot = { id: 'symbolOff', label: 'Off', defaultSymbol: SATELLITE_SLASH_NERD_FONT };
 const SYMBOL_SLOTS: SymbolSlot[] = [ON_SLOT, OFF_SLOT];
@@ -111,14 +109,10 @@ export class RemoteControlStatusWidget implements Widget {
             return null;
         }
 
-        // A blanked glyph in icon format leaves nothing to show: hide the
-        // widget instead of rendering an empty segment between separators.
         const text = formatStatus(item, status.enabled);
         return text.length > 0 ? text : null;
     }
 
-    // The glyph keybind is offered only while the Nerd Font icons are on
-    // screen, since the slots replace exactly those icons.
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         const keybinds = getFormatKeybinds(item, FORMAT_OPTIONS);
         if (item && isNerdFontEnabled(item, FORMAT_OPTIONS)) {
