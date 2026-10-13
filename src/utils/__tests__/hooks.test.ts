@@ -235,8 +235,9 @@ describe('syncWidgetHooks', () => {
 
         const settings = SettingsSchema.parse({ lines: [[{ id: 'skills-1', type: 'skills' }]] });
 
-        await syncWidgetHooks(settings);
+        const skipped = await syncWidgetHooks(settings);
 
+        expect(skipped).toEqual({ statusCommand: command, widgetNames: ['Skills'] });
         const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
             statusLine?: { command?: string };
             hooks?: Record<string, unknown[]>;
@@ -252,6 +253,20 @@ describe('syncWidgetHooks', () => {
         });
     });
 
+    it('reports no skipped hooks for another tool\'s command when no widget needs them', async () => {
+        fs.writeFileSync(getClaudeSettingsPath(), JSON.stringify({ statusLine: { type: 'command', command: 'bash ~/.claude/statusline.sh' } }, null, 2), 'utf-8');
+
+        expect(await syncWidgetHooks(DEFAULT_SETTINGS)).toBeNull();
+    });
+
+    it('reports no skipped hooks when no status line is installed', async () => {
+        fs.writeFileSync(getClaudeSettingsPath(), JSON.stringify({}, null, 2), 'utf-8');
+
+        const settings = SettingsSchema.parse({ lines: [[{ id: 'skills-1', type: 'skills' }]] });
+
+        expect(await syncWidgetHooks(settings)).toBeNull();
+    });
+
     it('adds hooks for a ccstatusline command wrapped in a shell', async () => {
         const settingsPath = getClaudeSettingsPath();
         const command = 'bash -c \'head -1 | ccstatusline\'';
@@ -259,7 +274,7 @@ describe('syncWidgetHooks', () => {
 
         const settings = SettingsSchema.parse({ lines: [[{ id: 'skills-1', type: 'skills' }]] });
 
-        await syncWidgetHooks(settings);
+        expect(await syncWidgetHooks(settings)).toBeNull();
 
         const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { hooks?: Record<string, unknown[]> };
         expect(saved.hooks).toEqual({
