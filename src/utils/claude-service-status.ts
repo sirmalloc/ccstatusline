@@ -9,10 +9,7 @@ import type { WidgetItem } from '../types/Widget';
 
 import { getColorAnsiCode } from './colors';
 import { isExcludedFromProxy } from './no-proxy';
-import {
-    createProxyAgent,
-    type ClosableProxyAgent
-} from './proxy-agent';
+import type { ClosableProxyAgent } from './proxy-agent';
 
 // Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
 // across statusline invocations, plus a failure lock so an unreachable status
@@ -286,16 +283,22 @@ type StatusPageRequestFn = (
 
 const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.request(options, onResponse);
 
-function fetchStatusPagePath(
+async function fetchStatusPagePath(
     pathName: string,
     requestFn: StatusPageRequestFn = requestStatusPage,
     deadlineMs = STATUS_TIMEOUT_MS
 ): Promise<string | null> {
     let requestOptions: https.RequestOptions;
-    let proxy: ClosableProxyAgent | null;
+    let proxy: ClosableProxyAgent | null = null;
     try {
         const proxyUrl = getStatusPageProxyUrl();
-        proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
+        if (proxyUrl) {
+            // Loaded on demand: the agent (and its transitive module graph) is
+            // only needed when a proxy is actually configured, and the
+            // statusline entry point re-runs on every repaint (#397).
+            const { createProxyAgent } = await import('./proxy-agent');
+            proxy = createProxyAgent(proxyUrl);
+        }
         requestOptions = {
             hostname: STATUS_HOST,
             path: pathName,
