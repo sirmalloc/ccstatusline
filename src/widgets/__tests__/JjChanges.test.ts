@@ -11,9 +11,12 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjChangesWidget } from '../JjChanges';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
+
+const workspace = useJjTestWorkspace();
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
@@ -30,7 +33,7 @@ function render(options: {
     const widget = new JjChangesWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
-        data: options.cwd ? { cwd: options.cwd } : undefined
+        data: { cwd: options.cwd ?? workspace.root }
     };
     const item: WidgetItem = {
         id: 'jj-changes',
@@ -56,7 +59,7 @@ describe('JjChangesWidget', () => {
         mockExecFileSync.mockReturnValueOnce('/tmp/repo\n');
         mockExecFileSync.mockReturnValueOnce('src/main.ts | 5 +++--\n1 file changed, 3 insertions(+), 2 deletions(-)');
 
-        expect(render({ cwd: '/tmp/repo' })).toBe('(+3,-2)');
+        expect(render()).toBe('(+3,-2)');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
@@ -64,7 +67,7 @@ describe('JjChangesWidget', () => {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
             windowsHide: true,
-            cwd: '/tmp/repo'
+            cwd: workspace.root
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
@@ -73,7 +76,7 @@ describe('JjChangesWidget', () => {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
             windowsHide: true,
-            cwd: '/tmp/repo'
+            cwd: workspace.root
         });
     });
 

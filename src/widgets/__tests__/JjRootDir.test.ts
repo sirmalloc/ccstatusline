@@ -11,9 +11,12 @@ import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
+import { useJjTestWorkspace } from '../../utils/__tests__/jj-test-helpers';
 import { JjRootDirWidget } from '../JjRootDir';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
+
+const workspace = useJjTestWorkspace();
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
@@ -30,7 +33,7 @@ function render(options: {
     const widget = new JjRootDirWidget();
     const context: RenderContext = {
         isPreview: options.isPreview,
-        data: options.cwd ? { cwd: options.cwd } : undefined
+        data: { cwd: options.cwd ?? workspace.root }
     };
     const item: WidgetItem = {
         id: 'jj-root-dir',
@@ -54,9 +57,8 @@ describe('JjRootDirWidget', () => {
 
     it('should render root directory name', () => {
         mockExecFileSync.mockReturnValueOnce('/home/user/my-project\n');
-        mockExecFileSync.mockReturnValueOnce('/home/user/my-project\n');
 
-        expect(render({ cwd: '/home/user/my-project' })).toBe('my-project');
+        expect(render()).toBe('my-project');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
@@ -64,17 +66,10 @@ describe('JjRootDirWidget', () => {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: 5_000,
             windowsHide: true,
-            cwd: '/home/user/my-project'
+            cwd: workspace.root
         });
-        expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['root']);
-        expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore'],
-            timeout: 5_000,
-            windowsHide: true,
-            cwd: '/home/user/my-project'
-        });
+        // The repo check and the widget share one cached `jj root` call.
+        expect(mockExecFileSync.mock.calls).toHaveLength(1);
     });
 
     it('should render no jj when not in jj repo', () => {
@@ -90,7 +85,6 @@ describe('JjRootDirWidget', () => {
     });
 
     it('should handle trailing slashes', () => {
-        mockExecFileSync.mockReturnValueOnce('/home/user/my-project/\n');
         mockExecFileSync.mockReturnValueOnce('/home/user/my-project/\n');
 
         expect(render()).toBe('my-project');
