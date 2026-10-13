@@ -6,8 +6,12 @@ export interface TokenUsage {
 }
 
 export interface TranscriptLine {
-    message?: { usage?: TokenUsage; stop_reason?: string | null };
+    message?: { id?: string; usage?: TokenUsage; stop_reason?: string | null };
     isSidechain?: boolean;
+    // Index of the content block this line carries within its API response.
+    // Claude Code writes one line per block (thinking, text, tool_use, ...) and
+    // repeats the same `usage` on each of them, so only block 0 is billable.
+    apiBlockIndex?: number;
     timestamp?: string;
     isApiErrorMessage?: boolean;
     type?: 'user' | 'assistant' | 'system' | 'progress' | 'file-history-snapshot';
