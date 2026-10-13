@@ -35,6 +35,8 @@ export interface SpeedMetricsCollection {
 }
 
 export interface TranscriptAnalysisOptions {
+    /** Defaults to true; when false, `tokenMetrics` is null. */
+    includeTokenMetrics?: boolean;
     includeSessionDuration?: boolean;
     includeSpeedMetrics?: boolean;
     includeSubagents?: boolean;
@@ -45,7 +47,7 @@ export interface TranscriptAnalysisOptions {
 }
 
 export interface TranscriptAnalysis {
-    tokenMetrics: TokenMetrics;
+    tokenMetrics: TokenMetrics | null;
     sessionDuration: string | null;
     speedMetricsCollection: SpeedMetricsCollection | null;
     compactionData: CompactionData | null;
@@ -53,7 +55,7 @@ export interface TranscriptAnalysis {
     sessionName: string | null;
 }
 
-interface TranscriptScanOptions extends TranscriptAnalysisOptions { includeTokenMetrics?: boolean }
+type TranscriptScanOptions = TranscriptAnalysisOptions;
 
 interface TranscriptScanResult {
     tokenMetrics: TokenMetrics | null;
@@ -666,13 +668,16 @@ export async function getTranscriptAnalysis(
     transcriptPath: string,
     options: TranscriptAnalysisOptions = {}
 ): Promise<TranscriptAnalysis> {
+    const includeTokenMetrics = options.includeTokenMetrics ?? true;
     const result = await scanTranscript(transcriptPath, {
         ...options,
-        includeTokenMetrics: true
+        includeTokenMetrics
     });
 
     return {
-        tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(),
+        tokenMetrics: includeTokenMetrics
+            ? (result.tokenMetrics ?? createEmptyTokenMetrics())
+            : null,
         sessionDuration: result.sessionDuration,
         speedMetricsCollection: result.speedMetricsCollection,
         compactionData: result.compactionData,

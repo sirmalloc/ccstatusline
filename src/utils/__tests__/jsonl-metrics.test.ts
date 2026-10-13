@@ -26,6 +26,10 @@ async function getSessionDuration(transcriptPath: string): Promise<string | null
 
 async function getTokenMetrics(transcriptPath: string): Promise<TokenMetrics> {
     const analysis = await getTranscriptAnalysis(transcriptPath);
+    if (!analysis.tokenMetrics) {
+        throw new Error('token metrics are collected by default');
+    }
+
     return analysis.tokenMetrics;
 }
 
@@ -146,6 +150,29 @@ describe('jsonl transcript metrics', () => {
         expect(metrics.outputTokens).toBe(0);
         expect(metrics.contextLength).toBe(5100);
         expect(metrics.contextLength).toBe(live.contextLengthTokens);
+    });
+
+    it('leaves token metrics out when the caller does not need them', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'no-token-metrics.jsonl');
+        fs.writeFileSync(transcriptPath, [
+            JSON.stringify({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                message: { stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 20 } }
+            }),
+            JSON.stringify({ timestamp: '2026-01-01T10:05:00.000Z' })
+        ].join('\n'));
+
+        const skipped = await getTranscriptAnalysis(transcriptPath, {
+            includeTokenMetrics: false,
+            includeSessionDuration: true
+        });
+        const missing = await getTranscriptAnalysis(path.join(root, 'missing.jsonl'), { includeTokenMetrics: false });
+
+        expect(skipped.tokenMetrics).toBeNull();
+        expect(skipped.sessionDuration).toBe('5m');
+        expect(missing.tokenMetrics).toBeNull();
     });
 
     it('formats session duration as <1m for sub-minute transcripts', async () => {
