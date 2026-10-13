@@ -35,6 +35,8 @@ interface UsageProbeResult {
     requestCount: number;
     proxyAgentConfigured: boolean;
     requestHost: string | null;
+    requestPath: string | null;
+    requestAuthorization: string | null;
     homedir: string;
     lockContents: string | null;
 }
@@ -59,6 +61,9 @@ interface ProbeOptions {
     responseBody?: string;
     responseHeaders?: Record<string, string>;
     statusCode?: number;
+    // What each of the probe's two calls runs: fetchUsageData (the default)
+    // or fetchAccountEmail, whose result is reported as { email }.
+    target?: 'account-email' | 'usage';
 }
 
 function createProbeHarness() {
@@ -81,6 +86,8 @@ const statusCode = Number(process.env.TEST_STATUS_CODE || (mode === 'success' ? 
 let requestCount = 0;
 let proxyAgentConfigured = false;
 let requestHost = null;
+let requestPath = null;
+let requestAuthorization = null;
 
 https.request = (...args) => {
     requestCount += 1;
@@ -88,6 +95,8 @@ https.request = (...args) => {
     const options = args.find(value => value && typeof value === 'object' && !Buffer.isBuffer(value));
     proxyAgentConfigured = Boolean(options?.agent);
     requestHost = options?.hostname ?? null;
+    requestPath = options?.path ?? null;
+    requestAuthorization = options?.headers?.Authorization ?? null;
     const requestHandlers = new Map();
     const responseHandlers = new Map();
 
@@ -155,7 +164,7 @@ https.request = (...args) => {
     return request;
 };
 
-const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
+const { fetchAccountEmail, fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
 
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
@@ -163,8 +172,11 @@ const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
 Date.now = () => nowMs;
 
-const first = await fetchUsageData({ requiredFields });
-const second = await fetchUsageData({ requiredFields });
+const fetchOnce = process.env.TEST_PROBE_TARGET === 'account-email'
+    ? async () => ({ email: await fetchAccountEmail() })
+    : () => fetchUsageData({ requiredFields });
+const first = await fetchOnce();
+const second = await fetchOnce();
 process.stdout.write(JSON.stringify({
     first,
     second,
@@ -173,6 +185,8 @@ process.stdout.write(JSON.stringify({
     requestCount,
     proxyAgentConfigured,
     requestHost,
+    requestPath,
+    requestAuthorization,
     homedir: os.homedir(),
     lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null
 }));
@@ -231,7 +245,8 @@ process.stdout.write(JSON.stringify({
             TEST_REQUEST_MODE: options.mode ?? 'success',
             TEST_RESPONSE_BODY: options.responseBody ?? '',
             TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
-            TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500))
+            TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500)),
+            TEST_PROBE_TARGET: options.target ?? 'usage'
         });
 
         if (options.claudeConfigDir !== undefined) {
@@ -466,6 +481,7 @@ describe('fetchUsageData error handling', () => {
             expect(result.requestCount).toBe(1);
             expect(result.proxyAgentConfigured).toBe(false);
             expect(result.requestHost).toBe('api.anthropic.com');
+            expect(result.requestPath).toBe('/api/oauth/usage');
         } finally {
             harness.cleanup();
         }
@@ -1881,6 +1897,299 @@ describe('fetchUsageData error handling', () => {
 
             expect(result.first).toEqual({ error: 'timeout' });
             expect(result.second).toEqual({ error: 'timeout' });
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+});
+
+describe('fetchAccountEmail', () => {
+    const nowMs = 2200000000000;
+    const nowSeconds = Math.floor(nowMs / 1000);
+
+    function profileResponseBody(email: string): string {
+        return JSON.stringify({
+            account: { uuid: 'account-uuid', email, full_name: 'Example User' },
+            organization: { name: 'Example Org', organization_type: 'claude_max' }
+        });
+    }
+
+    function fingerprint(token: string): string {
+        return createHash('sha256').update(token).digest('hex').slice(0, 16);
+    }
+
+    function readCacheFile(home: string, fileName: 'account-email.json' | 'account-email.lock'): unknown {
+        const filePath = path.join(home, '.cache', 'ccstatusline', fileName);
+        return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown : null;
+    }
+
+    function writeCacheFile(home: string, fileName: 'account-email.json' | 'account-email.lock', contents: unknown): void {
+        const cacheDir = path.join(home, '.cache', 'ccstatusline');
+        fs.mkdirSync(cacheDir, { recursive: true });
+        fs.writeFileSync(path.join(cacheDir, fileName), JSON.stringify(contents));
+    }
+
+    it('looks up the email of the account the live credentials belong to', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'current-access-token',
+                refreshToken: 'current-refresh-token'
+            });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: profileResponseBody('current@example.com'),
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: 'current@example.com' });
+            expect(result.second).toEqual({ email: 'current@example.com' });
+            // The second call is answered from the cache
+            expect(result.requestCount).toBe(1);
+            expect(result.requestHost).toBe('api.anthropic.com');
+            expect(result.requestPath).toBe('/api/oauth/profile');
+            expect(result.requestAuthorization).toBe('Bearer current-access-token');
+            expect(readCacheFile(home.home, 'account-email.json')).toEqual([
+                { tokenHash: fingerprint('current-refresh-token'), email: 'current@example.com' }
+            ]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.skipIf(process.platform === 'win32')('writes the email cache owner-only', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-private');
+
+            harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: profileResponseBody('current@example.com'),
+                target: 'account-email'
+            });
+
+            const cacheFile = path.join(home.home, '.cache', 'ccstatusline', 'account-email.json');
+            expect(fs.statSync(cacheFile).mode & 0o777).toBe(0o600);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps the cached email when the access token is refreshed for the same login', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-refreshed');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'reissued-access-token',
+                refreshToken: 'stable-refresh-token'
+            });
+            writeCacheFile(home.home, 'account-email.json', [
+                { tokenHash: fingerprint('stable-refresh-token'), email: 'current@example.com' }
+            ]);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs,
+                pathDir: home.bin,
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: 'current@example.com' });
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('looks the email up again after a login change and keeps the other login cached', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-switched');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'current-access-token',
+                refreshToken: 'current-refresh-token'
+            });
+            writeCacheFile(home.home, 'account-email.json', [
+                { tokenHash: fingerprint('previous-refresh-token'), email: 'previous@example.com' }
+            ]);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: profileResponseBody('current@example.com'),
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: 'current@example.com' });
+            expect(result.requestCount).toBe(1);
+            expect(readCacheFile(home.home, 'account-email.json')).toEqual([
+                { tokenHash: fingerprint('current-refresh-token'), email: 'current@example.com' },
+                { tokenHash: fingerprint('previous-refresh-token'), email: 'previous@example.com' }
+            ]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        { name: 'the request fails', mode: 'error' as const },
+        { name: 'the endpoint rejects the token', mode: 'status' as const, statusCode: 401 },
+        { name: 'the response names no email', mode: 'success' as const, responseBody: JSON.stringify({ account: { email: '' } }) }
+    ])('returns null and holds off for 30 seconds when $name', ({ mode, responseBody, statusCode }) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-failed');
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode,
+                nowMs,
+                pathDir: home.bin,
+                responseBody,
+                statusCode,
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: null });
+            expect(result.second).toEqual({ email: null });
+            expect(result.requestCount).toBe(1);
+            expect(readCacheFile(home.home, 'account-email.lock')).toEqual({
+                blockedUntil: nowSeconds + 30,
+                tokenHash: fingerprint('test-token')
+            });
+            expect(readCacheFile(home.home, 'account-email.json')).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('holds off only the login whose lookup failed, and retries it after the backoff', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-backoff');
+            const otherProfile = harness.createTokenHome('account-email-backoff-other');
+            writeUsageCredentials(otherProfile.claudeConfig, { accessToken: 'other-access-token' });
+            const lookUpAt = (probeNowMs: number, claudeConfig: string, email: string | null) => harness.runProbe({
+                claudeConfigDir: claudeConfig,
+                home: home.home,
+                mode: email === null ? 'error' : 'success',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                responseBody: email === null ? '' : profileResponseBody(email),
+                target: 'account-email'
+            });
+
+            expect(lookUpAt(nowMs, home.claudeConfig, null).requestCount).toBe(1);
+
+            const heldOff = lookUpAt(nowMs + 10000, home.claudeConfig, 'current@example.com');
+            expect(heldOff.first).toEqual({ email: null });
+            expect(heldOff.requestCount).toBe(0);
+
+            const otherLogin = lookUpAt(nowMs + 10000, otherProfile.claudeConfig, 'other@example.com');
+            expect(otherLogin.first).toEqual({ email: 'other@example.com' });
+            expect(otherLogin.requestCount).toBe(1);
+
+            const retried = lookUpAt(nowMs + 31000, home.claudeConfig, 'current@example.com');
+            expect(retried.first).toEqual({ email: 'current@example.com' });
+            expect(retried.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('holds off for the Retry-After of a rate-limited lookup', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-rate-limited');
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs,
+                pathDir: home.bin,
+                responseHeaders: { 'retry-after': '120' },
+                statusCode: 429,
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: null });
+            expect(result.requestCount).toBe(1);
+            expect(readCacheFile(home.home, 'account-email.lock')).toEqual({
+                blockedUntil: nowSeconds + 120,
+                tokenHash: fingerprint('test-token')
+            });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('ignores a backoff whose deadline is implausibly far in the future', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('account-email-poisoned-lock');
+            writeCacheFile(home.home, 'account-email.lock', {
+                blockedUntil: nowSeconds + 2 * 24 * 60 * 60,
+                tokenHash: fingerprint('test-token')
+            });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: profileResponseBody('current@example.com'),
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: 'current@example.com' });
+            expect(result.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('does not call the profile endpoint without an OAuth login', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createEmptyHome('account-email-no-login');
+
+            const result = harness.runProbe({
+                home: home.home,
+                mode: 'unexpected',
+                nowMs,
+                target: 'account-email'
+            });
+
+            expect(result.first).toEqual({ email: null });
+            expect(result.second).toEqual({ email: null });
             expect(result.requestCount).toBe(0);
         } finally {
             harness.cleanup();

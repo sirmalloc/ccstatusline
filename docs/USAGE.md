@@ -28,7 +28,7 @@ ccstatusline --version
 ### Claude & Session
 
 - **Model** / **Output Style** / **Version** - Show the active Claude model, output style, and Claude Code CLI version. Model names omit trailing context suffixes like `(1M context)`; use **Context Window** when you want the total window size shown.
-- **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email.
+- **Claude Session ID** / **Session Name** / **Claude Account Email** - Show session identifiers plus the currently signed-in Claude account email. Claude Account Email names the account the usage credentials belong to, looked up from `api.anthropic.com` once per login; see [Usage Credentials and Cache](#usage-credentials-and-cache).
 - **Claude Status** - Show the current Claude/Anthropic service status from `status.claude.com` (`ok` when the indicator is `none`, otherwise the indicator word such as `minor`, `major`, `critical`, or `maintenance`). Press `h` in the editor to add a 48-hour incident-history strip of eight six-hour blocks (oldest to newest), each colored by the worst incident overlapping that block: green (none), yellow (minor), orange (major), red (critical). Responses are cached for about five minutes; on network failure the widget shows stale data when available or degrades to `?`. With the history strip enabled the widget colors itself by severity, so per-widget foreground colors and theme foregrounds are skipped, like Custom Command's preserve-colors mode. Press `l` to make the widget a link to the status page (`https://status.claude.com`), in terminals that support OSC 8 hyperlinks.
 - **Voice Status** - Show whether Claude Code voice input is enabled. It can render as an icon, icon plus text, plain text, or `voice on/off`, with optional Nerd Font microphone icons.
 - **Sandbox Status** - Show the effective `sandbox.enabled` value from Claude Code's layered project and user settings. It can render as a glyph, `SB: ON/OFF`, or `Sandbox: ON/OFF`, with optional Nerd Font lock icons. The value is refreshed after `/sandbox` changes, but is best effort when managed or CLI settings override files or sandbox initialization fails.
@@ -191,9 +191,11 @@ The usage cache uses a fingerprint of the refresh token when available, falling 
 
 Each macOS Keychain command has a five-second timeout. When no OAuth credentials are found, the lookup backs off for 30 seconds for that profile, so a newly signed-in account may take up to 30 seconds to appear. Usage cache files dated more than 180 seconds into the future are treated as stale.
 
+Claude Account Email uses the same credentials to look up the account's email from `/api/oauth/profile`. The answer is cached per login fingerprint, so an access-token refresh does not repeat the request. A failed lookup is retried after 30 seconds, or after the `Retry-After` of a 429 response (five minutes without one). Until a lookup succeeds, or without an OAuth login, the widget shows `oauthAccount.emailAddress` from `.claude.json`, which Claude Code writes at login and does not update when the credentials change.
+
 ### Proxy Settings
 
-Usage requests to `api.anthropic.com` and Claude Status requests to `status.claude.com` honor uppercase `HTTPS_PROXY`. Both `NO_PROXY` and `no_proxy` supply exclusions; matching either variable sends the request directly.
+Usage and Claude Account Email requests to `api.anthropic.com` and Claude Status requests to `status.claude.com` honor uppercase `HTTPS_PROXY`. Both `NO_PROXY` and `no_proxy` supply exclusions; matching either variable sends the request directly.
 
 Exclusions are separated by commas or whitespace and matched without regard to case. Use `*` for all hosts, a hostname such as `api.anthropic.com`, or a domain such as `anthropic.com`, `.anthropic.com`, or `*.anthropic.com` to match that domain and its subdomains. An optional `:443` suffix is supported; entries for other ports do not match these HTTPS requests.
 

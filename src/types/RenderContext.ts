@@ -52,6 +52,7 @@ export interface RenderContext {
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
     claudeStatusData?: ClaudeStatusRenderData | null;
+    accountEmail?: string | null;  // Email of the account the live OAuth credentials belong to
     sessionDuration?: string | null;
     transcriptSessionName?: string | null;
     transcriptThinkingEffort?: { value: string; known: boolean } | null;
