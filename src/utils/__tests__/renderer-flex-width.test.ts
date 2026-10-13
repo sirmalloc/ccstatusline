@@ -1,4 +1,6 @@
 import {
+    afterAll,
+    beforeAll,
     describe,
     expect,
     it
@@ -16,12 +18,26 @@ import {
 } from '../ansi';
 import { getColorAnsiCode } from '../colors';
 import {
+    resetPowerlineFontCache,
+    setCachedPowerlineFontStatus
+} from '../powerline';
+import {
     calculateMaxWidthsFromPreRendered,
     countPowerlineStartCapSlots,
     preRenderAllWidgets,
     renderStatusLine
 } from '../renderer';
 import { advanceGlobalSeparatorIndex } from '../separator-index';
+
+// The powerline tests below expect real separator/cap glyphs in the output;
+// pin the font detection so the render does not depend on this machine's fonts.
+beforeAll(() => {
+    setCachedPowerlineFontStatus({ installed: true, checkedSymbol: '' });
+});
+
+afterAll(() => {
+    resetPowerlineFontCache();
+});
 
 function createSettings(overrides: Partial<Settings> = {}): Settings {
     return {
