@@ -31,7 +31,6 @@ function makeKey(overrides: Partial<Key> = {}): Key {
 }
 
 const FAMILY = '👨‍👩‍👧';
-const BAR = '\x1b[1;36m│\x1b[22;39m';
 
 describe('applyTextCursorInput', () => {
     it('inserts at the cursor', () => {
@@ -70,18 +69,19 @@ describe('applyTextCursorInput', () => {
 });
 
 describe('renderTextWithCursor', () => {
-    it('draws a bar before the grapheme under the cursor', () => {
-        expect(renderTextWithCursor({ text: `a${FAMILY}`, cursor: 1 })).toBe(`a${BAR}${FAMILY}`);
+    it('removes only the highlight during the hidden blink phase', () => {
+        expect(renderTextWithCursor({ text: `a${FAMILY}b`, cursor: 1 }, false)).toBe(`a${FAMILY}b`);
+        expect(renderTextWithCursor({ text: 'ab ', cursor: 2 }, false)).toBe('ab ');
+        expect(renderTextWithCursor({ text: 'ab', cursor: 2 }, false)).toBe('ab ');
+        expect(renderTextWithCursor({ text: '', cursor: 0 }, false)).toBe(' ');
     });
 
-    it('draws a bar after the last character when the cursor is at the end', () => {
-        expect(renderTextWithCursor({ text: 'ab', cursor: 2 })).toBe(`ab${BAR}`);
-        expect(renderTextWithCursor({ text: '', cursor: 0 })).toBe(BAR);
+    it('inverts the grapheme under the cursor', () => {
+        expect(renderTextWithCursor({ text: `a${FAMILY}`, cursor: 1 })).toBe(`a\x1b[7m${FAMILY}\x1b[27m`);
     });
 
-    it('tells a trailing space under the cursor from the end of the text', () => {
-        expect(renderTextWithCursor({ text: 'ab ', cursor: 2 })).toBe(`ab${BAR} `);
-        expect(renderTextWithCursor({ text: 'ab ', cursor: 3 })).toBe(`ab ${BAR}`);
-        expect(renderTextWithCursor({ text: 'ab', cursor: 2 })).toBe(`ab${BAR}`);
+    it('draws a trailing block when the cursor is at the end', () => {
+        expect(renderTextWithCursor({ text: 'ab', cursor: 2 })).toBe('ab\x1b[7m \x1b[27m');
+        expect(renderTextWithCursor({ text: '', cursor: 0 })).toBe('\x1b[7m \x1b[27m');
     });
 });
