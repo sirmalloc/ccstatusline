@@ -206,6 +206,53 @@ describe('RemoteControlStatusWidget', () => {
         });
     });
 
+    describe('render() - Nerd Font glyph slots', () => {
+        const WIFI = '\u{F05A9}';
+        const WIFI_OFF = '\u{F05AA}';
+        const SLOT_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true', symbolOn: WIFI, symbolOff: WIFI_OFF } };
+
+        it('renders the On override when ON', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            expect(new RemoteControlStatusWidget().render(SLOT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(WIFI);
+        });
+
+        it('renders the Off override when OFF', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            expect(new RemoteControlStatusWidget().render(SLOT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(WIFI_OFF);
+        });
+
+        it('uses the overrides in icon-text and collapses the space for a blank glyph', () => {
+            const widget = new RemoteControlStatusWidget();
+            const iconText: WidgetItem = { ...SLOT_ITEM, metadata: { ...SLOT_ITEM.metadata, format: 'icon-text' } };
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            const blankOff: WidgetItem = { ...iconText, metadata: { ...iconText.metadata, symbolOff: '' } };
+            expect(widget.render(iconText, makeContext(), DEFAULT_SETTINGS)).toBe(`${WIFI_OFF} off`);
+            expect(widget.render(blankOff, makeContext(), DEFAULT_SETTINGS)).toBe('off');
+        });
+
+        it('hides the widget when the glyph for the current state is blanked in icon format', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
+            const blankOff: WidgetItem = { ...SLOT_ITEM, metadata: { ...SLOT_ITEM.metadata, symbolOff: '' } };
+            expect(new RemoteControlStatusWidget().render(blankOff, makeContext(), DEFAULT_SETTINGS)).toBeNull();
+        });
+
+        it('ignores the overrides when Nerd Font is off', () => {
+            vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
+            const item: WidgetItem = { ...ITEM, metadata: { symbolOn: WIFI, symbolOff: WIFI_OFF } };
+            expect(new RemoteControlStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe('📡 ◉');
+        });
+
+        it('offers the glyph keybind only while the Nerd Font icons are visible', () => {
+            const widget = new RemoteControlStatusWidget();
+            const glyphKeybind = { key: 'g', label: '(g)lyph', action: 'edit-symbol-override' };
+
+            expect(widget.getCustomKeybinds(SLOT_ITEM)).toContainEqual(glyphKeybind);
+            expect(widget.getCustomKeybinds(ITEM)).not.toContainEqual(glyphKeybind);
+            expect(widget.getCustomKeybinds({ ...ITEM, metadata: { format: 'word', nerdFont: 'true' } }))
+                .not.toContainEqual(glyphKeybind);
+        });
+    });
+
     describe('render() - format icon-text', () => {
         const FORMAT_ITEM: WidgetItem = { ...ITEM, metadata: { format: 'icon-text' } };
 

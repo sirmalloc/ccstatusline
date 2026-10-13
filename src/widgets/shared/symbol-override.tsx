@@ -48,6 +48,11 @@ export function formatSymbolPrefix(item: WidgetItem, defaultSymbol: string): str
     return symbol.length > 0 ? `${symbol} ` : '';
 }
 
+/** Joins a symbol to its text; an empty symbol collapses the joining space too. */
+export function joinSymbol(symbol: string, text: string): string {
+    return symbol.length > 0 ? `${symbol} ${text}` : text;
+}
+
 export function getSlotSymbol(item: WidgetItem, slot: SymbolSlot): string {
     if (slot.id === 'character') {
         return getSymbol(item, slot.defaultSymbol);
