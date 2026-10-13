@@ -1,4 +1,5 @@
 import type { RenderContext } from '../types/RenderContext';
+import type { TokenMetrics } from '../types/TokenMetrics';
 
 import { TokenCountWidget } from './shared/token-count-widget';
 
@@ -12,5 +13,9 @@ export class TokensCachedWidget extends TokenCountWidget {
 
     protected getTokenCount(context: RenderContext): number | null {
         return context.tokenMetrics?.cachedTokens ?? null;
+    }
+
+    protected selectTokens(metrics: TokenMetrics): number {
+        return metrics.cachedTokens;
     }
 }
