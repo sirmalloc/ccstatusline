@@ -1,10 +1,11 @@
-import { spawnSync } from 'node:child_process';
+import type * as childProcess from 'node:child_process';
 import {
     mkdirSync,
     mkdtempSync,
     rmSync,
     writeFileSync
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,33 +17,14 @@ import {
     it
 } from 'vitest';
 
-interface BunSpawnResult {
-    exitCode: number | null;
-    stdout: Buffer;
-    stderr: Buffer;
-}
-
-interface BunRuntime { spawnSync(command: string[], options: { env: NodeJS.ProcessEnv; stdout: 'pipe'; stderr: 'pipe' }): BunSpawnResult }
-
 // Other suites mock node:child_process and that mock leaks across files under
-// the bun runner (deterministically on Linux CI), so subprocesses are spawned
-// through Bun.spawnSync there; vitest/Node keeps test files isolated and takes
-// the real spawnSync.
+// the bun runner (deterministically on Linux CI), so the real builtin comes
+// from the CJS loader, which the mocks never reach (the same escape hatch as
+// git-hardening-exec.test.ts).
+const require = createRequire(import.meta.url);
+const { spawnSync } = require('node:child_process') as typeof childProcess;
+
 function runProcess(command: string, args: string[], options: { env?: NodeJS.ProcessEnv }): string {
-    const bun = (globalThis as { Bun?: BunRuntime }).Bun;
-
-    if (bun) {
-        const result = bun.spawnSync([command, ...args], {
-            env: options.env ?? process.env,
-            stdout: 'pipe',
-            stderr: 'pipe'
-        });
-        if (result.exitCode !== 0) {
-            throw new Error(`${command} ${args.join(' ')} failed: ${result.stderr.toString().slice(0, 400)}`);
-        }
-        return result.stdout.toString();
-    }
-
     const result = spawnSync(command, args, { env: options.env, encoding: 'utf8' });
     if (result.error !== undefined) {
         throw result.error;

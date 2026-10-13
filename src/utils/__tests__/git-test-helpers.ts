@@ -1,5 +1,6 @@
-import { spawnSync } from 'node:child_process';
+import type * as childProcess from 'node:child_process';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
@@ -64,28 +65,15 @@ export function gitCommandOf(args: string[]): string {
     return command.filter(arg => !WORK_TREE_SAFETY_OPTIONS.has(arg)).join(' ');
 }
 
-interface BunSpawnResult {
-    exitCode: number | null;
-    stderr: Buffer;
-}
+// Sibling suites mock node:child_process and that mock leaks across files
+// under the bun runner, so the real builtin comes from the CJS loader, which
+// the mocks never reach (the same escape hatch as git-hardening-exec.test.ts).
+const require = createRequire(import.meta.url);
+const { spawnSync } = require('node:child_process') as typeof childProcess;
 
-interface BunRuntime { spawnSync(command: string[], options: { env: NodeJS.ProcessEnv; stdout: 'pipe'; stderr: 'pipe' }): BunSpawnResult }
-
-// Other suites mock node:child_process and that mock leaks across files under
-// the bun runner, so git is invoked through Bun.spawnSync there. Vitest/Node
-// keeps test files isolated and takes the real spawnSync.
+// Git invoked with the real builtin, immune to the sibling mocks above.
 export function gitSync(args: string[], env?: NodeJS.ProcessEnv): void {
     const runEnv = env ?? process.env;
-    const bun = (globalThis as { Bun?: BunRuntime }).Bun;
-
-    if (bun) {
-        const result = bun.spawnSync(['git', ...args], { env: runEnv, stdout: 'pipe', stderr: 'pipe' });
-        if (result.exitCode !== 0) {
-            throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
-        }
-        return;
-    }
-
     const result = spawnSync('git', args, { env: runEnv });
     if (result.status !== 0) {
         throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
