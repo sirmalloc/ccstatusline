@@ -20,7 +20,11 @@ import {
     getVisibleWidth
 } from '../../utils/ansi';
 import type { CustomCommandRequest } from '../../utils/custom-command';
-import { clearCustomCommandCache } from '../../utils/custom-command';
+import {
+    clearCustomCommandCache,
+    createCustomCommandRequest,
+    getCustomCommandResultKey
+} from '../../utils/custom-command';
 import { CustomCommandWidget } from '../CustomCommand';
 
 // Mock the process boundary: echo back whatever is handed to stdin, the way
@@ -171,6 +175,25 @@ describe('CustomCommandWidget', () => {
 
     it('omits terminal_width when the width is unknown', () => {
         expect(renderParsed(null)).not.toHaveProperty('terminal_width');
+    });
+
+    it('uses the prefetched result instead of spawning the command', () => {
+        const context = createContext(142);
+        const request = createCustomCommandRequest(createItem(), context);
+        if (!request)
+            throw new Error('expected a request');
+        context.customCommandResults = new Map([[getCustomCommandResultKey(request), { status: 'ok', stdout: 'prefetched' }]]);
+
+        expect(widget.render(createItem(), context, settings)).toBe('prefetched');
+        expect(mockSpawnSync.mock.calls).toHaveLength(0);
+    });
+
+    it('runs the command itself when the prefetch has no result for it', () => {
+        const context = createContext(142);
+        context.customCommandResults = new Map([['another request', { status: 'ok', stdout: 'prefetched' }]]);
+
+        expect(JSON.parse(widget.render(createItem(), context, settings) ?? '{}')).toHaveProperty('terminal_width', 142);
+        expect(mockSpawnSync.mock.calls).toHaveLength(1);
     });
 
     it('runs the command on every render when no cache TTL is configured', () => {

@@ -31,12 +31,30 @@ beforeAll(() => {
         '--target-version=14',
         `--outfile=${bundlePath}`
     ], { stdio: 'pipe' });
+    // Reports on exit, so "lingered" catches a handle that keeps the process
+    // alive after the result is in.
     fs.writeFileSync(probePath, `
-        import { runCustomCommand } from './custom-command.mjs';
-        const request = JSON.parse(process.argv[2]);
+        import { prefetchCustomCommandsIfNeeded, runCustomCommand, runCustomCommandAsync } from './custom-command.mjs';
+        const api = process.argv[2];
+        const request = JSON.parse(process.argv[3]);
         const start = Date.now();
-        const result = runCustomCommand(request);
-        console.log(JSON.stringify({ result, elapsed: Date.now() - start }));
+        let result;
+        if (api === 'sync') {
+            result = runCustomCommand(request);
+        } else if (api === 'async') {
+            result = await runCustomCommandAsync(request);
+        } else {
+            const commands = JSON.parse(process.argv[4]);
+            const results = await prefetchCustomCommandsIfNeeded(
+                [commands.map(commandPath => ({ id: commandPath, type: 'custom-command', commandPath, timeout: request.timeoutMs }))],
+                { data: { session_id: 'capture-test' }, terminalWidth: 120, customCommandCacheTtlSeconds: 0 }
+            );
+            result = results ? Array.from(results.values()) : null;
+        }
+        const end = Date.now();
+        process.on('exit', () => {
+            console.log(JSON.stringify({ result, elapsed: end - start, lingered: Date.now() - end }));
+        });
     `);
     fs.writeFileSync(writerPath, `
         const fs = require('node:fs');
@@ -78,6 +96,22 @@ afterAll(() => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
+interface ProbeOutput<T> {
+    result: T;
+    elapsed: number;
+    lingered: number;
+}
+
+function probe<T>(runtime: string, args: string[]): ProbeOutput<T> {
+    const output = execFileSync(runtime, [probePath, ...args], {
+        encoding: 'utf8',
+        timeout: 5000,
+        maxBuffer: 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    return JSON.parse(output) as ProbeOutput<T>;
+}
+
 // Polls until the file exists or the timeout passes
 async function waitForFile(filePath: string, timeoutMs = 8000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
@@ -86,8 +120,8 @@ async function waitForFile(filePath: string, timeoutMs = 8000): Promise<void> {
     }
 }
 
-for (const runtime of ['bun', 'node']) {
-    describe(`custom command capture under ${runtime}`, () => {
+for (const [runtime, api] of [['bun', 'sync'], ['node', 'sync'], ['bun', 'async'], ['node', 'async']] as const) {
+    describe(`custom command capture under ${runtime} (${api})`, () => {
         // A runtime's first start on a fresh CI machine can take seconds while its
         // binary is read from a cold disk. Start it once here, so that cost isn't
         // charged to whichever test happens to run it first.
@@ -97,18 +131,12 @@ for (const runtime of ['bun', 'node']) {
 
         function run(mode: string, options: { ttlSeconds?: number; timeoutMs?: number; argument?: string } = {}) {
             const command = `"${runtime}" "${writerPath}" "${mode}" "${options.argument ?? ''}"`;
-            const output = execFileSync(runtime, [probePath, JSON.stringify({
+            return probe<CustomCommandResult>(runtime, [api, JSON.stringify({
                 command,
                 input: '{"session_id":"capture-test","terminal_width":120}',
                 timeoutMs: options.timeoutMs ?? 1000,
                 ttlSeconds: options.ttlSeconds ?? 0
-            })], {
-                encoding: 'utf8',
-                timeout: 5000,
-                maxBuffer: 1024 * 1024,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-            return JSON.parse(output) as { result: CustomCommandResult; elapsed: number };
+            })]);
         }
 
         for (const ttlSeconds of [0, 5]) {
@@ -144,18 +172,20 @@ for (const runtime of ['bun', 'node']) {
         });
 
         it('does not restrict unrelated files written by the command', () => {
-            const outputPath = path.join(tempRoot, `${runtime}-unrelated-output`);
+            const outputPath = path.join(tempRoot, `${runtime}-${api}-unrelated-output`);
             expect(run('file', { argument: outputPath }).result).toEqual({ status: 'ok', stdout: 'OK' });
             expect(fs.statSync(outputPath).size).toBe(4 * 1024 * 1024);
         });
 
         it.skipIf(process.platform === 'win32')('returns successful output when a background job keeps stdout open', async () => {
-            const sentinelPath = path.join(tempRoot, `${runtime}-background`);
+            const sentinelPath = path.join(tempRoot, `${runtime}-${api}-background`);
             // The timeout leaves room for the command to start on a busy machine;
             // the background job lives 3s, well past it
             const result = run('background', { timeoutMs: 1500, argument: sentinelPath });
             expect(result.result).toEqual({ status: 'ok', stdout: 'EARLY' });
             expect(result.elapsed).toBeLessThan(3000);
+            // Nor may the job keep the status line process itself alive.
+            expect(result.lingered).toBeLessThan(500);
             // Let the deliberately surviving background job finish before cleanup.
             await waitForFile(sentinelPath);
             expect(fs.existsSync(sentinelPath)).toBe(true);
@@ -163,7 +193,7 @@ for (const runtime of ['bun', 'node']) {
 
         for (const mode of ['timeout-tree', 'overflow-tree']) {
             it.skipIf(process.platform === 'win32')(`kills descendants on ${mode}`, async () => {
-                const sentinelPath = path.join(tempRoot, `${runtime}-${mode}`);
+                const sentinelPath = path.join(tempRoot, `${runtime}-${api}-${mode}`);
                 // The overflow, not the timeout, should end overflow-tree, however
                 // slowly the command starts
                 const result = run(mode, { timeoutMs: mode === 'timeout-tree' ? 300 : 5000, argument: sentinelPath });
@@ -172,5 +202,35 @@ for (const runtime of ['bun', 'node']) {
                 expect(fs.existsSync(sentinelPath)).toBe(false);
             });
         }
+    });
+}
+
+for (const runtime of ['bun', 'node']) {
+    describe(`custom command prefetch under ${runtime}`, () => {
+        it('runs the commands concurrently', () => {
+            const commands = [0, 1, 2].map(index => `sleep 0.5; echo ${index}`);
+            const output = probe<CustomCommandResult[]>(runtime, ['prefetch', JSON.stringify({ timeoutMs: 5000 }), JSON.stringify(commands)]);
+            expect(output.result).toEqual([0, 1, 2].map(index => ({ status: 'ok', stdout: String(index) })));
+            // Serially this takes at least 1500ms.
+            expect(output.elapsed).toBeLessThan(1400);
+        });
+
+        it('runs an identical command once', () => {
+            const commands = ['echo $$', 'echo $$'];
+            const output = probe<CustomCommandResult[]>(runtime, ['prefetch', JSON.stringify({ timeoutMs: 5000 }), JSON.stringify(commands)]);
+            expect(output.result).toHaveLength(1);
+        });
+
+        it.skipIf(process.platform === 'win32')('returns at the deadline while a background job holds stdout', async () => {
+            const sentinelPath = path.join(tempRoot, `${runtime}-prefetch-background`);
+            const commands = ['echo fast', `"${runtime}" "${writerPath}" background "${sentinelPath}"`];
+            const output = probe<CustomCommandResult[]>(runtime, ['prefetch', JSON.stringify({ timeoutMs: 200 }), JSON.stringify(commands)]);
+            expect(output.result).toEqual([{ status: 'ok', stdout: 'fast' }, { status: 'ok', stdout: 'EARLY' }]);
+            expect(output.elapsed).toBeLessThan(1000);
+            expect(output.lingered).toBeLessThan(500);
+            // Let the deliberately surviving background job finish before cleanup.
+            await waitForFile(sentinelPath);
+            expect(fs.existsSync(sentinelPath)).toBe(true);
+        });
     });
 }

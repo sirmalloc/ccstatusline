@@ -15,6 +15,7 @@ import {
     loadSettings,
     saveSettings
 } from './utils/config';
+import { prefetchCustomCommandsIfNeeded } from './utils/custom-command';
 import {
     GIT_REVIEW_REFRESH_FLAG,
     refreshGitReviewCacheFromCli
@@ -120,10 +121,19 @@ async function renderMultipleLines(data: StatusJSON) {
             includeSessionName: hasSessionNameWidget
         })
         : Promise.resolve(null);
-    const [transcriptAnalysis, usageData, claudeStatusData] = await Promise.all([
+    const terminalWidth = getTerminalWidth({
+        sessionId: data.session_id,
+        ttlSeconds: settings.terminalWidthCacheTtlSeconds
+    });
+    const [transcriptAnalysis, usageData, claudeStatusData, customCommandResults] = await Promise.all([
         transcriptAnalysisPromise,
         prefetchUsageDataIfNeeded(lines, data),
-        prefetchClaudeStatusIfNeeded(lines)
+        prefetchClaudeStatusIfNeeded(lines),
+        prefetchCustomCommandsIfNeeded(lines, {
+            data,
+            terminalWidth,
+            customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds
+        })
     ]);
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
@@ -157,14 +167,12 @@ async function renderMultipleLines(data: StatusJSON) {
             : undefined,
         skillsMetrics,
         compactionData,
-        terminalWidth: getTerminalWidth({
-            sessionId: data.session_id,
-            ttlSeconds: settings.terminalWidthCacheTtlSeconds
-        }),
+        terminalWidth,
         isPreview: false,
         minimalist: settings.minimalistMode,
         gitCacheTtlSeconds: settings.gitCacheTtlSeconds,
         customCommandCacheTtlSeconds: settings.customCommandCacheTtlSeconds,
+        customCommandResults,
         gitReviewNeedsChecks: lines.some(line => line.some(item => item.type === 'git-ci-status'))
     };
 

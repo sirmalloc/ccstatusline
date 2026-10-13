@@ -6,15 +6,20 @@ import type {
 } from './custom-command';
 
 /**
- * Runs in a separate runtime so the synchronous renderer can enforce a streaming
- * output limit. Keep this function self-contained: its compiled source is passed
- * to the current runtime with `-e`, including in the single-file release bundle.
+ * Runs one command with a streaming output limit, a deadline and a process-group
+ * kill, then hands the outcome to `deliver` exactly once.
+ *
+ * The render prefetch calls it in-process. The synchronous fallback runs it in a
+ * separate runtime, delivering to that runtime's stdout. Keep this function
+ * self-contained: its compiled source is passed to the current runtime with `-e`,
+ * including in the single-file release bundle.
  */
 export function captureCustomCommand(
     spawnCommand: typeof spawn,
     request: CustomCommandRequest,
     maxBytes: number,
-    maxChars: number
+    maxChars: number,
+    deliver: (result: CustomCommandResult) => void
 ): void {
     const child = spawnCommand(request.command, {
         shell: true,
@@ -48,15 +53,19 @@ export function captureCustomCommand(
             }
         }
 
-        // Descendants must not keep the capture runtime alive via inherited
+        // Descendants must not keep the capturing runtime alive via inherited
         // pipes after the deadline, an overflow, or a spawn failure.
-        child.stdin.destroy();
-        child.stdout.destroy();
-        child.unref();
+        try {
+            child.stdin.destroy();
+            child.stdout.destroy();
+            child.unref();
+        } catch {
+            // Teardown must never stop the result from being delivered.
+        }
         const result: CustomCommandResult = marker === null
             ? { status: 'ok', stdout: output.toString('utf8', 0, length).slice(0, maxChars).trim() }
             : { status: 'failed', marker };
-        process.stdout.write(JSON.stringify(result), () => process.exit(0));
+        deliver(result);
     }
 
     child.stdout.on('data', (chunk: Buffer) => {
