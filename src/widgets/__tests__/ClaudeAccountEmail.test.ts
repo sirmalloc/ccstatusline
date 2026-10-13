@@ -46,6 +46,8 @@ describe('ClaudeAccountEmailWidget', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-account-email-'));
+        // Keep the widget's email cache out of the real ~/.cache.
+        process.env.HOME = tempHomeDir;
     });
 
     afterEach(() => {
