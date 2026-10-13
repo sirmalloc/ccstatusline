@@ -598,9 +598,85 @@ describe('usage prefetch', () => {
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
     });
+
+    it('detects the spend limit widgets as usage widgets', () => {
+        expect(hasUsageDependentWidgets(makeLines([{ id: '1', type: 'spend-limit-usage' }]))).toBe(true);
+        expect(hasUsageDependentWidgets(makeLines([{ id: '1', type: 'spend-limit-amount' }]))).toBe(true);
+    });
+
+    it('serves spend limit widgets from stdin without calling the usage API', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 99 });
+
+        const usageData = await prefetchUsageDataIfNeeded(
+            makeLines([{ id: '1', type: 'spend-limit-usage' }, { id: '2', type: 'spend-limit-amount' }]),
+            { rate_limits: { spend_limit: { used_percentage: 62.8, used_usd: 314.12, limit_usd: 500 } } }
+        );
+
+        expect(usageData).toEqual({
+            spendLimitUsage: 62.8,
+            spendLimitUsedUsd: 314.12,
+            spendLimitLimitUsd: 500
+        });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('does not call the usage API when stdin has no spend limit', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 99 });
+
+        const usageData = await prefetchUsageDataIfNeeded(
+            makeLines([{ id: '1', type: 'spend-limit-usage' }]),
+            { rate_limits: { five_hour: { used_percentage: 42, resets_at: 1774020000 } } }
+        );
+
+        expect(usageData?.spendLimitUsage).toBeUndefined();
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('keeps the spend limit when another widget triggers the API fetch', async () => {
+        mockFetchUsageData.mockResolvedValue({ extraUsageEnabled: true, extraUsageUsed: 1000 });
+
+        const usageData = await prefetchUsageDataIfNeeded(
+            makeLines([{ id: '1', type: 'spend-limit-usage' }, { id: '2', type: 'extra-usage-used' }]),
+            { rate_limits: { spend_limit: { used_percentage: 62.8 } } }
+        );
+
+        expect(usageData?.spendLimitUsage).toBe(62.8);
+        expect(usageData?.extraUsageUsed).toBe(1000);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'] }]);
+    });
 });
 
 describe('extractUsageDataFromRateLimits', () => {
+    it('extracts spend_limit percentage and dollar amounts', () => {
+        const result = extractUsageDataFromRateLimits({
+            spend_limit: {
+                used_percentage: 62.8,
+                resets_at: 1740787200,
+                used_usd: 314.12,
+                limit_usd: 500,
+                period: 'monthly'
+            }
+        });
+
+        expect(result).toEqual({
+            spendLimitUsage: 62.8,
+            spendLimitUsedUsd: 314.12,
+            spendLimitLimitUsd: 500
+        });
+    });
+
+    it('extracts spend_limit when the dollar fields are absent', () => {
+        const result = extractUsageDataFromRateLimits({ spend_limit: { used_percentage: 0, resets_at: 1740787200 } });
+
+        expect(result).toEqual({ spendLimitUsage: 0 });
+    });
+
+    it('leaves spend limit fields undefined when spend_limit is absent or null', () => {
+        const result = extractUsageDataFromRateLimits({ five_hour: { used_percentage: 42 }, spend_limit: null });
+
+        expect(result?.spendLimitUsage).toBeUndefined();
+    });
+
     it('extracts session and weekly usage from rate_limits', () => {
         const result = extractUsageDataFromRateLimits({
             five_hour: { used_percentage: 42, resets_at: 1774020000 },

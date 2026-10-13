@@ -17,6 +17,9 @@ export interface UsageData {
     weeklyOpusResetAt?: string;   // seven_day_opus.resets_at
     fableUsage?: number;
     fableResetAt?: string;
+    spendLimitUsage?: number;      // rate_limits.spend_limit.used_percentage (statusline payload only)
+    spendLimitUsedUsd?: number;    // rate_limits.spend_limit.used_usd
+    spendLimitLimitUsd?: number;   // rate_limits.spend_limit.limit_usd
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;      // in cents (divide by 100 for dollars)
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
@@ -34,6 +37,10 @@ export interface UsageWindowMetrics {
 }
 
 export type UsageDataField = Exclude<keyof UsageData, 'error'>;
+
+// Fields that exist only in the statusline payload, never in the usage API
+// response or its on-disk cache.
+export type StatuslineOnlyUsageField = 'spendLimitUsage' | 'spendLimitUsedUsd' | 'spendLimitLimitUsd';
 
 // TypeScript can't narrow `target[field] = value` when `field` is a plain
 // UsageDataField union at the call site (it can't prove `value`'s type
@@ -59,8 +66,8 @@ export interface WeeklyModelUsageBucket {
     // a legacy flat API/statusline bucket.
     modelDisplayName: string; // e.g. "Sonnet", matched case-insensitively against limits[].scope.model.display_name
     apiBucketKey?: string; // legacy flat key, e.g. "seven_day_sonnet"
-    usageField: UsageDataField;
-    resetField: UsageDataField;
+    usageField: Exclude<UsageDataField, StatuslineOnlyUsageField>;
+    resetField: Exclude<UsageDataField, StatuslineOnlyUsageField>;
 }
 
 export const WEEKLY_MODEL_USAGE_BUCKETS: readonly WeeklyModelUsageBucket[] = [
