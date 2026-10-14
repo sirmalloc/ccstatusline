@@ -26,6 +26,7 @@ const unlink = fs.promises.unlink;
 const lstat = fs.promises.lstat;
 const readlink = fs.promises.readlink;
 const realpath = fs.promises.realpath;
+const stat = fs.promises.stat;
 
 const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
 
@@ -111,6 +112,16 @@ async function resolveAtomicWriteTarget(paths: SettingsPaths): Promise<AtomicWri
     }
 }
 
+// The permissions of the file a save replaces, so a private settings file
+// stays private; a new file gets the usual default
+async function getReplacedFileMode(filePath: string): Promise<number> {
+    try {
+        return (await stat(filePath)).mode & 0o777;
+    } catch {
+        return 0o666;
+    }
+}
+
 async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
     await mkdir(paths.configDir, { recursive: true });
 
@@ -123,8 +134,9 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
         writeTarget.tempDir,
         `${path.basename(writeTarget.targetPath)}.${process.pid}.${Date.now()}.tmp`
     );
+    const mode = await getReplacedFileMode(writeTarget.targetPath);
     try {
-        await writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf-8');
+        await writeFile(tempPath, JSON.stringify(settings, null, 2), { encoding: 'utf-8', mode });
         await rename(tempPath, writeTarget.targetPath);
     } catch (error) {
         try {

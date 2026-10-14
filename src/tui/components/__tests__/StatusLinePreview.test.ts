@@ -62,7 +62,7 @@ function createMockStdout(): CapturedWriteStream {
 }
 
 describe('StatusLinePreview helpers', () => {
-    it('strips OSC links and clamps preview lines to the terminal width', () => {
+    it('preserves OSC links and clamps preview lines to the terminal width', () => {
         const line = `${renderOsc8Link(
             'https://github.com/owner/repo/pull/42',
             'PR #42'
@@ -70,9 +70,68 @@ describe('StatusLinePreview helpers', () => {
 
         const prepared = preparePreviewLineForTerminal(line, 40);
 
-        expect(prepared).not.toContain('github.com');
+        expect(prepared).toContain('\x1b]8;;https://github.com/owner/repo/pull/42\x07PR #42\x1b]8;;\x07');
         expect(prepared.endsWith('...')).toBe(true);
         expect(getVisibleWidth(`  ${prepared}`)).toBeLessThanOrEqual(40);
+    });
+
+    it('closes a truncated link before the ellipsis', () => {
+        const line = renderOsc8Link('https://status.claude.com', 'Claude: ok ▮▮▮▮▮▮▮▮');
+
+        expect(preparePreviewLineForTerminal(line, 15)).toBe(
+            '\x1b]8;;https://status.claude.com\x07Claude: ok\x1b]8;;\x07...'
+        );
+    });
+
+    it('still removes non-link OSC sequences', () => {
+        expect(preparePreviewLineForTerminal('\x1b]0;title\x07Claude: ok', 40)).toBe('Claude: ok');
+    });
+
+    it.each([
+        { powerline: false, history: false, linked: true },
+        { powerline: false, history: true, linked: true },
+        { powerline: true, history: false, linked: true },
+        { powerline: true, history: true, linked: true },
+        { powerline: false, history: false, linked: false }
+    ])('renders the status link in Ink with %j', async ({ powerline, history, linked }) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline, enabled: powerline }
+        };
+        const lines: WidgetItem[][] = [[{
+            id: 'status',
+            type: 'claude-status',
+            metadata: { history: String(history), linkToStatusPage: String(linked) }
+        }]];
+        const instance = render(
+            React.createElement(StatusLinePreview, { lines, terminalWidth: 160, settings }),
+            { stdin, stdout, stderr, debug: true, exitOnCtrlC: false, patchConsole: false }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Claude: ok');
+            });
+            const output = stdout.getOutput();
+            if (linked) {
+                expect(output).toContain('\x1b]8;;https://status.claude.com');
+                expect(output).toContain('\x1b]8;;\x07');
+            } else {
+                expect(output).not.toContain('https://status.claude.com');
+            }
+            if (history) {
+                expect(output).toContain('▮');
+            }
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
     });
 
     it('keeps parens dim scoped in the Ink preview when global bold is active', async () => {

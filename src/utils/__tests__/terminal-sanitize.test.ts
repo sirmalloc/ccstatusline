@@ -84,17 +84,37 @@ describe('sanitizeTerminalText', () => {
         ['shift out', '\x0e'],
         ['form feed', '\f'],
         ['DEL', '\x7f'],
-        ['8-bit CSI', '\x9b'],
-        ['8-bit OSC', '\x9d'],
         ['8-bit ST', '\x9c'],
-        ['8-bit DCS', '\x90'],
         ['NEL', '\x85']
     ])('drops the control character %s', (_label, control) => {
         expect(sanitizeTerminalText(`a${control}b`)).toBe('ab');
     });
 
-    it('drops an 8-bit CSI sequence\'s introducer, leaving its harmless parameters as text', () => {
-        expect(sanitizeTerminalText('a\x9b2Jb')).toBe('a2Jb');
+    // 8-bit C1 introducers stand for ESC and a character: CSI (0x9b) is ESC [,
+    // OSC (0x9d) is ESC ], and ST (0x9c) is ESC \
+    it('keeps 8-bit color codes, written in their 7-bit form', () => {
+        expect(sanitizeTerminalText('\x9b38;5;208mred\x9b39m')).toBe(`${ESC}[38;5;208mred${ESC}[39m`);
+    });
+
+    it('keeps an 8-bit hyperlink with a safe URL, written in its 7-bit form', () => {
+        const link = `\x9d8;;https://github.com/o/r\x9ctext\x9d8;;${BEL}`;
+
+        expect(sanitizeTerminalText(link)).toBe(`${ESC}]8;;https://github.com/o/r${ST}text${ESC}]8;;${BEL}`);
+    });
+
+    it.each([
+        ['clearing the screen', '\x9b2J'],
+        ['moving the cursor', '\x9b10;20H'],
+        ['repeating a character', '\x9bb'],
+        ['an OSC 52 clipboard write', `\x9d52;c;ZWNobyBwd25lZA==${BEL}`],
+        ['an OSC 0 title change', '\x9d0;hacked\x9c'],
+        ['a hyperlink with an unsafe URL', '\x9d8;;https://x/a b\x9c'],
+        ['a DCS string', '\x90q#0;2;0;0;0\x9c'],
+        ['an APC string', `\x9fpayload${ST}`],
+        ['a PM string', '\x9epayload\x9c'],
+        ['a SOS string', '\x98payload\x9c']
+    ])('drops an 8-bit sequence entirely: %s', (_label, sequence) => {
+        expect(sanitizeTerminalText(`a${sequence}b`)).toBe('ab');
     });
 });
 

@@ -19,6 +19,14 @@ const RateLimitPeriodSchema = z.object({
     resets_at: CoercedNumberSchema.nullable().optional() // Unix epoch seconds
 });
 
+// Claude apps gateway spend limit (Claude Code 2.1.251+). The dollar fields and
+// period arrive separately from the percentage, so they can be absent.
+const SpendLimitSchema = RateLimitPeriodSchema.extend({
+    used_usd: CoercedNumberSchema.nullable().optional(),
+    limit_usd: CoercedNumberSchema.nullable().optional(),
+    period: z.string().nullable().optional()
+});
+
 export type RateLimitPeriod = z.infer<typeof RateLimitPeriodSchema>;
 
 export const StatusJSONSchema = z.looseObject({
@@ -75,7 +83,8 @@ export const StatusJSONSchema = z.looseObject({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional(),
         seven_day_sonnet: RateLimitPeriodSchema.nullable().optional(),
-        seven_day_opus: RateLimitPeriodSchema.nullable().optional()
+        seven_day_opus: RateLimitPeriodSchema.nullable().optional(),
+        spend_limit: SpendLimitSchema.nullable().optional()
     }).nullable().optional()
 });
 
