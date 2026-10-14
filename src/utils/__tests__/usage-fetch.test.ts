@@ -299,7 +299,8 @@ function seedUsageCache(home: string, contents: Record<string, unknown>): { cach
 }
 
 describe('fetchUsageData error handling', () => {
-    const nowMs = 2200000000000;
+    // Before the fixtures' 2030 resets, so their cached windows are still open
+    const nowMs = 1800000000000;
     const successResponseBody = JSON.stringify({
         five_hour: {
             utilization: 42,
@@ -1768,6 +1769,57 @@ describe('fetchUsageData error handling', () => {
             });
             expect(postBackoffResult.second).toEqual(postBackoffResult.first);
             expect(postBackoffResult.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // Overnight, last night's 95% would otherwise stay on screen after its
+    // window reset, for as long as the API keeps refusing
+    it('leaves out stale cached windows that have already reset', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('rate-limited-expired-window');
+            const sessionResetAt = new Date(nowMs + 60 * 60 * 1000).toISOString();
+            const weeklyResetAt = new Date(nowMs + 3 * 24 * 60 * 60 * 1000).toISOString();
+            harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: JSON.stringify({
+                    five_hour: { utilization: 95, resets_at: sessionResetAt },
+                    seven_day: { utilization: 40, resets_at: weeklyResetAt }
+                })
+            });
+
+            // Two hours on, past the session reset
+            const rateLimitedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs: nowMs + 2 * 60 * 60 * 1000,
+                pathDir: home.bin,
+                responseBody: rateLimitedResponseBody,
+                responseHeaders: { 'retry-after': '3600' },
+                statusCode: 429
+            });
+
+            expect(rateLimitedResult.first).toEqual({ weeklyUsage: 40, weeklyResetAt });
+
+            const sessionResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 2 * 60 * 60 * 1000 + 1000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(sessionResult.first).toEqual({ error: 'rate-limited' });
+            expect(sessionResult.requestCount).toBe(0);
         } finally {
             harness.cleanup();
         }

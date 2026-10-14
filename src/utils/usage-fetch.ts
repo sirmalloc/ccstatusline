@@ -422,7 +422,7 @@ function getStaleUsageOrError(
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache(cacheIdentity);
+    const stale = readStaleUsageCache(cacheIdentity, now);
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
         return cacheUsageData(stale, now);
     }
@@ -663,13 +663,30 @@ function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
     return credentials;
 }
 
-function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageData | null {
+// A stale cache can outlive its windows (overnight, while the API keeps
+// failing). A window whose reset has passed no longer has that usage, so its
+// usage and reset are left out rather than shown, as Claude Code drops a
+// window from rate_limits once its resets_at passes.
+function dropResetWindows(data: UsageData, now: number): UsageData {
+    const result: UsageData = { ...data };
+    for (const [resetField, usageField] of Object.entries(WINDOW_RESET_FIELD_SENTINELS)) {
+        const resetAt = result[resetField as UsageDataField];
+        if (typeof resetAt === 'string' && Date.parse(resetAt) <= now * 1000) {
+            setUsageField(result, resetField as UsageDataField, undefined);
+            setUsageField(result, usageField, undefined);
+        }
+    }
+    return result;
+}
+
+function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null, now: number): UsageData | null {
     try {
         const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
         if (!tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)) {
             return null;
         }
-        return parseCachedUsageData(rawCache);
+        const cached = parseCachedUsageData(rawCache);
+        return cached ? dropResetWindows(cached, now) : null;
     } catch {
         return null;
     }
