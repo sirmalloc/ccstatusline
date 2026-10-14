@@ -94,7 +94,9 @@ import {
     TerminalWidthMenu,
     UninstallMenu,
     UpdateCheckerMenu,
+    buildMainMenuItems,
     getMainMenuInstallSelectionIndex,
+    getMainMenuSelectionIndex,
     type InstallSelection,
     type MainMenuOption,
     type UninstallSelection,
@@ -104,6 +106,7 @@ import {
     List,
     type ListEntry
 } from './components/List';
+import { PowerlineThemeSelector } from './components/PowerlineThemeSelector';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -117,6 +120,7 @@ type AppScreen = 'main'
     | 'items'
     | 'colorLines'
     | 'colors'
+    | 'theme'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
@@ -877,6 +881,13 @@ export const App: React.FC = () => {
         ? inspectActiveGlobalCommand({ commandAvailability })
         : null;
     const effectiveInstallation = getPathInferredInstallation(currentInstallation, activeGlobalCommand);
+    // Menu "back" targets resolve the main-menu index from the option itself:
+    // buildMainMenuItems is conditional (theme entry hidden under powerline,
+    // save/exit appended when changed), so hardcoded positions drift.
+    const mainMenuIndex = (option: MainMenuOption): number => getMainMenuSelectionIndex(
+        buildMainMenuItems(isClaudeInstalled, false, effectiveInstallation, settings.powerline.enabled),
+        option
+    );
     const pinnedVersionMismatch = effectiveInstallation.method === 'pinned'
         && effectiveInstallation.packageManager !== 'unknown'
         ? getPinnedVersionMismatch(
@@ -1035,6 +1046,9 @@ export const App: React.FC = () => {
                 break;
             case 'colors':
                 setScreen('colorLines');
+                break;
+            case 'theme':
+                setScreen('theme');
                 break;
             case 'terminalConfig':
                 setScreen('terminalConfig');
@@ -1236,9 +1250,8 @@ export const App: React.FC = () => {
                         }}
                         onLinesUpdate={updateLines}
                         onBack={() => {
-                            // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
-                            setMenuSelections(prev => ({ ...prev, main: 0 }));
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('lines') }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -1270,8 +1283,7 @@ export const App: React.FC = () => {
                             setScreen('colors');
                         }}
                         onBack={() => {
-                            // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections(prev => ({ ...prev, main: 1 }));
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('colors') }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -1308,8 +1320,7 @@ export const App: React.FC = () => {
                             if (target === 'width') {
                                 setScreen('terminalWidth');
                             } else {
-                                // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections(prev => ({ ...prev, main: 3 }));
+                                setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('terminalConfig') }));
                                 setScreen('main');
                             }
                         }}
@@ -1333,8 +1344,7 @@ export const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections(prev => ({ ...prev, main: 4 }));
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('globalOverrides') }));
                             setScreen('main');
                         }}
                     />
@@ -1470,6 +1480,18 @@ export const App: React.FC = () => {
                                 color: 'green'
                             });
                             setScreen('main');
+                        }}
+                        onBack={() => {
+                            setScreen('main');
+                        }}
+                    />
+                )}
+                {screen === 'theme' && (
+                    <PowerlineThemeSelector
+                        mode='regular'
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
                         }}
                         onBack={() => {
                             setScreen('main');

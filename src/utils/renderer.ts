@@ -131,6 +131,25 @@ function resolveEffectiveTerminalWidth(
     return null;
 }
 
+// Resolve a POWERLINE_THEMES entry for the configured color level. Returns
+// undefined for unset, 'custom', or unknown names. Shared by both render
+// paths: powerline uses fg+bg per segment; regular mode cycles bg[] as
+// foregrounds (fg[] holds the dark text colors meant to sit on those
+// backgrounds).
+function resolveThemeColors(
+    themeName: string | undefined,
+    settings: Settings
+): { fg: string[]; bg: string[] } | undefined {
+    if (!themeName || themeName === 'custom')
+        return undefined;
+    const theme = getPowerlineTheme(themeName);
+    if (!theme)
+        return undefined;
+    const colorLevel = getColorLevelString(settings.colorLevel);
+    const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
+    return theme[colorLevelKey];
+}
+
 function renderPowerlineStatusLine(
     widgets: WidgetItem[],
     settings: Settings,
@@ -164,17 +183,7 @@ function renderPowerlineStatusLine(
     );
 
     // Get theme colors if a theme is set and not 'custom'
-    const themeName = config.theme as string | undefined;
-    let themeColors: { fg: string[]; bg: string[] } | undefined;
-
-    if (themeName && themeName !== 'custom') {
-        const theme = getPowerlineTheme(themeName);
-        if (theme) {
-            const colorLevel = getColorLevelString(settings.colorLevel);
-            const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
-            themeColors = theme[colorLevelKey];
-        }
-    }
+    const themeColors = resolveThemeColors(config.theme as string | undefined, settings);
 
     // Get color level from settings
     const colorLevel = getColorLevelString(settings.colorLevel);
@@ -1055,6 +1064,14 @@ export function renderStatusLine(
             preCalculatedMaxWidths
         );
 
+    // Regular-mode theme: cycle the theme's segment palette (bg[]) as widget
+    // foregrounds (bgToFg converts ansi16-level bg* names to their foreground
+    // equivalents). Explicit per-widget colors win; separators and flex
+    // separators are not themed and do not consume palette slots. Merged
+    // widgets share one palette slot, matching powerline's cycling.
+    const regularThemePalette = resolveThemeColors(settings.theme, settings)?.bg.map(bgToFg);
+    let themeColorIndex = 0;
+
     // Helper to apply colors with optional background, bold, and dim
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground
@@ -1187,6 +1204,9 @@ export function renderStatusLine(
             }
 
             if (widgetText) {
+                const themedFg = regularThemePalette
+                    ? regularThemePalette[themeColorIndex % regularThemePalette.length]
+                    : undefined;
                 // Special handling for widgets that preserve their own colors
                 if (widgetPreservesColors(widget)) {
                     // Handle max width truncation for commands with ANSI codes
@@ -1209,13 +1229,16 @@ export function renderStatusLine(
                         widget
                     });
                 } else {
-                    // Normal widget rendering with colors
+                    // Normal widget rendering with colors; theme palette fills
+                    // in when the widget has no explicit color
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
+                        content: applyColorsWithOverride(widgetText, widget.color ?? themedFg ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
                         type: widget.type,
                         widget
                     });
                 }
+                if (!widget.merge)
+                    themeColorIndex++;
             }
         } catch {
             // Unknown widget type - skip
