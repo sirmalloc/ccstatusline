@@ -489,6 +489,23 @@ describe('backup and error handling behavior', () => {
         expect(orig.statusLine?.command).toBe('old-command');
     });
 
+    // settings.json can hold secrets (env, apiKeyHelper), so its backups must
+    // not be readable by anyone who can't read it
+    it.skipIf(process.platform === 'win32')('gives .bak and .orig backups the permissions of a private settings file', async () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        const settingsPath = getClaudeSettingsPath();
+        fs.chmodSync(settingsPath, 0o600);
+        // A backup left from before keeps its own permissions when overwritten
+        fs.writeFileSync(`${settingsPath}.bak`, '{}', 'utf-8');
+        fs.chmodSync(`${settingsPath}.bak`, 0o644);
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.orig`).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.bak`).mode & 0o777).toBe(0o600);
+    });
+
     it('loadClaudeSettings should return empty object when settings file is missing', async () => {
         await expect(loadClaudeSettings()).resolves.toEqual({});
     });

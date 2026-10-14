@@ -335,6 +335,45 @@ describe('git utils', () => {
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
         });
 
+        it('follows a worktree .git file to its HEAD and index', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-worktree-'));
+            tempPaths.push(root);
+            const linkedGitDir = path.join(root, 'main-repo', '.git', 'worktrees', 'feature');
+            const worktree = path.join(root, 'feature');
+            fs.mkdirSync(linkedGitDir, { recursive: true });
+            fs.mkdirSync(worktree);
+            fs.writeFileSync(path.join(linkedGitDir, 'HEAD'), 'ref: refs/heads/feature\n', 'utf-8');
+            fs.writeFileSync(path.join(linkedGitDir, 'index'), '', 'utf-8');
+            fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${linkedGitDir}\n`, 'utf-8');
+            const context: RenderContext = { data: { cwd: worktree }, gitCacheTtlSeconds: 60 };
+            mockExecFileSync.mockReturnValueOnce('old-value\n');
+
+            expect(runGit('status --porcelain -z', context)).toBe('old-value');
+
+            clearGitCache();
+            touch(path.join(linkedGitDir, 'index'), Date.now() + 10000);
+            nowSpy.mockReturnValue(2000);
+            mockExecFileSync.mockReturnValueOnce('new-value\n');
+
+            expect(runGit('status --porcelain -z', context)).toBe('new-value');
+        });
+
+        // A .git file is read from every folder above the session's directory,
+        // so a repository can plant one
+        it('reads a .git file holding a long run of whitespace in linear time', () => {
+            useTempHome();
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-planted-'));
+            tempPaths.push(root);
+            fs.writeFileSync(path.join(root, '.git'), `gitdir:${' '.repeat(100_000)}\nx\ny`, 'utf-8');
+            mockExecFileSync.mockReturnValueOnce('main\n');
+
+            const started = Date.now();
+            expect(runGit('symbolic-ref --short HEAD', { data: { cwd: root } })).toBe('main');
+            expect(Date.now() - started).toBeLessThan(1000);
+        });
+
         it('falls back to git when the persistent cache file is malformed', () => {
             vi.spyOn(Date, 'now').mockReturnValue(1000);
             const home = useTempHome();

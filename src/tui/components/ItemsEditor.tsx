@@ -57,6 +57,7 @@ import {
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
     onUpdate: (widgets: WidgetItem[]) => void;
+    onPreviewChange?: (widgets: WidgetItem[] | null) => void;
     onBack: () => void;
     // Lets the caller restore the cursor, e.g. after a dev reload
     initialSelectedIndex?: number;
@@ -76,6 +77,7 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
 export const ItemsEditor: React.FC<ItemsEditorProps> = ({
     widgets,
     onUpdate,
+    onPreviewChange,
     onBack,
     initialSelectedIndex = 0,
     onSelectedIndexChange,
@@ -88,6 +90,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const separatorChars = ['|', '-', ',', ' '];
+
+    // Discard a label draft if navigation unmounts the editor (for example, a save dialog).
+    useEffect(() => () => {
+        onPreviewChange?.(null);
+    }, [onPreviewChange]);
 
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
@@ -127,10 +134,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
         const newWidgets = [...widgets];
         newWidgets[selectedIndex] = updatedWidget;
         onUpdate(newWidgets);
+        onPreviewChange?.(null);
         setCustomEditorWidget(null);
     };
 
     const handleEditorCancel = () => {
+        onPreviewChange?.(null);
         setCustomEditorWidget(null);
     };
 
@@ -393,6 +402,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
                 defaultLabel={customEditorWidget.impl.getLabelPrefix(customEditorWidget.widget)}
                 onComplete={handleEditorComplete}
                 onCancel={handleEditorCancel}
+                onPreview={(updatedWidget) => {
+                    const previewWidgets = [...widgets];
+                    previewWidgets[selectedIndex] = updatedWidget;
+                    onPreviewChange?.(previewWidgets);
+                }}
             />
         );
     }

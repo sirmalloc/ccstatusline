@@ -1,6 +1,6 @@
 {
   "name": "ccstatusline",
-  "version": "2.2.31",
+  "version": "2.2.32",
   "bugs": {
     "url": "https://github.com/sirmalloc/ccstatusline/issues"
   },
@@ -59,7 +59,7 @@
     "ink-select-input": "^6.2.0",
     "pluralize": "^8.0.0",
     "react": "19.3.0",
-    "react-devtools-core": "^7.0.1",
+    "react-devtools-core": "^8.0.0",
     "react-dom": "19.3.0",
     "remotion": "^4.0.459",
     "strip-ansi": "^7.1.0",
@@ -67,7 +67,7 @@
     "typedoc": "^0.28.12",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.39.1",
-    "vitest": "^4.0.18",
+    "vitest": "^5.0.0",
     "zod": "^4.0.17"
   },
   "keywords": [

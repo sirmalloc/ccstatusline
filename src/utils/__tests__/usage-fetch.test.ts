@@ -6,6 +6,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
@@ -16,6 +18,11 @@ import {
     parseUsageApiResponse
 } from '../usage-fetch';
 import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
+
+import {
+    startStalledProxy,
+    type StalledProxy
+} from './proxy-test-helpers';
 
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
@@ -44,6 +51,7 @@ interface ProbeOptions {
     httpsProxy?: string;
     lockWrittenDuringRequest?: string;
     lowercaseHttpsProxy?: string;
+    noProxy?: string;
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
@@ -207,7 +215,8 @@ process.stdout.write(JSON.stringify({
             const normalizedKey = key.toUpperCase();
             return normalizedKey !== 'CLAUDE_CONFIG_DIR'
                 && normalizedKey !== 'CLAUDE_SECURESTORAGE_CONFIG_DIR'
-                && normalizedKey !== 'HTTPS_PROXY';
+                && normalizedKey !== 'HTTPS_PROXY'
+                && normalizedKey !== 'NO_PROXY';
         }));
 
         Object.assign(env, {
@@ -239,6 +248,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.lowercaseHttpsProxy !== undefined) {
             env.https_proxy = options.lowercaseHttpsProxy;
+        }
+
+        if (options.noProxy !== undefined) {
+            env.NO_PROXY = options.noProxy;
         }
 
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
@@ -427,6 +440,34 @@ describe('fetchUsageData error handling', () => {
         error: {
             message: 'Rate limited. Please try again later.',
             type: 'rate_limit_error'
+        }
+    });
+
+    // The request carries the account's bearer token, so a host the user kept
+    // off the proxy must stay off it
+    it('connects directly when NO_PROXY lists api.anthropic.com', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const noProxyHome = harness.createTokenHome('no-proxy');
+
+            const result = harness.runProbe({
+                claudeConfigDir: noProxyHome.claudeConfig,
+                home: noProxyHome.home,
+                httpsProxy: 'http://proxy.local:8080',
+                noProxy: 'localhost,.anthropic.com',
+                mode: 'success',
+                nowMs,
+                pathDir: noProxyHome.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toMatchObject({ sessionUsage: 42, weeklyUsage: 17 });
+            expect(result.requestCount).toBe(1);
+            expect(result.proxyAgentConfigured).toBe(false);
+            expect(result.requestHost).toBe('api.anthropic.com');
+        } finally {
+            harness.cleanup();
         }
     });
 
@@ -1855,6 +1896,35 @@ describe('fetchUsageData error handling', () => {
 // missing from the other would parse fine from a live API fetch, then vanish
 // the moment that response round-trips through the on-disk cache. This test
 // makes that drift fail loudly instead.
+describe('usage API request behind a proxy that never answers CONNECT', () => {
+    let originalProxy: string | undefined;
+    let proxy: StalledProxy | null = null;
+
+    beforeEach(() => {
+        originalProxy = process.env.HTTPS_PROXY;
+    });
+
+    afterEach(async () => {
+        await proxy?.stop();
+        proxy = null;
+        if (originalProxy === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = originalProxy;
+        }
+    });
+
+    // The request's socket timeout can't fire before the proxy answers CONNECT,
+    // and the agent's own connection to the proxy would keep the process alive
+    it('gives up at the deadline and closes its connection to the proxy', async () => {
+        proxy = await startStalledProxy();
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 50)).toEqual({ kind: 'error' });
+        await proxy.connectionClosed;
+    });
+});
+
 describe('WEEKLY_MODEL_USAGE_BUCKETS schema parity', () => {
     it('declares every registry bucket field in CachedUsageDataSchema', () => {
         const cachedKeys = new Set(Object.keys(__testing.CachedUsageDataSchema.shape));

@@ -132,4 +132,43 @@ describe('StatusJSONSchema numeric coercion', () => {
         expect(result.data.rate_limits?.five_hour?.used_percentage).toBe(42);
         expect(result.data.rate_limits?.five_hour?.resets_at).toBe(1774020000);
     });
+
+    it('parses rate_limits.spend_limit with the optional dollar fields', () => {
+        const result = StatusJSONSchema.safeParse({
+            rate_limits: {
+                spend_limit: {
+                    used_percentage: 62.8,
+                    resets_at: 1740787200,
+                    used_usd: 314.12,
+                    limit_usd: 500,
+                    period: 'monthly'
+                }
+            }
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.rate_limits?.spend_limit).toEqual({
+            used_percentage: 62.8,
+            resets_at: 1740787200,
+            used_usd: 314.12,
+            limit_usd: 500,
+            period: 'monthly'
+        });
+    });
+
+    it('accepts rate_limits.spend_limit without the dollar fields', () => {
+        const result = StatusJSONSchema.safeParse({ rate_limits: { spend_limit: { used_percentage: 12, resets_at: 1740787200 } } });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.rate_limits?.spend_limit?.used_percentage).toBe(12);
+        expect(result.data.rate_limits?.spend_limit?.used_usd).toBeUndefined();
+    });
 });

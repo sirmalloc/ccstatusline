@@ -17,6 +17,7 @@ import type {
 } from '../types/Widget';
 import { shouldInsertInput } from '../utils/input-guards';
 
+import { BlinkingCursor } from './shared/BlinkingCursor';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     SYMBOL_OVERRIDE_ACTION,
@@ -285,7 +286,7 @@ const CurrentWorkingDirEditor: React.FC<WidgetEditorProps> = ({ widget, onComple
                 <Box>
                     <Text>Enter number of segments to display (blank for full path): </Text>
                     <Text>{segmentsInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>
