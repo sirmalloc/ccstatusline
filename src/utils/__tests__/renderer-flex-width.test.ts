@@ -42,7 +42,7 @@ function renderLine(
     const settings = createSettings(settingsOverrides);
     const context: RenderContext = {
         isPreview: false,
-        terminalWidth: 50,
+        terminalWidth: 100,
         ...contextOverrides
     };
 
@@ -57,13 +57,13 @@ describe('renderer flex width behavior', () => {
     const longTextWidget: WidgetItem = {
         id: 'text',
         type: 'custom-text',
-        customText: 'abcdefghijklmnopqrstuvwxyz1234567890'
+        customText: 'abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890'
     };
 
     it('uses full-minus-40 width in normal mode', () => {
         const line = renderLine([longTextWidget], { flexMode: 'full-minus-40' });
 
-        expect(getVisibleWidth(line)).toBe(10);
+        expect(getVisibleWidth(line)).toBe(60);
         expect(line.endsWith('...')).toBe(true);
     });
 
@@ -83,7 +83,7 @@ describe('renderer flex width behavior', () => {
             compactThreshold: 60
         }, { data: { context_window: { used_percentage: 80 } } });
 
-        expect(getVisibleWidth(line)).toBe(10);
+        expect(getVisibleWidth(line)).toBe(60);
         expect(line.endsWith('...')).toBe(true);
     });
 
@@ -103,7 +103,7 @@ describe('renderer flex width behavior', () => {
     it('uses full-minus-40 width in preview mode, matching the real render', () => {
         const line = renderLine([longTextWidget], { flexMode: 'full-minus-40' }, { isPreview: true });
 
-        expect(getVisibleWidth(line)).toBe(10);
+        expect(getVisibleWidth(line)).toBe(60);
         expect(line.endsWith('...')).toBe(true);
     });
 
@@ -120,40 +120,64 @@ describe('renderer flex width behavior', () => {
             }
         });
 
-        expect(getVisibleWidth(line)).toBe(10);
+        expect(getVisibleWidth(line)).toBe(60);
         expect(line.endsWith('...')).toBe(true);
     });
 
-    it('keeps truncating when the reserved columns take the whole terminal', () => {
+    it('caps the reserved columns at half the terminal, so narrow terminals keep half', () => {
+        const wideTextWidget: WidgetItem = { id: 'wide', type: 'custom-text', customText: 'x'.repeat(200) };
         const compactData = { context_window: { used_percentage: 80 } };
-        const cases: [Partial<Settings>, Partial<RenderContext>][] = [
-            [{ flexMode: 'full-minus-40' }, { terminalWidth: 40 }],
-            [{ flexMode: 'full-minus-40' }, { terminalWidth: 30 }],
-            [{ flexMode: 'full-until-compact', compactThreshold: 60 }, { terminalWidth: 40, data: compactData }],
-            [{ flexMode: 'full' }, { terminalWidth: 6 }],
-            [{ flexMode: 'full-minus-40' }, { terminalWidth: 40, isPreview: true }]
+        const roomyData = { context_window: { used_percentage: 20 } };
+        const untilCompact: Partial<Settings> = { flexMode: 'full-until-compact', compactThreshold: 60 };
+        const cases: [Partial<Settings>, Partial<RenderContext>, number][] = [
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 30 }, 15],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 40 }, 20],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 41 }, 21],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 60 }, 30],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 79 }, 40],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 80 }, 40],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 120 }, 80],
+            [{ flexMode: 'full' }, { terminalWidth: 6 }, 3],
+            [{ flexMode: 'full' }, { terminalWidth: 11 }, 6],
+            [{ flexMode: 'full' }, { terminalWidth: 12 }, 6],
+            [{ flexMode: 'full' }, { terminalWidth: 40 }, 34],
+            [{ flexMode: 'full' }, { terminalWidth: 120 }, 114],
+            [untilCompact, { terminalWidth: 40, data: compactData }, 20],
+            [untilCompact, { terminalWidth: 60, data: compactData }, 30],
+            [untilCompact, { terminalWidth: 120, data: compactData }, 80],
+            [untilCompact, { terminalWidth: 40, data: roomyData }, 34],
+            [untilCompact, { terminalWidth: 120, data: roomyData }, 114],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 40, isPreview: true }, 20],
+            [{ flexMode: 'full-minus-40' }, { terminalWidth: 120, isPreview: true }, 80],
+            [untilCompact, { terminalWidth: 40, isPreview: true, data: compactData }, 34]
         ];
 
-        for (const [settingsOverrides, contextOverrides] of cases) {
-            expect(renderLine([longTextWidget], settingsOverrides, contextOverrides)).toBe('');
+        for (const [settingsOverrides, contextOverrides, expectedWidth] of cases) {
+            const line = renderLine([wideTextWidget], settingsOverrides, contextOverrides);
+            expect({ ...settingsOverrides, ...contextOverrides, width: getVisibleWidth(line) })
+                .toEqual({ ...settingsOverrides, ...contextOverrides, width: expectedWidth });
         }
     });
 
-    it('keeps truncating in powerline mode when the reserved columns take the whole terminal', () => {
+    it('caps the reserved columns at half the terminal in powerline mode', () => {
         const widgets: WidgetItem[] = [
             { ...longTextWidget, backgroundColor: 'bgBlue', color: 'white' },
             { id: 'flex', type: 'flex-separator' },
             { id: 'right', type: 'custom-text', customText: 'RIGHT', backgroundColor: 'bgGreen', color: 'white' }
         ];
-        const line = renderLine(widgets, {
-            flexMode: 'full-minus-40',
-            powerline: {
-                ...DEFAULT_SETTINGS.powerline,
-                enabled: true
-            }
-        }, { terminalWidth: 40 });
+        const cases: [number, number][] = [[30, 15], [40, 20], [60, 30], [80, 40], [120, 80]];
 
-        expect(line).toBe('');
+        for (const [terminalWidth, expectedWidth] of cases) {
+            const line = renderLine(widgets, {
+                flexMode: 'full-minus-40',
+                powerline: {
+                    ...DEFAULT_SETTINGS.powerline,
+                    enabled: true
+                }
+            }, { terminalWidth });
+
+            expect({ terminalWidth, width: getVisibleWidth(line) }).toEqual({ terminalWidth, width: expectedWidth });
+        }
     });
 });
 

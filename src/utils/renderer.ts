@@ -96,9 +96,10 @@ function resolveEffectiveTerminalWidth(
         return null;
     }
 
-    // A reserve that takes the whole terminal leaves 0 columns, which still
-    // truncates; a negative width would read as "unknown" and skip truncation.
-    const remaining = (reserved: number): number => Math.max(0, detectedWidth - reserved);
+    // The reserve never takes more than half the terminal: on a narrow one (a
+    // phone, a split pane) 40 columns would leave a few or none, and the line
+    // would truncate to "." or nothing. From 80 columns the full reserve applies.
+    const remaining = (reserved: number): number => Math.max(0, detectedWidth - Math.min(reserved, Math.floor(detectedWidth / 2)));
     const flexMode = settings.flexMode as string;
 
     if (context.isPreview) {
@@ -1379,8 +1380,8 @@ export function renderStatusLine(
     }
 
     // Truncate if the line exceeds the terminal width
-    // Use terminalWidth if available (already accounts for flex mode adjustments, and
-    // may be 0 when the reserve takes the whole terminal), otherwise use detectedWidth
+    // Use terminalWidth if available (already accounts for flex mode adjustments),
+    // otherwise use detectedWidth
     const maxWidth = terminalWidth ?? detectedWidth;
     if (maxWidth !== null && (terminalWidth !== null || maxWidth > 0)) {
         // Remove ANSI escape codes to get actual length
