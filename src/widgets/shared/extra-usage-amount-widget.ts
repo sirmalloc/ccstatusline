@@ -16,7 +16,10 @@ import { formatUsageCurrency } from './currency';
 import { EXTRA_USAGE_DISABLED_HIDEABLE_STATE } from './extra-usage-disabled';
 import { isHidden } from './hideable';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
-import { USAGE_NO_DATA_HIDEABLE_STATE } from './usage-display';
+import {
+    USAGE_NO_DATA_HIDEABLE_STATE,
+    USAGE_ZERO_HIDEABLE_STATE
+} from './usage-display';
 
 // The Extra Usage Used and Remaining widgets show one labeled amount of money
 // from the usage API. They differ in how the amount is worked out, and their
@@ -30,6 +33,8 @@ export abstract class ExtraUsageAmountWidget implements Widget {
     protected abstract readonly previewDollars: number;
     // The amount in dollars, or null when the usage data doesn't have what it needs
     protected abstract getDollars(data: RenderUsageData): number | null;
+    // Subclasses opt in to the hide-when-zero state (fork addition)
+    protected readonly supportsZeroHide: boolean = false;
 
     getDefaultColor(): string { return 'green'; }
     getCategory(): string { return 'Usage'; }
@@ -40,6 +45,9 @@ export abstract class ExtraUsageAmountWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
+        if (this.supportsZeroHide) {
+            return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE, USAGE_ZERO_HIDEABLE_STATE];
+        }
         return [EXTRA_USAGE_DISABLED_HIDEABLE_STATE, USAGE_NO_DATA_HIDEABLE_STATE];
     }
 
@@ -63,6 +71,9 @@ export abstract class ExtraUsageAmountWidget implements Widget {
                     ? null
                     : getUsageErrorMessage(data.error);
             }
+            return null;
+        }
+        if (dollars === 0 && this.supportsZeroHide && isHidden(item, USAGE_ZERO_HIDEABLE_STATE.key)) {
             return null;
         }
 

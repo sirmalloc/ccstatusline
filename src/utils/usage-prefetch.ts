@@ -6,6 +6,11 @@ import type { WidgetItem } from '../types/Widget';
 
 import type { UsageData } from './usage';
 import { fetchUsageData } from './usage';
+import {
+    createUsageMemoryCache,
+    type UsageCredentials,
+    type UsageMemoryCache
+} from './usage-fetch';
 import type { UsageDataField } from './usage-types';
 import {
     WEEKLY_MODEL_USAGE_BUCKETS,
@@ -229,7 +234,25 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
     return hasAnyUsageDataField(usageData) ? usageData : null;
 }
 
-export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: StatusJSON): Promise<UsageData | null> {
+export interface UsagePrefetchScope {
+    /**
+     * Account-scoped cache for the shared daemon (#18): the caller picks the
+     * cache by credential fingerprint, and fetchUsageData re-checks the
+     * fingerprint before any fast return. Unset = one-shot behavior (fresh
+     * per-request cache).
+     */
+    cache?: UsageMemoryCache;
+    credentials?: UsageCredentials | null;
+    resolveCredentials?: () => Promise<UsageCredentials | null>;
+    signal?: AbortSignal;
+    env?: NodeJS.ProcessEnv;
+}
+
+export async function prefetchUsageDataIfNeeded(
+    lines: WidgetItem[][],
+    data?: StatusJSON,
+    scope: UsagePrefetchScope = {}
+): Promise<UsageData | null> {
     if (!hasUsageDependentWidgets(lines)) {
         return null;
     }
@@ -243,7 +266,17 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
         return rateLimitsData;
     }
 
-    const apiData = await fetchUsageData({ requiredFields: missingFields });
+    // Request-scoped by default (#15); the daemon passes its account-scoped
+    // cache so concurrent sessions dedup on one fetch per account (#18).
+    const usageCache = scope.cache ?? createUsageMemoryCache();
+    const apiData = await fetchUsageData({
+        requiredFields: missingFields,
+        cache: usageCache,
+        ...(scope.credentials !== undefined ? { credentials: scope.credentials } : {}),
+        ...(scope.resolveCredentials !== undefined ? { resolveCredentials: scope.resolveCredentials } : {}),
+        ...(scope.signal !== undefined ? { signal: scope.signal } : {}),
+        ...(scope.env !== undefined ? { env: scope.env } : {})
+    });
     if (apiData.error && missingRequirements.suppressFetchError) {
         return rateLimitsData;
     }

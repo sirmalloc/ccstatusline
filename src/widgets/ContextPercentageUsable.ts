@@ -59,7 +59,7 @@ export class ContextPercentageUsableWidget implements Widget {
         const sliderMode = getContextSliderMode(item);
         const modelIdentifier = getModelContextIdentifier(context.data?.model);
         const contextWindowMetrics = getContextWindowMetrics(context.data);
-        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
+        const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize, context.env);
         const format = resolveNumberFormat('percent', item, settings);
 
         const formatContextPercentage = (displayPercentage: number): string => {

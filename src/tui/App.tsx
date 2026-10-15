@@ -65,6 +65,11 @@ import {
     installPowerlineFonts,
     type PowerlineFontStatus
 } from '../utils/powerline';
+import {
+    buildPresetSettings,
+    getPreset,
+    type PresetName
+} from '../utils/presets';
 import { getPackageVersion } from '../utils/terminal';
 import {
     checkForUpdates,
@@ -88,13 +93,16 @@ import {
     MainMenu,
     ManageInstallationMenu,
     PowerlineSetup,
+    PresetMenu,
     RefreshIntervalMenu,
     StatusLinePreview,
     TerminalOptionsMenu,
     TerminalWidthMenu,
     UninstallMenu,
     UpdateCheckerMenu,
+    buildMainMenuItems,
     getMainMenuInstallSelectionIndex,
+    getMainMenuSelectionIndex,
     type InstallSelection,
     type MainMenuOption,
     type UninstallSelection,
@@ -104,6 +112,7 @@ import {
     List,
     type ListEntry
 } from './components/List';
+import { PowerlineThemeSelector } from './components/PowerlineThemeSelector';
 
 const GITHUB_REPO_URL = 'https://github.com/sirmalloc/ccstatusline';
 
@@ -117,11 +126,15 @@ type AppScreen = 'main'
     | 'items'
     | 'colorLines'
     | 'colors'
+    | 'theme'
+    | 'themeLines'
+    | 'lineTheme'
     | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'confirm'
     | 'powerline'
+    | 'presets'
     | 'install'
     | 'flowNotice'
     | 'manageInstallation'
@@ -138,6 +151,11 @@ export interface ConfirmDialogState {
     message: string;
     action: () => Promise<void>;
     cancelScreen?: Exclude<AppScreen, 'confirm'>;
+    /** Optional middle choice (e.g. "Keep existing" for a foreign statusLine). */
+    additionalAction?: {
+        label: string;
+        onSelect: () => Promise<void>;
+    };
 }
 
 interface FlowNoticeState {
@@ -476,13 +494,37 @@ export function buildInvalidConfigSaveConfirm(
     };
 }
 
-export const App: React.FC = () => {
+// Map per-line themes onto a new lines array. LineSelector's append/delete/
+// move copy only the outer array (inner line arrays keep their references),
+// so reference identity maps each line to its old theme; an appended line
+// (a fresh array) gets undefined (inherit).
+export function syncLineThemesWithLines(
+    oldLines: WidgetItem[][],
+    newLines: WidgetItem[][],
+    lineThemes: (string | null | undefined)[] | undefined
+): (string | undefined)[] {
+    const themes = lineThemes ?? [];
+    return newLines.map((line) => {
+        const oldIndex = oldLines.indexOf(line);
+        return oldIndex >= 0 ? themes[oldIndex] ?? undefined : undefined;
+    });
+}
+
+export interface AppProps {
+    /** settings.json was absent when the process started: start on the preset picker. */
+    firstRun?: boolean;
+}
+
+export const App: React.FC<AppProps> = ({ firstRun: firstRunProp = false }) => {
     const { exit } = useApp();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
     const [configLoadError, setConfigLoadError] = useState<string | null>(null);
-    const [screen, setScreen] = useState<AppScreen>('main');
+    // A first run (settings.json absent when the process started, detected in
+    // main() before defaults were materialized) starts on the preset picker.
+    const [firstRun] = useState(firstRunProp);
+    const [screen, setScreen] = useState<AppScreen>(firstRun ? 'presets' : 'main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [previewWidgets, setPreviewWidgets] = useState<WidgetItem[] | null>(null);
     const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
@@ -665,9 +707,36 @@ export const App: React.FC = () => {
                 message = `${message}\n\nContinue?`;
             }
 
+            const keepExistingAction = async () => {
+                try {
+                    await installStatusLine({
+                        commandMode: selection.commandMode,
+                        keepExisting: true
+                    });
+                    setScreen('main');
+                    setFlashMessage({
+                        text: '✓ Kept existing status line',
+                        color: 'green'
+                    });
+                } catch {
+                    setFlashMessage({
+                        text: '✗ Install failed',
+                        color: 'red'
+                    });
+                    setScreen('install');
+                }
+                setConfirmDialog(null);
+            };
+
             setConfirmDialog({
                 message,
                 cancelScreen: 'install',
+                additionalAction: existing && !isAlreadyInstalled
+                    ? {
+                        label: 'Keep existing',
+                        onSelect: keepExistingAction
+                    }
+                    : undefined,
                 action: async () => {
                     try {
                         if (selection.globalInstallCommand) {
@@ -877,6 +946,13 @@ export const App: React.FC = () => {
         ? inspectActiveGlobalCommand({ commandAvailability })
         : null;
     const effectiveInstallation = getPathInferredInstallation(currentInstallation, activeGlobalCommand);
+    // Menu "back" targets resolve the main-menu index from the option itself:
+    // buildMainMenuItems is conditional (theme entry hidden under powerline,
+    // save/exit appended when changed), so hardcoded positions have drifted.
+    const mainMenuIndex = (option: MainMenuOption): number => getMainMenuSelectionIndex(
+        buildMainMenuItems(isClaudeInstalled, false, effectiveInstallation, settings.powerline.enabled),
+        option
+    );
     const pinnedVersionMismatch = effectiveInstallation.method === 'pinned'
         && effectiveInstallation.packageManager !== 'unknown'
         ? getPinnedVersionMismatch(
@@ -1036,6 +1112,12 @@ export const App: React.FC = () => {
             case 'colors':
                 setScreen('colorLines');
                 break;
+            case 'theme':
+                setScreen('theme');
+                break;
+            case 'lineThemes':
+                setScreen('themeLines');
+                break;
             case 'terminalConfig':
                 setScreen('terminalConfig');
                 break;
@@ -1044,6 +1126,9 @@ export const App: React.FC = () => {
                 break;
             case 'powerline':
                 setScreen('powerline');
+                break;
+            case 'presets':
+                setScreen('presets');
                 break;
             case 'install':
                 handleInstallUninstall();
@@ -1162,7 +1247,11 @@ export const App: React.FC = () => {
     };
 
     const updateLines = (newLines: WidgetItem[][]) => {
-        setSettings({ ...settings, lines: newLines });
+        setSettings({
+            ...settings,
+            lines: newLines,
+            lineThemes: syncLineThemesWithLines(settings.lines, newLines, settings.lineThemes)
+        });
     };
 
     const handleLineSelect = (lineIndex: number) => {
@@ -1236,9 +1325,8 @@ export const App: React.FC = () => {
                         }}
                         onLinesUpdate={updateLines}
                         onBack={() => {
-                            // Save that we came from 'lines' menu (index 0)
                             // Clear the line selection so it resets next time we enter
-                            setMenuSelections(prev => ({ ...prev, main: 0 }));
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('lines') }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -1270,8 +1358,7 @@ export const App: React.FC = () => {
                             setScreen('colors');
                         }}
                         onBack={() => {
-                            // Save that we came from 'colors' menu (index 1)
-                            setMenuSelections(prev => ({ ...prev, main: 1 }));
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('colors') }));
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
@@ -1298,6 +1385,37 @@ export const App: React.FC = () => {
                         }}
                     />
                 )}
+                {screen === 'themeLines' && (
+                    <LineSelector
+                        lines={settings.lines}
+                        onLinesUpdate={updateLines}
+                        onSelect={(line) => {
+                            setMenuSelections(prev => ({ ...prev, lines: line }));
+                            setSelectedLine(line);
+                            setScreen('lineTheme');
+                        }}
+                        onBack={() => {
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('lineThemes') }));
+                            setScreen('main');
+                        }}
+                        initialSelection={menuSelections.lines}
+                        title='Select Line to Edit Theme'
+                        settings={settings}
+                        allowEditing={true}
+                    />
+                )}
+                {screen === 'lineTheme' && (
+                    <PowerlineThemeSelector
+                        key={`lineTheme-${selectedLine}`}
+                        mode={settings.powerline.enabled ? 'powerline' : 'regular'}
+                        lineIndex={selectedLine}
+                        settings={settings}
+                        onUpdate={setSettings}
+                        onBack={() => {
+                            setScreen('themeLines');
+                        }}
+                    />
+                )}
                 {screen === 'terminalConfig' && (
                     <TerminalOptionsMenu
                         settings={settings}
@@ -1308,8 +1426,7 @@ export const App: React.FC = () => {
                             if (target === 'width') {
                                 setScreen('terminalWidth');
                             } else {
-                                // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections(prev => ({ ...prev, main: 3 }));
+                                setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('terminalConfig') }));
                                 setScreen('main');
                             }
                         }}
@@ -1333,8 +1450,7 @@ export const App: React.FC = () => {
                             setSettings(updatedSettings);
                         }}
                         onBack={() => {
-                            // Save that we came from 'globalOverrides' menu (index 4)
-                            setMenuSelections(prev => ({ ...prev, main: 4 }));
+                            setMenuSelections(prev => ({ ...prev, main: mainMenuIndex('globalOverrides') }));
                             setScreen('main');
                         }}
                     />
@@ -1342,6 +1458,12 @@ export const App: React.FC = () => {
                 {screen === 'confirm' && confirmDialog && (
                     <ConfirmDialog
                         message={confirmDialog.message}
+                        additionalAction={confirmDialog.additionalAction
+                            ? {
+                                label: confirmDialog.additionalAction.label,
+                                onSelect: () => void confirmDialog.additionalAction?.onSelect()
+                            }
+                            : undefined}
                         busy={actionInFlight}
                         onConfirm={() => {
                             runActionOnce(confirmDialog.action);
@@ -1476,6 +1598,18 @@ export const App: React.FC = () => {
                         }}
                     />
                 )}
+                {screen === 'theme' && (
+                    <PowerlineThemeSelector
+                        mode='regular'
+                        settings={settings}
+                        onUpdate={(updatedSettings) => {
+                            setSettings(updatedSettings);
+                        }}
+                        onBack={() => {
+                            setScreen('main');
+                        }}
+                    />
+                )}
                 {screen === 'powerline' && (
                     <PowerlineSetup
                         settings={settings}
@@ -1532,13 +1666,30 @@ export const App: React.FC = () => {
                         }}
                     />
                 )}
+
+                {screen === 'presets' && (
+                    <PresetMenu
+                        firstRun={firstRun}
+                        onApply={(name: PresetName) => {
+                            const preset = getPreset(name);
+                            if (!preset) {
+                                return;
+                            }
+                            setSettings(applyTuiImport(settings, buildPresetSettings(preset), 'replace', ['version', 'lines']));
+                            setHasChanges(true);
+                            setFlashMessage({ text: `Preset '${name}' applied — pick 💾 Save & Exit to keep it`, color: 'green' });
+                            setScreen('main');
+                        }}
+                        onSkip={() => { setScreen('main'); }}
+                    />
+                )}
             </Box>
         </Box>
     );
 };
 
-export function runTUI() {
+export function runTUI(firstRun = false) {
     // Clear the terminal before starting the TUI
     process.stdout.write('\x1b[2J\x1b[H');
-    render(<App />);
+    render(<App firstRun={firstRun} />);
 }

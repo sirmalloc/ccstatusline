@@ -1,9 +1,15 @@
-import { execFileSync } from 'node:child_process';
+import type { ExecFileOptionsWithStringEncoding } from 'node:child_process';
+import {
+    execFile,
+    execFileSync
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { promisify } from 'util';
 
+import { capMap } from '../daemon/provider-scope';
 import type { RenderContext } from '../types/RenderContext';
 
 import { resolveExecutable } from './executable-path';
@@ -13,6 +19,13 @@ import {
     parseFilterConfig,
     type FilterConfigEntry
 } from './git-hardening';
+
+// Promise-based execFile with string decoding (see usage-fetch.ts for the shape).
+const execFileAsync = promisify(execFile) as (
+    file: string,
+    args: readonly string[],
+    options: ExecFileOptionsWithStringEncoding
+) => Promise<{ stdout: string; stderr: string }>;
 
 export interface GitChangeCounts {
     insertions: number;
@@ -52,6 +65,10 @@ const GIT_CACHE_SCHEMA_VERSION = 1 as const;
 // must not freeze the statusline process - the error path below caches null
 // and the widget renders empty instead.
 const GIT_COMMAND_TIMEOUT_MS = 5_000;
+// Async capture bound: status/porcelain output on a pathological repo. The
+// sync path caps at spawnSync's 1 MiB default; this is deliberately larger so
+// the async prefetch does not turn a big-but-valid listing into a cache miss.
+const GIT_ASYNC_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
 // In-process cache keeps cwd in the key; the persistent cache uses one file
 // per (repo, cwd) pair, stores cwd once at the file level and keys entries by
@@ -59,6 +76,25 @@ const GIT_COMMAND_TIMEOUT_MS = 5_000;
 // `ls-files --unmerged`) and because sessions in the same repo at different
 // cwds (root vs a subdirectory) would otherwise evict each other every render.
 const gitCommandCache = new Map<string, GitCacheEntry>();
+// Same cap as the daemon provider caches (#18): a long-lived process could
+// otherwise accumulate one entry per (command, cwd) pair forever.
+const GIT_CACHE_MAX_ENTRIES = 256;
+// Commands each cwd actually executed, for the daemon prefetch (#18): it can
+// only warm cache keys it knows about, so every sync execution records its
+// args here and later renders prefetch them asynchronously. Bounded per cwd.
+const executedGitCommands = new Map<string, Map<string, string[]>>();
+
+function recordExecutedGitCommand(cwd: string, cacheToken: string, args: string[]): void {
+    let perCwd = executedGitCommands.get(cwd);
+    if (!perCwd) {
+        perCwd = new Map<string, string[]>();
+        executedGitCommands.set(cwd, perCwd);
+    }
+    perCwd.set(cacheToken, args);
+    capMap(perCwd, 64);
+    capMap(executedGitCommands, 32);
+}
+
 const filterOverrideCache = new Map<string, string[] | null>();
 
 // Commands that re-read work tree files, and so can run filter drivers, with the
@@ -187,17 +223,19 @@ function mayDefineFilters(gitDir: string): boolean {
     return /filter|include/i.test(configText);
 }
 
-function gitExecOptions(cwd: string | undefined) {
+function gitExecOptions(cwd: string | undefined, env?: NodeJS.ProcessEnv) {
     // --no-optional-locks (or GIT_OPTIONAL_LOCKS=0) prevents read-only commands
     // (diff, status, rev-list, ...) from racing on .git/index.lock when another
     // git process is writing it.
     // We use the environment variable instead of the CLI flag because older Git
     // versions (like 2.10.1) fail with "Unknown option: --no-optional-locks".
     // See https://git-scm.com/docs/git#Documentation/git.txt---no-optional-locks
+    // The env snapshot comes from the render context so the daemon serves
+    // concurrent requests without swapping process.env (#18).
     return {
         encoding: 'utf8' as const,
         stdio: ['pipe', 'pipe', 'ignore'] as ['pipe', 'pipe', 'ignore'],
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+        env: { ...(env ?? process.env), GIT_OPTIONAL_LOCKS: '0' },
         timeout: GIT_COMMAND_TIMEOUT_MS,
         windowsHide: true,
         ...(cwd ? { cwd } : {})
@@ -205,33 +243,33 @@ function gitExecOptions(cwd: string | undefined) {
 }
 
 // '' when nothing matches; null when git couldn't read the config
-function readFilterConfig(args: string[], cwd: string | undefined): string | null {
+function readFilterConfig(args: string[], cwd: string | undefined, env?: NodeJS.ProcessEnv): string | null {
     try {
-        return execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, 'config', ...args, '-z', '--get-regexp', '^filter\\.'], gitExecOptions(cwd));
+        return execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, 'config', ...args, '-z', '--get-regexp', '^filter\\.'], gitExecOptions(cwd, env));
     } catch (error) {
         return (error as { status?: unknown }).status === GIT_CONFIG_NO_MATCH_STATUS ? '' : null;
     }
 }
 
-function readRepositoryFilterConfig(cwd: string | undefined): FilterConfigEntry[] | null {
-    const scoped = readFilterConfig(['--includes', '--show-scope'], cwd);
+function readRepositoryFilterConfig(cwd: string | undefined, env?: NodeJS.ProcessEnv): FilterConfigEntry[] | null {
+    const scoped = readFilterConfig(['--includes', '--show-scope'], cwd, env);
     if (scoped !== null) {
         return parseFilterConfig(scoped, true);
     }
 
     // git before 2.26 has no --show-scope: read the repository's own files
     // instead. --worktree is newer still; without it, --local covers them.
-    const local = readFilterConfig(['--local', '--includes'], cwd);
+    const local = readFilterConfig(['--local', '--includes'], cwd, env);
     if (local === null) {
         return null;
     }
-    const worktree = readFilterConfig(['--worktree', '--includes'], cwd) ?? '';
+    const worktree = readFilterConfig(['--worktree', '--includes'], cwd, env) ?? '';
     return [...parseFilterConfig(local, false), ...parseFilterConfig(worktree, false)];
 }
 
 // The -c arguments that turn off the repository's own filter drivers for
 // commands that re-read the work tree; null when that isn't possible
-function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | null {
+function getRepositoryFilterOverrideArgs(cwd: string | undefined, env?: NodeJS.ProcessEnv): string[] | null {
     const cacheKey = cwd ?? '';
     const cached = filterOverrideCache.get(cacheKey);
     if (cached !== undefined || filterOverrideCache.has(cacheKey)) {
@@ -244,7 +282,7 @@ function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | nu
     const gitDir = discoverGitDir(startDir);
     let overrides: string[] | null = [];
     if (gitDir && mayDefineFilters(gitDir)) {
-        const entries = readRepositoryFilterConfig(cwd);
+        const entries = readRepositoryFilterConfig(cwd, env);
         overrides = entries === null
             ? null
             : getFilterOverrideArgs(entries, findWorkTreeRoot(startDir) ?? startDir);
@@ -260,10 +298,10 @@ function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | nu
  * files, none of the repository's own filter drivers or external diff tools.
  * Throws when git fails, or when the repository's filters can't be turned off.
  */
-export function execGit(args: string[], cwd: string | undefined): string {
+export function execGit(args: string[], cwd: string | undefined, env?: NodeJS.ProcessEnv): string {
     const [subcommand = '', ...rest] = args;
     const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
-    const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd) : [];
+    const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd, env) : [];
     if (filterArgs === null) {
         throw new Error('The repository\'s filter drivers could not be turned off');
     }
@@ -271,7 +309,7 @@ export function execGit(args: string[], cwd: string | undefined): string {
     return execFileSync(
         resolveExecutable('git'),
         [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
-        gitExecOptions(cwd)
+        gitExecOptions(cwd, env)
     );
 }
 
@@ -542,19 +580,100 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
     }
 
     try {
-        const output = execGit(args, cwd).trimEnd();
+        // Hardening, filter overrides and the env snapshot (daemon #18) all
+        // live in execGit; GIT_OPTIONAL_LOCKS is applied inside it too.
+        const output = execGit(args, cwd, context.env).trimEnd();
 
         const result = output.length > 0 ? output : null;
         const entry = createCacheEntry(result, metadata, now);
         gitCommandCache.set(memoryCacheKey, entry);
+        capMap(gitCommandCache, GIT_CACHE_MAX_ENTRIES);
+        if (cwd) {
+            recordExecutedGitCommand(cwd, cacheToken, args);
+        }
         writePersistentCacheEntry(metadata, persistentCacheKey, cwd, entry);
         return result;
     } catch {
         const entry = createCacheEntry(null, metadata, now);
         gitCommandCache.set(memoryCacheKey, entry);
+        capMap(gitCommandCache, GIT_CACHE_MAX_ENTRIES);
         writePersistentCacheEntry(metadata, persistentCacheKey, cwd, entry);
         return null;
     }
+}
+
+/**
+ * Async twin of runGitArgs for the daemon prefetch (#18): same cache keys, same
+ * TTL and mtime invalidation, same persistent cache — the only difference is a
+ * non-blocking child process (and that failures resolve to null instead of
+ * throwing into the sync render path). Warms the shared in-memory cache the
+ * sync formatter reads, so the serialized formatting section never spawns.
+ */
+export async function runGitArgsAsync(args: string[], context: RenderContext, cacheCommand?: string): Promise<string | null> {
+    const cwd = resolveGitCwd(context);
+    const cacheToken = cacheCommand ?? args.join('\0');
+    const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
+    const metadata = getGitRepoMetadata(cwd);
+    const ttlMs = getGitCacheTtlMs(context);
+    const now = Date.now();
+
+    const memoryEntry = gitCommandCache.get(memoryCacheKey);
+    if (memoryEntry && isCacheEntryFresh(memoryEntry, metadata, ttlMs, now)) {
+        return memoryEntry.output;
+    }
+
+    const persistentEntry = readPersistentCacheEntry(metadata, cacheToken, cwd, ttlMs, now);
+    if (persistentEntry) {
+        gitCommandCache.set(memoryCacheKey, persistentEntry);
+        return persistentEntry.output;
+    }
+
+    try {
+        // Same hardening as the sync path (execGit): fsmonitor off, no bare
+        // repository discovery, no repository filter drivers. The async twin
+        // only differs in buffering and the non-blocking runtime.
+        const [subcommand = '', ...rest] = args;
+        const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
+        const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd, context.env) : [];
+        if (filterArgs === null) {
+            throw new Error('The repository\'s filter drivers could not be turned off');
+        }
+        const execOptions: ExecFileOptionsWithStringEncoding = {
+            encoding: 'utf8',
+            maxBuffer: GIT_ASYNC_MAX_BUFFER_BYTES,
+            env: { ...(context.env ?? process.env), GIT_OPTIONAL_LOCKS: '0' },
+            timeout: GIT_COMMAND_TIMEOUT_MS,
+            killSignal: 'SIGKILL',
+            windowsHide: true,
+            ...(cwd ? { cwd } : {})
+        };
+        const output = (await execFileAsync(
+            resolveExecutable('git'),
+            [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
+            execOptions
+        )).stdout.trimEnd();
+
+        const result = output.length > 0 ? output : null;
+        const entry = createCacheEntry(result, metadata, Date.now());
+        gitCommandCache.set(memoryCacheKey, entry);
+        capMap(gitCommandCache, GIT_CACHE_MAX_ENTRIES);
+        if (cwd) {
+            recordExecutedGitCommand(cwd, cacheToken, args);
+        }
+        writePersistentCacheEntry(metadata, cacheToken, cwd, entry);
+        return result;
+    } catch {
+        const entry = createCacheEntry(null, metadata, Date.now());
+        gitCommandCache.set(memoryCacheKey, entry);
+        capMap(gitCommandCache, GIT_CACHE_MAX_ENTRIES);
+        writePersistentCacheEntry(metadata, cacheToken, cwd, entry);
+        return null;
+    }
+}
+
+/** Commands previously executed for `cwd`, for the daemon prefetch (#18). */
+export function getExecutedGitCommands(cwd: string): string[][] {
+    return [...(executedGitCommands.get(cwd)?.values() ?? [])];
 }
 
 /**
@@ -562,6 +681,7 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
  */
 export function clearGitCache(): void {
     gitCommandCache.clear();
+    executedGitCommands.clear();
     filterOverrideCache.clear();
 }
 

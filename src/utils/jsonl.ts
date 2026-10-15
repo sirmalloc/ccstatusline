@@ -1,6 +1,7 @@
 export {
     getBlockCachePath,
     getCachedBlockMetrics,
+    getCachedBlockMetricsAsync,
     readBlockCache,
     writeBlockCache
 } from './jsonl-cache';

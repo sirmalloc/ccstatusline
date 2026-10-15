@@ -28,6 +28,7 @@ import {
     isNerdFontEnabled,
     toggleMetadataFlag
 } from './shared/metadata';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -130,7 +131,7 @@ function formatTriggerSuffix(byTrigger: CompactionData['byTrigger']): string {
 }
 
 function formatStats(data: CompactionData, item: WidgetItem, icon: string, format: NumberFormat): string {
-    let out = formatCount(data.count, getFormat(item, FORMAT_OPTIONS), icon);
+    let out = formatCount(data.count, getFormat(item, FORMAT_OPTIONS), item, icon);
     if (isMetadataFlagEnabled(item, SHOW_TRIGGERS_METADATA_KEY)) {
         out += formatTriggerSuffix(data.byTrigger);
     }
@@ -140,10 +141,10 @@ function formatStats(data: CompactionData, item: WidgetItem, icon: string, forma
     return out;
 }
 
-function formatCount(count: number, format: CompactionCounterFormat, icon: string): string {
+function formatCount(count: number, format: CompactionCounterFormat, item: WidgetItem, icon: string): string {
     switch (format) {
-        case 'icon-space-number': return `${icon} ${count}`;
-        case 'text-and-number': return `Compactions: ${count}`;
+        case 'icon-space-number': return `${icon}${count}`;
+        case 'text-and-number': return formatRawOrLabeledValue(item, 'Compactions: ', String(count));
         case 'number': return String(count);
     }
 }
@@ -155,7 +156,7 @@ function formatCount(count: number, format: CompactionCounterFormat, icon: strin
  * approaches the context window limit. This widget tracks how many times
  * compaction has occurred by counting compact_boundary markers in the transcript.
  *
- * Shows ↻ N by default, including ↻ 0 before compaction occurs. Can be
+ * Shows ↻N by default, including ↻0 before compaction occurs. Can be
  * configured to hide when count is 0. A `metric` selector switches it to emit a
  * single raw value (count, auto, manual, unknown, or reclaimed) so several
  * instances can be composed into a custom layout.

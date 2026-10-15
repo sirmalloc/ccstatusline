@@ -1,0 +1,1390 @@
+{
+  "meta": {
+    "runtime": "node",
+    "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+    "ccsl_fork": true,
+    "machine": {
+      "cpu_model": "Apple M5",
+      "cpu_count": 10,
+      "os": "macOS-26.6.2-arm64-arm-64bit",
+      "python": "3.12.10"
+    },
+    "generated": "2026-09-30T10:57:23+0800",
+    "loadavg_start": 5.5,
+    "loadavg_end": 9.48,
+    "max_load_gate": 14.0,
+    "notes": [
+      "Measured numbers only; no extrapolation.",
+      "Shared-mode aggregate CPU covers the daemon AND every client process (sh + curl): both are reaped children of the scenario interpreter, accounted via getrusage(RUSAGE_CHILDREN).",
+      "Cold shared mode includes booting the daemon (no process, cold caches) inside the measured window.",
+      "Idle-timer refreshes are not modeled as a separate phase; warm runs measure steady back-to-back repaint waves, and the daemon idle sweep runs only after 5 quiet minutes.",
+      "Slow-command scenario: one custom-command widget sleeping 400ms per render, cache TTL 0.",
+      "Recovery scenario: SIGKILL of the daemon (no cleanup), a full client wave against the dead daemon must fail with rc!=0 and empty stdout (never a partial line), then the daemon is restarted and every session re-rendered with byte-identical output.",
+      "Aggregate RSS is sampled via ps over live process trees (~25ms cadence); short-lived children can be missed, so it undercounts.",
+      "Runs were rejected/waited while system loadavg1 exceeded 14.0 (gate recorded above); concurrent sibling sessions still add noise."
+    ]
+  },
+  "runs": [
+    {
+      "label": "s1-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 1,
+      "mode": "cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 1,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.1438,
+      "cpu_sys_s": 0.0318,
+      "cpu_total_s": 0.1756,
+      "cpu_per_render_ms": 175.63,
+      "cpu_s_per_wall_minute": 61.647,
+      "renders_per_wall_minute": 351.0,
+      "wall_s": 0.171,
+      "peak_rss_kb": 78992,
+      "rss_sampling": {
+        "samples": 3,
+        "distinct_pids": 1,
+        "aggregate_mean_kb": 66224,
+        "aggregate_max_kb": 78192
+      },
+      "latency_ms": {
+        "n": 1,
+        "mean": 168.76,
+        "p50": 168.76,
+        "p95": 168.76,
+        "p99": 168.76
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s1-cold-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 5.5,
+      "loadavg_end": 5.5,
+      "timestamp": "2026-09-30T10:51:51+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s1-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 1,
+      "mode": "warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 6,
+      "warmup_renders": 2,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.6355,
+      "cpu_sys_s": 0.0729,
+      "cpu_total_s": 0.7083,
+      "cpu_per_render_ms": 118.056,
+      "cpu_s_per_wall_minute": 67.174,
+      "renders_per_wall_minute": 569.0,
+      "wall_s": 0.633,
+      "peak_rss_kb": 78912,
+      "rss_sampling": {
+        "samples": 15,
+        "distinct_pids": 6,
+        "aggregate_mean_kb": 48017.1,
+        "aggregate_max_kb": 76112
+      },
+      "latency_ms": {
+        "n": 6,
+        "mean": 105.38,
+        "p50": 105.72,
+        "p95": 107.64,
+        "p99": 107.64
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s1-warm-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 5.5,
+      "loadavg_end": 5.5,
+      "timestamp": "2026-09-30T10:51:52+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s1-shared-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 1,
+      "mode": "shared-cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 1,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.0099,
+      "cpu_sys_s": 0.0154,
+      "cpu_total_s": 0.0254,
+      "cpu_per_render_ms": 25.377,
+      "cpu_s_per_wall_minute": 6.582,
+      "renders_per_wall_minute": 259.4,
+      "wall_s": 0.231,
+      "peak_rss_kb": 5104,
+      "rss_sampling": {
+        "samples": 5,
+        "distinct_pids": 6,
+        "aggregate_mean_kb": 80076.8,
+        "aggregate_max_kb": 95728
+      },
+      "latency_ms": {
+        "n": 1,
+        "mean": 54.79,
+        "p50": 54.79,
+        "p95": 54.79,
+        "p99": 54.79
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "",
+      "loadavg_start": 5.5,
+      "loadavg_end": 5.5,
+      "timestamp": "2026-09-30T10:51:53+0800",
+      "daemon": {
+        "counters": {
+          "requests": 3,
+          "ok": 3
+        },
+        "uptime_s": 0,
+        "last_render_ms": 24,
+        "active_renders": 0,
+        "startup_ms": 173.8
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s1-shared-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 1,
+      "mode": "shared-warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 6,
+      "warmup_renders": 2,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.0409,
+      "cpu_sys_s": 0.0606,
+      "cpu_total_s": 0.1016,
+      "cpu_per_render_ms": 16.93,
+      "cpu_s_per_wall_minute": 40.546,
+      "renders_per_wall_minute": 2395.0,
+      "wall_s": 0.15,
+      "peak_rss_kb": 5040,
+      "rss_sampling": {
+        "samples": 3,
+        "distinct_pids": 11,
+        "aggregate_mean_kb": 97184,
+        "aggregate_max_kb": 101584
+      },
+      "latency_ms": {
+        "n": 6,
+        "mean": 25.0,
+        "p50": 24.52,
+        "p95": 26.74,
+        "p99": 26.74
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "",
+      "loadavg_start": 5.5,
+      "loadavg_end": 5.5,
+      "timestamp": "2026-09-30T10:51:53+0800",
+      "daemon": {
+        "counters": {
+          "requests": 10,
+          "ok": 10
+        },
+        "uptime_s": 0,
+        "last_render_ms": 1,
+        "active_renders": 0,
+        "startup_ms": 122.1
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s10-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 10,
+      "mode": "cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 10,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 1.5469,
+      "cpu_sys_s": 0.2478,
+      "cpu_total_s": 1.7948,
+      "cpu_per_render_ms": 179.475,
+      "cpu_s_per_wall_minute": 333.198,
+      "renders_per_wall_minute": 1856.5,
+      "wall_s": 0.323,
+      "peak_rss_kb": 79392,
+      "rss_sampling": {
+        "samples": 4,
+        "distinct_pids": 12,
+        "aggregate_mean_kb": 545248,
+        "aggregate_max_kb": 758688
+      },
+      "latency_ms": {
+        "n": 10,
+        "mean": 306.3,
+        "p50": 303.36,
+        "p95": 315.93,
+        "p99": 315.93
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s10-cold-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 5.5,
+      "loadavg_end": 5.5,
+      "timestamp": "2026-09-30T10:51:53+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s10-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 10,
+      "mode": "warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 60,
+      "warmup_renders": 20,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 9.0539,
+      "cpu_sys_s": 1.1517,
+      "cpu_total_s": 10.2056,
+      "cpu_per_render_ms": 170.093,
+      "cpu_s_per_wall_minute": 355.471,
+      "renders_per_wall_minute": 2089.9,
+      "wall_s": 1.723,
+      "peak_rss_kb": 80144,
+      "rss_sampling": {
+        "samples": 28,
+        "distinct_pids": 60,
+        "aggregate_mean_kb": 502230.3,
+        "aggregate_max_kb": 722384
+      },
+      "latency_ms": {
+        "n": 60,
+        "mean": 270.98,
+        "p50": 256.02,
+        "p95": 369.35,
+        "p99": 524.54
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s10-warm-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 5.5,
+      "loadavg_end": 11.31,
+      "timestamp": "2026-09-30T10:51:56+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s10-shared-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 10,
+      "mode": "shared-cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 10,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.1085,
+      "cpu_sys_s": 0.1976,
+      "cpu_total_s": 0.3061,
+      "cpu_per_render_ms": 30.612,
+      "cpu_s_per_wall_minute": 59.12,
+      "renders_per_wall_minute": 1931.3,
+      "wall_s": 0.311,
+      "peak_rss_kb": 5072,
+      "rss_sampling": {
+        "samples": 7,
+        "distinct_pids": 40,
+        "aggregate_mean_kb": 100841.1,
+        "aggregate_max_kb": 173104
+      },
+      "latency_ms": {
+        "n": 10,
+        "mean": 106.96,
+        "p50": 120.54,
+        "p95": 129.49,
+        "p99": 129.49
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 11.31,
+      "loadavg_end": 11.31,
+      "timestamp": "2026-09-30T10:51:56+0800",
+      "daemon": {
+        "counters": {
+          "requests": 18,
+          "ok": 12,
+          "busy": 6
+        },
+        "uptime_s": 0,
+        "last_render_ms": 4,
+        "active_renders": 0,
+        "startup_ms": 174.4
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s10-shared-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 10,
+      "mode": "shared-warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 60,
+      "warmup_renders": 20,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.5424,
+      "cpu_sys_s": 1.0908,
+      "cpu_total_s": 1.6332,
+      "cpu_per_render_ms": 27.22,
+      "cpu_s_per_wall_minute": 149.85,
+      "renders_per_wall_minute": 5505.1,
+      "wall_s": 0.654,
+      "peak_rss_kb": 5088,
+      "rss_sampling": {
+        "samples": 9,
+        "distinct_pids": 154,
+        "aggregate_mean_kb": 149544.9,
+        "aggregate_max_kb": 183488
+      },
+      "latency_ms": {
+        "n": 60,
+        "mean": 101.5,
+        "p50": 99.99,
+        "p95": 179.47,
+        "p99": 199.07
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 11.31,
+      "loadavg_end": 11.31,
+      "timestamp": "2026-09-30T10:51:57+0800",
+      "daemon": {
+        "counters": {
+          "requests": 92,
+          "ok": 82,
+          "busy": 10
+        },
+        "uptime_s": 0,
+        "last_render_ms": 1,
+        "active_renders": 0,
+        "startup_ms": 170.0
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s36-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 36,
+      "mode": "cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 36,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 5.716,
+      "cpu_sys_s": 0.9272,
+      "cpu_total_s": 6.6432,
+      "cpu_per_render_ms": 184.534,
+      "cpu_s_per_wall_minute": 350.976,
+      "renders_per_wall_minute": 1902.0,
+      "wall_s": 1.136,
+      "peak_rss_kb": 77200,
+      "rss_sampling": {
+        "samples": 15,
+        "distinct_pids": 49,
+        "aggregate_mean_kb": 1968884.3,
+        "aggregate_max_kb": 2565760
+      },
+      "latency_ms": {
+        "n": 36,
+        "mean": 992.87,
+        "p50": 986.18,
+        "p95": 1103.96,
+        "p99": 1106.16
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s36-cold-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 11.31,
+      "loadavg_end": 11.31,
+      "timestamp": "2026-09-30T10:51:59+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s36-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 36,
+      "mode": "warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 216,
+      "warmup_renders": 72,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 34.0359,
+      "cpu_sys_s": 4.8429,
+      "cpu_total_s": 38.8789,
+      "cpu_per_render_ms": 179.995,
+      "cpu_s_per_wall_minute": 372.811,
+      "renders_per_wall_minute": 2071.2,
+      "wall_s": 6.257,
+      "peak_rss_kb": 80688,
+      "rss_sampling": {
+        "samples": 105,
+        "distinct_pids": 235,
+        "aggregate_mean_kb": 2043323.0,
+        "aggregate_max_kb": 2409280
+      },
+      "latency_ms": {
+        "n": 216,
+        "mean": 988.81,
+        "p50": 1007.73,
+        "p95": 1346.83,
+        "p99": 1448.1
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s36-warm-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 13.86,
+      "loadavg_end": 17.39,
+      "timestamp": "2026-09-30T10:52:17+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s36-shared-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 36,
+      "mode": "shared-cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 36,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.5065,
+      "cpu_sys_s": 0.9113,
+      "cpu_total_s": 1.4178,
+      "cpu_per_render_ms": 39.383,
+      "cpu_s_per_wall_minute": 146.92,
+      "renders_per_wall_minute": 3730.5,
+      "wall_s": 0.579,
+      "peak_rss_kb": 5088,
+      "rss_sampling": {
+        "samples": 10,
+        "distinct_pids": 207,
+        "aggregate_mean_kb": 157476.8,
+        "aggregate_max_kb": 304448
+      },
+      "latency_ms": {
+        "n": 36,
+        "mean": 265.1,
+        "p50": 268.14,
+        "p95": 335.71,
+        "p99": 404.66
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 13.1,
+      "loadavg_end": 13.1,
+      "timestamp": "2026-09-30T10:52:38+0800",
+      "daemon": {
+        "counters": {
+          "requests": 79,
+          "ok": 38,
+          "busy": 41
+        },
+        "uptime_s": 0,
+        "last_render_ms": 2,
+        "active_renders": 0,
+        "startup_ms": 171.5
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s36-shared-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 36,
+      "mode": "shared-warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 216,
+      "warmup_renders": 72,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 2.6353,
+      "cpu_sys_s": 4.8686,
+      "cpu_total_s": 7.5039,
+      "cpu_per_render_ms": 34.74,
+      "cpu_s_per_wall_minute": 247.352,
+      "renders_per_wall_minute": 7120.1,
+      "wall_s": 1.82,
+      "peak_rss_kb": 5088,
+      "rss_sampling": {
+        "samples": 29,
+        "distinct_pids": 1155,
+        "aggregate_mean_kb": 289064.3,
+        "aggregate_max_kb": 398064
+      },
+      "latency_ms": {
+        "n": 216,
+        "mean": 254.73,
+        "p50": 229.21,
+        "p95": 682.07,
+        "p99": 845.38
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 13.1,
+      "loadavg_end": 14.22,
+      "timestamp": "2026-09-30T10:52:41+0800",
+      "daemon": {
+        "counters": {
+          "requests": 518,
+          "ok": 290,
+          "busy": 228
+        },
+        "uptime_s": 2,
+        "last_render_ms": 1,
+        "active_renders": 0,
+        "startup_ms": 122.8
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 50,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 7.9679,
+      "cpu_sys_s": 1.1645,
+      "cpu_total_s": 9.1324,
+      "cpu_per_render_ms": 182.647,
+      "cpu_s_per_wall_minute": 380.071,
+      "renders_per_wall_minute": 2080.9,
+      "wall_s": 1.442,
+      "peak_rss_kb": 78960,
+      "rss_sampling": {
+        "samples": 19,
+        "distinct_pids": 51,
+        "aggregate_mean_kb": 2109877.9,
+        "aggregate_max_kb": 2849776
+      },
+      "latency_ms": {
+        "n": 50,
+        "mean": 1093.04,
+        "p50": 1091.7,
+        "p95": 1298.33,
+        "p99": 1327.7
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s50-cold-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 12.34,
+      "loadavg_end": 12.34,
+      "timestamp": "2026-09-30T10:52:52+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 300,
+      "warmup_renders": 100,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 47.1831,
+      "cpu_sys_s": 6.482,
+      "cpu_total_s": 53.6651,
+      "cpu_per_render_ms": 178.884,
+      "cpu_s_per_wall_minute": 429.075,
+      "renders_per_wall_minute": 2398.6,
+      "wall_s": 7.504,
+      "peak_rss_kb": 80624,
+      "rss_sampling": {
+        "samples": 122,
+        "distinct_pids": 320,
+        "aggregate_mean_kb": 2841244.5,
+        "aggregate_max_kb": 3546000
+      },
+      "latency_ms": {
+        "n": 300,
+        "mean": 1195.9,
+        "p50": 1218.47,
+        "p95": 1486.33,
+        "p99": 1586.27
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s50-warm-small/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 12.34,
+      "loadavg_end": 23.44,
+      "timestamp": "2026-09-30T10:53:02+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-shared-cold-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "shared-cold",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 50,
+      "warmup_renders": 0,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 0.6838,
+      "cpu_sys_s": 1.4002,
+      "cpu_total_s": 2.084,
+      "cpu_per_render_ms": 41.68,
+      "cpu_s_per_wall_minute": 163.71,
+      "renders_per_wall_minute": 3927.8,
+      "wall_s": 0.764,
+      "peak_rss_kb": 5088,
+      "rss_sampling": {
+        "samples": 14,
+        "distinct_pids": 339,
+        "aggregate_mean_kb": 203665.1,
+        "aggregate_max_kb": 455504
+      },
+      "latency_ms": {
+        "n": 50,
+        "mean": 319.87,
+        "p50": 288.46,
+        "p95": 515.01,
+        "p99": 523.16
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 13.35,
+      "loadavg_end": 13.35,
+      "timestamp": "2026-09-30T10:53:43+0800",
+      "daemon": {
+        "counters": {
+          "requests": 121,
+          "ok": 52,
+          "busy": 69
+        },
+        "uptime_s": 0,
+        "last_render_ms": 2,
+        "active_renders": 0,
+        "startup_ms": 172.0
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-shared-warm-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "shared-warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 300,
+      "warmup_renders": 100,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 3.8969,
+      "cpu_sys_s": 7.3584,
+      "cpu_total_s": 11.2553,
+      "cpu_per_render_ms": 37.518,
+      "cpu_s_per_wall_minute": 260.539,
+      "renders_per_wall_minute": 6944.5,
+      "wall_s": 2.592,
+      "peak_rss_kb": 5136,
+      "rss_sampling": {
+        "samples": 38,
+        "distinct_pids": 1770,
+        "aggregate_mean_kb": 354306.1,
+        "aggregate_max_kb": 568816
+      },
+      "latency_ms": {
+        "n": 300,
+        "mean": 339.09,
+        "p50": 279.78,
+        "p95": 784.97,
+        "p99": 1483.55
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 13.35,
+      "loadavg_end": 14.37,
+      "timestamp": "2026-09-30T10:53:47+0800",
+      "daemon": {
+        "counters": {
+          "requests": 825,
+          "ok": 402,
+          "busy": 423
+        },
+        "uptime_s": 3,
+        "last_render_ms": 0,
+        "active_renders": 0,
+        "startup_ms": 122.1
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-warm-large-large",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "warm",
+      "transcript": "large",
+      "transcript_bytes": 13009445,
+      "count_pass": false,
+      "renders": 300,
+      "warmup_renders": 100,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 56.8139,
+      "cpu_sys_s": 7.9098,
+      "cpu_total_s": 64.7237,
+      "cpu_per_render_ms": 215.746,
+      "cpu_s_per_wall_minute": 413.895,
+      "renders_per_wall_minute": 1918.4,
+      "wall_s": 9.383,
+      "peak_rss_kb": 105808,
+      "rss_sampling": {
+        "samples": 148,
+        "distinct_pids": 337,
+        "aggregate_mean_kb": 3133528.6,
+        "aggregate_max_kb": 4016640
+      },
+      "latency_ms": {
+        "n": 300,
+        "mean": 1515.44,
+        "p50": 1526.73,
+        "p95": 1872.9,
+        "p99": 2092.51
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "Default settings written to /private/tmp/ccsl-daemon-19/fixture-root/runs/s50-warm-large-large/home/.config/ccstatusline/settings.json\n",
+      "loadavg_start": 13.15,
+      "loadavg_end": 21.3,
+      "timestamp": "2026-09-30T10:54:30+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-shared-warm-large-large",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "shared-warm",
+      "transcript": "large",
+      "transcript_bytes": 13009445,
+      "count_pass": false,
+      "renders": 300,
+      "warmup_renders": 100,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 5.1517,
+      "cpu_sys_s": 8.8781,
+      "cpu_total_s": 14.0298,
+      "cpu_per_render_ms": 46.766,
+      "cpu_s_per_wall_minute": 159.901,
+      "renders_per_wall_minute": 3419.2,
+      "wall_s": 5.264,
+      "peak_rss_kb": 5136,
+      "rss_sampling": {
+        "samples": 107,
+        "distinct_pids": 2852,
+        "aggregate_mean_kb": 465416.4,
+        "aggregate_max_kb": 649488
+      },
+      "latency_ms": {
+        "n": 300,
+        "mean": 636.22,
+        "p50": 362.11,
+        "p95": 2272.7,
+        "p99": 3896.3
+      },
+      "output_hashes": [
+        "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 13.35,
+      "loadavg_end": 12.92,
+      "timestamp": "2026-09-30T10:55:08+0800",
+      "daemon": {
+        "counters": {
+          "requests": 1319,
+          "ok": 402,
+          "busy": 917
+        },
+        "uptime_s": 8,
+        "last_render_ms": 0,
+        "active_renders": 0,
+        "startup_ms": 126.9
+      },
+      "recovery": null,
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-warm-small-slow",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "warm",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 300,
+      "warmup_renders": 100,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": true,
+      "cpu_user_s": 64.0336,
+      "cpu_sys_s": 11.1176,
+      "cpu_total_s": 75.1512,
+      "cpu_per_render_ms": 250.504,
+      "cpu_s_per_wall_minute": 355.694,
+      "renders_per_wall_minute": 1419.9,
+      "wall_s": 12.677,
+      "peak_rss_kb": 80304,
+      "rss_sampling": {
+        "samples": 183,
+        "distinct_pids": 1200,
+        "aggregate_mean_kb": 3975054.0,
+        "aggregate_max_kb": 5892144
+      },
+      "latency_ms": {
+        "n": 300,
+        "mean": 2019.34,
+        "p50": 1969.11,
+        "p95": 2636.41,
+        "p99": 2755.31
+      },
+      "output_hashes": [
+        "21f5d64d08d8dc0b36a02ae985a311b9baf3658bcf9411cfa80013cedadff63b"
+      ],
+      "distinct_output_hashes": 1,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "",
+      "loadavg_start": 12.0,
+      "loadavg_end": 25.4,
+      "timestamp": "2026-09-30T10:55:56+0800",
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    },
+    {
+      "label": "s50-shared-warm-small-slow",
+      "mode": "shared-warm",
+      "kind": "shared",
+      "error": " for _ in range(n)]\n            ^^^^^^^^^^^^^^^^^^^\n  File \"/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/scripts/benchmark-render.py\", line 342, in once\n    raise RuntimeError('render failed rc=%s stderr=%s' % (p.returncode, p.stderr[:500]))\nRuntimeError: render failed rc=1 stderr=curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\ncurl: (22)"
+    },
+    {
+      "label": "s50-daemon-recovery-small",
+      "runtime": "node",
+      "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+      "sessions": 50,
+      "mode": "daemon-recovery",
+      "transcript": "small",
+      "transcript_bytes": 650195,
+      "count_pass": false,
+      "renders": 50,
+      "warmup_renders": 50,
+      "width_override": true,
+      "ccsl_fork": true,
+      "slow_config": false,
+      "cpu_user_s": 1.4176,
+      "cpu_sys_s": 1.493,
+      "cpu_total_s": 2.9105,
+      "cpu_per_render_ms": 58.211,
+      "cpu_s_per_wall_minute": 94.664,
+      "renders_per_wall_minute": 1626.2,
+      "wall_s": 1.845,
+      "peak_rss_kb": 148560,
+      "rss_sampling": {
+        "samples": 42,
+        "distinct_pids": 216,
+        "aggregate_mean_kb": 104335.2,
+        "aggregate_max_kb": 118736
+      },
+      "latency_ms": {
+        "n": 50,
+        "mean": 109.48,
+        "p50": 108.77,
+        "p95": 138.34,
+        "p99": 161.21
+      },
+      "output_hashes": [],
+      "distinct_output_hashes": 0,
+      "spawn_counts_measured": {},
+      "spawn_counts_per_render": {},
+      "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+      "loadavg_start": 9.48,
+      "loadavg_end": 9.48,
+      "timestamp": "2026-09-30T10:57:23+0800",
+      "daemon": {
+        "counters": {
+          "requests": 52,
+          "ok": 52
+        },
+        "uptime_s": 1,
+        "last_render_ms": 1,
+        "active_renders": 0,
+        "startup_ms": 171.5
+      },
+      "recovery": {
+        "clients_failed_on_dead_daemon": 50,
+        "clients_that_still_succeeded": 0,
+        "failed_clients_stdout_empty": true,
+        "restart_ready_ms": 135.5,
+        "reverified": 50,
+        "output_mismatches": []
+      },
+      "shims": {
+        "shims": [],
+        "counts_measured": {}
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "sessions": 1,
+      "workload": "small",
+      "phase": "cold",
+      "oneshot_label": "s1-cold-small",
+      "shared_label": "s1-shared-cold-small",
+      "oneshot_cpu_total_s": 0.1756,
+      "shared_cpu_total_s": 0.0254,
+      "oneshot_agg_rss_max_kb": 78192,
+      "shared_agg_rss_max_kb": 95728,
+      "oneshot_p95_ms": 168.76,
+      "shared_p95_ms": 54.79,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 85.5
+    },
+    {
+      "sessions": 1,
+      "workload": "small",
+      "phase": "warm",
+      "oneshot_label": "s1-warm-small",
+      "shared_label": "s1-shared-warm-small",
+      "oneshot_cpu_total_s": 0.7083,
+      "shared_cpu_total_s": 0.1016,
+      "oneshot_agg_rss_max_kb": 76112,
+      "shared_agg_rss_max_kb": 101584,
+      "oneshot_p95_ms": 107.64,
+      "shared_p95_ms": 26.74,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 85.7
+    },
+    {
+      "sessions": 10,
+      "workload": "small",
+      "phase": "cold",
+      "oneshot_label": "s10-cold-small",
+      "shared_label": "s10-shared-cold-small",
+      "oneshot_cpu_total_s": 1.7948,
+      "shared_cpu_total_s": 0.3061,
+      "oneshot_agg_rss_max_kb": 758688,
+      "shared_agg_rss_max_kb": 173104,
+      "oneshot_p95_ms": 315.93,
+      "shared_p95_ms": 129.49,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 82.9
+    },
+    {
+      "sessions": 10,
+      "workload": "small",
+      "phase": "warm",
+      "oneshot_label": "s10-warm-small",
+      "shared_label": "s10-shared-warm-small",
+      "oneshot_cpu_total_s": 10.2056,
+      "shared_cpu_total_s": 1.6332,
+      "oneshot_agg_rss_max_kb": 722384,
+      "shared_agg_rss_max_kb": 183488,
+      "oneshot_p95_ms": 369.35,
+      "shared_p95_ms": 179.47,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 84.0
+    },
+    {
+      "sessions": 36,
+      "workload": "small",
+      "phase": "cold",
+      "oneshot_label": "s36-cold-small",
+      "shared_label": "s36-shared-cold-small",
+      "oneshot_cpu_total_s": 6.6432,
+      "shared_cpu_total_s": 1.4178,
+      "oneshot_agg_rss_max_kb": 2565760,
+      "shared_agg_rss_max_kb": 304448,
+      "oneshot_p95_ms": 1103.96,
+      "shared_p95_ms": 335.71,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 78.7
+    },
+    {
+      "sessions": 36,
+      "workload": "small",
+      "phase": "warm",
+      "oneshot_label": "s36-warm-small",
+      "shared_label": "s36-shared-warm-small",
+      "oneshot_cpu_total_s": 38.8789,
+      "shared_cpu_total_s": 7.5039,
+      "oneshot_agg_rss_max_kb": 2409280,
+      "shared_agg_rss_max_kb": 398064,
+      "oneshot_p95_ms": 1346.83,
+      "shared_p95_ms": 682.07,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 80.7
+    },
+    {
+      "sessions": 50,
+      "workload": "small",
+      "phase": "cold",
+      "oneshot_label": "s50-cold-small",
+      "shared_label": "s50-shared-cold-small",
+      "oneshot_cpu_total_s": 9.1324,
+      "shared_cpu_total_s": 2.084,
+      "oneshot_agg_rss_max_kb": 2849776,
+      "shared_agg_rss_max_kb": 455504,
+      "oneshot_p95_ms": 1298.33,
+      "shared_p95_ms": 515.01,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 77.2
+    },
+    {
+      "sessions": 50,
+      "workload": "small",
+      "phase": "warm",
+      "oneshot_label": "s50-warm-small",
+      "shared_label": "s50-shared-warm-small",
+      "oneshot_cpu_total_s": 53.6651,
+      "shared_cpu_total_s": 11.2553,
+      "oneshot_agg_rss_max_kb": 3546000,
+      "shared_agg_rss_max_kb": 568816,
+      "oneshot_p95_ms": 1486.33,
+      "shared_p95_ms": 784.97,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 79.0
+    },
+    {
+      "sessions": 50,
+      "workload": "large",
+      "phase": "warm",
+      "oneshot_label": "s50-warm-large-large",
+      "shared_label": "s50-shared-warm-large-large",
+      "oneshot_cpu_total_s": 64.7237,
+      "shared_cpu_total_s": 14.0298,
+      "oneshot_agg_rss_max_kb": 4016640,
+      "shared_agg_rss_max_kb": 649488,
+      "oneshot_p95_ms": 1872.9,
+      "shared_p95_ms": 2272.7,
+      "output_hashes_equal": true,
+      "cpu_reduction_pct": 78.3
+    },
+    {
+      "sessions": 50,
+      "workload": "small",
+      "phase": "warm",
+      "oneshot_label": "s50-warm-small-slow",
+      "shared_label": "s50-shared-warm-small-slow",
+      "oneshot_cpu_total_s": 75.1512,
+      "shared_cpu_total_s": null,
+      "oneshot_agg_rss_max_kb": 5892144,
+      "shared_agg_rss_max_kb": null,
+      "oneshot_p95_ms": 2636.41,
+      "shared_p95_ms": null,
+      "output_hashes_equal": false,
+      "cpu_reduction_pct": null
+    }
+  ],
+  "gate": {
+    "scenario": "s36-warm-small (warmed 36-session workload)",
+    "target": ">=50% aggregate-CPU reduction, shared vs one-shot, daemon and clients included",
+    "oneshot_cpu_total_s": 38.8789,
+    "shared_cpu_total_s": 7.5039,
+    "reduction_pct": 80.7,
+    "passed": true
+  },
+  "recovery": {
+    "label": "s50-daemon-recovery-small",
+    "runtime": "node",
+    "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-24/dist/ccstatusline.js",
+    "sessions": 50,
+    "mode": "daemon-recovery",
+    "transcript": "small",
+    "transcript_bytes": 650195,
+    "count_pass": false,
+    "renders": 50,
+    "warmup_renders": 50,
+    "width_override": true,
+    "ccsl_fork": true,
+    "slow_config": false,
+    "cpu_user_s": 1.4176,
+    "cpu_sys_s": 1.493,
+    "cpu_total_s": 2.9105,
+    "cpu_per_render_ms": 58.211,
+    "cpu_s_per_wall_minute": 94.664,
+    "renders_per_wall_minute": 1626.2,
+    "wall_s": 1.845,
+    "peak_rss_kb": 148560,
+    "rss_sampling": {
+      "samples": 42,
+      "distinct_pids": 216,
+      "aggregate_mean_kb": 104335.2,
+      "aggregate_max_kb": 118736
+    },
+    "latency_ms": {
+      "n": 50,
+      "mean": 109.48,
+      "p50": 108.77,
+      "p95": 138.34,
+      "p99": 161.21
+    },
+    "output_hashes": [],
+    "distinct_output_hashes": 0,
+    "spawn_counts_measured": {},
+    "spawn_counts_per_render": {},
+    "first_stderr": "curl: (22) The requested URL returned error: 503\n",
+    "loadavg_start": 9.48,
+    "loadavg_end": 9.48,
+    "timestamp": "2026-09-30T10:57:23+0800",
+    "daemon": {
+      "counters": {
+        "requests": 52,
+        "ok": 52
+      },
+      "uptime_s": 1,
+      "last_render_ms": 1,
+      "active_renders": 0,
+      "startup_ms": 171.5
+    },
+    "recovery": {
+      "clients_failed_on_dead_daemon": 50,
+      "clients_that_still_succeeded": 0,
+      "failed_clients_stdout_empty": true,
+      "restart_ready_ms": 135.5,
+      "reverified": 50,
+      "output_mismatches": []
+    },
+    "shims": {
+      "shims": [],
+      "counts_measured": {}
+    }
+  },
+  "recovery_gate": {
+    "target": "every client fails clean (rc!=0, empty stdout) against the dead daemon; all sessions re-render byte-identically after restart",
+    "clients_that_still_succeeded": 0,
+    "failed_clients_stdout_empty": true,
+    "output_mismatches": [],
+    "passed": true
+  }
+}

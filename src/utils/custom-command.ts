@@ -1,11 +1,21 @@
 import type { SpawnSyncReturns } from 'node:child_process';
-import { spawnSync } from 'node:child_process';
+import {
+    spawn,
+    spawnSync
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { captureCustomCommand } from './custom-command-capture';
+import { capMap } from '../daemon/provider-scope';
+import type { RenderContext } from '../types/RenderContext';
+import type { WidgetItem } from '../types/Widget';
+
+import {
+    captureCustomCommand,
+    captureCustomCommandAsync
+} from './custom-command-capture';
 
 /** Outcome of one custom command invocation. */
 export type CustomCommandResult
@@ -29,6 +39,39 @@ export interface CustomCommandRequest {
      * waiting out the TTL.
      */
     terminalWidth?: number | null;
+    /**
+     * Environment and working directory for the child process. The daemon
+     * passes the request's snapshot so concurrent renders need no
+     * process-global env swap (#18); one-shot mode leaves them unset and the
+     * child inherits the current process.
+     */
+    env?: NodeJS.ProcessEnv;
+    cwd?: string;
+}
+
+/**
+ * The exact request the CustomCommand widget renders with, shared with the
+ * daemon prefetch (#18) so both paths build identical keys and payloads.
+ */
+export function buildCustomCommandRequest(item: WidgetItem, context: RenderContext): CustomCommandRequest | null {
+    if (!item.commandPath || !context.data) {
+        return null;
+    }
+    const jsonInput = JSON.stringify(
+        typeof context.terminalWidth === 'number'
+            ? { ...context.data, terminal_width: context.terminalWidth }
+            : context.data
+    );
+    return {
+        command: item.commandPath,
+        input: jsonInput,
+        timeoutMs: item.timeout ?? 1000,
+        ttlSeconds: context.customCommandCacheTtlSeconds,
+        sessionId: context.data.session_id,
+        terminalWidth: context.terminalWidth,
+        env: context.env,
+        cwd: context.cwd
+    };
 }
 
 interface CustomCommandCacheEntry {
@@ -57,6 +100,8 @@ const MAX_STDOUT_BYTES = 1024 * 1024;
 // In-process cache keeps cwd in the key. The persistent cache stores cwd once at
 // the file level and keys entries by command, session and terminal width.
 const customCommandCache = new Map<string, CustomCommandCacheEntry>();
+// Bounded for the long-lived daemon (#18); one-shot processes die anyway.
+const CUSTOM_COMMAND_CACHE_MAX_ENTRIES = 256;
 
 function getCacheDir(): string {
     return path.join(os.homedir(), '.cache', 'ccstatusline');
@@ -269,7 +314,8 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
             // result delivery here, with a backstop if the helper fails to reply.
             timeout: request.timeoutMs > 0 ? request.timeoutMs + 1000 : 0,
             killSignal: 'SIGKILL',
-            env: process.env,
+            env: request.env ?? process.env,
+            ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
             windowsHide: true
         });
         const marker = getFailureMarker(result);
@@ -277,6 +323,29 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
             return { status: 'failed', marker };
         }
         return JSON.parse(result.stdout) as CustomCommandResult;
+    } catch {
+        return { status: 'failed', marker: '[Error]' };
+    }
+}
+
+/**
+ * Async twin of executeCommand for the daemon (#18): the capture runs
+ * in-process (see captureCustomCommandAsync), so no helper runtime is spawned
+ * and the awaiting render is never blocked by the child.
+ */
+async function executeCommandAsync(request: CustomCommandRequest, signal?: AbortSignal): Promise<CustomCommandResult> {
+    try {
+        return await captureCustomCommandAsync(
+            spawn,
+            request,
+            MAX_STDOUT_BYTES,
+            MAX_CACHED_OUTPUT_CHARS,
+            {
+                env: request.env ?? process.env,
+                ...(request.cwd !== undefined ? { cwd: request.cwd } : {}),
+                signal
+            }
+        );
     } catch {
         return { status: 'failed', marker: '[Error]' };
     }
@@ -304,7 +373,7 @@ export function runCustomCommand(request: CustomCommandRequest): CustomCommandRe
         return executeCommand(request);
     }
 
-    const cwd = process.cwd();
+    const cwd = request.cwd ?? process.cwd();
     const entryKey = getEntryKey(request);
     const memoryCacheKey = `${entryKey}\0${cwd}`;
     const canShareAcrossProcesses = typeof request.sessionId === 'string' && request.sessionId.length > 0;
@@ -331,6 +400,53 @@ export function runCustomCommand(request: CustomCommandRequest): CustomCommandRe
         createdAt: Date.now()
     };
     customCommandCache.set(memoryCacheKey, entry);
+    capMap(customCommandCache, CUSTOM_COMMAND_CACHE_MAX_ENTRIES);
+    if (canShareAcrossProcesses) {
+        writePersistentCacheEntry(cwd, entryKey, entry, entry.createdAt);
+    }
+
+    return result;
+}
+
+/**
+ * Async twin of runCustomCommand for the daemon (#18): same cache keys and
+ * TTL semantics (TTL 0 still executes per request — only concurrent callers
+ * share one in-flight run via the daemon's refresh group), non-blocking
+ * execution. The cache is shared with the sync path, so a prefetched result
+ * is picked up by the synchronous formatter without re-running anything.
+ */
+export async function runCustomCommandAsync(request: CustomCommandRequest, signal?: AbortSignal): Promise<CustomCommandResult> {
+    const ttlMs = getCacheTtlMs(request.ttlSeconds);
+    if (ttlMs === 0) {
+        return executeCommandAsync(request, signal);
+    }
+
+    const cwd = request.cwd ?? process.cwd();
+    const entryKey = getEntryKey(request);
+    const memoryCacheKey = `${entryKey}\0${cwd}`;
+    const canShareAcrossProcesses = typeof request.sessionId === 'string' && request.sessionId.length > 0;
+    const now = Date.now();
+
+    const memoryEntry = customCommandCache.get(memoryCacheKey);
+    if (memoryEntry && isCacheEntryFresh(memoryEntry, ttlMs, now)) {
+        return memoryEntry.result;
+    }
+
+    if (canShareAcrossProcesses) {
+        const persistentEntry = readPersistentCacheEntry(cwd, entryKey, ttlMs, now);
+        if (persistentEntry) {
+            customCommandCache.set(memoryCacheKey, persistentEntry);
+            return persistentEntry.result;
+        }
+    }
+
+    const result = await executeCommandAsync(request, signal);
+    const entry: CustomCommandCacheEntry = {
+        result,
+        createdAt: Date.now()
+    };
+    customCommandCache.set(memoryCacheKey, entry);
+    capMap(customCommandCache, CUSTOM_COMMAND_CACHE_MAX_ENTRIES);
     if (canShareAcrossProcesses) {
         writePersistentCacheEntry(cwd, entryKey, entry, entry.createdAt);
     }

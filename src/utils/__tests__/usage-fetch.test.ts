@@ -155,7 +155,7 @@ https.request = (...args) => {
     return request;
 };
 
-const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
+const { fetchUsageData, createUsageMemoryCache } = await import(${JSON.stringify(usageModulePath)});
 
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
@@ -163,8 +163,11 @@ const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
 Date.now = () => nowMs;
 
-const first = await fetchUsageData({ requiredFields });
-const second = await fetchUsageData({ requiredFields });
+// One memory cache per probe run, matching the request-scoped contract (#15):
+// repeated calls within a single request reuse it; a new request starts fresh.
+const probeCache = createUsageMemoryCache();
+const first = await fetchUsageData({ requiredFields, cache: probeCache });
+const second = await fetchUsageData({ requiredFields, cache: probeCache });
 process.stdout.write(JSON.stringify({
     first,
     second,

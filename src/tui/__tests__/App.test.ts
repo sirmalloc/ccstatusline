@@ -13,6 +13,7 @@ import {
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
 import * as claudeSettings from '../../utils/claude-settings';
 import * as globalPackageManager from '../../utils/global-package-manager';
 import { getPackageVersion } from '../../utils/terminal';
@@ -25,7 +26,8 @@ import {
     getConfirmCancelScreen,
     getCurrentInstallation,
     getPathInferredInstallation,
-    getPinnedVersionMismatch
+    getPinnedVersionMismatch,
+    syncLineThemesWithLines
 } from '../App';
 import * as claudeStatus from '../claude-status';
 import {
@@ -221,7 +223,10 @@ describe('Main menu structure', () => {
             packageManager: 'npm'
         })).toEqual([
             'lines',
+            'presets',
             'colors',
+            'theme',
+            'lineThemes',
             'powerline',
             '-',
             'terminalConfig',
@@ -242,7 +247,10 @@ describe('Main menu structure', () => {
     it('keeps install in its own section when not installed', () => {
         expect(getMenuValues(false, false)).toEqual([
             'lines',
+            'presets',
             'colors',
+            'theme',
+            'lineThemes',
             'powerline',
             '-',
             'terminalConfig',
@@ -268,7 +276,10 @@ describe('Main menu structure', () => {
 
         expect(getMenuValues(true, false, installation)).toEqual([
             'lines',
+            'presets',
             'colors',
+            'theme',
+            'lineThemes',
             'powerline',
             '-',
             'terminalConfig',
@@ -308,14 +319,42 @@ describe('Main menu structure', () => {
             sublabel: '(install first)'
         }));
         expect(buildManageInstallationItems()[0]).toEqual(expect.objectContaining({ label: '🔄 Check for Updates' }));
-        expect(getMainMenuInstallSelectionIndex(false)).toBe(7);
-        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(8);
-        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(8);
-        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(8);
+        expect(getMainMenuInstallSelectionIndex(false)).toBe(10);
+        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(11);
+        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(11);
+        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(11);
         expect(getMainMenuSelectionIndex(
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
-        )).toBe(8);
+        )).toBe(11);
+    });
+
+    it('keeps line themes when powerline hides the global theme entry', () => {
+        const values = buildMainMenuItems(true, false, undefined, true)
+            .map(item => item === '-' ? '-' : item.value);
+
+        expect(values).not.toContain('theme');
+        expect(values).toContain('lineThemes');
+        expect(values.indexOf('lineThemes')).toBeLessThan(values.indexOf('powerline'));
+    });
+});
+
+describe('syncLineThemesWithLines', () => {
+    const lineA: WidgetItem[] = [{ id: '1', type: 'custom-text', customText: 'A' }];
+    const lineB: WidgetItem[] = [];
+    const lineC: WidgetItem[] = [{ id: '2', type: 'model' }];
+
+    it('keeps themes with their lines through delete, append, and move', () => {
+        const themes = ['dracula', undefined, 'nord'];
+
+        expect(syncLineThemesWithLines([lineA, lineB, lineC], [lineA, lineC], themes)).toEqual(['dracula', 'nord']);
+        expect(syncLineThemesWithLines([lineA], [lineA, lineB], ['dracula'])).toEqual(['dracula', undefined]);
+        expect(syncLineThemesWithLines([lineA, lineC], [lineC, lineA], ['dracula', 'nord'])).toEqual(['nord', 'dracula']);
+    });
+
+    it('returns inherit entries for missing or undefined themes', () => {
+        expect(syncLineThemesWithLines([lineA], [lineA, lineB], undefined)).toEqual([undefined, undefined]);
+        expect(syncLineThemesWithLines([lineA], [lineA], [])).toEqual([undefined]);
     });
 });
 
@@ -408,7 +447,10 @@ describe('App after a global update run from the TUI', () => {
             });
 
             // An unsaved edit: Color Level 256 → Truecolor
+            await pressKey(rendered, KEYS.down, '▶  🧩 Presets');
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  🌈 Theme');
+            await pressKey(rendered, KEYS.down, '▶  🧶 Line Themes');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
             await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
@@ -575,7 +617,7 @@ describe('App while an install or update runs', () => {
         });
         const globalInstall = createPendingRun();
         vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation(globalInstall.run);
-        const writeClaudeSettings = vi.spyOn(claudeSettings, 'installStatusLine').mockResolvedValue(undefined);
+        const writeClaudeSettings = vi.spyOn(claudeSettings, 'installStatusLine').mockResolvedValue({ statusLineWritten: true });
         const rendered = renderApp();
 
         try {

@@ -1,9 +1,4 @@
-import {
-    Box,
-    Text,
-    useInput
-} from 'ink';
-import React, { useState } from 'react';
+import React from 'react';
 
 import type {
     CustomKeybind,
@@ -11,9 +6,8 @@ import type {
     WidgetItem
 } from '../../types/Widget';
 import { truncateStyledText } from '../../utils/ansi';
-import { shouldInsertInput } from '../../utils/input-guards';
 
-import { BlinkingCursor } from './BlinkingCursor';
+import { lazyEditor } from './lazy-editor';
 
 export const MAX_WIDTH_ACTION = 'edit-max-width';
 
@@ -43,35 +37,4 @@ export function renderMaxWidthEditor(props: WidgetEditorProps): React.ReactEleme
     return <MaxWidthEditor {...props} />;
 }
 
-const MaxWidthEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCancel }) => {
-    const [widthInput, setWidthInput] = useState(widget.maxWidth?.toString() ?? '');
-
-    useInput((input, key) => {
-        if (key.return) {
-            const width = Number.parseInt(widthInput, 10);
-            if (!Number.isNaN(width) && width > 0) {
-                onComplete({ ...widget, maxWidth: width });
-            } else {
-                const { maxWidth, ...rest } = widget;
-                onComplete(rest);
-            }
-        } else if (key.escape) {
-            onCancel();
-        } else if (key.backspace) {
-            setWidthInput(widthInput.slice(0, -1));
-        } else if (shouldInsertInput(input, key) && /\d/.test(input)) {
-            setWidthInput(widthInput + input);
-        }
-    });
-
-    return (
-        <Box flexDirection='column'>
-            <Box>
-                <Text>Enter max width (blank for no limit): </Text>
-                <Text>{widthInput}</Text>
-                <BlinkingCursor>{' '}</BlinkingCursor>
-            </Box>
-            <Text dimColor>Press Enter to save, ESC to cancel</Text>
-        </Box>
-    );
-};
+const MaxWidthEditor = lazyEditor(() => import('../editors/MaxWidthEditor'));

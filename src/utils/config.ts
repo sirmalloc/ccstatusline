@@ -54,16 +54,20 @@ interface SettingsPaths {
     settingsPath: string;
 }
 
+function getSettingsPathsFor(configPath: string): SettingsPaths {
+    return {
+        configDir: path.dirname(configPath),
+        settingsPath: configPath
+    };
+}
+
 interface AtomicWriteTarget {
     targetPath: string;
     tempDir: string;
 }
 
 function getSettingsPaths(): SettingsPaths {
-    return {
-        configDir: path.dirname(settingsPath),
-        settingsPath
-    };
+    return getSettingsPathsFor(settingsPath);
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -167,21 +171,24 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
 /**
  * Load ccstatusline settings from disk.
  *
- * Recovery contract: if the file cannot be read or fails validation, loadSettings
- * NEVER overwrites it — it returns built-in defaults in memory, records the reason
- * (see getConfigLoadError), and leaves the file untouched for the user to fix. The
- * file is written only when it is missing (first run), or when a readable config is
- * migrated to the current version AND the migrated result validates first. All writes
- * go through writeSettingsJson, which is atomic (temp file + rename).
+ * Recovery contract: if the file cannot be read or fails validation, the load
+ * NEVER overwrites it — it returns built-in defaults in memory, records the
+ * reason (see loadError on the result), and leaves the file untouched for the
+ * user to fix. The file is written only when it is missing (first run), or when
+ * a readable config is migrated to the current version AND the migrated result
+ * validates first. All writes go through writeSettingsJson, which is atomic
+ * (temp file + rename).
+ *
+ * Takes the config path explicitly and mutates no module state, so concurrent
+ * requests can each load their own config (#15).
  */
-export async function loadSettings(): Promise<Settings> {
-    lastLoadError = null;
-    const paths = getSettingsPaths();
+export async function loadSettingsFrom(configPath: string): Promise<LoadedSettings> {
+    const paths = getSettingsPathsFor(configPath);
 
     try {
         // Check if settings file exists
         if (!fs.existsSync(paths.settingsPath))
-            return await writeDefaultSettings(paths);
+            return { settings: await writeDefaultSettings(paths), loadError: null };
 
         const content = await readFile(paths.settingsPath, 'utf-8');
         let rawData: unknown;
@@ -190,8 +197,7 @@ export async function loadSettings(): Promise<Settings> {
             rawData = JSON.parse(content);
         } catch {
             console.error('Failed to parse settings.json, using defaults (file left unchanged)');
-            lastLoadError = 'settings.json is not valid JSON';
-            return inMemoryDefaults();
+            return { settings: inMemoryDefaults(), loadError: 'settings.json is not valid JSON' };
         }
 
         // Check if this is a v1 config (no version field)
@@ -202,8 +208,7 @@ export async function loadSettings(): Promise<Settings> {
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
                 console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
-                lastLoadError = 'settings.json is not in a valid format';
-                return inMemoryDefaults();
+                return { settings: inMemoryDefaults(), loadError: 'settings.json is not in a valid format' };
             }
 
             // Migrate v1 to the current version (persisted below, only once it validates)
@@ -220,8 +225,7 @@ export async function loadSettings(): Promise<Settings> {
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
             console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
-            lastLoadError = 'settings.json is not in a valid format';
-            return inMemoryDefaults();
+            return { settings: inMemoryDefaults(), loadError: 'settings.json is not in a valid format' };
         }
 
         // Persist a migration only after the migrated result validates, so a faulty
@@ -231,18 +235,44 @@ export async function loadSettings(): Promise<Settings> {
         }
 
         return {
-            ...result.data,
-            lines: upgradeLegacyWidgetTypes(result.data.lines)
+            settings: {
+                ...result.data,
+                lines: upgradeLegacyWidgetTypes(result.data.lines),
+                lineThemes: normalizeLineThemes(result.data.lineThemes, result.data.lines.length)
+            },
+            loadError: null
         };
     } catch (error) {
         console.error('Error loading settings, using defaults:', error);
-        lastLoadError = 'settings.json could not be read';
-        return inMemoryDefaults();
+        return { settings: inMemoryDefaults(), loadError: 'settings.json could not be read' };
     }
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
-    const paths = getSettingsPaths();
+// Clamp lineThemes to the actual line count: drop stale entries past the end
+// and materialize missing ones as undefined (inherit). An array with no real
+// themes collapses to undefined. Reads are out-of-range-safe anyway
+// (lineThemes?.[i] → undefined), so this is purely config hygiene.
+export function normalizeLineThemes(lineThemes: (string | null | undefined)[] | undefined, lineCount: number): (string | undefined)[] | undefined {
+    if (!lineThemes)
+        return undefined;
+    const normalized = Array.from({ length: lineCount }, (_, i) => lineThemes[i] ?? undefined);
+    return normalized.some(theme => theme !== undefined) ? normalized : undefined;
+}
+
+export async function loadSettings(): Promise<Settings> {
+    const { settings, loadError } = await loadSettingsFrom(settingsPath);
+    lastLoadError = loadError;
+    return settings;
+}
+
+export interface LoadedSettings {
+    settings: Settings;
+    /** Why the on-disk config was rejected and defaults are shown; null on a clean load. */
+    loadError: string | null;
+}
+
+export async function saveSettingsTo(configPath: string, settings: Settings): Promise<void> {
+    const paths = getSettingsPathsFor(configPath);
 
     // Always include version when saving
     const settingsWithVersion = {
@@ -257,6 +287,10 @@ export async function saveSettings(settings: Settings): Promise<void> {
         const { syncWidgetHooks } = await import('./hooks');
         await syncWidgetHooks(settings);
     } catch { /* ignore hook sync failures */ }
+}
+
+export async function saveSettings(settings: Settings): Promise<void> {
+    return saveSettingsTo(settingsPath, settings);
 }
 
 export type ImportValidationResult

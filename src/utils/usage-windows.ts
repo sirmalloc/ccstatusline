@@ -64,7 +64,10 @@ export function resolveUsageWindowWithFallback(
         return usageWindow;
     }
 
-    const fallbackMetrics = blockMetrics ?? getCachedBlockMetrics();
+    // `undefined` = no prefetched value (one-shot path) → allowed to run the
+    // directory walk; an explicit null means the daemon prefetch already ran
+    // it and found no block, so the walk must not repeat in the sync section (#18).
+    const fallbackMetrics = blockMetrics !== undefined ? blockMetrics : getCachedBlockMetrics();
     if (!fallbackMetrics) {
         return null;
     }

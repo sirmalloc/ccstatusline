@@ -355,6 +355,59 @@ describe('installStatusLine refreshInterval', () => {
     });
 });
 
+describe('installStatusLine keepExisting', () => {
+    const FOREIGN_COMMAND = 'bun run /opt/notchling/cli.ts';
+
+    it('should install normally on a fresh machine even with keepExisting', async () => {
+        config.initConfigPath();
+        await expect(installStatusLine({ commandMode: 'auto-npx', keepExisting: true }))
+            .resolves.toEqual({ statusLineWritten: true });
+        expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
+    });
+
+    it('should keep a foreign statusLine untouched when keepExisting is set', async () => {
+        const raw = JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: FOREIGN_COMMAND,
+                padding: 4
+            },
+            model: 'opus'
+        }, null, 2);
+        writeRawClaudeSettings(raw);
+
+        await expect(installStatusLine({ commandMode: 'auto-npx', keepExisting: true }))
+            .resolves.toEqual({ statusLineWritten: false });
+
+        expect(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')).toBe(raw);
+        expect(fs.existsSync(`${getClaudeSettingsPath()}.orig`)).toBe(false);
+    });
+
+    it('should keep a foreign statusLine when existing settings cannot be parsed', async () => {
+        writeRawClaudeSettings('{"statusLine": {"command": "x"');
+
+        await expect(installStatusLine({ commandMode: 'auto-npx', keepExisting: true }))
+            .resolves.toEqual({ statusLineWritten: false });
+
+        expect(fs.readFileSync(getClaudeSettingsPath(), 'utf-8')).toBe('{"statusLine": {"command": "x"');
+    });
+
+    it('should replace a foreign statusLine by default (existing behavior)', async () => {
+        config.initConfigPath();
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: FOREIGN_COMMAND,
+                padding: 4
+            }
+        }, null, 2));
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        expect(readInstalledCommand()).toBe(CCSTATUSLINE_COMMANDS.NPM);
+    });
+});
+
 describe('refreshInterval', () => {
     it('getRefreshInterval should return null when no settings exist', async () => {
         await expect(getRefreshInterval()).resolves.toBeNull();

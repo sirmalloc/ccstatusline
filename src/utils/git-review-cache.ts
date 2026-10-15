@@ -1,4 +1,6 @@
+import type { ExecFileOptionsWithStringEncoding } from 'child_process';
 import {
+    execFile,
     execFileSync,
     spawn
 } from 'node:child_process';
@@ -15,6 +17,14 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'util';
+
+// Promise-based execFile with string decoding (see usage-fetch.ts for the shape).
+const execFileAsync = promisify(execFile) as (
+    file: string,
+    args: readonly string[],
+    options: ExecFileOptionsWithStringEncoding
+) => Promise<{ stdout: string; stderr: string }>;
 
 import {
     getVisibleWidth,
@@ -48,7 +58,11 @@ export interface GitReviewData {
     checks?: GitCiChecks;
 }
 
-export interface GitReviewFetchOptions { includeChecks?: boolean }
+export interface GitReviewFetchOptions {
+    includeChecks?: boolean;
+    /** Request env snapshot for the async daemon path (#18 review): proxy vars etc. */
+    env?: NodeJS.ProcessEnv;
+}
 
 interface StoredGitReviewCache {
     version: 1;
@@ -771,6 +785,322 @@ export function refreshGitReviewCacheFromCli(
             releaseRefreshLock(lockPath, deps);
         }
     }
+}
+
+// --- Async refresh path (#18) ---------------------------------------------------
+//
+// The daemon prefetch refreshes the review cache directly (non-blocking child
+// processes, cancellable), so the sync formatter reads a fresh cache file and
+// the detached `node <script> --internal-refresh-...` self-spawn never fires
+// on the daemon path. Mirrors the sync fetch flow above; pure helpers
+// (parsing, classification, remote mapping) are shared.
+
+function runGitForCacheAsync(args: string[], cwd: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<string> {
+    const options: ExecFileOptionsWithStringEncoding = {
+        encoding: 'utf8',
+        cwd,
+        timeout: CLI_TIMEOUT,
+        killSignal: 'SIGKILL',
+        windowsHide: true,
+        ...(env !== undefined ? { env } : {}),
+        ...(signal !== undefined ? { signal } : {})
+    };
+    return execFileAsync('git', args, options)
+        .then(({ stdout }) => stdout.trim())
+        .catch(() => '');
+}
+
+async function getCacheRefAsync(cwd: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<string> {
+    const branch = await runGitForCacheAsync(['symbolic-ref', '--short', 'HEAD'], cwd, signal, env);
+    if (branch.length > 0) {
+        return `branch:${branch}`;
+    }
+
+    const head = await runGitForCacheAsync(['rev-parse', '--short', 'HEAD'], cwd, signal, env);
+    return head.length > 0 ? `head:${head}` : 'unknown';
+}
+
+class AsyncGitReviewDeadlineError extends Error {}
+
+function remainingTimeoutMs(deadline: number): number {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+        throw new AsyncGitReviewDeadlineError('Git review lookup deadline exceeded');
+    }
+    return Math.max(1, Math.min(CLI_TIMEOUT, remaining));
+}
+
+function execFileTimeout(
+    command: string,
+    args: string[],
+    timeoutMs: number,
+    options: { signal?: AbortSignal; cwd?: string; env?: NodeJS.ProcessEnv } = {}
+): Promise<string> {
+    const execOptions: ExecFileOptionsWithStringEncoding = {
+        encoding: 'utf8',
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+        windowsHide: true,
+        ...(options.env !== undefined ? { env: options.env } : {}),
+        ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        ...(options.signal !== undefined ? { signal: options.signal } : {})
+    };
+    return execFileAsync(command, args, execOptions).then(({ stdout }) => stdout);
+}
+
+async function isCliAvailableAsync(cli: GitReviewProvider, deadline: number, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<boolean> {
+    try {
+        await execFileTimeout(cli, ['--version'], remainingTimeoutMs(deadline), { signal, env });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function isCliAuthedForHostAsync(cli: GitReviewProvider, host: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<boolean> {
+    try {
+        await execFileTimeout(cli, ['auth', 'status', '--hostname', host], CLI_TIMEOUT, { signal, env });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function resolveSshHostAliasAsync(host: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<string> {
+    try {
+        const output = await execFileTimeout('ssh', ['-G', host], CLI_TIMEOUT, { signal, env });
+        for (const line of output.trim().split(/\r?\n/)) {
+            const match = /^hostname\s+(.+)$/i.exec(line.trim());
+            if (match?.[1]) {
+                return match[1].toLowerCase();
+            }
+        }
+    } catch {
+        // Leave the parsed remote host unchanged when ssh is unavailable.
+    }
+    return host.toLowerCase();
+}
+
+async function getEffectiveRemoteHostAsync(url: string, host: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<string> {
+    const normalizedHost = host.toLowerCase();
+    if (!isSshRemoteUrl(url) || getNamedForgeProvider(normalizedHost)) {
+        return normalizedHost;
+    }
+    return resolveSshHostAliasAsync(normalizedHost, signal, env);
+}
+
+async function queryGhPrAsync(
+    cwd: string,
+    args: string[],
+    fields: string,
+    deadline: number,
+    signal?: AbortSignal,
+    env?: NodeJS.ProcessEnv
+): Promise<Record<string, unknown> | null> {
+    const output = (await execFileTimeout(
+        'gh',
+        [...args, '--json', fields],
+        remainingTimeoutMs(deadline),
+        { cwd, signal, env }
+    )).trim();
+
+    if (output.length === 0) {
+        return null;
+    }
+
+    return JSON.parse(output) as Record<string, unknown>;
+}
+
+async function fetchFromGhAsync(
+    cwd: string,
+    repoRef: string | null,
+    includeChecks: boolean,
+    deadline: number,
+    signal?: AbortSignal,
+    env?: NodeJS.ProcessEnv
+): Promise<GitReviewData | null> {
+    const args = ['pr', 'view'];
+    if (repoRef) {
+        const branch = await runGitForCacheAsync(['symbolic-ref', '--short', 'HEAD'], cwd, signal, env);
+        if (!branch) {
+            return null;
+        }
+        args.push(branch, '--repo', repoRef);
+    }
+
+    let parsed: Record<string, unknown> | null;
+    if (includeChecks) {
+        try {
+            parsed = await queryGhPrAsync(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deadline, signal, env);
+        } catch (error) {
+            if (!isCiFieldUnavailableError(error)) {
+                throw error;
+            }
+            parsed = await queryGhPrAsync(cwd, args, GH_PR_METADATA_FIELDS, deadline, signal, env);
+        }
+    } else {
+        parsed = await queryGhPrAsync(cwd, args, GH_PR_METADATA_FIELDS, deadline, signal, env);
+    }
+
+    if (!parsed) {
+        return null;
+    }
+    if (typeof parsed.number !== 'number' || typeof parsed.url !== 'string') {
+        return null;
+    }
+    return {
+        number: parsed.number,
+        url: parsed.url,
+        title: typeof parsed.title === 'string' ? parsed.title : '',
+        state: typeof parsed.state === 'string' ? parsed.state : '',
+        reviewDecision: typeof parsed.reviewDecision === 'string' ? parsed.reviewDecision : '',
+        provider: 'gh',
+        checks: computeCiRollup(parsed.statusCheckRollup) ?? undefined
+    };
+}
+
+async function fetchFromGlabAsync(
+    cwd: string,
+    repoRef: string | null,
+    deadline: number,
+    signal?: AbortSignal,
+    env?: NodeJS.ProcessEnv
+): Promise<GitReviewData | null> {
+    const args = ['mr', 'view'];
+    if (repoRef) {
+        const branch = await runGitForCacheAsync(['symbolic-ref', '--short', 'HEAD'], cwd, signal, env);
+        if (!branch) {
+            return null;
+        }
+        args.push(branch, '--repo', repoRef);
+    }
+    args.push('--output', 'json');
+
+    const output = (await execFileTimeout('glab', args, remainingTimeoutMs(deadline), { cwd, signal, env })).trim();
+    if (output.length === 0) {
+        return null;
+    }
+
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    if (typeof parsed.iid !== 'number' || typeof parsed.web_url !== 'string') {
+        return null;
+    }
+    return {
+        number: parsed.iid,
+        url: parsed.web_url,
+        title: typeof parsed.title === 'string' ? parsed.title : '',
+        state: typeof parsed.state === 'string' ? mapGlabState(parsed.state) : '',
+        reviewDecision: '',
+        provider: 'glab'
+    };
+}
+
+async function fetchFromProviderAsync(
+    provider: GitReviewProvider,
+    cwd: string,
+    repoRef: string | null,
+    includeChecks: boolean,
+    deadline: number,
+    signal?: AbortSignal,
+    env?: NodeJS.ProcessEnv
+): Promise<GitReviewData | null> {
+    const fetch = (targetRepoRef: string | null): Promise<GitReviewData | null> => provider === 'gh'
+        ? fetchFromGhAsync(cwd, targetRepoRef, includeChecks, deadline, signal, env)
+        : fetchFromGlabAsync(cwd, targetRepoRef, deadline, signal, env);
+
+    try {
+        const unpinned = await fetch(null);
+        if (unpinned) {
+            return unpinned;
+        }
+    } catch { /* fall through */ }
+
+    if (repoRef) {
+        return fetch(repoRef);
+    }
+    return null;
+}
+
+async function getProviderCandidatesAsync(cwd: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<GitReviewProvider[]> {
+    const url = await runGitForCacheAsync(['remote', 'get-url', '--', 'origin'], cwd, signal, env);
+    if (url.length === 0) {
+        return ['gh', 'glab'];
+    }
+    const parsed = parseRemoteUrl(url);
+    if (!parsed) {
+        return ['gh', 'glab'];
+    }
+    const host = await getEffectiveRemoteHostAsync(url, parsed.host, signal, env);
+    const namedForgeProvider = getNamedForgeProvider(host);
+    if (namedForgeProvider) {
+        return [namedForgeProvider];
+    }
+    const authed: GitReviewProvider[] = [];
+    if (await isCliAuthedForHostAsync('glab', host, signal, env)) {
+        authed.push('glab');
+    }
+    if (await isCliAuthedForHostAsync('gh', host, signal, env)) {
+        authed.push('gh');
+    }
+    return authed;
+}
+
+/**
+ * Async twin of fetchGitReviewData for the daemon prefetch (#18). Same cache
+ * file, same TTL/stale semantics, same provider fallback order; failures keep
+ * stale data exactly like the sync path. Writes the cache file the sync
+ * formatter reads, so the daemon's formatting section never spawns a forge
+ * CLI and never schedules the detached node self-refresh.
+ */
+export async function fetchGitReviewDataAsync(
+    cwd: string,
+    options: GitReviewFetchOptions = {},
+    signal?: AbortSignal
+): Promise<GitReviewData | null> {
+    const includeChecks = options.includeChecks ?? false;
+    const env = options.env;
+    const cachePath = getCachePath(cwd, await getCacheRefAsync(cwd, signal, env), DEFAULT_GIT_REVIEW_CACHE_DEPS);
+    const cached = readCache(cachePath, DEFAULT_GIT_REVIEW_CACHE_DEPS);
+    if (cached !== 'miss'
+        && !cached.stale
+        && (!includeChecks || cached.checksQueried)) {
+        return cached.data;
+    }
+    const repoRef = await getOriginRepoRefAsync(cwd, signal, env);
+    const deadline = Date.now() + CLI_TIMEOUT;
+
+    for (const provider of await getProviderCandidatesAsync(cwd, signal, env)) {
+        if (!(await isCliAvailableAsync(provider, deadline, signal, env))) {
+            continue;
+        }
+        try {
+            const data = await fetchFromProviderAsync(provider, cwd, repoRef, includeChecks, deadline, signal, env);
+            if (data) {
+                writeCache(cachePath, data, includeChecks, DEFAULT_GIT_REVIEW_CACHE_DEPS);
+                return data;
+            }
+        } catch { /* try next provider */ }
+    }
+
+    if (cached !== 'miss' && cached.data !== null) {
+        return cached.data;
+    }
+
+    writeCache(cachePath, null, true, DEFAULT_GIT_REVIEW_CACHE_DEPS);
+    return null;
+}
+
+async function getOriginRepoRefAsync(cwd: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<string | null> {
+    const url = await runGitForCacheAsync(['remote', 'get-url', '--', 'origin'], cwd, signal, env);
+    if (url.length === 0) {
+        return null;
+    }
+    const parsed = parseRemoteUrl(url);
+    if (!parsed) {
+        return null;
+    }
+    const host = await getEffectiveRemoteHostAsync(url, parsed.host, signal, env);
+    return `https://${host}/${parsed.owner}/${parsed.repo}`;
 }
 
 export function getGitReviewStatusLabel(state: string, reviewDecision: string): string {

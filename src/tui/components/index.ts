@@ -12,6 +12,7 @@ export * from './LineSelector';
 export * from './MainMenu';
 export * from './ManageInstallationMenu';
 export * from './PowerlineSetup';
+export * from './PresetMenu';
 export * from './RefreshIntervalMenu';
 export * from './StatusLinePreview';
 export * from './TerminalOptionsMenu';

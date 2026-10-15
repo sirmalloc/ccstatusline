@@ -1,0 +1,474 @@
+{
+  "meta": {
+    "runtime": "bun",
+    "entry": "/Users/axisrow/.ao/data/worktrees/ccstatusline/ccstatusline-28/src/ccstatusline.ts",
+    "machine": {
+      "cpu_model": "Apple M5",
+      "cpu_count": 10,
+      "os": "macOS-26.6.2-arm64-arm-64bit",
+      "python": "3.12.10"
+    },
+    "generated": "2026-10-01T14:08:47+0800",
+    "workload": "sessions alternate small(500-row)/large(10000-row) transcripts and dirty/clean repos; two waves per scenario (cold includes the lazy start)",
+    "notes": [
+      "Lazy/shared CPU covers the daemon AND every client: clients via getrusage(RUSAGE_CHILDREN), the detached daemon via ps cumulative CPU (it escapes RUSAGE_CHILDREN after reparenting).",
+      "Cold wave of the lazy scenario includes the on-demand daemon start paid by the first clients."
+    ]
+  },
+  "runs": {
+    "lazy-20": {
+      "cold": {
+        "label": "lazy-20-cold",
+        "renders": 20,
+        "failures": 0,
+        "cpu_total_s": 4.7399,
+        "cpu_per_render_ms": 236.997,
+        "latency_ms": {
+          "p50": 799.05,
+          "p95": 901.87,
+          "p99": 904.8
+        },
+        "latencies_ms": [
+          702.42,
+          706.89,
+          709.01,
+          711.32,
+          714.37,
+          722.33,
+          730.71,
+          747.02,
+          765.02,
+          799.05,
+          809.67,
+          812.39,
+          822.29,
+          843.82,
+          880.33,
+          881.77,
+          886.31,
+          896.87,
+          901.87,
+          904.8
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 0.909,
+        "daemon_pids_cold_wave": [
+          "60351"
+        ],
+        "daemon_pids_warm_wave": [
+          "60351"
+        ],
+        "single_daemon_across_waves": true,
+        "daemon_cpu_total_s": 0.66,
+        "daemon_counters": {
+          "requests": 97,
+          "ok": 61,
+          "busy": 36
+        }
+      },
+      "warm": {
+        "label": "lazy-20-warm",
+        "renders": 20,
+        "failures": 0,
+        "cpu_total_s": 0.8478,
+        "cpu_per_render_ms": 42.388,
+        "latency_ms": {
+          "p50": 150.7,
+          "p95": 271.16,
+          "p99": 275.73
+        },
+        "latencies_ms": [
+          66.34,
+          69.88,
+          75.74,
+          107.95,
+          109.31,
+          110.79,
+          113.95,
+          142.72,
+          147.83,
+          150.7,
+          162.76,
+          173.9,
+          175.49,
+          178.97,
+          180.91,
+          193.02,
+          256.23,
+          267.42,
+          271.16,
+          275.73
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 0.305
+      }
+    },
+    "oneshot-20": {
+      "cold": {
+        "label": "oneshot-20-cold",
+        "renders": 20,
+        "failures": 0,
+        "cpu_total_s": 3.7606,
+        "cpu_per_render_ms": 188.028,
+        "latency_ms": {
+          "p50": 434.18,
+          "p95": 480.86,
+          "p99": 481.43
+        },
+        "latencies_ms": [
+          365.57,
+          367.87,
+          392.97,
+          397.48,
+          410.8,
+          418.16,
+          423.42,
+          429.7,
+          434.02,
+          434.18,
+          453.72,
+          454.46,
+          457.88,
+          459.32,
+          465.55,
+          475.11,
+          475.13,
+          480.79,
+          480.86,
+          481.43
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 0.492
+      },
+      "warm": {
+        "label": "oneshot-20-warm",
+        "renders": 20,
+        "failures": 0,
+        "cpu_total_s": 3.6415,
+        "cpu_per_render_ms": 182.077,
+        "latency_ms": {
+          "p50": 414.73,
+          "p95": 451.13,
+          "p99": 453.07
+        },
+        "latencies_ms": [
+          329.85,
+          346.97,
+          350.39,
+          389.1,
+          396.58,
+          397.75,
+          398.85,
+          399.37,
+          413.77,
+          414.73,
+          417.1,
+          422.19,
+          422.33,
+          422.56,
+          423.66,
+          426.91,
+          428.38,
+          440.73,
+          451.13,
+          453.07
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 0.459
+      }
+    },
+    "lazy-30": {
+      "cold": {
+        "label": "lazy-30-cold",
+        "renders": 30,
+        "failures": 0,
+        "cpu_total_s": 6.8912,
+        "cpu_per_render_ms": 229.707,
+        "latency_ms": {
+          "p50": 1023.1,
+          "p95": 1149.48,
+          "p99": 1201.82
+        },
+        "latencies_ms": [
+          803.66,
+          815.7,
+          881.68,
+          899.05,
+          906.15,
+          911.44,
+          919.59,
+          956.77,
+          957.76,
+          967.98,
+          971.86,
+          1005.09,
+          1013.73,
+          1019.44,
+          1023.1,
+          1031.11,
+          1033.08,
+          1040.74,
+          1057.59,
+          1081.38,
+          1083.83,
+          1084.23,
+          1091.91,
+          1093.22,
+          1105.03,
+          1117.52,
+          1119.95,
+          1138.77,
+          1149.48,
+          1201.82
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 1.23,
+        "daemon_pids_cold_wave": [
+          "61325"
+        ],
+        "daemon_pids_warm_wave": [
+          "61325"
+        ],
+        "single_daemon_across_waves": true,
+        "daemon_cpu_total_s": 0.93,
+        "daemon_counters": {
+          "requests": 176,
+          "ok": 91,
+          "busy": 85
+        }
+      },
+      "warm": {
+        "label": "lazy-30-warm",
+        "renders": 30,
+        "failures": 0,
+        "cpu_total_s": 1.4831,
+        "cpu_per_render_ms": 49.436,
+        "latency_ms": {
+          "p50": 184.57,
+          "p95": 480.82,
+          "p99": 528.27
+        },
+        "latencies_ms": [
+          68.91,
+          73.26,
+          83.67,
+          91.88,
+          93.41,
+          126.59,
+          127.37,
+          135.87,
+          136.39,
+          138.67,
+          142.08,
+          147.55,
+          165.96,
+          183.63,
+          184.57,
+          205.18,
+          227.49,
+          233.04,
+          233.54,
+          250.68,
+          257.9,
+          277.48,
+          277.94,
+          308.7,
+          372.82,
+          412.95,
+          422.77,
+          431.73,
+          480.82,
+          528.27
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 0.586
+      }
+    },
+    "oneshot-30": {
+      "cold": {
+        "label": "oneshot-30-cold",
+        "renders": 30,
+        "failures": 0,
+        "cpu_total_s": 5.5929,
+        "cpu_per_render_ms": 186.429,
+        "latency_ms": {
+          "p50": 929.75,
+          "p95": 1035.4,
+          "p99": 1040.05
+        },
+        "latencies_ms": [
+          775.53,
+          798.75,
+          802.88,
+          816.7,
+          821.02,
+          831.9,
+          847.58,
+          859.23,
+          863.02,
+          878.19,
+          895.35,
+          904.0,
+          906.0,
+          917.43,
+          929.75,
+          950.41,
+          959.4,
+          981.39,
+          985.7,
+          997.96,
+          998.38,
+          1000.59,
+          1006.09,
+          1020.74,
+          1021.65,
+          1027.36,
+          1031.11,
+          1031.61,
+          1035.4,
+          1040.05
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 1.086
+      },
+      "warm": {
+        "label": "oneshot-30-warm",
+        "renders": 30,
+        "failures": 0,
+        "cpu_total_s": 5.8232,
+        "cpu_per_render_ms": 194.106,
+        "latency_ms": {
+          "p50": 807.75,
+          "p95": 933.94,
+          "p99": 950.1
+        },
+        "latencies_ms": [
+          682.94,
+          686.32,
+          694.52,
+          736.74,
+          740.05,
+          745.97,
+          772.21,
+          772.43,
+          773.84,
+          775.09,
+          776.74,
+          781.57,
+          795.84,
+          805.68,
+          807.75,
+          813.39,
+          816.42,
+          829.33,
+          830.39,
+          841.08,
+          843.67,
+          872.83,
+          875.1,
+          877.05,
+          879.45,
+          885.09,
+          907.43,
+          922.21,
+          933.94,
+          950.1
+        ],
+        "output_hashes": [
+          "3d8c1c16e8a92518e4c15b7a995f7d1a426a52eb2d8d5c28a9815896f3804047",
+          "69aa1f345fd61e159aea5c99074045fd5acfacc44fccd344b9b3dd56d6955b8d"
+        ],
+        "wall_s": 1.015
+      }
+    },
+    "idle-stop": {
+      "configured_minutes": 1,
+      "pid": 64669,
+      "exited_by_itself": true,
+      "observed_stop_after_s": 72.2,
+      "discovery_cleaned_up": true,
+      "still_alive_after_150s": false,
+      "lazy_restart_render_rc": 0,
+      "lazy_restart_rendered_line": true,
+      "lazy_restart_new_pid": 83669
+    }
+  },
+  "comparisons": [
+    {
+      "sessions": 20,
+      "phase": "cold",
+      "oneshot_cpu_total_s": 3.7606,
+      "shared_cpu_total_s": 4.7399,
+      "cpu_reduction_pct": -26.0,
+      "oneshot_p95_ms": 480.86,
+      "shared_p95_ms": 901.87,
+      "shared_failures": 0,
+      "output_hashes_equal": true
+    },
+    {
+      "sessions": 20,
+      "phase": "warm",
+      "oneshot_cpu_total_s": 3.6415,
+      "shared_cpu_total_s": 0.8478,
+      "cpu_reduction_pct": 76.7,
+      "oneshot_p95_ms": 451.13,
+      "shared_p95_ms": 271.16,
+      "shared_failures": 0,
+      "output_hashes_equal": true
+    },
+    {
+      "sessions": 30,
+      "phase": "cold",
+      "oneshot_cpu_total_s": 5.5929,
+      "shared_cpu_total_s": 6.8912,
+      "cpu_reduction_pct": -23.2,
+      "oneshot_p95_ms": 1035.4,
+      "shared_p95_ms": 1149.48,
+      "shared_failures": 0,
+      "output_hashes_equal": true
+    },
+    {
+      "sessions": 30,
+      "phase": "warm",
+      "oneshot_cpu_total_s": 5.8232,
+      "shared_cpu_total_s": 1.4831,
+      "cpu_reduction_pct": 74.5,
+      "oneshot_p95_ms": 933.94,
+      "shared_p95_ms": 480.82,
+      "shared_failures": 0,
+      "output_hashes_equal": true
+    }
+  ],
+  "idle_stop": {
+    "configured_minutes": 1,
+    "pid": 64669,
+    "exited_by_itself": true,
+    "observed_stop_after_s": 72.2,
+    "discovery_cleaned_up": true,
+    "still_alive_after_150s": false,
+    "lazy_restart_render_rc": 0,
+    "lazy_restart_rendered_line": true,
+    "lazy_restart_new_pid": 83669
+  }
+}

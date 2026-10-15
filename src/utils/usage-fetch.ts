@@ -1,17 +1,29 @@
-import { execFileSync } from 'node:child_process';
+import type { ExecFileOptionsWithStringEncoding } from 'node:child_process';
+import {
+    execFile,
+    execFileSync
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { promisify } from 'util';
 import { z } from 'zod';
+
+// Promise-based execFile with string decoding (execFile itself only returns a
+// promise through util.promisify; the typed cast pins the string encoding).
+const execFileAsync = promisify(execFile) as (
+    file: string,
+    args: readonly string[],
+    options: ExecFileOptionsWithStringEncoding
+) => Promise<{ stdout: string; stderr: string }>;
 
 import { getClaudeConfigDir } from './claude-settings';
 import { isExcludedFromProxy } from './no-proxy';
-import {
-    createProxyAgent,
-    type ClosableProxyAgent
-} from './proxy-agent';
+// type-only: the agent module itself is loaded on demand in
+// getUsageApiRequestOptions so the render path stays lean (#397)
+import type { ClosableProxyAgent } from './proxy-agent';
 import type {
     UsageData,
     UsageDataField,
@@ -40,14 +52,35 @@ const MAX_LOCK_HORIZON = 24 * 60 * 60; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
 // Keychain reads normally take milliseconds. A `security` call blocked on an
-// unlock prompt must not hold the status line until someone answers it.
-const MACOS_SECURITY_TIMEOUT_MS = 5000;
+// unlock prompt must not hold the status line until someone answers it, and
+// the daemon path must not leave a hung keychain read pending forever — sync
+// and async probes share the same 5s budget.
+const MACOS_SECURITY_TIMEOUT_MS = 5_000;
+const MACOS_KEYCHAIN_MISS_FILE = path.join(CACHE_DIR, 'keychain-fallback-empty');
+const MACOS_KEYCHAIN_MISS_TTL_MS = 30_000;
 
-export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
+export interface FetchUsageDataOptions {
+    requiredFields?: readonly UsageDataField[];
+    /** Request-scoped memory cache; a fresh one per render (#15). */
+    cache: UsageMemoryCache;
+    /**
+     * Pre-resolved credentials. The daemon prefetch resolves them (asynchronously,
+     * off the render loop) once per account scope and passes them here so the
+     * fetch neither re-reads the keychain nor can fast-return another profile's
+     * cached usage (#18).
+     */
+    credentials?: UsageCredentials | null;
+    /** Async credential resolution for callers that must not block the loop. */
+    resolveCredentials?: () => Promise<UsageCredentials | null>;
+    /** Cancels the outgoing API request. */
+    signal?: AbortSignal;
+    /** Environment snapshot the config-dir and proxy lookups read (#18). */
+    env?: NodeJS.ProcessEnv;
+}
 
 // The access token is what the API is called with; the refresh token is kept
 // alongside it only to fingerprint the account (see getUsageCacheIdentity).
-interface UsageCredentials {
+export interface UsageCredentials {
     accessToken: string;
     refreshToken?: string;
 }
@@ -287,6 +320,16 @@ function readCachedTokenHash(rawJson: string): string | undefined {
     return parseJsonWithSchema(rawJson, CachedTokenHashSchema)?.tokenHash;
 }
 
+/**
+ * Stable account-scope key for shared caches (#18): the preferred credential
+ * fingerprint. Callers partition per-account state (memory caches, refresh
+ * groups) by this key, so concurrent sessions never share usage state across
+ * accounts — and a no-credentials scope never sees a logged-in account's data.
+ */
+export function getUsageScopeKey(credentials: UsageCredentials): string {
+    return getUsageCacheIdentity(credentials).preferredHash;
+}
+
 function tokenHashMatches(cachedHash: string | undefined, identity: UsageCacheIdentity | null): boolean {
     // With no current token we cannot fingerprint-gate, so fall through to the
     // existing no-token handling rather than discarding an otherwise usable cache.
@@ -353,10 +396,25 @@ export function parseUsageApiResponse(rawJson: string): UsageData | null {
     return result;
 }
 
-// Memory caches
-let cachedUsageData: UsageData | null = null;
-let usageCacheTime = 0;
-let usageErrorCacheMaxAge = LOCK_MAX_AGE;
+// Memory cache. Scoped to a single request: callers create a fresh
+// UsageMemoryCache per render (#15) instead of sharing one process-global
+// result, so concurrent requests cannot serve each other stale data.
+// `identity` fingerprints the account the entry was populated for (#18): the
+// memory fast return is gated on it, so an account switch (or a logout, or a
+// profile with no credentials at all) can never select another profile's
+// cached usage — the credential fingerprint is resolved before the fast
+// return, not after it.
+export interface UsageMemoryCache {
+    data: UsageData | null;
+    time: number;
+    errorMaxAge: number;
+    /** Preferred credential hash of the account this entry belongs to; null = no credentials. */
+    identity?: string | null;
+}
+
+export function createUsageMemoryCache(): UsageMemoryCache {
+    return { data: null, time: 0, errorMaxAge: LOCK_MAX_AGE };
+}
 
 type UsageLockError = z.infer<typeof UsageLockErrorSchema>;
 
@@ -373,18 +431,20 @@ function ensureCacheDirExists(): void {
     }
 }
 
-function setCachedUsageError(error: UsageError, now: number, maxAge = LOCK_MAX_AGE): UsageData {
+function setCachedUsageError(cache: UsageMemoryCache, error: UsageError, now: number, maxAge = LOCK_MAX_AGE, identity: string | null = null): UsageData {
     const errorData: UsageData = { error };
-    cachedUsageData = errorData;
-    usageCacheTime = now;
-    usageErrorCacheMaxAge = maxAge;
+    cache.data = errorData;
+    cache.time = now;
+    cache.errorMaxAge = maxAge;
+    cache.identity = identity;
     return errorData;
 }
 
-function cacheUsageData(data: UsageData, now: number): UsageData {
-    cachedUsageData = data;
-    usageCacheTime = now;
-    usageErrorCacheMaxAge = LOCK_MAX_AGE;
+function cacheUsageData(cache: UsageMemoryCache, data: UsageData, now: number, identity: string | null = null): UsageData {
+    cache.data = data;
+    cache.time = now;
+    cache.errorMaxAge = LOCK_MAX_AGE;
+    cache.identity = identity;
     return data;
 }
 
@@ -416,18 +476,20 @@ function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageD
 }
 
 function getStaleUsageOrError(
+    cache: UsageMemoryCache,
     error: UsageError,
     now: number,
     cacheIdentity: UsageCacheIdentity | null,
+    identity: string | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
     const stale = readStaleUsageCache(cacheIdentity);
     if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
-        return cacheUsageData(stale, now);
+        return cacheUsageData(cache, stale, now, identity);
     }
 
-    return setCachedUsageError(error, now, errorCacheMaxAge);
+    return setCachedUsageError(cache, error, now, errorCacheMaxAge, identity);
 }
 
 function normalizeSecurityTimedateValue(rawValue: string): string | null {
@@ -557,6 +619,18 @@ function listMacKeychainCredentialCandidates(): string[] {
 }
 
 function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | null {
+    // Each repaint is a new process. Remember empty scans across processes,
+    // while the exact service and credentials file still get checked every time.
+    // ponytail: new hashed logins may wait 30s; invalidate on keychain changes if instant detection is needed.
+    try {
+        const age = Date.now() - fs.statSync(MACOS_KEYCHAIN_MISS_FILE).mtimeMs;
+        if (age >= 0 && age < MACOS_KEYCHAIN_MISS_TTL_MS) {
+            return null;
+        }
+    } catch {
+        // No previous miss, or the cache is unavailable: scan normally.
+    }
+
     const candidates = listMacKeychainCredentialCandidates();
 
     for (const service of candidates) {
@@ -566,12 +640,19 @@ function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | nul
         }
     }
 
+    try {
+        ensureCacheDirExists();
+        fs.writeFileSync(MACOS_KEYCHAIN_MISS_FILE, '');
+    } catch {
+        // A read-only cache must not prevent credentials-file fallback.
+    }
+
     return null;
 }
 
-function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
+function readUsageCredentialsFromCredentialsFile(env: NodeJS.ProcessEnv = process.env): UsageCredentials | null {
     try {
-        const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
+        const credFile = path.join(getClaudeConfigDir(env), '.credentials.json');
         return parseUsageCredentials(fs.readFileSync(credFile, 'utf8'));
     } catch {
         return null;
@@ -586,8 +667,8 @@ function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
 // resolved — the goal is to reproduce the exact string Claude Code's own
 // service-name builder hashes, not to locate a directory (#521). Returns
 // null for the default profile.
-export function getMacKeychainConfigDirService(): string | null {
-    const rawConfigDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? '';
+export function getMacKeychainConfigDirService(env: NodeJS.ProcessEnv = process.env): string | null {
+    const rawConfigDir = env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? env.CLAUDE_CONFIG_DIR ?? '';
     if (rawConfigDir === '') {
         return null;
     }
@@ -597,12 +678,12 @@ export function getMacKeychainConfigDirService(): string | null {
     return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
 }
 
-export function getUsageCredentials(): UsageCredentials | null {
+export function getUsageCredentials(env: NodeJS.ProcessEnv = process.env): UsageCredentials | null {
     if (process.platform !== 'darwin') {
-        return readUsageCredentialsFromCredentialsFile();
+        return readUsageCredentialsFromCredentialsFile(env);
     }
 
-    const configDirService = getMacKeychainConfigDirService();
+    const configDirService = getMacKeychainConfigDirService(env);
     if (configDirService !== null) {
         // A non-default profile owns exactly one keychain service name. On a
         // miss, the plain service and the other suffixed items all belong to
@@ -610,12 +691,82 @@ export function getUsageCredentials(): UsageCredentials | null {
         // profile's own .credentials.json rather than surface another
         // account's usage.
         return readUsageCredentialsFromMacKeychainService(configDirService)
-            ?? readUsageCredentialsFromCredentialsFile();
+            ?? readUsageCredentialsFromCredentialsFile(env);
     }
 
     return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
         ?? readUsageCredentialsFromMacKeychainCandidates()
-        ?? readUsageCredentialsFromCredentialsFile();
+        ?? readUsageCredentialsFromCredentialsFile(env);
+}
+
+// Async variants of the two keychain probes (`security` child processes; the
+// dump can scan a large keychain). Used by the daemon prefetch (#18) so a slow
+// keychain read never blocks the render loop; same fallback order as the sync
+// getUsageCredentials.
+async function readMacKeychainSecretAsync(service: string, signal?: AbortSignal): Promise<string | null> {
+    try {
+        const options: ExecFileOptionsWithStringEncoding = {
+            encoding: 'utf8',
+            timeout: MACOS_SECURITY_TIMEOUT_MS,
+            windowsHide: true,
+            ...(signal !== undefined ? { signal } : {})
+        };
+        const { stdout } = await execFileAsync(
+            'security',
+            ['find-generic-password', '-s', service, '-w'],
+            options
+        );
+        return stdout.trim();
+    } catch {
+        return null;
+    }
+}
+
+async function listMacKeychainCredentialCandidatesAsync(signal?: AbortSignal): Promise<string[]> {
+    try {
+        const options: ExecFileOptionsWithStringEncoding = {
+            encoding: 'utf8',
+            maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
+            timeout: MACOS_SECURITY_TIMEOUT_MS,
+            windowsHide: true,
+            ...(signal !== undefined ? { signal } : {})
+        };
+        const { stdout } = await execFileAsync('security', ['dump-keychain'], options);
+        return parseMacKeychainCredentialCandidates(stdout);
+    } catch {
+        return [];
+    }
+}
+
+export async function getUsageCredentialsAsync(env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal): Promise<UsageCredentials | null> {
+    if (process.platform !== 'darwin') {
+        return readUsageCredentialsFromCredentialsFile(env);
+    }
+
+    const configDirService = getMacKeychainConfigDirService(env);
+    if (configDirService !== null) {
+        return await readMacKeychainSecretAsync(configDirService, signal).then((secret) => {
+            return secret ? parseUsageCredentials(secret) : null;
+        }) ?? readUsageCredentialsFromCredentialsFile(env);
+    }
+
+    const plainServiceSecret = await readMacKeychainSecretAsync(MACOS_USAGE_CREDENTIALS_SERVICE, signal);
+    const plainCredentials = plainServiceSecret ? parseUsageCredentials(plainServiceSecret) : null;
+    if (plainCredentials) {
+        return plainCredentials;
+    }
+
+    for (const service of await listMacKeychainCredentialCandidatesAsync(signal)) {
+        // ponytail: no 30s miss-file memo here (daemon re-scans on cache misses);
+        // add it back if keychain scans show up in daemon CPU profiles.
+        const secret = await readMacKeychainSecretAsync(service, signal);
+        const credentials = secret ? parseUsageCredentials(secret) : null;
+        if (credentials) {
+            return credentials;
+        }
+    }
+
+    return readUsageCredentialsFromCredentialsFile(env);
 }
 
 export function getUsageToken(): string | null {
@@ -637,7 +788,7 @@ function getUsageCredentialsSource(): string {
     return JSON.stringify([getMacKeychainConfigDirService(), getClaudeConfigDir()]);
 }
 
-function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
+function getUsageCredentialsWithBackoff(now: number, env?: NodeJS.ProcessEnv): UsageCredentials | null {
     const source = getUsageCredentialsSource();
     try {
         const lock = parseJsonWithSchema(fs.readFileSync(NO_CREDENTIALS_LOCK_FILE, 'utf8'), NoCredentialsLockSchema);
@@ -650,7 +801,7 @@ function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
         // No recorded miss - look the credentials up
     }
 
-    const credentials = getUsageCredentials();
+    const credentials = getUsageCredentials(env);
     if (!credentials) {
         try {
             ensureCacheDirExists();
@@ -768,20 +919,28 @@ const USAGE_API_HOST = 'api.anthropic.com';
 const USAGE_API_PATH = '/api/oauth/usage';
 const USAGE_API_TIMEOUT_MS = 5000;
 
-function getUsageApiProxyUrl(): string | null {
-    const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    if (proxyUrl === '' || isExcludedFromProxy(USAGE_API_HOST)) {
+function getUsageApiProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+    const proxyUrl = env.HTTPS_PROXY?.trim();
+    if (proxyUrl === '' || proxyUrl === undefined || isExcludedFromProxy(USAGE_API_HOST)) {
         return null;
     }
 
-    return proxyUrl ?? null;
+    return proxyUrl;
 }
 
-function getUsageApiRequest(token: string): { options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null {
-    const proxyUrl = getUsageApiProxyUrl();
+async function getUsageApiRequest(token: string, env: NodeJS.ProcessEnv): Promise<{ options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null> {
+    const proxyUrl = getUsageApiProxyUrl(env);
 
     try {
-        const proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
+        let proxy: ClosableProxyAgent | null = null;
+        if (proxyUrl) {
+            // Loaded on demand: the agent (and its transitive module graph) only
+            // matters when a proxy is actually configured, and the statusline
+            // entry point is re-run on every repaint (#397).
+            const { createProxyAgent } = await import('./proxy-agent');
+            proxy = createProxyAgent(proxyUrl);
+        }
+
         return {
             options: {
                 hostname: USAGE_API_HOST,
@@ -801,8 +960,8 @@ function getUsageApiRequest(token: string): { options: https.RequestOptions; pro
     }
 }
 
-async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS): Promise<UsageApiFetchResult> {
-    const usageRequest = getUsageApiRequest(token);
+async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS, signal?: AbortSignal, env: NodeJS.ProcessEnv = process.env): Promise<UsageApiFetchResult> {
+    const usageRequest = await getUsageApiRequest(token, env);
     if (!usageRequest) {
         return { kind: 'error' };
     }
@@ -816,7 +975,18 @@ async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_M
             }
             settled = true;
             clearTimeout(deadline);
+            // The one-shot agent must not hold the daemon alive after the
+            // request settled (success or failure).
+            usageRequest.proxy?.close();
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
             resolve(value);
+        };
+
+        const onAbort = () => {
+            request.destroy();
+            finish({ kind: 'error' });
         };
 
         const request = https.request(usageRequest.options, (response) => {
@@ -854,35 +1024,49 @@ async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_M
         // has none until the proxy answers CONNECT
         const deadline = setTimeout(() => {
             request.destroy();
-            usageRequest.proxy?.close();
             finish({ kind: 'error' });
         }, deadlineMs);
+        if (signal) {
+            if (signal.aborted) {
+                finish({ kind: 'error' });
+                return;
+            }
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
         request.end();
     });
 }
 
-export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promise<UsageData> {
+export async function fetchUsageData(options: FetchUsageDataOptions): Promise<UsageData> {
     const now = Math.floor(Date.now() / 1000);
     const requiredFields = options.requiredFields ?? [];
-
-    // Check memory cache (fast path)
-    if (cachedUsageData) {
-        const cacheAge = now - usageCacheTime;
-        if (!cachedUsageData.error && cacheAge < CACHE_MAX_AGE && hasRequiredUsageFields(cachedUsageData, requiredFields)) {
-            return cachedUsageData;
-        }
-        if (cachedUsageData.error && cacheAge < usageErrorCacheMaxAge) {
-            return cachedUsageData;
-        }
-    }
+    const cache = options.cache;
 
     // Resolve the credentials up front (before lock/rate-limit checks so auth
-    // failures are not masked as timeout) and fingerprint them so the file cache
+    // failures are not masked as timeout) and fingerprint them so both caches
     // can be invalidated on an account switch: a different login, written by a
-    // logout/login, no longer matches the cached fingerprint.
-    const credentials = getUsageCredentialsWithBackoff(now);
+    // logout/login, no longer matches the cached fingerprint. This happens
+    // BEFORE the memory fast return (#18): the account/profile scope is known
+    // first, so a cache entry from another profile can never be selected —
+    // including the no-credentials profile selecting a logged-in entry.
+    const credentials = options.credentials
+        ?? (options.resolveCredentials ? await options.resolveCredentials() : null)
+        ?? getUsageCredentialsWithBackoff(now, options.env);
     const token = credentials?.accessToken ?? null;
     const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
+    const identity = cacheIdentity?.preferredHash ?? null;
+
+    // Check memory cache (fast path). `identity === undefined` marks a cache
+    // that no fetch has populated yet in this scope.
+    if (cache.data && cache.identity !== undefined && cache.identity === identity) {
+        const cacheAge = now - cache.time;
+        if (!cache.data.error && cacheAge < CACHE_MAX_AGE && hasRequiredUsageFields(cache.data, requiredFields)) {
+            return cache.data;
+        }
+        if (cache.data.error && cacheAge < cache.errorMaxAge) {
+            return cache.data;
+        }
+    }
 
     // Check file cache
     try {
@@ -898,7 +1082,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             if (fileData && !fileData.error
                 && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
                 && hasRequiredUsageFields(fileData, requiredFields)) {
-                return cacheUsageData(fileData, now);
+                return cacheUsageData(cache, fileData, now, identity);
             }
         }
     } catch {
@@ -906,15 +1090,17 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     }
 
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError(cache, 'no-credentials', now, cacheIdentity, identity, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
     if (activeLock) {
         return getStaleUsageOrError(
+            cache,
             activeLock.error,
             now,
             cacheIdentity,
+            identity,
             Math.max(1, activeLock.blockedUntil - now),
             requiredFields
         );
@@ -924,27 +1110,27 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
     // Fetch from API using Node's https module
     try {
-        const response = await fetchFromUsageApi(token);
+        const response = await fetchFromUsageApi(token, USAGE_API_TIMEOUT_MS, options.signal, options.env);
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, cacheIdentity, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError(cache, 'rate-limited', now, cacheIdentity, identity, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError(cache, 'api-error', now, cacheIdentity, identity, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError(cache, 'parse-error', now, cacheIdentity, identity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError(cache, 'parse-error', now, cacheIdentity, identity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
@@ -962,9 +1148,9 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             clearOwnUsageLock(inFlightLock);
         }
 
-        return cacheUsageData(usageData, now);
+        return cacheUsageData(cache, usageData, now, identity);
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError(cache, 'parse-error', now, cacheIdentity, identity, LOCK_MAX_AGE, requiredFields);
     }
 }
