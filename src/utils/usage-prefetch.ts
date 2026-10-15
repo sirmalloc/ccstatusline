@@ -105,6 +105,14 @@ const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
 // fetch made only for it isn't an error, and the payload's percent stands in.
 const UNDER_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionUsage', fromApi: true, suppressFetchError: true };
 
+// A cached answer can outlive its block: the cache is reused for minutes, and
+// for as long as the API keeps failing. Once its block has reset, its percent
+// says nothing about the current one.
+function isFromCurrentBlock(apiData: UsageData): boolean {
+    const resetAtMs = apiData.sessionResetAt === undefined ? Number.NaN : Date.parse(apiData.sessionResetAt);
+    return Number.isNaN(resetAtMs) || resetAtMs > Date.now();
+}
+
 export function hasUsageDependentWidgets(lines: WidgetItem[][]): boolean {
     return lines.some(line => line.some(item => USAGE_WIDGET_TYPES.has(item.type)));
 }
@@ -264,7 +272,7 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
     }
 
     const usageData = mergeUsageData(rateLimitsData, apiData);
-    if (requirements.includes(UNDER_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined) {
+    if (requirements.includes(UNDER_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined && isFromCurrentBlock(apiData)) {
         usageData.apiSessionUsage = apiData.sessionUsage;
     }
     return usageData;

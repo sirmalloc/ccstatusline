@@ -37,6 +37,7 @@ describe('usage prefetch', () => {
 
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.useRealTimers();
     });
 
     it.each([
@@ -385,6 +386,33 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls).toEqual([
             [{ requiredFields: ['sessionUsage'] }]
         ]);
+    });
+
+    it('ignores a cached block percent from a block that has already reset', async () => {
+        // The API kept failing across the reset, so the cache still holds the old block's 100%
+        vi.useFakeTimers({ now: (1774020000 + 20 * 60) * 1000, toFake: ['Date'] });
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 100, sessionResetAt: epochToIso(1774020000) });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 40, resets_at: 1774020000 + 5 * 60 * 60 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 40, sessionResetAt: epochToIso(1774020000 + 5 * 60 * 60) });
+    });
+
+    it('keeps the cached block percent while its block is still running', async () => {
+        vi.useFakeTimers({ now: (1774020000 - 20 * 60) * 1000, toFake: ['Date'] });
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 100, sessionResetAt: epochToIso(1774020000) });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 97, resets_at: 1774020000 } } });
+
+        expect(usageData?.apiSessionUsage).toBe(100);
     });
 
     it('falls back to rate_limits\' block percent when the under-limit fetch fails', async () => {
