@@ -14,6 +14,55 @@ export type { PowerlineFontStatus };
 // Track if fonts were installed during this session (for DEBUG_FONT_INSTALL)
 let fontsInstalledThisSession = false;
 
+// Common Powerline font patterns to look for. Nerd Fonts dropped the
+// spaces in v3 ("JetBrainsMonoNerdFont-Regular.ttf") and also ships a
+// short "NF" form, so "nerd font" alone misses both.
+export const powerlineFontPatterns = [
+    /powerline/i,
+    /nerd ?font/i,
+    /nf(?=[-_.0-9]|$)/i,  // Nerd Fonts v3 short form, e.g. JetBrainsMonoNF-Regular.ttf
+    /for powerline/i,
+    /meslo.*lg/i,  // Meslo LG fonts often include Powerline
+    /source.*code.*pro.*powerline/i,
+    /dejavu.*powerline/i,
+    /ubuntu.*mono.*powerline/i,
+    /cascadia.*code.*pl/i,  // Cascadia Code PL
+    /fira.*code.*nerd/i
+];
+
+// Font managers nest fonts in subfolders (NerdFonts/, TTF/, opentype/), so
+// scan recursively. The depth cap keeps a corrupt or cyclic directory tree
+// from hanging the check. Exported for tests.
+export function fontFolderHasPowerlineFont(dir: string, depth = 0): boolean {
+    if (depth > 5) {
+        return false;
+    }
+    let entries: fs.Dirent[];
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+        // Ignore read errors for specific directories
+        return false;
+    }
+    for (const entry of entries) {
+        if (entry.name.startsWith('.')) {
+            continue;
+        }
+        if (entry.isDirectory()) {
+            if (fontFolderHasPowerlineFont(path.join(dir, entry.name), depth + 1)) {
+                return true;
+            }
+            continue;
+        }
+        for (const pattern of powerlineFontPatterns) {
+            if (pattern.test(entry.name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /**
  * Check if Powerline fonts are installed by testing if Powerline symbols render correctly
  */
@@ -61,37 +110,13 @@ export function checkPowerlineFonts(): PowerlineFontStatus {
             ];
         }
 
-        // Common Powerline font patterns to look for
-        const powerlineFontPatterns = [
-            /powerline/i,
-            /nerd font/i,
-            /for powerline/i,
-            /meslo.*lg/i,  // Meslo LG fonts often include Powerline
-            /source.*code.*pro.*powerline/i,
-            /dejavu.*powerline/i,
-            /ubuntu.*mono.*powerline/i,
-            /cascadia.*code.*pl/i,  // Cascadia Code PL
-            /fira.*code.*nerd/i
-        ];
-
         // Check if any Powerline fonts exist
         for (const fontPath of fontPaths) {
-            if (fs.existsSync(fontPath)) {
-                try {
-                    const files = fs.readdirSync(fontPath);
-                    for (const file of files) {
-                        for (const pattern of powerlineFontPatterns) {
-                            if (pattern.test(file)) {
-                                return {
-                                    installed: true,
-                                    checkedSymbol: testSymbols.rightArrow
-                                };
-                            }
-                        }
-                    }
-                } catch {
-                    // Ignore read errors for specific directories
-                }
+            if (fs.existsSync(fontPath) && fontFolderHasPowerlineFont(fontPath)) {
+                return {
+                    installed: true,
+                    checkedSymbol: testSymbols.rightArrow
+                };
             }
         }
 
