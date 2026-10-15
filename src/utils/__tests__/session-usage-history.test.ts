@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import {
     describe,
     expect,
@@ -24,14 +25,16 @@ function history(profiles: Record<string, StoredWindow[]>): unknown {
     return { version: 1, profiles };
 }
 
-function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<string, string>; writes: number } {
+function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<string, string>; mtimes: Map<string, number>; writes: number } {
     const files = new Map<string, string>();
+    const mtimes = new Map<string, number>();
     if (initial !== undefined) {
         files.set(CACHE_PATH, typeof initial === 'string' ? initial : JSON.stringify(initial));
     }
 
     const deps = {
         files,
+        mtimes,
         writes: 0,
         cachePath: CACHE_PATH,
         now: () => NOW,
@@ -47,6 +50,7 @@ function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<str
         writeFileSync: (p: string, data: string) => {
             deps.writes += 1;
             files.set(p, data);
+            mtimes.set(p, deps.now());
         },
         renameSync: (from: string, to: string) => {
             const data = files.get(from);
@@ -55,10 +59,36 @@ function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<str
             }
 
             files.set(to, data);
+            mtimes.set(to, mtimes.get(from) ?? deps.now());
             files.delete(from);
+            mtimes.delete(from);
+        },
+        unlinkSync: (p: string) => {
+            if (!files.delete(p)) {
+                throw new Error('ENOENT');
+            }
+            mtimes.delete(p);
+        },
+        readdirSync: (dir: string) => [...files.keys()]
+            .filter(p => path.dirname(p) === dir)
+            .map(p => path.basename(p)),
+        statSync: (p: string) => {
+            if (!files.has(p)) {
+                throw new Error('ENOENT');
+            }
+
+            return { mtimeMs: mtimes.get(p) ?? deps.now() };
         }
     };
     return deps;
+}
+
+// A temp file another render wrote ageMs ago, as one whose rename failed leaves
+function leaveTempFile(deps: ReturnType<typeof makeDeps>, name: string, ageMs: number): string {
+    const tempPath = path.join(path.dirname(CACHE_PATH), name);
+    deps.files.set(tempPath, '{}');
+    deps.mtimes.set(tempPath, NOW - ageMs);
+    return tempPath;
 }
 
 function stored(deps: ReturnType<typeof makeDeps>): unknown {
@@ -213,6 +243,95 @@ describe('recordSessionUsageReading', () => {
         const deps = makeDeps();
         deps.writeFileSync = () => {
             throw new Error('EROFS');
+        };
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+    });
+
+    // Each render is a new process, so a temp file left behind by a failed
+    // rename (a Windows virus scanner holding it, say) would pile up per render.
+    it('removes its temp file when the rename fails', () => {
+        const deps = makeDeps();
+        deps.renameSync = () => {
+            throw new Error('EPERM');
+        };
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+        expect([...deps.files.keys()]).toEqual([]);
+    });
+
+    it('still returns the readings when the temp file can\'t be removed either', () => {
+        const deps = makeDeps();
+        deps.renameSync = () => {
+            throw new Error('EPERM');
+        };
+        deps.unlinkSync = () => {
+            throw new Error('EPERM');
+        };
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+    });
+
+    // A held handle can refuse a failed rename's unlink too, and builds before
+    // that unlink left theirs, so each write clears what earlier renders left.
+    it('removes the temp files other renders left a minute or more ago', () => {
+        const deps = makeDeps();
+        const orphan = leaveTempFile(deps, 'session-usage-history.json.4242.tmp', 2 * MINUTE);
+        const midWrite = leaveTempFile(deps, 'session-usage-history.json.4343.tmp', 30_000);
+        const others = [
+            leaveTempFile(deps, 'daily.json.4444.tmp', 2 * MINUTE),
+            leaveTempFile(deps, 'session-usage-history.json.tmp', 2 * MINUTE),
+            leaveTempFile(deps, 'session-usage-history.json.bak.tmp', 2 * MINUTE)
+        ];
+
+        recordSessionUsageReading('/p', RESET_AT, 42, deps);
+
+        expect(deps.files.has(orphan)).toBe(false);
+        expect([...deps.files.keys()].sort()).toEqual([CACHE_PATH, midWrite, ...others].sort());
+    });
+
+    it('removes old temp files when its own rename fails too', () => {
+        const deps = makeDeps();
+        leaveTempFile(deps, 'session-usage-history.json.4242.tmp', 2 * MINUTE);
+        deps.renameSync = () => {
+            throw new Error('EPERM');
+        };
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+        expect([...deps.files.keys()]).toEqual([]);
+    });
+
+    it('leaves the temp files alone when it doesn\'t write', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 30_000, 42]] }] }));
+        const orphan = leaveTempFile(deps, 'session-usage-history.json.4242.tmp', 2 * MINUTE);
+
+        recordSessionUsageReading('/p', RESET_AT, 42, deps);
+
+        expect(deps.files.has(orphan)).toBe(true);
+    });
+
+    it('moves on to the next old temp file when one can\'t be removed', () => {
+        const deps = makeDeps();
+        const held = leaveTempFile(deps, 'session-usage-history.json.4242.tmp', 2 * MINUTE);
+        const orphan = leaveTempFile(deps, 'session-usage-history.json.4343.tmp', 2 * MINUTE);
+        const unlink = deps.unlinkSync;
+        deps.unlinkSync = (p: string) => {
+            if (p === held) {
+                throw new Error('EPERM');
+            }
+
+            unlink(p);
+        };
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+        expect(deps.files.has(held)).toBe(true);
+        expect(deps.files.has(orphan)).toBe(false);
+    });
+
+    it('still returns the readings when the cache directory can\'t be listed', () => {
+        const deps = makeDeps();
+        deps.readdirSync = () => {
+            throw new Error('EACCES');
         };
 
         expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);

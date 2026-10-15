@@ -16,6 +16,9 @@ const WINDOW_MATCH_MS = 60 * 60 * 1000;
 // An unchanged percent only moves its reading's last-seen time this often, so an
 // active session writes about once a minute rather than on every render.
 const LAST_SEEN_WRITE_INTERVAL_MS = 60 * 1000;
+// Another render's temp file this old has been left behind, not still being
+// written, so a write removes it
+const ORPHANED_TEMP_FILE_AGE_MS = 60 * 1000;
 
 interface SessionUsageWindow {
     resetAt: number;
@@ -31,6 +34,9 @@ export interface SessionUsageHistoryDeps {
     readFileSync: (path: string) => string;
     writeFileSync: (path: string, data: string) => void;
     renameSync: (from: string, to: string) => void;
+    unlinkSync: (path: string) => void;
+    readdirSync: (path: string) => string[];
+    statSync: (path: string) => { mtimeMs: number };
     mkdirSync: (path: string) => void;
     now: () => number;
     cachePath: string;
@@ -42,6 +48,9 @@ export function getDefaultSessionUsageHistoryDeps(): SessionUsageHistoryDeps {
         readFileSync: (p: string) => fs.readFileSync(p, 'utf-8'),
         writeFileSync: (p: string, data: string) => { fs.writeFileSync(p, data, 'utf-8'); },
         renameSync: (from: string, to: string) => { fs.renameSync(from, to); },
+        unlinkSync: (p: string) => { fs.unlinkSync(p); },
+        readdirSync: (p: string) => fs.readdirSync(p),
+        statSync: (p: string) => fs.statSync(p),
         mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
         now: () => Date.now(),
         cachePath: path.join(os.homedir(), '.cache', 'ccstatusline', 'session-usage-history.json')
@@ -112,6 +121,36 @@ function pruneWindows(windows: SessionUsageWindow[], nowMs: number): SessionUsag
         });
 }
 
+// Removes the history's temp files that other renders left a minute or more
+// ago. A held handle that fails a rename can fail its unlink too, and builds
+// from before that unlink left theirs, so while the handle is held at most a
+// minute's worth stays.
+function removeOrphanedTempFiles(deps: SessionUsageHistoryDeps, nowMs: number): void {
+    const dir = path.dirname(deps.cachePath);
+    const prefix = `${path.basename(deps.cachePath)}.`;
+    let names: string[];
+    try {
+        names = deps.readdirSync(dir);
+    } catch {
+        return;
+    }
+
+    for (const name of names) {
+        if (!name.startsWith(prefix) || !/^\d+\.tmp$/.test(name.slice(prefix.length))) {
+            continue;
+        }
+
+        const tempPath = path.join(dir, name);
+        try {
+            if (nowMs - deps.statSync(tempPath).mtimeMs >= ORPHANED_TEMP_FILE_AGE_MS) {
+                deps.unlinkSync(tempPath);
+            }
+        } catch {
+            // Gone already, or still held; a later write tries again.
+        }
+    }
+}
+
 /**
  * Records the current session percent in this profile's 5-hour window and
  * returns the window's readings for the forecast. Best-effort: a failed write
@@ -158,15 +197,24 @@ export function recordSessionUsageReading(
         return readings;
     }
 
+    const tempPath = `${deps.cachePath}.${process.pid}.tmp`;
     try {
         deps.mkdirSync(path.dirname(deps.cachePath));
-        const tempPath = `${deps.cachePath}.${process.pid}.tmp`;
         const history: SessionUsageHistory = { version: HISTORY_SCHEMA_VERSION, profiles };
         deps.writeFileSync(tempPath, JSON.stringify(history));
         deps.renameSync(tempPath, deps.cachePath);
     } catch {
-        // Best-effort history; the status line must render regardless.
+        // Best-effort history; the status line must render regardless. Every
+        // render is a new process with its own temp name, so one left behind by
+        // a failed rename (a Windows virus scanner holding it, say) would pile up.
+        try {
+            deps.unlinkSync(tempPath);
+        } catch {
+            // Never written, or still held; nothing more to do.
+        }
     }
+
+    removeOrphanedTempFiles(deps, nowMs);
 
     return readings;
 }

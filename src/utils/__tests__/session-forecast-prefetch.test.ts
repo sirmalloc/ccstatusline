@@ -46,7 +46,10 @@ function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<str
         renameSync: (from: string, to: string) => {
             files.set(to, files.get(from) ?? '');
             files.delete(from);
-        }
+        },
+        unlinkSync: (p: string) => { files.delete(p); },
+        readdirSync: () => [],
+        statSync: () => ({ mtimeMs: NOW })
     };
     return deps;
 }
