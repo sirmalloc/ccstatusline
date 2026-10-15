@@ -415,6 +415,24 @@ describe('usage prefetch', () => {
         expect(usageData?.apiSessionUsage).toBe(100);
     });
 
+    it('falls back to rate_limits\' block percent when the under-limit fetch only has a stale cache', async () => {
+        // The API is in a backoff, so the fetch serves the last good cache, older
+        // and lower than the payload's percent for the same block
+        vi.useFakeTimers({ now: (1774020000 - 20 * 60) * 1000, toFake: ['Date'] });
+        const staleData: UsageData = { sessionUsage: 97, sessionResetAt: epochToIso(1774020000) };
+        mockFetchUsageData.mockResolvedValue(staleData);
+        // Marked by identity, so only the object fetchUsageData returned counts as stale
+        vi.spyOn(usage, 'isStaleUsageFallback').mockImplementation(data => data === staleData);
+
+        const lines = makeLines(
+            [{ id: '1', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 100, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 100, sessionResetAt: epochToIso(1774020000) });
+    });
+
     it('falls back to rate_limits\' block percent when the under-limit fetch fails', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
 
