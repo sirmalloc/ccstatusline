@@ -73,7 +73,26 @@ export const SettingsSchema = z.object({
     inheritSeparatorColors: z.boolean().default(false),
     overrideBackgroundColor: z.string().optional(),
     overrideForegroundColor: z.string().optional(),
+    // Theme name from POWERLINE_THEMES applied in regular (non-powerline)
+    // mode: cycles the theme's segment palette across widgets as foreground
+    // colors. Additive optional key, no version bump needed; unset, 'custom',
+    // or an unknown name disables theming. Explicit per-widget colors win.
+    theme: z.string().optional(),
+    // Per-line theme overrides, parallel to `lines`: entry i themes line i,
+    // an undefined entry (or a short/absent array) inherits the global theme
+    // (settings.theme in regular mode, powerline.theme in powerline mode),
+    // 'none' disables theming for that line. Additive optional key, no
+    // version bump needed (same precedent as `theme`). null entries are
+    // accepted and treated as inherit: undefined holes in an in-memory array
+    // serialize to null through JSON.stringify, so a TUI-written config must
+    // reload cleanly (normalizeLineThemes maps null back to undefined).
+    lineThemes: z.array(z.string().nullish()).optional(),
     globalBold: z.boolean().default(false),
+    // Compact label presets (Model: -> M:, Context: -> Ctx:, Cost: -> $) for
+    // labeled widgets. Additive v4 key with an off default, so configs written
+    // before it render identically without a version bump; per-widget
+    // metadata.compactLabel overrides the global setting either way.
+    compactLabels: z.boolean().default(false),
     numberFormat: GlobalNumberFormatSchema.optional(),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
     // How long a "no TTY" result is reused for the same session, in seconds.
@@ -97,7 +116,24 @@ export const SettingsSchema = z.object({
         message: z.string().nullable().optional(),
         remaining: z.number().nullable().optional()
     }).optional(),
-    installation: InstallationMetadataSchema.optional()
+    installation: InstallationMetadataSchema.optional(),
+    // On-demand daemon lifecycle (#53): minutes with zero requests before the
+    // daemon exits by itself. 0 disables idle auto-stop. Additive key with a
+    // default, so configs written before it behave identically.
+    daemonIdleStopMinutes: z.number().min(0).max(1440).default(10),
+    // Daemon shared mode (#19): present while the Claude Code statusLine
+    // points at the IPC client wrapper. Remembers the exact previous statusLine
+    // so returning to one-shot mode restores it verbatim; null previous means
+    // there was no statusLine and returning removes ours. Additive optional
+    // key, no version bump needed (same precedent as `theme`).
+    daemonSharedMode: z.object({
+        previousStatusLine: z.object({
+            type: z.string(),
+            command: z.string(),
+            padding: z.number().optional(),
+            refreshInterval: z.number().optional()
+        }).nullable()
+    }).optional()
 });
 
 // Inferred type from schema

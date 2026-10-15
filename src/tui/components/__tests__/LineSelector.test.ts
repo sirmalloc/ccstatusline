@@ -664,3 +664,45 @@ describe('LineSelector', () => {
         }
     });
 });
+
+describe('LineSelector theme-managed block', () => {
+    it('renders the list when at least one line has its own theme', async () => {
+        const view = renderLineSelector({
+            lines: [ONE_WIDGET, ONE_WIDGET],
+            blockIfPowerlineActive: true,
+            allowEditing: false,
+            title: 'Select Line',
+            settings: {
+                ...powerlineSettings(true, 'nord'),
+                lineThemes: [undefined, 'none']
+            }
+        });
+
+        try {
+            await waitFor(() => {
+                expect(view.frame()).toContain('Line 1');
+            });
+            expect(view.frame()).not.toContain('managed by the Powerline theme');
+        } finally {
+            view.cleanup();
+        }
+    });
+
+    it('shows the theme-managed block when every line inherits the global theme', async () => {
+        const view = renderLineSelector({
+            lines: [ONE_WIDGET, ONE_WIDGET],
+            blockIfPowerlineActive: true,
+            allowEditing: false,
+            title: 'Select Line',
+            settings: powerlineSettings(true, 'nord')
+        });
+
+        try {
+            await waitFor(() => {
+                expect(view.frame()).toContain('managed by the Powerline theme');
+            });
+        } finally {
+            view.cleanup();
+        }
+    });
+});

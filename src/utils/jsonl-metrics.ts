@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
 import path from 'node:path';
 
+import { capMap } from '../daemon/provider-scope';
 import type {
+    LastTurnTokens,
     SpeedMetrics,
     TokenMetrics,
     TranscriptLine
@@ -42,6 +44,7 @@ export interface TranscriptAnalysisOptions {
     includeCompactionStats?: boolean;
     includeThinkingEffort?: boolean;
     includeSessionName?: boolean;
+    includeLastTurnTokens?: boolean;
 }
 
 export interface TranscriptAnalysis {
@@ -86,6 +89,7 @@ interface TokenMetricEntry {
     stopReason: string | null | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
+    messageId: string | null;
 }
 
 interface TokenMetricAccumulator {
@@ -102,10 +106,15 @@ interface TokenMetricAccumulator {
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
+    countedMessageId: string | null;
+    countedOutputTokens: number;
     lastUsageEntry: TokenMetricEntry | null;
     sawCompactBoundary: boolean;
     boundaryAfterLastUsage: boolean;
     lastCompactBoundaryPostTokens: number | null;
+    lastTurnMessageId: string | null;
+    lastTurnTokens: LastTurnTokens | null;
+    turnCount: number;
 }
 
 function createEmptyTokenMetrics(): TokenMetrics {
@@ -169,14 +178,83 @@ function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
+        countedMessageId: null,
+        countedOutputTokens: 0,
         lastUsageEntry: null,
         sawCompactBoundary: false,
         boundaryAfterLastUsage: false,
-        lastCompactBoundaryPostTokens: null
+        lastCompactBoundaryPostTokens: null,
+        lastTurnMessageId: null,
+        lastTurnTokens: null,
+        turnCount: 0
     };
 }
 
+function createLastTurnTokens(usage: UsageTokens): LastTurnTokens {
+    const cachedTokens = usage.read + usage.creation;
+    return {
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+        cachedTokens,
+        totalTokens: usage.input + usage.output + cachedTokens
+    };
+}
+
+// Claude Code writes one JSONL entry per content block (thinking / text / each
+// tool_use) of a single API call, all sharing one message.id and repeating
+// identical prompt-side usage; only output_tokens grows entry to entry.
+// Grouping consecutive counted entries by id keeps one usage per call instead
+// of one per content block (see sirmalloc/ccstatusline#549). Entries without
+// an id each start a new group.
+function accumulateCumulativeTokenEntry(
+    state: TokenMetricState,
+    entry: TokenMetricEntry,
+    includePostCompactionUsage: boolean
+): void {
+    if (state.countedMessageId !== null
+        && entry.messageId !== null
+        && entry.messageId === state.countedMessageId) {
+        // Duplicates only grow output_tokens, so the recency snapshots taken by
+        // the group's first counted entry stay valid: per-block entries repeat
+        // identical prompt-side usage and contextLength never reads output.
+        // Divergent prompt-side usage within one id would need re-snapshotting.
+        const outputDelta = entry.usage.output - state.countedOutputTokens;
+        if (outputDelta > 0) {
+            state.countedOutputTokens = entry.usage.output;
+            state.metrics.outputTokens += outputDelta;
+        }
+        return;
+    }
+
+    state.countedMessageId = entry.messageId;
+    state.countedOutputTokens = entry.usage.output;
+    accumulateTokenMetricEntry(state.metrics, entry, includePostCompactionUsage);
+}
+
+function trackLastTurnTokens(state: TokenMetricState, entry: TokenMetricEntry): void {
+    const { messageId } = entry;
+    if (state.lastTurnTokens !== null
+        && messageId !== null
+        && messageId === state.lastTurnMessageId) {
+        const lastTurn = state.lastTurnTokens;
+        lastTurn.outputTokens = Math.max(lastTurn.outputTokens, entry.usage.output);
+        lastTurn.totalTokens = lastTurn.inputTokens + lastTurn.outputTokens + lastTurn.cachedTokens;
+        return;
+    }
+
+    state.lastTurnMessageId = messageId;
+    state.lastTurnTokens = createLastTurnTokens(entry.usage);
+}
+
 function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
+    // A user turn is a real prompt: tool results carry toolUseResult, and
+    // meta rows / subagent sidechains / API errors are not the user's turns.
+    if (data?.type === 'user' && data.isMeta !== true
+        && data.toolUseResult === undefined
+        && data.isSidechain !== true && data.isApiErrorMessage !== true) {
+        state.turnCount++;
+    }
+
     const compactBoundary = isCompactBoundary(data);
     if (compactBoundary) {
         state.sawCompactBoundary = true;
@@ -188,29 +266,38 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const message = data?.message;
     const usage = message?.usage;
     if (usage) {
+        const rawMessageId = message.id;
         const entry: TokenMetricEntry = {
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
-            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
+            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+            messageId: typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null
         };
 
         const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
+            state.countedMessageId = null;
+            state.countedOutputTokens = 0;
         }
         if (!state.hasStopReasonField || entry.stopReason) {
-            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+            accumulateCumulativeTokenEntry(state, entry, !compactBoundary);
+        }
+        // Sidechain (subagent) and API-error rows never form the user's turn,
+        // matching the recency rule used for context length above.
+        if (entry.isMainChain) {
+            trackLastTurnTokens(state, entry);
         }
         state.lastUsageEntry = entry;
         state.boundaryAfterLastUsage = compactBoundary;
     }
 }
 
-function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
+function finishTokenMetrics(state: TokenMetricState, includeLastTurnTokens: boolean): TokenMetrics {
     if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
-        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+        accumulateCumulativeTokenEntry(state, state.lastUsageEntry, !state.boundaryAfterLastUsage);
     }
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
@@ -228,7 +315,11 @@ function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
         cacheReadTokens: state.metrics.cacheReadTokens,
         cacheCreationTokens: state.metrics.cacheCreationTokens,
         totalTokens: state.metrics.inputTokens + state.metrics.outputTokens + cachedTokens,
-        contextLength
+        contextLength,
+        lastTurnTokens: includeLastTurnTokens && state.lastTurnTokens
+            ? state.lastTurnTokens
+            : undefined,
+        turnCount: includeLastTurnTokens ? state.turnCount : undefined
     };
 }
 
@@ -597,7 +688,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
         }
 
         return {
-            tokenMetrics: tokenState ? finishTokenMetrics(tokenState) : null,
+            tokenMetrics: tokenState ? finishTokenMetrics(tokenState, options.includeLastTurnTokens === true) : null,
             sessionDuration: options.includeSessionDuration
                 ? formatSessionDuration(firstTimestampMs, lastTimestampMs)
                 : null,
@@ -612,10 +703,14 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
 }
 
 function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: Set<string>): string[] {
-    if (referencedAgentIds.size === 0) {
-        return [];
-    }
+    return listSubagentTranscriptPaths(transcriptPath).filter((fullPath) => {
+        const match = /[/\\]agent-(.+)\.jsonl$/.exec(fullPath);
+        return match?.[1] !== undefined && referencedAgentIds.has(match[1]);
+    });
+}
 
+/** Every subagent transcript file next to the main transcript (any agent id). */
+function listSubagentTranscriptPaths(transcriptPath: string): string[] {
     const transcriptDir = path.dirname(transcriptPath);
     const transcriptStem = path.parse(transcriptPath).name;
     const candidateDirs = [
@@ -637,12 +732,7 @@ function getSubagentTranscriptPaths(transcriptPath: string, referencedAgentIds: 
                     continue;
                 }
 
-                const match = /^agent-(.+)\.jsonl$/.exec(entry.name);
-                if (!match?.[1]) {
-                    continue;
-                }
-
-                if (!referencedAgentIds.has(match[1])) {
+                if (!/^agent-.+\.jsonl$/.test(entry.name)) {
                     continue;
                 }
 
@@ -666,12 +756,128 @@ export async function getTranscriptAnalysis(
     transcriptPath: string,
     options: TranscriptAnalysisOptions = {}
 ): Promise<TranscriptAnalysis> {
+    const optionsKey = getAnalysisOptionsKey(options);
+    const cached = await revalidateTranscriptAnalysisCache(transcriptPath, optionsKey);
+    if (cached) {
+        return cached;
+    }
+
+    const dedupKey = `${transcriptPath}\0${optionsKey}`;
+    const inFlight = analysisInFlight.get(dedupKey);
+    if (inFlight) {
+        return inFlight;
+    }
+
+    const promise = scanAndCacheTranscriptAnalysis(transcriptPath, options, optionsKey);
+    analysisInFlight.set(dedupKey, promise);
+    try {
+        return await promise;
+    } finally {
+        analysisInFlight.delete(dedupKey);
+    }
+}
+
+// --- Whole-analysis reuse (#18) -------------------------------------------------
+//
+// The daemon repaints the same transcript many times per minute; the analysis
+// is a full read of the file (plus subagent files), so unchanged files are
+// reused wholesale. Reuse is validated by file identity — device, inode, size
+// and mtime — captured AFTER the scan that produced the analysis: an append
+// (growth), a truncation, a replacement (new inode) or a compaction rewrite
+// all change at least one component, so every such request rescans. In-flight
+// scans for the same (path, options) dedup into one scan. Incremental tail
+// parsing stays out of scope (conditional follow-up in #18).
+
+interface TranscriptFileIdentity {
+    dev: number;
+    ino: number;
+    size: number;
+    mtimeMs: number;
+}
+
+interface TranscriptAnalysisCacheEntry {
+    optionsKey: string;
+    identity: TranscriptFileIdentity;
+    subagents: { path: string; identity: TranscriptFileIdentity }[];
+    analysis: TranscriptAnalysis;
+    createdAt: number;
+}
+
+const TRANSCRIPT_ANALYSIS_CACHE_MAX_ENTRIES = 16;
+const analysisCache = new Map<string, TranscriptAnalysisCacheEntry>();
+const analysisInFlight = new Map<string, Promise<TranscriptAnalysis>>();
+
+function getAnalysisOptionsKey(options: TranscriptAnalysisOptions): string {
+    const keys = Object.keys(options).sort() as (keyof TranscriptAnalysisOptions)[];
+    return JSON.stringify(Object.fromEntries(keys.map(key => [key, options[key]])));
+}
+
+function getTranscriptFileIdentity(stats: fs.Stats): TranscriptFileIdentity {
+    return { dev: stats.dev, ino: stats.ino, size: stats.size, mtimeMs: stats.mtimeMs };
+}
+
+function transcriptIdentityMatches(identity: TranscriptFileIdentity, stats: fs.Stats): boolean {
+    return identity.dev === stats.dev
+        && identity.ino === stats.ino
+        && identity.size === stats.size
+        && identity.mtimeMs === stats.mtimeMs;
+}
+
+async function statOrNull(filePath: string): Promise<fs.Stats | null> {
+    try {
+        return await fs.promises.stat(filePath);
+    } catch {
+        return null;
+    }
+}
+
+async function revalidateTranscriptAnalysisCache(transcriptPath: string, optionsKey: string): Promise<TranscriptAnalysis | null> {
+    const entry = analysisCache.get(transcriptPath);
+    if (entry?.optionsKey !== optionsKey) {
+        return null;
+    }
+
+    const stats = await statOrNull(transcriptPath);
+    if (!stats || !transcriptIdentityMatches(entry.identity, stats)) {
+        analysisCache.delete(transcriptPath);
+        return null;
+    }
+
+    for (const subagent of entry.subagents) {
+        const subStats = await statOrNull(subagent.path);
+        if (!subStats || !transcriptIdentityMatches(subagent.identity, subStats)) {
+            analysisCache.delete(transcriptPath);
+            return null;
+        }
+    }
+
+    // A newly appeared subagent file means new data the stored identity list
+    // cannot see (a fresh agent id only ever arrives together with main-file
+    // rows, but the listing check makes that assumption explicit).
+    const listed = listSubagentTranscriptPaths(transcriptPath);
+    if (listed.length !== entry.subagents.length) {
+        analysisCache.delete(transcriptPath);
+        return null;
+    }
+
+    // Refresh recency for FIFO eviction without disturbing Map key order.
+    analysisCache.delete(transcriptPath);
+    entry.createdAt = Date.now();
+    analysisCache.set(transcriptPath, entry);
+    return entry.analysis;
+}
+
+async function scanAndCacheTranscriptAnalysis(
+    transcriptPath: string,
+    options: TranscriptAnalysisOptions,
+    optionsKey: string
+): Promise<TranscriptAnalysis> {
     const result = await scanTranscript(transcriptPath, {
         ...options,
         includeTokenMetrics: true
     });
 
-    return {
+    const analysis: TranscriptAnalysis = {
         tokenMetrics: result.tokenMetrics ?? createEmptyTokenMetrics(),
         sessionDuration: result.sessionDuration,
         speedMetricsCollection: result.speedMetricsCollection,
@@ -679,4 +885,34 @@ export async function getTranscriptAnalysis(
         thinkingEffort: result.thinkingEffort,
         sessionName: result.sessionName
     };
+
+    // Identity is captured after the scan: it describes the file as the
+    // analysis saw it (as closely as stat can), so anything written during or
+    // after the scan invalidates the entry on the next validation.
+    const stats = await statOrNull(transcriptPath);
+    if (stats) {
+        const subagents: TranscriptAnalysisCacheEntry['subagents'] = [];
+        for (const subagentPath of listSubagentTranscriptPaths(transcriptPath)) {
+            const subStats = await statOrNull(subagentPath);
+            if (subStats) {
+                subagents.push({ path: subagentPath, identity: getTranscriptFileIdentity(subStats) });
+            }
+        }
+        analysisCache.set(transcriptPath, {
+            optionsKey,
+            identity: getTranscriptFileIdentity(stats),
+            subagents,
+            analysis,
+            createdAt: Date.now()
+        });
+        capMap(analysisCache, TRANSCRIPT_ANALYSIS_CACHE_MAX_ENTRIES);
+    }
+
+    return analysis;
+}
+
+/** Test seam: drop every cached transcript analysis. */
+export function clearTranscriptAnalysisCache(): void {
+    analysisCache.clear();
+    analysisInFlight.clear();
 }

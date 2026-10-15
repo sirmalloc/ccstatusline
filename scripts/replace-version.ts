@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { execSync } from 'child_process';
 import {
     readFileSync,
     readdirSync,
@@ -38,3 +39,9 @@ if (patched === 0) {
 }
 
 console.log(`✓ Replaced version placeholder with ${version} in ${patched} file(s)`);
+
+// Print which tree was built, so a dist built from the wrong branch is visible
+// in the build log instead of silently shipping without unmerged features.
+const ref = execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
+const sha = execSync('git rev-parse --short HEAD').toString().trim();
+console.log(`✓ Built from ${ref}@${sha}`);

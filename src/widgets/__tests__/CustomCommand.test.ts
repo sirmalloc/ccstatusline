@@ -87,6 +87,7 @@ describe('CustomCommandWidget', () => {
         lines: [],
         flexMode: 'full',
         compactThreshold: 60,
+        daemonIdleStopMinutes: 10,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',
@@ -96,6 +97,7 @@ describe('CustomCommandWidget', () => {
         terminalWidthCacheTtlSeconds: 5,
         customCommandCacheTtlSeconds: 0,
         minimalistMode: false,
+        compactLabels: false,
         powerline: {
             enabled: false,
             separators: [],

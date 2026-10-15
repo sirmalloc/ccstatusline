@@ -138,6 +138,9 @@ describe('getUsageToken', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         vi.spyOn(claudeSettings, 'getClaudeConfigDir').mockReturnValue('/fake/claude');
+        vi.spyOn(fs, 'statSync').mockImplementation(() => { throw new Error('cache missing'); });
+        vi.spyOn(fs, 'mkdirSync').mockReturnValue(undefined);
+        vi.spyOn(fs, 'writeFileSync').mockReturnValue(undefined);
         mockedExecFileSync.mockReset();
     });
 
@@ -240,6 +243,48 @@ describe('getUsageToken', () => {
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-hashed -w'
         ]);
+    });
+
+    it('reuses empty keychain scans for 30 seconds without hiding direct credentials or file changes', () => {
+        let now = 100_000;
+        let missTime: number | undefined;
+        let exactToken = '';
+        vi.spyOn(Date, 'now').mockImplementation(() => now);
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        vi.spyOn(fs, 'statSync').mockImplementation(() => {
+            if (missTime === undefined) {
+                throw new Error('cache missing');
+            }
+            return { mtimeMs: missTime } as fs.Stats;
+        });
+        vi.spyOn(fs, 'writeFileSync').mockImplementation((filePath, data) => {
+            expect(String(filePath)).toMatch(/keychain-fallback-empty$/);
+            expect(data).toBe('');
+            missTime = now;
+        });
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((_command: string, args: string[]) => {
+            return args[0] === 'dump-keychain' ? '' : exactToken ? makeTokenPayload(exactToken) : '{}';
+        });
+
+        expect(getUsageToken()).toBeNull();
+        now += 29_999;
+        expect(getUsageToken()).toBeNull();
+        expect(getSecurityCallLog().filter(call => call === 'dump-keychain')).toHaveLength(1);
+
+        now += 1;
+        expect(getUsageToken()).toBeNull();
+        expect(getSecurityCallLog().filter(call => call === 'dump-keychain')).toHaveLength(2);
+
+        now -= 1;
+        expect(getUsageToken()).toBeNull();
+        expect(getSecurityCallLog().filter(call => call === 'dump-keychain')).toHaveLength(3);
+
+        mockCredentialsFile(makeTokenPayload('file-token'));
+        expect(getUsageToken()).toBe('file-token');
+        exactToken = 'new-login';
+        expect(getUsageToken()).toBe('new-login');
+        expect(getSecurityCallLog().filter(call => call === 'dump-keychain')).toHaveLength(3);
     });
 
     it('bounds every macOS keychain read with a timeout', () => {

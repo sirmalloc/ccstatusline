@@ -77,14 +77,20 @@ const LineSelector: React.FC<LineSelectorProps> = ({
         onLinesUpdate(newLines);
     };
 
-    // Check if powerline theme is managing colors
+    // Check if powerline theme is managing colors. A line with its own theme
+    // (settings.lineThemes) opts out, so the block only applies when EVERY
+    // line is theme-managed.
     const powerlineEnabled = settings ? settings.powerline.enabled : false;
     const powerlineTheme = settings ? settings.powerline.theme : undefined;
+    const lineManaged = (index: number): boolean => {
+        const effective = settings?.lineThemes?.[index] ?? powerlineTheme;
+        return powerlineEnabled && effective !== undefined && effective !== 'custom' && effective !== 'none';
+    };
+    const managedTheme = settings?.lineThemes?.[0] ?? powerlineTheme ?? '';
     const isThemeManaged
         = blockIfPowerlineActive
-            && powerlineEnabled
-            && powerlineTheme
-            && powerlineTheme !== 'custom';
+            && localLines.length > 0
+            && localLines.every((_, index) => lineManaged(index));
 
     // Handle keyboard input
     useInput((input, key) => {
@@ -150,8 +156,8 @@ const LineSelector: React.FC<LineSelectorProps> = ({
                     <Text color='yellow'>
                         ⚠ Colors are currently managed by the Powerline theme:
                         {' '
-                            + powerlineTheme.charAt(0).toUpperCase()
-                            + powerlineTheme.slice(1)}
+                            + managedTheme.charAt(0).toUpperCase()
+                            + managedTheme.slice(1)}
                     </Text>
                 </Box>
                 <Box marginTop={1}>

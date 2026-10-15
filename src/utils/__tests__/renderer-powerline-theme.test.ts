@@ -17,11 +17,12 @@ import {
     renderStatusLine
 } from '../renderer';
 
-function createSettings(continueThemeAcrossLines: boolean): Settings {
+function createSettings(continueThemeAcrossLines: boolean, lineThemes?: (string | undefined)[]): Settings {
     return {
         ...DEFAULT_SETTINGS,
         colorLevel: 3,
         defaultPadding: '',
+        lineThemes,
         powerline: {
             ...DEFAULT_SETTINGS.powerline,
             enabled: true,
@@ -61,5 +62,27 @@ describe('renderer powerline theme carry-over', () => {
         const line = renderLine(createSettings(false), 2);
 
         expect(line).toContain(getColorAnsiCode('hex:BF616A', 'truecolor', true));
+    });
+
+    describe('per-line themes (lineThemes)', () => {
+        it('overrides the global theme and restarts at slot 0 despite a carried offset', () => {
+            const line = renderLine(createSettings(true, [undefined, 'dracula']), 2);
+
+            expect(line).toContain(getColorAnsiCode('hex:BD93F9', 'truecolor', true));
+            expect(line).not.toContain(getColorAnsiCode('hex:5E81AC', 'truecolor', true));
+        });
+
+        it('\'none\' renders the line unthemed', () => {
+            const line = renderLine(createSettings(true, [undefined, 'none']), 2);
+
+            expect(line).not.toContain(getColorAnsiCode('hex:BF616A', 'truecolor', true));
+            expect(line).not.toContain(getColorAnsiCode('hex:5E81AC', 'truecolor', true));
+        });
+
+        it('applies the per-line theme when continuation is disabled', () => {
+            const line = renderLine(createSettings(false, [undefined, 'dracula']), 2);
+
+            expect(line).toContain(getColorAnsiCode('hex:BD93F9', 'truecolor', true));
+        });
     });
 });

@@ -16,10 +16,10 @@ export interface ContextPercentageMetrics {
  * percentage. Returns null when neither status JSON nor transcript metrics can
  * provide context usage.
  */
-export function calculateContextPercentageMetrics(context: Pick<RenderContext, 'data' | 'tokenMetrics'>): ContextPercentageMetrics | null {
+export function calculateContextPercentageMetrics(context: Pick<RenderContext, 'data' | 'tokenMetrics' | 'env'>): ContextPercentageMetrics | null {
     const contextWindowMetrics = getContextWindowMetrics(context.data);
     const modelIdentifier = getModelContextIdentifier(context.data?.model);
-    const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
+    const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize, context.env);
 
     if (contextWindowMetrics.usedPercentage !== null) {
         return {

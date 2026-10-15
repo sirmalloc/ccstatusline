@@ -9,10 +9,9 @@ import type { WidgetItem } from '../types/Widget';
 
 import { getColorAnsiCode } from './colors';
 import { isExcludedFromProxy } from './no-proxy';
-import {
-    createProxyAgent,
-    type ClosableProxyAgent
-} from './proxy-agent';
+// type-only: the agent module itself is loaded on demand in
+// getStatusPageRequestOptions so the render path stays lean (#397)
+import type { ClosableProxyAgent } from './proxy-agent';
 
 // Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
 // across statusline invocations, plus a failure lock so an unreachable status
@@ -263,8 +262,8 @@ function clearFailureLock(): void {
     }
 }
 
-function getStatusPageProxyUrl(): string | null {
-    const proxyUrl = process.env.HTTPS_PROXY?.trim();
+function getStatusPageProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+    const proxyUrl = env.HTTPS_PROXY?.trim();
     return proxyUrl?.length && !isExcludedFromProxy(STATUS_HOST) ? proxyUrl : null;
 }
 
@@ -288,65 +287,108 @@ type StatusPageRequestFn = (
 
 const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.request(options, onResponse);
 
+async function getStatusPageRequestOptions(env: NodeJS.ProcessEnv): Promise<{ options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null> {
+    const proxyUrl = getStatusPageProxyUrl(env);
+
+    try {
+        let proxy: ClosableProxyAgent | null = null;
+        if (proxyUrl) {
+            // Loaded on demand: the agent (and its transitive module graph) is
+            // only needed when a proxy is actually configured, and the
+            // statusline entry point re-runs on every repaint (#397).
+            const { createProxyAgent } = await import('./proxy-agent');
+            proxy = createProxyAgent(proxyUrl);
+        }
+
+        return {
+            options: {
+                hostname: STATUS_HOST,
+                path: '',
+                method: 'GET',
+                timeout: STATUS_TIMEOUT_MS,
+                ...(proxy ? { agent: proxy.agent } : {})
+            },
+            proxy
+        };
+    } catch {
+        return null;
+    }
+}
+
 function fetchStatusPagePath(
     pathName: string,
     requestFn: StatusPageRequestFn = requestStatusPage,
-    deadlineMs = STATUS_TIMEOUT_MS
+    deadlineMs = STATUS_TIMEOUT_MS,
+    signal?: AbortSignal,
+    env: NodeJS.ProcessEnv = process.env
 ): Promise<string | null> {
-    let requestOptions: https.RequestOptions;
-    let proxy: ClosableProxyAgent | null;
-    try {
-        const proxyUrl = getStatusPageProxyUrl();
-        proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
-        requestOptions = {
-            hostname: STATUS_HOST,
-            path: pathName,
-            method: 'GET',
-            timeout: STATUS_TIMEOUT_MS,
-            ...(proxy ? { agent: proxy.agent } : {})
-        };
-    } catch {
-        return Promise.resolve(null);
-    }
+    return getStatusPageRequestOptions(env).then((requestSetup) => {
+        if (!requestSetup) {
+            return null;
+        }
+        const { options: baseOptions, proxy } = requestSetup;
 
-    return new Promise((resolve) => {
-        let settled = false;
+        return new Promise<string | null>((resolve) => {
+            let settled = false;
 
-        const finish = (value: string | null) => {
-            if (settled) {
-                return;
+            const finish = (value: string | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(deadline);
+                // The one-shot agent must not hold the daemon alive after the
+                // request settled (success or failure).
+                proxy?.close();
+                if (signal) {
+                    signal.removeEventListener('abort', onAbort);
+                }
+                resolve(value);
+            };
+
+            const onAbort = () => {
+                request.destroy();
+                finish(null);
+            };
+
+            const requestOptions: https.RequestOptions = {
+                ...baseOptions,
+                path: pathName
+            };
+
+            const request = requestFn(requestOptions, (response) => {
+                let data = '';
+                response.setEncoding('utf8');
+                response.on('data', (chunk: string) => {
+                    data += chunk;
+                });
+                response.on('end', () => {
+                    finish(response.statusCode === 200 && data ? data : null);
+                });
+                response.on('aborted', () => { finish(null); });
+                response.on('error', () => { finish(null); });
+            });
+
+            request.on('error', () => { finish(null); });
+            request.on('timeout', () => {
+                request.destroy();
+                finish(null);
+            });
+            // `timeout` only covers an idle socket, and behind a proxy the request
+            // has none until the proxy answers CONNECT
+            const deadline = setTimeout(() => {
+                request.destroy();
+                finish(null);
+            }, deadlineMs);
+            if (signal) {
+                if (signal.aborted) {
+                    finish(null);
+                    return;
+                }
+                signal.addEventListener('abort', onAbort, { once: true });
             }
-            settled = true;
-            clearTimeout(deadline);
-            resolve(value);
-        };
-
-        const request = requestFn(requestOptions, (response) => {
-            let data = '';
-            response.setEncoding('utf8');
-            response.on('data', (chunk: string) => {
-                data += chunk;
-            });
-            response.on('end', () => {
-                finish(response.statusCode === 200 && data ? data : null);
-            });
-            response.on('aborted', () => { finish(null); });
-            response.on('error', () => { finish(null); });
+            request.end();
         });
-
-        request.on('error', () => { finish(null); });
-        request.on('timeout', () => {
-            request.destroy();
-            finish(null);
-        });
-        // `timeout` only covers an idle socket, and behind a proxy the request
-        // has none until the proxy answers CONNECT
-        const deadline = setTimeout(() => {
-            request.destroy();
-            proxy?.close();
-            finish(null);
-        }, deadlineMs);
-        request.end();
     });
 }
 
@@ -364,7 +406,10 @@ function isCacheUsable(cache: CachedClaudeStatus, includeIncidents: boolean): bo
     return !includeIncidents || cache.incidentsQueried;
 }
 
-async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<ClaudeServiceStatusData> {
+async function fetchClaudeServiceStatus(
+    includeIncidents: boolean,
+    scope: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}
+): Promise<ClaudeServiceStatusData> {
     const nowMs = Date.now();
     const nowSeconds = Math.floor(nowMs / 1000);
 
@@ -394,8 +439,8 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     }
 
     const [statusBody, incidentsBody] = await Promise.all([
-        fetchStatusPagePath(STATUS_PATH),
-        includeIncidents ? fetchStatusPagePath(INCIDENTS_PATH) : Promise.resolve(null)
+        fetchStatusPagePath(STATUS_PATH, requestStatusPage, STATUS_TIMEOUT_MS, scope.signal, scope.env),
+        includeIncidents ? fetchStatusPagePath(INCIDENTS_PATH, requestStatusPage, STATUS_TIMEOUT_MS, scope.signal, scope.env) : Promise.resolve(null)
     ]);
 
     const indicator = statusBody !== null ? parseClaudeStatusResponse(statusBody) : null;
@@ -418,10 +463,13 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     return toStatusData(cache);
 }
 
-export async function prefetchClaudeStatusIfNeeded(lines: WidgetItem[][]): Promise<ClaudeServiceStatusData | null> {
+export async function prefetchClaudeStatusIfNeeded(
+    lines: WidgetItem[][],
+    scope: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}
+): Promise<ClaudeServiceStatusData | null> {
     if (!hasClaudeStatusWidgets(lines)) {
         return null;
     }
 
-    return fetchClaudeServiceStatus(claudeStatusNeedsIncidents(lines));
+    return fetchClaudeServiceStatus(claudeStatusNeedsIncidents(lines), scope);
 }

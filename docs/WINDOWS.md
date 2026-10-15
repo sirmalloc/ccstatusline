@@ -218,3 +218,12 @@ For the best experience, configure Windows Terminal with these recommended setti
 `ccstatusline` includes Windows-specific runtime behavior:
 - **UTF-8 piped output fix**: In piped mode, it attempts to set code page `65001` for reliable symbol rendering
 - **Path compatibility**: Git and CWD widgets handle both `/` and `\` separators
+
+## Daemon (Shared Render Mode)
+
+The daemon render mode is **not available on Windows**: its private IPC
+transport is a per-user Unix socket. Windows keeps the regular one-shot
+status line, and every `ccstatusline daemon` subcommand (including
+`daemon install`) refuses with an explicit message instead of writing a
+client-wrapper command that could not work. No action is needed to stay on
+the one-shot path — it is the only path on Windows.

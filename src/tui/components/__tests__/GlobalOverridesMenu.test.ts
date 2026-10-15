@@ -59,6 +59,13 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
+// Ink batches renders; one macrotask is enough for these small trees.
+function flushInk() {
+    return new Promise((resolve) => {
+        setTimeout(resolve, 25);
+    });
+}
+
 describe('GlobalOverridesMenu', () => {
     afterEach(() => {
         vi.restoreAllMocks();
@@ -177,6 +184,45 @@ describe('GlobalOverridesMenu', () => {
             await waitFor(() => {
                 expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ minimalistMode: true }));
             });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('toggles compact labels on when (j) is pressed', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn();
+        const onBack = vi.fn();
+
+        const instance = render(
+            React.createElement(GlobalOverridesMenu, {
+                settings: { ...DEFAULT_SETTINGS, compactLabels: false },
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            expect(stdout.getOutput()).toContain('Compact Labels:');
+            stdin.write('j');
+            await flushInk();
+
+            expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ compactLabels: true }));
         } finally {
             instance.unmount();
             instance.cleanup();

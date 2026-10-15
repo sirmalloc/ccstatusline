@@ -1,0 +1,3 @@
+[0m[38;5;30mModel: Sonnet 4.5[39m | [38;5;59mTotal: 14.0k[39m
+[0m[38;5;70mCtx(u) Used: 0.4%[39m | [38;5;26mcwd: /tmp/ccs-parity-fixture/project[39m
+[0mv2.1.0 | Term: 80

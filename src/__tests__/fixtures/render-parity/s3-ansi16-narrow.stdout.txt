@@ -1,0 +1,2 @@
+[0m[1m[31mModel: Sonnet 4.5[39m[22m[2m[37mdim-part[39m[22m[34mCtx Used: 0.3%[39m
+[0m[44m[37mBOX[39m[49m

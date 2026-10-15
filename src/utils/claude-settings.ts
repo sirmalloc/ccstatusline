@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 import type { ClaudeSettings } from '../types/ClaudeSettings';
@@ -15,7 +16,9 @@ import {
 import {
     getConfigPath,
     isCustomConfigPath,
-    saveInstallationMetadata
+    loadSettingsFrom,
+    saveInstallationMetadata,
+    saveSettings
 } from './config';
 
 // Re-export for backward compatibility
@@ -49,6 +52,17 @@ export interface InstallStatusLineOptions {
     commandMode: StatusLineCommandMode;
     supportsRefreshInterval?: boolean;
     installationMetadata?: InstallationMetadata;
+    /**
+     * Keep an existing statusLine in place instead of overwriting it (upstream #565).
+     * When set and a statusLine already exists, nothing is written; a fresh install
+     * (no existing statusLine) proceeds normally.
+     */
+    keepExisting?: boolean;
+}
+
+export interface InstallStatusLineResult {
+    /** False when an existing statusLine was kept and no settings were written. */
+    statusLineWritten: boolean;
 }
 
 export interface PackageCommandAvailability {
@@ -62,7 +76,8 @@ export function isKnownCommand(command: string): boolean {
     const prefixes = [CCSTATUSLINE_COMMANDS.AUTO_NPX, CCSTATUSLINE_COMMANDS.AUTO_BUNX, CCSTATUSLINE_COMMANDS.GLOBAL];
     // Also match local development commands (e.g., "bun run /path/to/ccstatusline.ts")
     return prefixes.some(prefix => command === prefix || command.startsWith(`${prefix} --config `))
-        || /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command);
+        || /(?:^|[\s"'\\/])ccstatusline\.ts(?=$|[\s"'])/.test(command)
+        || isSharedModeCommand(command);
 }
 
 function needsQuoting(filePath: string): boolean {
@@ -90,8 +105,8 @@ function quotePathIfNeeded(filePath: string): string {
  * Determines the Claude config directory, checking CLAUDE_CONFIG_DIR environment variable first,
  * then falling back to the default ~/.claude directory.
  */
-export function getClaudeConfigDir(): string {
-    const envConfigDir = process.env.CLAUDE_CONFIG_DIR;
+export function getClaudeConfigDir(env: NodeJS.ProcessEnv = process.env): string {
+    const envConfigDir = env.CLAUDE_CONFIG_DIR;
 
     if (envConfigDir) {
         try {
@@ -124,9 +139,9 @@ export function getClaudeConfigDir(): string {
  * Claude Code stores this as a sibling of the default ~/.claude directory, but
  * inside CLAUDE_CONFIG_DIR when a valid config directory override is active.
  */
-export function getClaudeJsonPath(): string {
-    const configDir = getClaudeConfigDir();
-    const envConfigDir = process.env.CLAUDE_CONFIG_DIR;
+export function getClaudeJsonPath(env: NodeJS.ProcessEnv = process.env): string {
+    const configDir = getClaudeConfigDir(env);
+    const envConfigDir = env.CLAUDE_CONFIG_DIR;
 
     if (envConfigDir && configDir === path.resolve(envConfigDir)) {
         return path.join(configDir, '.claude.json');
@@ -251,7 +266,10 @@ export async function isInstalled(): Promise<boolean> {
 function isExecutableAvailable(executable: string): boolean {
     try {
         const command = process.platform === 'win32' ? `where ${executable}` : `which ${executable}`;
-        execSync(command, { stdio: 'ignore', windowsHide: true });
+        // Explicit env: bun's execSync ignores runtime process.env mutations
+        // otherwise (it spawns with the startup snapshot), which broke tests
+        // and any caller that adjusts PATH dynamically.
+        execSync(command, { stdio: 'ignore', windowsHide: true, env: { ...process.env } });
         return true;
     } catch {
         return false;
@@ -390,6 +408,14 @@ export function classifyInstallation(
         };
     }
 
+    // Daemon shared mode wrapper (#19): managed by `daemon install/uninstall`.
+    if (isSharedModeCommand(statusLineCommand)) {
+        return {
+            method: 'self-managed',
+            packageManager: 'unknown'
+        };
+    }
+
     return {
         method: 'unknown',
         packageManager: 'unknown'
@@ -418,18 +444,28 @@ async function loadSavedSettingsForHookSync(): Promise<Settings | null> {
 export async function installStatusLine({
     commandMode,
     supportsRefreshInterval = false,
-    installationMetadata
-}: InstallStatusLineOptions): Promise<void> {
+    installationMetadata,
+    keepExisting = false
+}: InstallStatusLineOptions): Promise<InstallStatusLineResult> {
     let settings: ClaudeSettings;
-
-    // A missing settings file loads as {}; any error here means the file exists
-    // but could not be read or parsed. Abort rather than overwrite it with only
-    // our statusLine, which would discard the user's other Claude Code settings.
     try {
         settings = await loadClaudeSettings({ logErrors: false });
     } catch (error) {
+        // Upstream #565 (fork): an explicit "keep existing" must never
+        // overwrite. An unreadable file also counts as "existing" — we can't
+        // verify what's there, so don't destroy it.
+        if (keepExisting) {
+            return { statusLineWritten: false };
+        }
+        // A missing settings file loads as {}; any error here means the file exists
+        // but could not be read or parsed. Abort rather than overwrite it with only
+        // our statusLine, which would discard the user's other Claude Code settings.
         const reason = error instanceof Error ? error.message : String(error);
         throw new Error(`Could not read existing Claude settings at ${getClaudeSettingsPath()} (${reason}). The file was left unchanged; fix or remove it, then install again.`, { cause: error });
+    }
+
+    if (keepExisting && settings.statusLine) {
+        return { statusLineWritten: false };
     }
 
     await backupClaudeSettings('.orig');
@@ -457,6 +493,8 @@ export async function installStatusLine({
         const { syncWidgetHooks } = await import('./hooks');
         await syncWidgetHooks(savedSettings);
     }
+
+    return { statusLineWritten: true };
 }
 
 export async function uninstallStatusLine(): Promise<void> {
@@ -491,6 +529,156 @@ export async function getExistingStatusLine(): Promise<string | null> {
     } catch {
         return null; // Can't read settings, return null
     }
+}
+
+// ---------------------------------------------------------------------------
+// Daemon shared mode (#19): strictly opt-in switch of the Claude Code
+// statusLine command to the IPC client wrapper, with a tested return path.
+//
+// The wrapper (`client/ccstatusline-ipc`, shipped in the npm package) is the
+// only path that may start a daemon, and it runs exclusively in installed
+// shared mode (#53 on-demand lifecycle): with the daemon down it lazily runs
+// `daemon start` and retries into the fresh daemon. The one-shot render path
+// never spawns anything — opting in is still only `daemon install`.
+// ---------------------------------------------------------------------------
+
+/** Locate the shipped IPC client wrapper, or null when this install has none. */
+export function getDaemonClientWrapperPath(): string | null {
+    // Walk up from this module because the bundle layout differs between a
+    // dev checkout (src/utils/) and the npm package (dist/): the wrapper sits
+    // in <install-root>/client/ccstatusline-ipc in both.
+    let dir = path.dirname(fileURLToPath(import.meta.url));
+    for (let depth = 0; depth < 5; depth++) {
+        const candidate = path.join(dir, 'client', 'ccstatusline-ipc');
+        try {
+            if (fs.statSync(candidate).isFile()) {
+                return candidate;
+            }
+        } catch {
+            // Keep walking up.
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            break;
+        }
+        dir = parent;
+    }
+    return null;
+}
+
+export function buildSharedModeCommand(wrapperPath: string): string {
+    return `sh ${quotePathIfNeeded(wrapperPath)}`;
+}
+
+export function isSharedModeCommand(command: string): boolean {
+    const wrapper = getDaemonClientWrapperPath();
+    if (wrapper === null) {
+        return false;
+    }
+    return command === buildSharedModeCommand(wrapper);
+}
+
+export interface SharedModeResult {
+    /** False when nothing was written (already active, refused, unsupported). */
+    statusLineWritten: boolean;
+    wrapperPath?: string;
+    /** Human-readable reason when statusLineWritten is false. */
+    reason?: string;
+}
+
+/**
+ * Point the Claude Code statusLine at the daemon IPC client wrapper and
+ * remember the previous statusLine in ccstatusline's own settings so
+ * `disableSharedMode` can restore it verbatim. Writes Claude settings only
+ * after the previous command is safely recorded. Idempotent: a repeated
+ * enable keeps the originally remembered one-shot command.
+ */
+export async function enableSharedMode(): Promise<SharedModeResult> {
+    if (process.platform === 'win32') {
+        return { statusLineWritten: false, reason: 'daemon mode is not supported on Windows (Unix socket transport); the one-shot status line stays in place' };
+    }
+    const wrapperPath = getDaemonClientWrapperPath();
+    if (wrapperPath === null) {
+        return { statusLineWritten: false, reason: 'IPC client wrapper (client/ccstatusline-ipc) not found next to this ccstatusline install' };
+    }
+    if (!isExecutableAvailable('curl')) {
+        return { statusLineWritten: false, wrapperPath, reason: 'curl is required by the shared-mode client but was not found on PATH' };
+    }
+
+    let claude: ClaudeSettings;
+    try {
+        claude = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        return { statusLineWritten: false, wrapperPath, reason: 'could not read Claude settings; refusing to modify' };
+    }
+
+    const command = buildSharedModeCommand(wrapperPath);
+    if (claude.statusLine?.command === command) {
+        return { statusLineWritten: false, wrapperPath, reason: 'shared mode is already active' };
+    }
+
+    // Refuse on a rejected config: loadSettingsFrom hands back in-memory
+    // defaults for an unreadable file, and saving those would silently
+    // overwrite the user's settings.json — same refusal class as the
+    // Claude-settings check above.
+    const { settings: configSettings, loadError } = await loadSettingsFrom(getConfigPath());
+    if (loadError !== null) {
+        return { statusLineWritten: false, wrapperPath, reason: `could not read ccstatusline settings (${loadError}); refusing to modify` };
+    }
+    configSettings.daemonSharedMode = { previousStatusLine: claude.statusLine ?? null };
+    await saveSettings(configSettings);
+
+    await backupClaudeSettings('.orig');
+    claude.statusLine = { type: 'command', command, padding: 0 };
+    await saveClaudeSettings(claude);
+    return { statusLineWritten: true, wrapperPath };
+}
+
+export interface SharedModeDisableResult {
+    /** False when shared mode was not enabled or a settings file was refused. */
+    statusLineRestored: boolean;
+    reason?: string;
+}
+
+/**
+ * Return the Claude Code statusLine to the remembered one-shot command
+ * (or remove it when shared mode replaced an absent statusLine). No-op when
+ * shared mode was never enabled through this tool.
+ */
+export async function disableSharedMode(): Promise<SharedModeDisableResult> {
+    // A rejected config must refuse here too: defaults would carry no
+    // daemonSharedMode marker, and acting on that would misreport "not
+    // enabled" while the wrapper command is still installed.
+    const { settings: configSettings, loadError } = await loadSettingsFrom(getConfigPath());
+    if (loadError !== null) {
+        return { statusLineRestored: false, reason: `could not read ccstatusline settings (${loadError}); refusing to modify` };
+    }
+    const remembered = configSettings.daemonSharedMode;
+    if (!remembered) {
+        return { statusLineRestored: false, reason: 'shared mode was not enabled' };
+    }
+
+    let claude: ClaudeSettings;
+    try {
+        claude = await loadClaudeSettings({ logErrors: false });
+    } catch {
+        return { statusLineRestored: false, reason: 'could not read Claude settings; refusing to modify' };
+    }
+
+    const previous = remembered.previousStatusLine;
+    if (previous === null) {
+        delete claude.statusLine;
+    } else {
+        claude.statusLine = { ...previous };
+    }
+    // Restore the status line BEFORE clearing the memory: if the restore
+    // write fails, the marker survives and a retry of `daemon uninstall`
+    // can still complete. The reverse order could strand the wrapper
+    // command with the memory already gone.
+    await saveClaudeSettings(claude);
+    const { daemonSharedMode, ...rest } = configSettings;
+    await saveSettings(rest);
+    return { statusLineRestored: true };
 }
 
 export async function getRefreshInterval(): Promise<number | null> {

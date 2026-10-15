@@ -16,6 +16,8 @@ import {
     MERGE_TARGET_HIDDEN_HIDEABLE_STATE,
     isHidden
 } from '../widgets/shared/hideable';
+import { isWidgetHiddenByModel } from '../widgets/shared/model-condition';
+import { withGlobalCompactLabels } from '../widgets/shared/raw-or-labeled';
 
 import {
     applyLineGradient,
@@ -38,6 +40,8 @@ import {
     isGradientSpec,
     parseGradientSpec
 } from './gradient';
+import { fontSafeSeparator } from './powerline';
+import { hasOwnLineTheme } from './powerline-theme-index';
 import { getTerminalWidth } from './terminal';
 import { sanitizeTerminalText } from './terminal-sanitize';
 import {
@@ -131,6 +135,25 @@ function resolveEffectiveTerminalWidth(
     return null;
 }
 
+// Resolve a POWERLINE_THEMES entry for the configured color level. Returns
+// undefined for unset, 'custom', or unknown names. Shared by both render
+// paths: powerline uses fg+bg per segment; regular mode cycles bg[] as
+// foregrounds (fg[] holds the dark text colors meant to sit on those
+// backgrounds).
+function resolveThemeColors(
+    themeName: string | undefined,
+    settings: Settings
+): { fg: string[]; bg: string[] } | undefined {
+    if (!themeName || themeName === 'custom')
+        return undefined;
+    const theme = getPowerlineTheme(themeName);
+    if (!theme)
+        return undefined;
+    const colorLevel = getColorLevelString(settings.colorLevel);
+    const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
+    return theme[colorLevelKey];
+}
+
 function renderPowerlineStatusLine(
     widgets: WidgetItem[],
     settings: Settings,
@@ -145,13 +168,14 @@ function renderPowerlineStatusLine(
     const config = powerlineConfig ?? {};
     const continueThemeAcrossLines = Boolean(config.continueThemeAcrossLines);
 
-    // Get separator configuration
-    const separators = (config.separators as string[] | undefined) ?? ['\uE0B0'];
+    // Get separator configuration; PUA glyphs degrade to '|' without a
+    // Powerline/Nerd Font instead of rendering as mojibake
+    const separators = ((config.separators as string[] | undefined) ?? ['\uE0B0']).map(separator => fontSafeSeparator(separator));
     const invertBgs = (config.separatorInvertBackground as boolean[] | undefined) ?? separators.map(() => false);
 
     // Get caps arrays or fallback to empty arrays
-    const startCaps = (config.startCaps as string[] | undefined) ?? [];
-    const endCaps = (config.endCaps as string[] | undefined) ?? [];
+    const startCaps = ((config.startCaps as string[] | undefined) ?? []).map(cap => fontSafeSeparator(cap));
+    const endCaps = ((config.endCaps as string[] | undefined) ?? []).map(cap => fontSafeSeparator(cap));
 
     // Get the cap for this line (cycle through if more lines than caps)
     const capLineIndex = context.lineIndex ?? lineIndex;
@@ -163,18 +187,9 @@ function renderPowerlineStatusLine(
         endCaps.length > 0 ? (endCaps[(startCapIndex + segmentOffset) % endCaps.length] ?? '') : ''
     );
 
-    // Get theme colors if a theme is set and not 'custom'
-    const themeName = config.theme as string | undefined;
-    let themeColors: { fg: string[]; bg: string[] } | undefined;
-
-    if (themeName && themeName !== 'custom') {
-        const theme = getPowerlineTheme(themeName);
-        if (theme) {
-            const colorLevel = getColorLevelString(settings.colorLevel);
-            const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
-            themeColors = theme[colorLevelKey];
-        }
-    }
+    // Get theme colors if a theme is set and not 'custom'. A per-line theme
+    // (settings.lineThemes[lineIndex]) overrides the global powerline theme.
+    const themeColors = resolveThemeColors(settings.lineThemes?.[lineIndex] ?? (config.theme as string | undefined), settings);
 
     // Get color level from settings
     const colorLevel = getColorLevelString(settings.colorLevel);
@@ -209,7 +224,9 @@ function renderPowerlineStatusLine(
         originalIndex: number;
         widget: WidgetItem;
     }[] = [];
-    let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
+    // A line with its own theme restarts its palette at slot 0 instead of
+    // continuing the cross-line sequence.
+    let widgetColorIndex = continueThemeAcrossLines && !hasOwnLineTheme(settings, lineIndex) ? globalThemeColorOffset : 0;
 
     const hasNextRenderedWidgetBeforeSeparator = (originalIndex: number): boolean => {
         for (let j = originalIndex + 1; j < widgets.length; j++) {
@@ -906,7 +923,21 @@ export function preRenderAllWidgets(
                 continue;
             }
 
-            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            // Model-visibility conditions (hideForModels / showForModels)
+            // short-circuit before the widget renders, so separators collapse
+            // around the gap through the usual empty-content path.
+            if (isWidgetHiddenByModel(widget, context)) {
+                preRenderedLine.push({
+                    content: '',
+                    plainLength: 0,
+                    widget
+                });
+                continue;
+            }
+
+            const effectiveWidget = context.minimalist
+                ? { ...widget, rawValue: true }
+                : withGlobalCompactLabels(widget, settings);
             // Widget text can come from the repository, the session or imported
             // settings: only colors and safe links may reach the terminal
             const widgetText = sanitizeTerminalText(widgetImpl.render(effectiveWidget, context, settings) ?? '');
@@ -1055,6 +1086,17 @@ export function renderStatusLine(
             preCalculatedMaxWidths
         );
 
+    // Regular-mode theme: cycle the theme's segment palette (bg[]) as widget
+    // foregrounds (bgToFg converts ansi16-level bg* names to their foreground
+    // equivalents). Explicit per-widget colors win; separators and flex
+    // separators are not themed and do not consume palette slots. Merged
+    // widgets share one palette slot, matching powerline's cycling.
+    const regularThemePalette = resolveThemeColors(
+        settings.lineThemes?.[context.lineIndex ?? 0] ?? settings.theme,
+        settings
+    )?.bg.map(bgToFg);
+    let themeColorIndex = 0;
+
     // Helper to apply colors with optional background, bold, and dim
     const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
         // Override foreground color takes precedence over EVERYTHING, including passed foreground
@@ -1134,7 +1176,7 @@ export function renderStatusLine(
                 }
             }
 
-            const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
+            const sepChar = fontSafeSeparator(widget.character ?? (settings.defaultSeparator ?? '|'));
             const formattedSep = formatSeparator(sepChar);
 
             // Check if we should inherit colors from the previous widget
@@ -1187,6 +1229,9 @@ export function renderStatusLine(
             }
 
             if (widgetText) {
+                const themedFg = regularThemePalette
+                    ? regularThemePalette[themeColorIndex % regularThemePalette.length]
+                    : undefined;
                 // Special handling for widgets that preserve their own colors
                 if (widgetPreservesColors(widget)) {
                     // Handle max width truncation for commands with ANSI codes
@@ -1209,13 +1254,16 @@ export function renderStatusLine(
                         widget
                     });
                 } else {
-                    // Normal widget rendering with colors
+                    // Normal widget rendering with colors; theme palette fills
+                    // in when the widget has no explicit color
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
+                        content: applyColorsWithOverride(widgetText, widget.color ?? themedFg ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
                         type: widget.type,
                         widget
                     });
                 }
+                if (!widget.merge)
+                    themeColorIndex++;
             }
         } catch {
             // Unknown widget type - skip
@@ -1253,7 +1301,7 @@ export function renderStatusLine(
     const finalElements: (string | null)[] = [];
     const padding = settings.defaultPadding ?? '';
     const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
-    const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
+    const defaultSep = settings.defaultSeparator ? formatSeparator(fontSafeSeparator(settings.defaultSeparator)) : '';
 
     elements.forEach((elem, index) => {
         // Add default separator between any two items (but not before first item, and not around flex separators)

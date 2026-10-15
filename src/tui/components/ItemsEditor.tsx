@@ -24,6 +24,7 @@ import {
 import { canDetectTerminalWidth } from '../../utils/terminal';
 import {
     filterWidgetCatalog,
+    getCompactLabelCapableTypes,
     getMatchSegments,
     getWidget,
     getWidgetCatalog,
@@ -37,6 +38,8 @@ import {
 import {
     EDIT_LABEL_ACTION,
     clearLabel,
+    getCompactLabelKeybind,
+    getCompactLabelModifierText,
     getLabelKeybind,
     getLabelModifierText
 } from '../../widgets/shared/raw-or-labeled';
@@ -154,6 +157,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onP
         // only then. Like 'h', widgets must leave this key unbound.
         if (widgetImpl.getLabelPrefix && !widget.rawValue) {
             keybinds.push(getLabelKeybind());
+        }
+
+        // Labeled widgets whose label has a compact preset share a single
+        // compact-label toggle here, mirroring the (h)ide… keybind.
+        if (getCompactLabelCapableTypes().has(widget.type)) {
+            keybinds.push(getCompactLabelKeybind());
         }
 
         return keybinds;
@@ -288,7 +297,8 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onP
             openWidgetPicker,
             getCustomKeybindsForWidget,
             setCustomEditorWidget,
-            getUniqueBackgroundColor
+            getUniqueBackgroundColor,
+            settings
         });
     });
 
@@ -628,6 +638,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onP
                                     : undefined;
                                 const hideModifierText = widgetImpl ? getHideModifierText(widget, widgetImpl.getHideableStates?.() ?? []) : undefined;
                                 const labelModifierText = widgetImpl?.getLabelPrefix && !widget.rawValue ? getLabelModifierText(widget) : undefined;
+                                const compactModifierText = widgetImpl && getCompactLabelCapableTypes().has(widget.type)
+                                    ? getCompactLabelModifierText(widget, settings)
+                                    : undefined;
 
                                 return (
                                     <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>
@@ -661,6 +674,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onP
                                             <Text dimColor>
                                                 {' '}
                                                 {labelModifierText}
+                                            </Text>
+                                        )}
+                                        {compactModifierText && (
+                                            <Text dimColor>
+                                                {' '}
+                                                {compactModifierText}
                                             </Text>
                                         )}
                                         {supportsRawValue && widget.rawValue && <Text dimColor> (raw value)</Text>}

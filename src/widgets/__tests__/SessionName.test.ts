@@ -56,6 +56,19 @@ describe('SessionNameWidget', () => {
         expect(result).toBe('Session: my-session');
     });
 
+    it('should render the compact label and still apply max width', () => {
+        const widget = new SessionNameWidget();
+        const context: RenderContext = { isPreview: true };
+        const item: WidgetItem = {
+            id: 'session-name',
+            type: 'session-name',
+            maxWidth: 20,
+            metadata: { compactLabel: 'true' }
+        };
+
+        expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('S:my-session');
+    });
+
     it('should return raw preview text when in preview mode with rawValue', () => {
         const result = render(undefined, null, true, true);
         expect(result).toBe('my-session');

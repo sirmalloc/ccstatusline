@@ -14,7 +14,10 @@ import { List } from './List';
 
 export type MainMenuOption = 'lines'
     | 'colors'
+    | 'theme'
+    | 'lineThemes'
     | 'powerline'
+    | 'presets'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'install'
@@ -82,7 +85,8 @@ function getInstallationMenuItem(
 export function buildMainMenuItems(
     isClaudeInstalled: boolean,
     hasChanges: boolean,
-    installation?: InstallationMetadata
+    installation?: InstallationMetadata,
+    powerlineEnabled = false
 ): MainMenuEntry[] {
     const menuItems: MainMenuEntry[] = [
         {
@@ -92,10 +96,30 @@ export function buildMainMenuItems(
                 'Configure any number of status lines with various widgets like model info, git status, and token usage'
         },
         {
+            label: '🧩 Presets',
+            value: 'presets',
+            description:
+                'Replace the configuration with a curated setup: Starter, Intermediate, or Advanced'
+        },
+        {
             label: '🎨 Edit Colors',
             value: 'colors',
             description:
                 'Customize colors for each widget including foreground, background, and bold styling'
+        },
+        // Powerline mode has its own theme picker and ignores the regular-mode
+        // theme, so the entry only makes sense when powerline is off.
+        ...(powerlineEnabled ? [] : [{
+            label: '🌈 Theme',
+            value: 'theme' as const,
+            description:
+                'Apply a built-in color theme to regular (non-powerline) mode as foreground colors'
+        }]),
+        {
+            label: '🧶 Line Themes',
+            value: 'lineThemes',
+            description:
+                'Pick a different theme per status line; lines without their own use the global theme'
         },
         {
             label: '⚡ Powerline Setup',
@@ -218,7 +242,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     installation,
     previewIsTruncated
 }) => {
-    const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation);
+    const menuItems = buildMainMenuItems(isClaudeInstalled, hasChanges, installation, settings?.powerline.enabled ?? false);
 
     // Check if we should show the truncation warning
     const showTruncationWarning

@@ -24,7 +24,7 @@ echo '{"model":{"id":"claude-sonnet-4-5-20250929[1m]"},"transcript_path":"test.j
 bun run example
 
 # Build for npm distribution
-bun run build   # Creates dist/ccstatusline.js with Node.js 14+ compatibility
+bun run build   # Creates dist/ccstatusline.js with Node.js 18+ compatibility
 
 # Run tests
 bun test
@@ -135,7 +135,7 @@ Default to using Bun instead of Node.js:
   - Applied automatically during `bun install` via `patchedDependencies` in package.json
   - Patch file: `patches/ink@6.2.0.patch`
 - **Build process**: Two-step build using `bun run build`
-  1. `bun build`: Bundles src/ccstatusline.ts into dist/ccstatusline.js targeting Node.js 14+
+  1. `bun build`: Bundles src/ccstatusline.ts into dist/ccstatusline.js targeting Node.js 18+
   2. `postbuild`: Runs scripts/replace-version.ts to replace `__PACKAGE_VERSION__` placeholder with actual version from package.json
 - **ESLint configuration**: Uses flat config format (eslint.config.js) with TypeScript and React plugins
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package

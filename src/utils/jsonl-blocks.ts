@@ -1,11 +1,15 @@
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { globSync } from 'tinyglobby';
+import {
+    glob,
+    globSync
+} from 'tinyglobby';
 
 import type { BlockMetrics } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
 import {
+    iterateJsonlLines,
     iterateJsonlLinesSync,
     parseJsonlLine
 } from './jsonl-lines';
@@ -23,6 +27,24 @@ export function getBlockMetrics(): BlockMetrics | null {
 
     try {
         return findMostRecentBlockStartTime(claudeDir);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Async twin of getBlockMetrics for the daemon prefetch (#18): the walk over
+ * every transcript under the config directory is the single most expensive
+ * provider read, so the daemon runs it off the render loop.
+ */
+export async function getBlockMetricsAsync(env?: NodeJS.ProcessEnv): Promise<BlockMetrics | null> {
+    const claudeDir: string | null = getClaudeConfigDir(env ?? process.env);
+
+    if (!claudeDir)
+        return null;
+
+    try {
+        return await findMostRecentBlockStartTimeAsync(claudeDir);
     } catch {
         return null;
     }
@@ -134,6 +156,20 @@ function findMostRecentBlockStartTime(
         }
     }
 
+    return buildCurrentBlockResult(timestamps, mostRecentTimestamp, continuousWorkStart, now, sessionDurationMs);
+}
+
+/**
+ * Pure tail shared by the sync and async block scans: build the hour-aligned
+ * blocks from the collected timestamps and find the one covering `now`.
+ */
+function buildCurrentBlockResult(
+    timestamps: Date[],
+    mostRecentTimestamp: Date | null,
+    continuousWorkStart: Date | null,
+    now: Date,
+    sessionDurationMs: number
+): BlockMetrics | null {
     if (!mostRecentTimestamp || !continuousWorkStart) {
         return null;
     }
@@ -178,47 +214,156 @@ function findMostRecentBlockStartTime(
 }
 
 /**
+ * Async twin of findMostRecentBlockStartTime (#18): same progressive-lookback
+ * strategy over an async directory walk, so a large transcript tree never
+ * blocks the daemon's render loop. The block-building tail is shared.
+ */
+async function findMostRecentBlockStartTimeAsync(
+    rootDir: string,
+    sessionDurationHours = 5
+): Promise<BlockMetrics | null> {
+    const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
+    const now = new Date();
+
+    const pattern = path.posix.join(rootDir.replace(/\\/g, '/'), 'projects', '**', '*.jsonl');
+    const files = await glob([pattern], {
+        absolute: true,
+        cwd: rootDir
+    });
+
+    if (files.length === 0)
+        return null;
+
+    const filesWithStats = files.map((file) => {
+        const stats = statSync(file);
+        return { file, mtime: stats.mtime };
+    });
+
+    filesWithStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+    const lookbackChunks = [10, 20, 48];
+
+    let timestamps: Date[] = [];
+    let mostRecentTimestamp: Date | null = null;
+    let continuousWorkStart: Date | null = null;
+    let foundSessionGap = false;
+
+    for (const lookbackHours of lookbackChunks) {
+        const cutoffTime = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000);
+        timestamps = [];
+
+        for (const { file, mtime } of filesWithStats) {
+            if (mtime.getTime() < cutoffTime.getTime()) {
+                break;
+            }
+            const fileTimestamps = await getAllTimestampsFromFileAsync(file);
+            timestamps.push(...fileTimestamps);
+        }
+
+        if (timestamps.length === 0) {
+            continue;
+        }
+
+        timestamps.sort((a, b) => b.getTime() - a.getTime());
+
+        if (!mostRecentTimestamp && timestamps[0]) {
+            mostRecentTimestamp = timestamps[0];
+
+            const timeSinceLastActivity = now.getTime() - mostRecentTimestamp.getTime();
+            if (timeSinceLastActivity > sessionDurationMs) {
+                return null;
+            }
+        }
+
+        continuousWorkStart = mostRecentTimestamp;
+        for (let i = 1; i < timestamps.length; i++) {
+            const currentTimestamp = timestamps[i];
+            const previousTimestamp = timestamps[i - 1];
+
+            if (!currentTimestamp || !previousTimestamp)
+                continue;
+
+            const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
+
+            if (gap >= sessionDurationMs) {
+                foundSessionGap = true;
+                break;
+            }
+
+            continuousWorkStart = currentTimestamp;
+        }
+
+        if (foundSessionGap) {
+            break;
+        }
+
+        if (lookbackHours === lookbackChunks[lookbackChunks.length - 1]) {
+            break;
+        }
+    }
+
+    return buildCurrentBlockResult(timestamps, mostRecentTimestamp, continuousWorkStart, now, sessionDurationMs);
+}
+
+/**
  * Gets all timestamps from a JSONL file
  */
 function getAllTimestampsFromFile(filePath: string): Date[] {
     const timestamps: Date[] = [];
     try {
         for (const line of iterateJsonlLinesSync(filePath)) {
-            const json = parseJsonlLine(line) as {
-                timestamp?: string;
-                isSidechain?: boolean;
-                message?: { usage?: { input_tokens?: number; output_tokens?: number } };
-            } | null;
-            if (!json) {
-                continue;
-            }
-
-            // Only treat entries with real token usage as block activity
-            const usage = json.message?.usage;
-            if (!usage)
-                continue;
-
-            const hasInputTokens = typeof usage.input_tokens === 'number';
-            const hasOutputTokens = typeof usage.output_tokens === 'number';
-            if (!hasInputTokens || !hasOutputTokens)
-                continue;
-
-            if (json.isSidechain === true)
-                continue;
-
-            const timestamp = json.timestamp;
-            if (typeof timestamp !== 'string')
-                continue;
-
-            const date = new Date(timestamp);
-            if (!Number.isNaN(date.getTime()))
-                timestamps.push(date);
+            collectTimestampFromLine(line, timestamps);
         }
 
         return timestamps;
     } catch {
         return [];
     }
+}
+
+async function getAllTimestampsFromFileAsync(filePath: string): Promise<Date[]> {
+    const timestamps: Date[] = [];
+    try {
+        for await (const line of iterateJsonlLines(filePath)) {
+            collectTimestampFromLine(line, timestamps);
+        }
+
+        return timestamps;
+    } catch {
+        return [];
+    }
+}
+
+function collectTimestampFromLine(line: string, timestamps: Date[]): void {
+    const json = parseJsonlLine(line) as {
+        timestamp?: string;
+        isSidechain?: boolean;
+        message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+    } | null;
+    if (!json) {
+        return;
+    }
+
+    // Only treat entries with real token usage as block activity
+    const usage = json.message?.usage;
+    if (!usage)
+        return;
+
+    const hasInputTokens = typeof usage.input_tokens === 'number';
+    const hasOutputTokens = typeof usage.output_tokens === 'number';
+    if (!hasInputTokens || !hasOutputTokens)
+        return;
+
+    if (json.isSidechain === true)
+        return;
+
+    const timestamp = json.timestamp;
+    if (typeof timestamp !== 'string')
+        return;
+
+    const date = new Date(timestamp);
+    if (!Number.isNaN(date.getTime()))
+        timestamps.push(date);
 }
 
 /**

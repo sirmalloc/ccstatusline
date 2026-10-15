@@ -9,10 +9,14 @@ import {
     type Settings
 } from '../../types/Settings';
 import { getHideKeybind } from '../../widgets/shared/hideable';
-import { getLabelKeybind } from '../../widgets/shared/raw-or-labeled';
+import {
+    getCompactLabelKeybind,
+    getLabelKeybind
+} from '../../widgets/shared/raw-or-labeled';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
+    getCompactLabelCapableTypes,
     getMatchSegments,
     getWidget,
     getWidgetCatalog,
@@ -220,6 +224,37 @@ describe('shared keybind reservation', () => {
                     .toBe(`${type}/${JSON.stringify(metadata)} binds nothing reserved`);
             }
         }
+    });
+});
+
+describe('compact label keybind reservation', () => {
+    it('widgets do not bind the shared compact-label key', () => {
+        const reservedKey = getCompactLabelKeybind().key;
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+
+        for (const type of getAllWidgetTypes(settings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        )) {
+            const widget = getWidget(type);
+            const keys = (widget?.getCustomKeybinds?.() ?? []).map(keybind => keybind.key);
+            expect(`${type} binds ${keys.includes(reservedKey) ? reservedKey : 'nothing reserved'}`)
+                .toBe(`${type} binds nothing reserved`);
+        }
+    });
+
+    it('probe marks labeled widgets capable and unlabeled ones not', () => {
+        const capable = getCompactLabelCapableTypes();
+        expect(capable.has('model')).toBe(true);
+        expect(capable.has('session-cost')).toBe(true);
+        expect(capable.has('context-bar')).toBe(true);
+        // Presets now cover every labeled widget, tokens and usage included.
+        expect(capable.has('tokens-input')).toBe(true);
+        expect(capable.has('session-usage')).toBe(true);
+        expect(capable.has('weekly-usage')).toBe(true);
+        expect(capable.has('git-branch')).toBe(false);
     });
 });
 

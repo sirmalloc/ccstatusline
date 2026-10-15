@@ -33,6 +33,27 @@ afterEach(() => {
 });
 
 describe('SandboxStatusWidget', () => {
+    describe('compact labels', () => {
+        it('strips the label space in glyph and word formats', () => {
+            const widget = new SandboxStatusWidget();
+            const context = makeContext();
+
+            const glyph = widget.render({
+                id: 'sandbox-status',
+                type: 'sandbox-status',
+                metadata: { compactLabel: 'true' }
+            }, context, DEFAULT_SETTINGS);
+            expect(glyph).toBe('SB:○');
+
+            const word = widget.render({
+                id: 'sandbox-status',
+                type: 'sandbox-status',
+                metadata: { compactLabel: 'true', format: 'word' }
+            }, context, DEFAULT_SETTINGS);
+            expect(word).toBe('SB:OFF');
+        });
+    });
+
     describe('metadata', () => {
         it('has correct display name', () => {
             expect(new SandboxStatusWidget().getDisplayName()).toBe('Sandbox Status');

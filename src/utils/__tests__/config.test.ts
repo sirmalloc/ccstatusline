@@ -38,6 +38,10 @@ let applyImport: (
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
 let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
+let normalizeLineThemes: (
+    lineThemes: (string | null | undefined)[] | undefined,
+    lineCount: number
+) => (string | undefined)[] | undefined;
 let consoleErrorSpy: MockInstance<typeof console.error>;
 
 function getSettingsPaths(): { configDir: string; settingsPath: string; backupPath: string } {
@@ -64,6 +68,7 @@ describe('config utilities', () => {
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
         saveInstallationMetadata = configModule.saveInstallationMetadata;
+        normalizeLineThemes = configModule.normalizeLineThemes;
     });
 
     beforeEach(() => {
@@ -575,5 +580,13 @@ describe('config utilities', () => {
 
         const onDiskAfterSave = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { lines: { type: string }[][] };
         expect(onDiskAfterSave.lines[0]?.[1]?.type).toBe('git-review');
+    });
+
+    it('normalizes lineThemes to the line count', () => {
+        expect(normalizeLineThemes(undefined, 3)).toBeUndefined();
+        expect(normalizeLineThemes(['nord'], 3)).toEqual(['nord', undefined, undefined]);
+        expect(normalizeLineThemes(['nord', 'dracula', undefined, 'stale'], 2)).toEqual(['nord', 'dracula']);
+        expect(normalizeLineThemes([undefined, undefined], 2)).toBeUndefined();
+        expect(normalizeLineThemes([null, 'dracula', null], 3)).toEqual([undefined, 'dracula', undefined]);
     });
 });

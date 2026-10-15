@@ -13,6 +13,7 @@ import {
 } from '../../../types/Settings';
 import type { WidgetItem } from '../../../types/Widget';
 import { getVisibleWidth } from '../../../utils/ansi';
+import { getColorAnsiCode } from '../../../utils/colors';
 import { renderOsc8Link } from '../../../utils/hyperlink';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
@@ -56,6 +57,13 @@ function createMockStdout(): CapturedWriteStream {
         getOutput() {
             return chunks.join('');
         }
+    });
+}
+
+// Ink batches renders; one macrotask is enough for these small trees.
+function flushInk() {
+    return new Promise((resolve) => {
+        setTimeout(resolve, 25);
     });
 }
 
@@ -201,6 +209,64 @@ describe('StatusLinePreview helpers', () => {
             expect(dimIndex).toBeGreaterThanOrEqual(0);
             expect(resetIndex).toBeGreaterThan(dimIndex);
             expect(resetIndex).toBeLessThan(nextWidgetIndex);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('restarts the global theme chain after a line with its own theme', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            colorLevel: 3,
+            powerline: {
+                ...DEFAULT_SETTINGS.powerline,
+                enabled: true,
+                theme: 'nord-aurora',
+                continueThemeAcrossLines: true
+            },
+            lineThemes: [undefined, 'dracula']
+        };
+        const lines: WidgetItem[][] = [
+            [{ id: 'a1', type: 'custom-text', customText: 'ONE' }],
+            [{ id: 'b1', type: 'custom-text', customText: 'TWO' }],
+            [{ id: 'c1', type: 'custom-text', customText: 'THREE' }]
+        ];
+
+        const instance = render(
+            React.createElement(StatusLinePreview, {
+                lines,
+                terminalWidth: 160,
+                settings
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await flushInk();
+            const output = stdout.getOutput();
+            const threeIndex = output.indexOf('THREE');
+            expect(threeIndex).toBeGreaterThan(0);
+
+            // Line 1 (global theme) consumed slot 0, line 2 (own theme) broke
+            // the chain — so line 3 must restart at nord-aurora slot 0, not
+            // continue at slot 2.
+            const prefix = output.slice(Math.max(0, threeIndex - 120), threeIndex);
+            expect(prefix).toContain(getColorAnsiCode('hex:BF616A', 'truecolor', true));
+            expect(prefix).not.toContain(getColorAnsiCode('hex:5E81AC', 'truecolor', true));
         } finally {
             instance.unmount();
             instance.cleanup();

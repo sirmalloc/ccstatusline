@@ -8,6 +8,7 @@ import type { WidgetItem } from '../../types/Widget';
 import {
     advanceGlobalPowerlineThemeIndex,
     countPowerlineThemeSlots,
+    hasOwnLineTheme,
     type PowerlineThemeSlotEntry
 } from '../powerline-theme-index';
 
@@ -69,5 +70,18 @@ describe('powerline theme index utils', () => {
 
         expect(afterFirst).toBe(2);
         expect(afterSecond).toBe(4);
+    });
+
+    it('hasOwnLineTheme is true only for explicitly set entries', () => {
+        const settings = { lineThemes: [undefined, 'none', 'nord'] };
+
+        expect(hasOwnLineTheme(settings, 0)).toBe(false); // inherit
+        expect(hasOwnLineTheme(settings, 1)).toBe(true); // 'none' is explicit
+        expect(hasOwnLineTheme(settings, 2)).toBe(true);
+        expect(hasOwnLineTheme(settings, 5)).toBe(false); // past the end
+        expect(hasOwnLineTheme({ lineThemes: undefined }, 0)).toBe(false);
+        expect(hasOwnLineTheme({}, 0)).toBe(false);
+        expect(hasOwnLineTheme({ lineThemes: [null, 'nord'] }, 0)).toBe(false); // JSON round-trip hole
+        expect(hasOwnLineTheme({ lineThemes: [null, 'nord'] }, 1)).toBe(true);
     });
 });

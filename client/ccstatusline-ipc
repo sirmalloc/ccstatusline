@@ -1,0 +1,196 @@
+#!/bin/sh
+# ccstatusline IPC client (protocol v1, issue #16).
+#
+# Reads the Claude Code status JSON from stdin, forwards it to the local
+# ccstatusline daemon over its private Unix socket, and prints the rendered
+# status line on stdout. All diagnostics go to stderr; on any failure stdout
+# stays empty, so a partial or error response can never become a status line.
+#
+# Shell + curl only: no Node, jq, or Python on the repaint path. The auth
+# token reaches curl through its config read from stdin — never argv, a URL,
+# or a temp credential file. User curl config, proxy routing, and redirects
+# are disabled; connection and total deadlines are explicit.
+#
+# Environment:
+#   CCSTATUSLINE_RUNTIME_DIR        override the daemon runtime directory
+#   CCSTATUSLINE_IPC_CONNECT_TIMEOUT  seconds to connect (default 2)
+#   CCSTATUSLINE_IPC_TIMEOUT        total seconds (default 10)
+#   CCSTATUSLINE_DAEMON_START      override the lazy-start command (see
+#                                  start_daemon below)
+#   CCSTATUSLINE_NO_AUTOSTART      when set, never start a daemon lazily
+#
+# On-demand lifecycle (#53): this wrapper runs only in installed shared mode
+# (`daemon install`), so its lazy start is opt-in by construction — one-shot
+# users never execute this file. On a missing daemon it starts one (`daemon
+# start`, serialized by the #47 cold-start lock) and retries into it.
+#
+# Exit status: 0 on a rendered status line, 1 on any failure (stdout empty).
+
+set -u
+
+connect_timeout=${CCSTATUSLINE_IPC_CONNECT_TIMEOUT:-2}
+total_timeout=${CCSTATUSLINE_IPC_TIMEOUT:-10}
+max_context_bytes=16384
+
+die() {
+    printf 'ccstatusline-ipc: %s\n' "$1" >&2
+    exit 1
+}
+
+if [ -n "${CCSTATUSLINE_RUNTIME_DIR:-}" ]; then
+    runtime_dir=$CCSTATUSLINE_RUNTIME_DIR
+elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    runtime_dir=$XDG_RUNTIME_DIR/ccstatusline
+else
+    runtime_dir=${TMPDIR:-/tmp}/ccstatusline-$(id -u)
+fi
+discovery=$runtime_dir/daemon.env
+
+# Endpoint discovery: flat KEY=VALUE lines written by the daemon. Prefix
+# matching keeps values (socket paths may contain '=') intact.
+read_discovery() {
+    protocol=''
+    socket=''
+    token=''
+    [ -r "$discovery" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        case $line in
+            '#'*) continue ;;
+            protocol=*) protocol=${line#protocol=} ;;
+            socket=*) socket=${line#socket=} ;;
+            token=*) token=${line#token=} ;;
+        esac
+    done < "$discovery"
+    return 0
+}
+
+# Lazy start (#53): run `ccstatusline daemon start` — the #47 cold-start lock
+# serializes concurrent starters onto one server, so racing clients each run
+# this and converge on the same daemon. Tried at most once per invocation,
+# bounded by the starter's own startup timeout. Opt out with
+# CCSTATUSLINE_NO_AUTOSTART; override the command with
+# CCSTATUSLINE_DAEMON_START (a full command line, split on whitespace).
+autostart_attempted=0
+start_daemon() {
+    [ -z "${CCSTATUSLINE_NO_AUTOSTART:-}" ] || return 1
+    [ "$autostart_attempted" -eq 0 ] || return 1
+    autostart_attempted=1
+    if [ -n "${CCSTATUSLINE_DAEMON_START:-}" ]; then
+        $CCSTATUSLINE_DAEMON_START >/dev/null 2>&1
+        return $?
+    fi
+    # Same install root as this wrapper: the npm package ships
+    # client/ccstatusline-ipc next to dist/ccstatusline.js (node), a dev
+    # checkout next to src/ccstatusline.ts (bun).
+    install_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd) || return 1
+    if [ -f "$install_root/dist/ccstatusline.js" ]; then
+        node "$install_root/dist/ccstatusline.js" daemon start >/dev/null 2>&1
+    elif [ -f "$install_root/src/ccstatusline.ts" ]; then
+        bun "$install_root/src/ccstatusline.ts" daemon start >/dev/null 2>&1
+    else
+        return 1
+    fi
+}
+
+if ! read_discovery; then
+    # No live daemon: start one on demand and re-read what it published.
+    start_daemon || die "no readable discovery file at $discovery; is the daemon running?"
+    read_discovery || die "lazy daemon start left no discovery file at $discovery"
+fi
+
+[ "$protocol" = "1" ] || die "unsupported daemon protocol '${protocol:-none}'; want 1"
+[ -n "$socket" ] || die "discovery file has no socket path"
+[ -n "$token" ] || die "discovery file has no auth token"
+
+# Invocation context: base64 over NUL-delimited KEY=VALUE entries. Mirrors
+# ENV_ALLOWLIST in src/daemon/protocol.ts — keep the two lists in sync. Only
+# set variables are encoded; the server clears its own copy of any allowlisted
+# name the client omits, which preserves absent-vs-empty exactly. The NUL
+# bytes live only inside the pipeline; base64 output is shell-safe.
+context=$(
+    {
+        [ -n "${CLAUDE_CONFIG_DIR+x}" ] && printf 'CLAUDE_CONFIG_DIR=%s\0' "$CLAUDE_CONFIG_DIR"
+        [ -n "${CLAUDE_SECURESTORAGE_CONFIG_DIR+x}" ] && printf 'CLAUDE_SECURESTORAGE_CONFIG_DIR=%s\0' "$CLAUDE_SECURESTORAGE_CONFIG_DIR"
+        [ -n "${CCSTATUSLINE_CONTEXT_SIZE_FALLBACK+x}" ] && printf 'CCSTATUSLINE_CONTEXT_SIZE_FALLBACK=%s\0' "$CCSTATUSLINE_CONTEXT_SIZE_FALLBACK"
+        [ -n "${CCSTATUSLINE_WIDTH+x}" ] && printf 'CCSTATUSLINE_WIDTH=%s\0' "$CCSTATUSLINE_WIDTH"
+        [ -n "${COLUMNS+x}" ] && printf 'COLUMNS=%s\0' "$COLUMNS"
+        [ -n "${HTTPS_PROXY+x}" ] && printf 'HTTPS_PROXY=%s\0' "$HTTPS_PROXY"
+        [ -n "${NO_PROXY+x}" ] && printf 'NO_PROXY=%s\0' "$NO_PROXY"
+        printf 'cwd=%s\0' "$(pwd -P)"
+    } | base64 | tr -d '\n'
+)
+
+[ "${#context}" -le "$max_context_bytes" ] \
+    || die "invocation context too large (${#context} > $max_context_bytes bytes)"
+
+# Buffer the piped status JSON once: retry attempts below must re-send the
+# same payload, and stdin cannot be rewound. Both temp files hold no secrets
+# (payload + rendered line are what the caller piped/asked for); the auth
+# token still travels only through the curl config on stdin.
+payload_tmp=$(mktemp "${TMPDIR:-/tmp}/ccstatusline-ipc-payload.XXXXXX") || die "cannot buffer stdin"
+body_tmp=$(mktemp "${TMPDIR:-/tmp}/ccstatusline-ipc-body.XXXXXX") || { rm -f "$payload_tmp"; die "cannot create temp file"; }
+cleanup() { rm -f "$payload_tmp" "$body_tmp"; }
+trap cleanup EXIT
+# Signal exits must not resume the retry loop (a handler without exit would
+# return into the backoff sleep); the EXIT trap still removes the temp files.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+cat > "$payload_tmp"
+
+attempt=0
+while :; do
+    code=$(curl -q -sS --fail \
+        --unix-socket "$socket" \
+        --config - \
+        --data-binary @"$payload_tmp" \
+        -o "$body_tmp" \
+        -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        --noproxy '*' \
+        --connect-timeout "$connect_timeout" \
+        --max-time "$total_timeout" \
+        'http://localhost/v1/render' \
+        <<CONFIG
+header = "Authorization: Bearer $token"
+header = "X-CCStatusLine-Context: $context"
+CONFIG
+    )
+    curl_rc=$?
+    [ "$curl_rc" -eq 0 ] && break
+    # Connect failure (curl exit 7): the daemon died after discovery was
+    # read. Transparently lazy-start a fresh one and retry into it — the
+    # autostart guard inside start_daemon bounds this to one restart.
+    if [ "$curl_rc" -eq 7 ]; then
+        if start_daemon && read_discovery && [ "$protocol" = "1" ]; then
+            continue
+        fi
+    fi
+    attempt=$((attempt + 1))
+    # 503 busy: the render queue is momentarily full (a burst of repaints
+    # across sessions). Back off on a growing ladder — 8s total budget — so
+    # even a cold burst of dozens of large renders waits out the queue, the
+    # same thing the next Claude Code repaint tick would do. Any other
+    # failure (dead daemon, bad request, render error) fails fast so stdout
+    # stays empty.
+    if [ "$curl_rc" -eq 22 ] && [ "$code" = "503" ] && [ "$attempt" -lt 14 ]; then
+        case $attempt in
+            1 | 2) sleep 0.05 ;;
+            3 | 4) sleep 0.1 ;;
+            5 | 6) sleep 0.25 ;;
+            7 | 8) sleep 0.5 ;;
+            *) sleep 1 ;;
+        esac
+        continue
+    fi
+    die "daemon request failed (curl exit $curl_rc)"
+done
+
+# An empty 200 body is a successful "nothing to render" answer — it matches
+# piped mode, which prints nothing. Report success with no output rather than
+# falling off the end with the failed [ -n test as the exit status.
+body=$(cat "$body_tmp")
+if [ -n "$body" ]; then
+    printf '%s\n' "$body"
+fi
+exit 0

@@ -15,8 +15,8 @@ const CONTEXT_SIZE_FALLBACK_ENV_VAR = 'CCSTATUSLINE_CONTEXT_SIZE_FALLBACK';
 // User-configurable last-resort fallback window size. Mirrors CCSTATUSLINE_WIDTH:
 // a positive integer read from the environment, ignored when unset or invalid.
 // Defaults to 200k so behavior is unchanged unless the user opts in.
-function getFallbackContextWindowSize(): number {
-    const raw = process.env[CONTEXT_SIZE_FALLBACK_ENV_VAR];
+function getFallbackContextWindowSize(env: NodeJS.ProcessEnv = process.env): number {
+    const raw = env[CONTEXT_SIZE_FALLBACK_ENV_VAR];
     if (raw) {
         const parsed = Number.parseInt(raw, 10);
         if (Number.isFinite(parsed) && parsed > 0) {
@@ -89,7 +89,11 @@ export function getModelContextIdentifier(model?: string | ModelIdentifier): str
     return id ?? displayName;
 }
 
-export function getContextConfig(modelIdentifier?: string, contextWindowSize?: number | null): ModelContextConfig {
+export function getContextConfig(
+    modelIdentifier?: string,
+    contextWindowSize?: number | null,
+    env: NodeJS.ProcessEnv = process.env
+): ModelContextConfig {
     const statusWindowSize = toValidWindowSize(contextWindowSize);
     if (statusWindowSize !== null) {
         return {
@@ -100,8 +104,9 @@ export function getContextConfig(modelIdentifier?: string, contextWindowSize?: n
 
     // Last-resort fallback when neither the live status window size nor a
     // model-name hint is available. Defaults to 200k, overridable via
-    // CCSTATUSLINE_CONTEXT_SIZE_FALLBACK.
-    const fallbackWindowSize = getFallbackContextWindowSize();
+    // CCSTATUSLINE_CONTEXT_SIZE_FALLBACK (resolved from the caller-supplied
+    // env snapshot in the daemon, #18).
+    const fallbackWindowSize = getFallbackContextWindowSize(env);
     const defaultConfig = {
         maxTokens: fallbackWindowSize,
         usableTokens: Math.floor(fallbackWindowSize * USABLE_CONTEXT_RATIO)

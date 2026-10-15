@@ -37,6 +37,7 @@ describe('CurrentWorkingDirWidget', () => {
         lines: [],
         flexMode: 'full',
         compactThreshold: 60,
+        daemonIdleStopMinutes: 10,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',
@@ -46,6 +47,7 @@ describe('CurrentWorkingDirWidget', () => {
         terminalWidthCacheTtlSeconds: 5,
         customCommandCacheTtlSeconds: 5,
         minimalistMode: false,
+        compactLabels: false,
         powerline: {
             enabled: false,
             separators: [],

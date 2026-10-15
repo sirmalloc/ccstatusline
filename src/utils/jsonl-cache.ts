@@ -6,7 +6,10 @@ import path from 'node:path';
 import type { BlockMetrics } from '../types';
 
 import { getClaudeConfigDir } from './claude-settings';
-import { getBlockMetrics } from './jsonl-blocks';
+import {
+    getBlockMetrics,
+    getBlockMetricsAsync
+} from './jsonl-blocks';
 
 const readFileSync = fs.readFileSync;
 const writeFileSync = fs.writeFileSync;
@@ -205,6 +208,47 @@ export function getCachedBlockMetrics(sessionDurationHours = 5): BlockMetrics | 
 
     // Cache miss or expired - run full calculation
     const metrics = getBlockMetrics();
+
+    if (metrics) {
+        writeBlockCache(metrics.startTime, activeConfigDir);
+    } else {
+        writeEmptyBlockCache(new Date(now.getTime() + EMPTY_RESULT_TTL_MS), activeConfigDir);
+    }
+
+    return metrics;
+}
+
+/**
+ * Async twin of getCachedBlockMetrics for the daemon prefetch (#18): identical
+ * cache-file protocol, but the directory-wide scan runs asynchronously so the
+ * daemon's render loop never blocks on it. Sync and async bodies are kept in
+ * lockstep on purpose — the cache file is the shared handoff between them.
+ */
+export async function getCachedBlockMetricsAsync(
+    env?: NodeJS.ProcessEnv,
+    sessionDurationHours = 5
+): Promise<BlockMetrics | null> {
+    const sessionDurationMs = sessionDurationHours * 60 * 60 * 1000;
+    const now = new Date();
+    const activeConfigDir = getClaudeConfigDir(env ?? process.env);
+
+    const cachedStartTime = readBlockCache(activeConfigDir);
+    if (cachedStartTime) {
+        const blockEndTime = new Date(cachedStartTime.getTime() + sessionDurationMs);
+        if (now.getTime() <= blockEndTime.getTime()) {
+            return {
+                startTime: cachedStartTime,
+                lastActivity: now
+            };
+        }
+    }
+
+    const emptyUntil = readEmptyBlockCache(activeConfigDir);
+    if (emptyUntil && now.getTime() < emptyUntil.getTime()) {
+        return null;
+    }
+
+    const metrics = await getBlockMetricsAsync(env ?? process.env);
 
     if (metrics) {
         writeBlockCache(metrics.startTime, activeConfigDir);

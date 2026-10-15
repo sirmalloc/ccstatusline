@@ -24,6 +24,12 @@ function epochToIso(epochSeconds: number): string {
     return new Date(epochSeconds * 1000).toISOString();
 }
 
+// expect.any() is typed `any`, which trips no-unsafe-assignment inside object
+// literals; widening to unknown keeps the same matcher lint-clean.
+function anyCacheMatcher(): unknown {
+    return expect.any(Object);
+}
+
 describe('usage prefetch', () => {
     let mockFetchUsageData: {
         mock: { calls: unknown[][] };
@@ -240,7 +246,7 @@ describe('usage prefetch', () => {
 
         expect(usageData?.fableUsage).toBe(5);
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
-        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'] }]);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'], cache: anyCacheMatcher() }]);
     });
 
     it.each([
@@ -323,7 +329,7 @@ describe('usage prefetch', () => {
             weeklyResetAt: epochToIso(1774540000)
         });
         expect(mockFetchUsageData.mock.calls).toEqual([
-            [{ requiredFields: ['sessionResetAt'] }]
+            [{ requiredFields: ['sessionResetAt'], cache: anyCacheMatcher() }]
         ]);
     });
 
@@ -338,7 +344,7 @@ describe('usage prefetch', () => {
 
         expect(usageData).toBeNull();
         expect(mockFetchUsageData.mock.calls).toEqual([
-            [{ requiredFields: ['weeklyResetAt'] }]
+            [{ requiredFields: ['weeklyResetAt'], cache: anyCacheMatcher() }]
         ]);
     });
 
@@ -372,7 +378,7 @@ describe('usage prefetch', () => {
             error: 'no-credentials'
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
-        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'], cache: anyCacheMatcher() }]);
     });
 
     it('preserves API errors when statusline data has no usable usage fields', async () => {
@@ -402,7 +408,7 @@ describe('usage prefetch', () => {
             weeklySonnetUsage: 8
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
-        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'] }]);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['weeklySonnetUsage'], cache: anyCacheMatcher() }]);
     });
 
     it('uses aggregate weekly reset as the cursor fallback without fetching for fable reset data', async () => {
@@ -419,7 +425,7 @@ describe('usage prefetch', () => {
             fableUsage: 8
         });
         expect(mockFetchUsageData.mock.calls.length).toBe(1);
-        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'] }]);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['fableUsage'], cache: anyCacheMatcher() }]);
     });
 
     it('fetches extra usage fields while preserving statusline usage data', async () => {
@@ -450,7 +456,8 @@ describe('usage prefetch', () => {
                     'extraUsageUtilization',
                     'extraUsageLimit',
                     'extraUsageUsed'
-                ]
+                ],
+                cache: anyCacheMatcher()
             }]
         ]);
     });
@@ -472,7 +479,7 @@ describe('usage prefetch', () => {
             extraUsageUsed: 12345
         });
         expect(mockFetchUsageData.mock.calls).toEqual([
-            [{ requiredFields: ['extraUsageEnabled', 'extraUsageLimit', 'extraUsageUsed'] }]
+            [{ requiredFields: ['extraUsageEnabled', 'extraUsageLimit', 'extraUsageUsed'], cache: anyCacheMatcher() }]
         ]);
     });
 
@@ -495,7 +502,8 @@ describe('usage prefetch', () => {
                     'extraUsageEnabled',
                     'extraUsageLimit',
                     'extraUsageUsed'
-                ]
+                ],
+                cache: anyCacheMatcher()
             }]
         ]);
     });
@@ -540,7 +548,7 @@ describe('usage prefetch', () => {
         expect(usageData?.weeklySonnetUsage).toBe(8);
         expect(usageData?.weeklyOpusUsage).toBe(2);
         expect(mockFetchUsageData.mock.calls).toEqual([[
-            { requiredFields: ['weeklySonnetUsage', 'weeklyOpusUsage'] }
+            { requiredFields: ['weeklySonnetUsage', 'weeklyOpusUsage'], cache: anyCacheMatcher() }
         ]]);
     });
 
@@ -642,7 +650,7 @@ describe('usage prefetch', () => {
 
         expect(usageData?.spendLimitUsage).toBe(62.8);
         expect(usageData?.extraUsageUsed).toBe(1000);
-        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'] }]);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'], cache: anyCacheMatcher() }]);
     });
 });
 
