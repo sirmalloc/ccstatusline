@@ -9,10 +9,11 @@ import {
 } from './session-forecast';
 
 const HISTORY_SCHEMA_VERSION = 1 as const;
-// One window's reset time jitters between sources (the API sends fractional
-// seconds that change between fetches, the payload whole seconds), while two
-// different windows' resets are always at least 5 hours apart.
-const WINDOW_MATCH_MS = 60 * 60 * 1000;
+// One window's reset time jitters by under a second between sources (the API
+// sends fractional seconds that change between fetches, the payload whole
+// seconds). The same login's next window resets 5 hours later, but another
+// login's, after /login in the same config directory, can be minutes away.
+const WINDOW_MATCH_MS = 60 * 1000;
 // An unchanged percent only moves its reading's last-seen time this often, so an
 // active session writes about once a minute rather than on every render.
 const LAST_SEEN_WRITE_INTERVAL_MS = 60 * 1000;

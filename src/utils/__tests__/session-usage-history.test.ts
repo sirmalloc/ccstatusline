@@ -143,7 +143,7 @@ describe('recordSessionUsageReading', () => {
         expect(stored(deps)).toEqual(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 40], [NOW, NOW, 42]] }] }));
     });
 
-    it('starts a new window when the reset moved by more than an hour', () => {
+    it('starts a new window when the reset moves on to the next block', () => {
         const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 40]] }] }));
         const nextResetAt = RESET_AT + 5 * 60 * MINUTE;
 
@@ -152,6 +152,22 @@ describe('recordSessionUsageReading', () => {
             '/p': [
                 { resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 40]] },
                 { resetAt: nextResetAt, readings: [[NOW, NOW, 3]] }
+            ]
+        }));
+    });
+
+    // After /login to another account in the same config directory, its block
+    // resets at another time. Its readings are its own, not lower ones to drop
+    // from the first account's block.
+    it('keeps another login\'s block apart when its reset is minutes away', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 80]] }] }));
+        const otherResetAt = RESET_AT + 10 * MINUTE;
+
+        expect(recordSessionUsageReading('/p', otherResetAt, 10, deps)).toEqual([[NOW, NOW, 10]]);
+        expect(stored(deps)).toEqual(history({
+            '/p': [
+                { resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 80]] },
+                { resetAt: otherResetAt, readings: [[NOW, NOW, 10]] }
             ]
         }));
     });
