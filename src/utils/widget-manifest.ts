@@ -108,7 +108,11 @@ export const WIDGET_MANIFEST: WidgetManifestEntry[] = [
     { type: 'worktree-branch', create: () => new widgets.GitWorktreeBranchWidget() },
     { type: 'worktree-original-branch', create: () => new widgets.GitWorktreeOriginalBranchWidget() },
     { type: 'compaction-counter', create: () => new widgets.CompactionCounterWidget() },
-    { type: 'cache-timer', create: () => new widgets.CacheTimerWidget() }
+    { type: 'cache-timer', create: () => new widgets.CacheTimerWidget() },
+    { type: 'cache-misses', create: () => new widgets.CacheMissesWidget() },
+    { type: 'last-cache-miss', create: () => new widgets.LastCacheMissWidget() },
+    { type: 'cache-miss-tokens', create: () => new widgets.CacheMissTokensWidget() },
+    { type: 'cache-if-cold', create: () => new widgets.CacheIfColdWidget() }
 ];
 
 export const LAYOUT_WIDGET_MANIFEST: LayoutWidgetManifestEntry[] = [

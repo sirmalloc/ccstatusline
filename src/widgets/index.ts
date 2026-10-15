@@ -90,3 +90,7 @@ export { SandboxStatusWidget } from './SandboxStatus';
 export { VoiceStatusWidget } from './VoiceStatus';
 export { RemoteControlStatusWidget } from './RemoteControlStatus';
 export { CacheTimerWidget } from './CacheTimer';
+export { CacheMissesWidget } from './CacheMisses';
+export { LastCacheMissWidget } from './LastCacheMiss';
+export { CacheMissTokensWidget } from './CacheMissTokens';
+export { CacheIfColdWidget } from './CacheIfCold';
