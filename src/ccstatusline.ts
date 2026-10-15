@@ -31,6 +31,7 @@ import {
 } from './utils/renderer';
 import { advanceGlobalSeparatorIndex } from './utils/separator-index';
 import { computeSessionForecastIfNeeded } from './utils/session-forecast-prefetch';
+import { getDefaultSessionUsageHistoryDeps } from './utils/session-usage-history';
 import { getSkillsMetrics } from './utils/skills';
 import {
     getWidgetSpeedWindowSeconds,
@@ -126,7 +127,7 @@ async function renderMultipleLines(data: StatusJSON) {
         prefetchUsageDataIfNeeded(lines, data),
         prefetchClaudeStatusIfNeeded(lines)
     ]);
-    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData);
+    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data));
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
     const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;

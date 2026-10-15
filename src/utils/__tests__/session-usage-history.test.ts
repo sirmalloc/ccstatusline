@@ -1,12 +1,18 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
 } from 'vitest';
 
+import type { StatusJSON } from '../../types/StatusJSON';
 import type { SessionUsageReading } from '../session-forecast';
 import {
+    getDefaultSessionUsageHistoryDeps,
     recordSessionUsageReading,
     type SessionUsageHistoryDeps
 } from '../session-usage-history';
@@ -118,6 +124,46 @@ describe('recordSessionUsageReading', () => {
 
         expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW - 5 * MINUTE, NOW, 42]]);
         expect(deps.writes).toBe(1);
+    });
+
+    // Claude Code re-renders an idle session on its refresh interval with the
+    // percent from its last response, which says nothing about the time since.
+    it('moves the last-seen time no later than when the percent was seen', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20]] }] }));
+        deps.percentSeenAt = () => NOW - 40 * MINUTE;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 20, deps)).toEqual([[NOW - 50 * MINUTE, NOW - 40 * MINUTE, 20]]);
+    });
+
+    it('skips the write when an idle session\'s percent has been seen up to its last response', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 50 * MINUTE, NOW - 40 * MINUTE, 20]] }] }));
+        deps.percentSeenAt = () => NOW - 40 * MINUTE;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 20, deps)).toEqual([[NOW - 50 * MINUTE, NOW - 40 * MINUTE, 20]]);
+        expect(deps.writes).toBe(0);
+    });
+
+    // After /clear the session starts a new transcript, with no response in it
+    // yet, while the payload keeps the percent from the last one
+    it('keeps the last sighting when nothing shows the percent was seen since', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20]] }] }));
+        deps.percentSeenAt = () => undefined;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 20, deps)).toEqual([[NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20]]);
+        expect(deps.writes).toBe(0);
+    });
+
+    it('doesn\'t ask when the percent was seen while its last sighting is under a minute old', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 30_000, 42]] }] }));
+        let asked = 0;
+        deps.percentSeenAt = () => {
+            asked += 1;
+            return NOW;
+        };
+
+        recordSessionUsageReading('/p', RESET_AT, 42, deps);
+
+        expect(asked).toBe(0);
     });
 
     // Usage never falls within a window, so a lower percent is another session's
@@ -351,5 +397,71 @@ describe('recordSessionUsageReading', () => {
         };
 
         expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+    });
+});
+
+function transcriptEntry(type: string, timestampMs: number, extra: Record<string, unknown> = {}): string {
+    return JSON.stringify({ type, timestamp: new Date(timestampMs).toISOString(), ...extra });
+}
+
+function payload(transcriptPath: string, fiveHour: StatusJSON['rate_limits'] = { five_hour: { used_percentage: 20, resets_at: RESET_AT / 1000 } }): StatusJSON {
+    return { transcript_path: transcriptPath, rate_limits: fiveHour };
+}
+
+describe('getDefaultSessionUsageHistoryDeps', () => {
+    let dir: string;
+    let transcriptPath: string;
+
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-usage-history-'));
+        transcriptPath = path.join(dir, 'session.jsonl');
+    });
+
+    afterEach(() => {
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    // The prompt is written before its response arrives, and the render it
+    // triggers still carries the last response's percent.
+    it('dates a payload\'s percent by its transcript\'s last response, not a prompt written since', () => {
+        fs.writeFileSync(transcriptPath, [
+            transcriptEntry('user', NOW - 41 * MINUTE),
+            transcriptEntry('assistant', NOW - 40 * MINUTE, { message: { model: 'claude-opus-4-1', role: 'assistant' } }),
+            transcriptEntry('user', NOW - MINUTE)
+        ].join('\n') + '\n');
+
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath)).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
+    });
+
+    it('skips the messages Claude Code writes itself, with no response behind them', () => {
+        fs.writeFileSync(transcriptPath, [
+            transcriptEntry('assistant', NOW - 40 * MINUTE, { message: { model: 'claude-opus-4-1', role: 'assistant' } }),
+            transcriptEntry('assistant', NOW - 20 * MINUTE, { isApiErrorMessage: true, message: { model: '<synthetic>', role: 'assistant' } }),
+            transcriptEntry('assistant', NOW - 10 * MINUTE, { message: { model: '<synthetic>', role: 'assistant' } })
+        ].join('\n') + '\n');
+
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath)).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
+    });
+
+    // Without a five-hour percent in the payload, it comes from the usage API
+    it('takes a percent the payload doesn\'t carry as seen now', () => {
+        fs.writeFileSync(transcriptPath, `${transcriptEntry('assistant', NOW - 40 * MINUTE, { message: { model: 'claude-opus-4-1' } })}\n`);
+
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, { seven_day: { used_percentage: 20 } })).percentSeenAt).toBeUndefined();
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, null)).percentSeenAt).toBeUndefined();
+        expect(getDefaultSessionUsageHistoryDeps().percentSeenAt).toBeUndefined();
+    });
+
+    // The payload's percent is still from a response: one before this
+    // transcript began, as after /clear
+    it('finds no time for a payload\'s percent without a response in its transcript', () => {
+        fs.writeFileSync(transcriptPath, `${transcriptEntry('user', NOW - MINUTE)}\n`);
+        const noResponse = getDefaultSessionUsageHistoryDeps(payload(transcriptPath));
+        const noTranscript = getDefaultSessionUsageHistoryDeps(payload(path.join(dir, 'missing.jsonl')));
+
+        expect(noResponse.percentSeenAt).toBeDefined();
+        expect(noResponse.percentSeenAt?.()).toBeUndefined();
+        expect(noTranscript.percentSeenAt).toBeDefined();
+        expect(noTranscript.percentSeenAt?.()).toBeUndefined();
     });
 });

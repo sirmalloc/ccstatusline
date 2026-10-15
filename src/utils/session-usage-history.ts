@@ -2,6 +2,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import type { StatusJSON } from '../types/StatusJSON';
+
+import {
+    iterateJsonlLinesReverseSync,
+    parseJsonlLine
+} from './jsonl-lines';
 import {
     FUTURE_TOLERANCE_MS,
     LOOKBACK_MS,
@@ -20,6 +26,8 @@ const LAST_SEEN_WRITE_INTERVAL_MS = 60 * 1000;
 // Another render's temp file this old has been left behind, not still being
 // written, so a write removes it
 const ORPHANED_TEMP_FILE_AGE_MS = 60 * 1000;
+// The model Claude Code names on the assistant messages it writes itself
+const SYNTHETIC_MODEL = '<synthetic>';
 
 interface SessionUsageWindow {
     resetAt: number;
@@ -40,11 +48,54 @@ export interface SessionUsageHistoryDeps {
     statSync: (path: string) => { mtimeMs: number };
     mkdirSync: (path: string) => void;
     now: () => number;
+    // When the percent given was seen, for one that can be older than now: a
+    // payload's is from its session's last API response, and Claude Code's
+    // refresh interval re-renders an idle session with that same percent.
+    // Undefined when nothing shows when that was. Left out, the percent is
+    // current, as the usage API's is.
+    percentSeenAt?: () => number | undefined;
     cachePath: string;
 }
 
+interface TranscriptEntry {
+    type?: unknown;
+    timestamp?: unknown;
+    isApiErrorMessage?: unknown;
+    message?: { model?: unknown } | null;
+}
+
+// When the transcript's last API response was written. Prompts, tool results
+// and local commands are written too, with no new percent behind them, and so
+// are the assistant messages Claude Code makes up itself (an API error's, say).
+function getLastResponseAtMs(transcriptPath: string | undefined): number | undefined {
+    if (transcriptPath === undefined) {
+        return undefined;
+    }
+
+    try {
+        for (const line of iterateJsonlLinesReverseSync(transcriptPath)) {
+            const entry = parseJsonlLine(line) as TranscriptEntry | null;
+            if (entry?.type !== 'assistant' || entry.isApiErrorMessage === true || entry.message?.model === SYNTHETIC_MODEL) {
+                continue;
+            }
+
+            const timestampMs = typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : Number.NaN;
+            if (Number.isFinite(timestampMs)) {
+                return timestampMs;
+            }
+        }
+    } catch {
+        return undefined;
+    }
+
+    return undefined;
+}
+
 // Built per call rather than at import, so the path follows HOME at render time.
-export function getDefaultSessionUsageHistoryDeps(): SessionUsageHistoryDeps {
+// The payload's 5-hour percent, which wins over the usage API's, dates from its
+// session's last response; the API's counts as seen now.
+export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON): SessionUsageHistoryDeps {
+    const isPayloadPercent = typeof payload?.rate_limits?.five_hour?.used_percentage === 'number';
     return {
         readFileSync: (p: string) => fs.readFileSync(p, 'utf-8'),
         writeFileSync: (p: string, data: string) => { fs.writeFileSync(p, data, 'utf-8'); },
@@ -54,6 +105,7 @@ export function getDefaultSessionUsageHistoryDeps(): SessionUsageHistoryDeps {
         statSync: (p: string) => fs.statSync(p),
         mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
         now: () => Date.now(),
+        percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload.transcript_path) : undefined,
         cachePath: path.join(os.homedir(), '.cache', 'ccstatusline', 'session-usage-history.json')
     };
 }
@@ -120,6 +172,21 @@ function pruneWindows(windows: SessionUsageWindow[], nowMs: number): SessionUsag
 
             return { resetAt: usageWindow.resetAt, readings: readings.slice(keepFrom) };
         });
+}
+
+// An unchanged percent was seen again when it was observed, which can be well
+// before now: an idle session's refresh renders repeat its last response's.
+// The stretch since stays a gap, which the forecast spreads a change across
+// (usage on another device, say) rather than taking the percent as unchanged
+// until now. With no time for it (a new transcript after /clear has no
+// response yet), the reading's own last sighting stands.
+function getUnchangedSeenAtMs(deps: SessionUsageHistoryDeps, nowMs: number, lastSeenMs: number): number {
+    if (!deps.percentSeenAt) {
+        return nowMs;
+    }
+
+    const seenAtMs = deps.percentSeenAt();
+    return seenAtMs !== undefined && Number.isFinite(seenAtMs) ? Math.min(nowMs, seenAtMs) : lastSeenMs;
 }
 
 // Removes the history's temp files that other renders left a minute or more
@@ -192,10 +259,17 @@ export function recordSessionUsageReading(
 
     if (last?.[2] !== clampedPercent) {
         readings.push([nowMs, nowMs, clampedPercent]);
-    } else if (nowMs - last[1] >= LAST_SEEN_WRITE_INTERVAL_MS) {
-        last[1] = nowMs;
-    } else {
+    } else if (nowMs - last[1] < LAST_SEEN_WRITE_INTERVAL_MS) {
+        // Not even now is a minute past the last sighting, so there's no need
+        // to look up when the percent was seen
         return readings;
+    } else {
+        const seenAtMs = getUnchangedSeenAtMs(deps, nowMs, last[1]);
+        if (seenAtMs - last[1] < LAST_SEEN_WRITE_INTERVAL_MS) {
+            return readings;
+        }
+
+        last[1] = seenAtMs;
     }
 
     const tempPath = `${deps.cachePath}.${process.pid}.tmp`;
