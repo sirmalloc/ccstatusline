@@ -14,7 +14,7 @@ import {
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getUsageDirectionKeybind,
-    getUsageDisplayModifierText,
+    getUsageTextModifierText,
     isUsageInverted,
     toggleUsageInverted
 } from './shared/usage-display';
@@ -33,7 +33,7 @@ export class BlockForecastWidget implements Widget {
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
-            modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true })
+            modifierText: getUsageTextModifierText(item, { showUsageDirection: true })
         };
     }
 

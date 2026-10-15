@@ -68,6 +68,17 @@ describe('BlockLimitTimerWidget', () => {
         expect(widget.getEditorDisplay(COMPACT).modifierText).toBe('(compact)');
     });
 
+    // A type change in the widget picker keeps the old widget's metadata, but this
+    // widget never draws a bar, let alone an inverted one
+    it('names only what it renders after a type change from a bar', () => {
+        const widget = new BlockLimitTimerWidget();
+        const fromBar: WidgetItem = { ...ITEM, metadata: { display: 'progress', invert: 'true', compact: 'true' } };
+
+        expect(render(fromBar, limitIn(4_387_500))).toBe('Limit in: 1h13m');
+        expect(widget.getEditorDisplay(fromBar).modifierText).toBe('(compact)');
+        expect(widget.getEditorDisplay({ ...ITEM, metadata: { display: 'slider' } }).modifierText).toBeUndefined();
+    });
+
     it('toggles the short form with s', () => {
         const widget = new BlockLimitTimerWidget();
 

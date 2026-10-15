@@ -78,6 +78,17 @@ describe('BlockForecastWidget', () => {
         expect(widget.getEditorDisplay(REMAINING).modifierText).toBe('(remaining)');
     });
 
+    // A type change in the widget picker keeps the old widget's metadata, but this
+    // widget never draws a bar
+    it('names only what it renders after a type change from a bar', () => {
+        const widget = new BlockForecastWidget();
+        const fromBar: WidgetItem = { ...ITEM, metadata: { display: 'progress', invert: 'true' } };
+
+        expect(render(fromBar, live(42, 83.2))).toBe('→16.8%');
+        expect(widget.getEditorDisplay(fromBar).modifierText).toBe('(remaining)');
+        expect(widget.getEditorDisplay({ ...ITEM, metadata: { display: 'slider-only' } }).modifierText).toBe('(used)');
+    });
+
     it('toggles remaining mode with u', () => {
         const widget = new BlockForecastWidget();
 
