@@ -42,18 +42,26 @@ const FORMAT_OPTIONS: FormatOptions<FastModeFormat> = {
     canUseNerdFont
 };
 
+function getIcon(enabled: boolean, nerdFont: boolean): string {
+    if (!nerdFont) {
+        return BOLT_EMOJI;
+    }
+    return enabled ? FLASH_NERD_FONT : FLASH_OFF_NERD_FONT;
+}
+
 function formatStatus(enabled: boolean, format: FastModeFormat, nerdFont: boolean, rawValue: boolean): string {
     const stateText = enabled ? 'on' : 'off';
     const stateDot = enabled ? STATE_DOT_ON : STATE_DOT_OFF;
-    const icon = nerdFont
-        ? (enabled ? FLASH_NERD_FONT : FLASH_OFF_NERD_FONT)
-        : BOLT_EMOJI;
+    const icon = getIcon(enabled, nerdFont);
 
     switch (format) {
         case 'icon-text':
             return rawValue ? stateText : `${icon} ${stateText}`;
         case 'icon':
-            return nerdFont ? icon : (rawValue ? stateDot : `${icon} ${stateDot}`);
+            if (nerdFont) {
+                return icon;
+            }
+            return rawValue ? stateDot : `${icon} ${stateDot}`;
         case 'text':
             return stateText;
         case 'word':
