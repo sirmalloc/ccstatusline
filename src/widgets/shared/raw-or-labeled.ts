@@ -64,6 +64,9 @@ export const COMPACT_LABELS: Record<string, string> = {
     'Cache Write: ': 'CW:',
     'Cache Hit: ': 'CH:',
     'Block: ': 'B:',
+    // Upstream 6e148cb renamed the session usage label from "Session:" to
+    // "5h:" to end its clash with the session cost widgets.
+    '5h: ': '5h:',
     'Block ': 'B',
     'Reset: ': 'R:',
     'Reset ': 'R',

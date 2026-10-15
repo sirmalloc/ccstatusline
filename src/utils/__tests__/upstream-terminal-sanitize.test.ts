@@ -41,7 +41,9 @@ describe('upstream 3d94211: terminal control sequences are sanitized', () => {
             customText: 'ok\x9b2Jx'
         };
 
-        expect(renderOne(widget)).toBe('ok2Jx');
+        // Upstream c08a59d: the 8-bit CSI \x9b2J is a complete sequence
+        // terminals consume whole, so it's dropped entirely.
+        expect(renderOne(widget)).toBe('okx');
     });
 
     it('consumes complete string sequences and charset escapes', () => {

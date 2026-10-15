@@ -650,7 +650,7 @@ describe('usage prefetch', () => {
 
         expect(usageData?.spendLimitUsage).toBe(62.8);
         expect(usageData?.extraUsageUsed).toBe(1000);
-        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'] }]);
+        expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'], cache: anyCacheMatcher() }]);
     });
 });
 
