@@ -20,7 +20,7 @@ function render(item: WidgetItem, context: RenderContext = {}): string | null {
 }
 
 function limitIn(limitInMs: number | null): RenderContext {
-    return { sessionForecast: { projectedPercent: 100, limitInMs } };
+    return { sessionForecast: { currentPercent: 61, projectedPercent: 100, limitInMs } };
 }
 
 describe('BlockLimitTimerWidget', () => {

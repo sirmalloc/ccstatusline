@@ -46,14 +46,14 @@ describe('forecastSessionUsage', () => {
         const result = forecast([[at(12, 20), at(12, 52), 45], [at(12, 53), at(13, 17), 61]], 61);
 
         // 16% in 30 minutes: 39% more takes 73.125 minutes, before the reset in 103.
-        expect(result).toEqual({ projectedPercent: 100, limitInMs: 4_387_500 });
+        expect(result).toEqual({ currentPercent: 61, projectedPercent: 100, limitInMs: 4_387_500 });
     });
 
     it('lands exactly on 100% at the reset without a limit time', () => {
         // 15% in 30 minutes, 120 minutes left: 40 + 60 = 100, reached at the reset itself.
         const result = forecast([[at(12, 20), at(12, 52), 25]], 40, NOW, at(15, 17));
 
-        expect(result).toEqual({ projectedPercent: 100, limitInMs: null });
+        expect(result).toEqual({ currentPercent: 40, projectedPercent: 100, limitInMs: null });
     });
 
     it('uses the whole window so far before the first reading', () => {
@@ -69,11 +69,11 @@ describe('forecastSessionUsage', () => {
         // Window began 10:00, now 10:20: 10% in 20 minutes, 280 minutes left.
         const result = forecast([[at(10, 5), at(10, 20), 10]], 10, at(10, 20));
 
-        expect(result).toEqual({ projectedPercent: 100, limitInMs: 180 * MINUTE });
+        expect(result).toEqual({ currentPercent: 10, projectedPercent: 100, limitInMs: 180 * MINUTE });
     });
 
     it('forecasts once the window is 10 minutes old', () => {
-        expect(forecast([], 5, at(10, 10))).toEqual({ projectedPercent: 100, limitInMs: 190 * MINUTE });
+        expect(forecast([], 5, at(10, 10))).toEqual({ currentPercent: 5, projectedPercent: 100, limitInMs: 190 * MINUTE });
     });
 
     it('stays quiet in a window younger than 10 minutes', () => {
@@ -103,6 +103,16 @@ describe('forecastSessionUsage', () => {
         ], 42);
 
         expect(result?.projectedPercent).toBeCloseTo(83.2, 6);
+    });
+
+    // Usage never falls within a window, so a lower percent is an idle session's,
+    // from before the latest reading another session saw.
+    it('goes from the latest reading when the percent given is behind it', () => {
+        const result = forecast([[at(12, 20), at(12, 52), 30], [at(12, 53), at(13, 16), 42]], 35);
+
+        expect(result?.currentPercent).toBe(42);
+        expect(result?.projectedPercent).toBeCloseTo(83.2, 6);
+        expect(result?.limitInMs).toBeNull();
     });
 
     it('treats a last-seen time past now as now', () => {

@@ -7,7 +7,7 @@ export interface SessionForecastInput {
     readings: SessionUsageReading[];
     nowMs: number;
     resetAtMs: number;
-    /** The current used percent, 0-100. */
+    /** This session's used percent, 0-100. A higher reading wins: see getCurrentPercent. */
     percent: number;
 }
 
@@ -46,6 +46,16 @@ function getKnownPoints({ readings, nowMs, resetAtMs, percent }: SessionForecast
     return points.sort((a, b) => a.timeMs - b.timeMs);
 }
 
+// Usage never falls within a window, so a percent under a reading already seen
+// is an idle session's, from its own last response before another session of
+// the account saw that reading.
+function getCurrentPercent({ readings, nowMs, percent }: SessionForecastInput): number {
+    const seenPercents = readings
+        .filter(([firstSeenMs]) => firstSeenMs <= nowMs + FUTURE_TOLERANCE_MS)
+        .map(([, , readingPercent]) => readingPercent);
+    return Math.max(percent, ...seenPercents);
+}
+
 // The percent at timeMs on the straight line between the known points either
 // side of it: a reading's own percent while it was being seen, and a change
 // across a gap with no renders spread evenly over the gap.
@@ -63,7 +73,8 @@ function percentAt(points: KnownPoint[], timeMs: number): number {
 
 /** Where the 5-hour window's usage is heading at the recent pace, or null with nothing to say. */
 export function forecastSessionUsage(input: SessionForecastInput): SessionForecast | null {
-    const { nowMs, resetAtMs, percent } = input;
+    const { nowMs, resetAtMs } = input;
+    const percent = getCurrentPercent(input);
     const leftMs = resetAtMs - nowMs;
     if (leftMs <= 0 || percent >= 100) {
         return null;
@@ -75,7 +86,7 @@ export function forecastSessionUsage(input: SessionForecastInput): SessionForeca
         return null;
     }
 
-    const rise = percent - percentAt(getKnownPoints(input), startMs);
+    const rise = percent - percentAt(getKnownPoints({ ...input, percent }), startMs);
     if (rise <= 0) {
         return null;
     }
@@ -84,6 +95,7 @@ export function forecastSessionUsage(input: SessionForecastInput): SessionForeca
     const projectedPercent = percent + rise * leftMs / spanMs;
     const msToLimit = (100 - percent) * spanMs / rise;
     return {
+        currentPercent: percent,
         projectedPercent: Math.min(100, projectedPercent),
         limitInMs: msToLimit < leftMs ? msToLimit : null
     };

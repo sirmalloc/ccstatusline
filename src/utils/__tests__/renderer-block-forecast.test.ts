@@ -47,7 +47,7 @@ describe('Block Forecast between the 5-hour usage widget and another widget', ()
         ['plain', plainSettings],
         ['Powerline', powerlineSettings]
     ])('takes its own place on the %s line once shown', (_mode, settings) => {
-        const line = renderLine([usage, forecast, model], settings, { ...context, sessionForecast: { projectedPercent: 83.2, limitInMs: null } });
+        const line = renderLine([usage, forecast, model], settings, { ...context, sessionForecast: { currentPercent: 42, projectedPercent: 83.2, limitInMs: null } });
 
         expect(line).toMatch(/42\.0%.*→83\.2%.*Opus 5\.5/);
     });

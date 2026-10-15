@@ -136,4 +136,18 @@ describe('computeSessionForecastIfNeeded', () => {
         expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], { ...usageData, sessionUsage: 104 }, deps)).toBeNull();
         expect(deps.files.get(CACHE_PATH)).toContain(`[${NOW},${NOW},100]`);
     });
+
+    // An idle session's percent is from its own last response, while the history
+    // holds what another session of this account has seen since.
+    it('forecasts the same for an idle session whose percent is behind the history', () => {
+        const deps = makeDeps({
+            version: 1,
+            profiles: { [path.resolve(PROFILE)]: [{ resetAt: RESET_AT, readings: [[at(12, 20), at(12, 52), 30], [at(12, 53), at(13, 16), 42]] }] }
+        });
+
+        const forecast = computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], { ...usageData, sessionUsage: 30 }, deps);
+
+        expect(forecast?.projectedPercent).toBeCloseTo(83.2, 6);
+        expect(forecast?.limitInMs).toBeNull();
+    });
 });

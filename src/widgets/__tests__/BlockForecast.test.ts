@@ -16,8 +16,8 @@ function render(item: WidgetItem, context: RenderContext = {}): string | null {
     return new BlockForecastWidget().render(item, context, DEFAULT_SETTINGS);
 }
 
-function live(sessionUsage: number, projectedPercent: number, limitInMs: number | null = null): RenderContext {
-    return { usageData: { sessionUsage }, sessionForecast: { projectedPercent, limitInMs } };
+function live(currentPercent: number, projectedPercent: number, limitInMs: number | null = null): RenderContext {
+    return { usageData: { sessionUsage: currentPercent }, sessionForecast: { currentPercent, projectedPercent, limitInMs } };
 }
 
 describe('BlockForecastWidget', () => {
@@ -45,7 +45,6 @@ describe('BlockForecastWidget', () => {
     it.each([
         ['there is no forecast', { usageData: { sessionUsage: 42 } }],
         ['nothing is known', {}],
-        ['the 5-hour usage is unknown', { sessionForecast: { projectedPercent: 83.2, limitInMs: null } }],
         ['the projection reads the same as current usage', live(42, 42.04)]
     ])('renders nothing when %s', (_label, context: RenderContext) => {
         expect(render(ITEM, context)).toBeNull();
@@ -53,6 +52,14 @@ describe('BlockForecastWidget', () => {
 
     it('compares in the widget\'s number format', () => {
         expect(render({ ...ITEM, numberFormat: { style: 'whole' } }, live(42, 42.4))).toBeNull();
+    });
+
+    // An idle session's payload still has the percent from its own last
+    // response, while the forecast goes from the latest reading of any session
+    it('compares with the usage the forecast goes from, not an idle session\'s', () => {
+        const idle: RenderContext = { usageData: { sessionUsage: 30 }, sessionForecast: { currentPercent: 42, projectedPercent: 42.0167, limitInMs: null } };
+
+        expect(render(ITEM, idle)).toBeNull();
     });
 
     // On pace for the limit, so it reads with Block Limit Timer's preview
