@@ -40,6 +40,11 @@ export function countSeparatorSlots(
         }
 
         if (!hasRenderedContent(i, preRenderedWidgets)) {
+            // A merge carries past a widget that renders nothing only if that
+            // widget is merged onward too; otherwise the merge ends with it.
+            if (!widget.merge) {
+                previousRenderableWidgetMergesWithNext = false;
+            }
             continue;
         }
 
