@@ -69,12 +69,14 @@ function makeUsageLine(params: {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
+    messageId?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
+            id: params.messageId,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -93,6 +95,7 @@ function makeTranscriptLine(params: {
     output?: number;
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
+    messageId?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
@@ -101,6 +104,7 @@ function makeTranscriptLine(params: {
         isApiErrorMessage: params.isApiErrorMessage,
         message: typeof params.input === 'number' || typeof params.output === 'number'
             ? {
+                id: params.messageId,
                 usage: {
                     input_tokens: params.input ?? 0,
                     output_tokens: params.output ?? 0
@@ -325,6 +329,155 @@ describe('jsonl transcript metrics', () => {
             totalTokens: 47052,       // 2 + 550 + 46500
             contextLength: 23501      // last main-chain final entry: 1 + 23000 + 500
         });
+    });
+
+    it('counts a split response once when every record repeats the same usage', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'split-response.jsonl');
+
+        // Main transcripts write one record per content block and repeat the
+        // response's final usage and stop_reason on each of them.
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 150,
+                cacheRead: 12000,
+                cacheCreate: 11000,
+                stopReason: 'tool_use'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 150,
+                cacheRead: 12000,
+                cacheCreate: 11000,
+                stopReason: 'tool_use'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 150,
+                cacheRead: 12000,
+                cacheCreate: 11000,
+                stopReason: 'tool_use'
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 1,
+            outputTokens: 150,
+            cachedTokens: 23000,
+            cacheReadTokens: 12000,
+            cacheCreationTokens: 11000,
+            totalTokens: 23151,
+            contextLength: 23001
+        });
+    });
+
+    it('counts the final usage of a split response whose earlier records are zeroed', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'split-response-settling.jsonl');
+
+        // A response can log a partial usage before it settles; the record written
+        // last holds the final count either way.
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 0,
+                stopReason: 'tool_use'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 150,
+                stopReason: 'tool_use'
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(1);
+        expect(metrics.outputTokens).toBe(150);
+        expect(metrics.totalTokens).toBe(151);
+    });
+
+    it('replaces a counted response when its final record is still in progress', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'split-response-in-progress.jsonl');
+
+        // The settled record is counted by the scan; the later in-progress record
+        // of the same response supersedes it instead of adding to it.
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 150,
+                stopReason: 'tool_use'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 300,
+                stopReason: null
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(1);
+        expect(metrics.outputTokens).toBe(300);
+    });
+
+    it('drops a fallback response share once stop_reason data starts', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'split-response-fallback.jsonl');
+
+        // Without stop_reason every record counts. The first record carrying the
+        // field resets those totals, so a response spanning the change is not
+        // counted through both its fallback share and its final usage.
+        const lines = [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                messageId: 'msg-1',
+                input: 5,
+                output: 50
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                messageId: 'msg-1',
+                input: 1,
+                output: 150,
+                stopReason: 'tool_use'
+            })
+        ];
+
+        fs.writeFileSync(transcriptPath, lines.join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics.inputTokens).toBe(1);
+        expect(metrics.outputTokens).toBe(150);
     });
 
     it('counts the latest in-progress streaming entry once when no finalized row exists yet', async () => {
@@ -828,6 +981,269 @@ describe('jsonl transcript metrics', () => {
             outputTokens: 300,
             totalTokens: 900,
             requestCount: 3
+        });
+    });
+
+    it('counts one API response once when it is split across content blocks', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-multi-block.jsonl');
+
+        // Claude Code logs one record per content block (thinking / text /
+        // tool_use) and repeats that response's usage on every record.
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 200,
+                output: 100
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:06.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 200,
+                output: 100
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:07.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 200,
+                output: 100
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 7000,
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            requestCount: 1
+        });
+    });
+
+    it('counts each split API response once across multiple requests', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-multi-response.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 100,
+                output: 60
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 100,
+                output: 60
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:09.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 150,
+                output: 90
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 150,
+                output: 90
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:11.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 150,
+                output: 90
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 10000,
+            inputTokens: 250,
+            outputTokens: 150,
+            totalTokens: 400,
+            requestCount: 2
+        });
+    });
+
+    it('counts a split API response once inside a rolling window', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-window-multi-block.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 100,
+                output: 60
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 100,
+                output: 60
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:09.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 150,
+                output: 90
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:10.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 150,
+                output: 90
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:11.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 150,
+                output: 90
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { windowSeconds: 5 });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 5000,
+            inputTokens: 150,
+            outputTokens: 90,
+            totalTokens: 240,
+            requestCount: 1
+        });
+    });
+
+    it('counts diverging usage from the last record of a response', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-diverging-usage.jsonl');
+
+        // Subagent transcripts zero the usage until the response settles, so only
+        // the last record carries the final count. Both records share a timestamp,
+        // which also pins the last-write-wins tie-break.
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 100,
+                output: 0
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:05.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 100,
+                output: 500
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 5000,
+            inputTokens: 100,
+            outputTokens: 500,
+            totalTokens: 600,
+            requestCount: 1
+        });
+    });
+
+    it('keeps the final usage when a window selects only the later records of a response', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-window-straddle.jsonl');
+
+        // msg-1 owns three records. The window drops the first and keeps two, so
+        // only the response's final record carries its usage.
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 50,
+                output: 0
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:04.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 50,
+                output: 0
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:06.000Z',
+                type: 'assistant',
+                messageId: 'msg-1',
+                input: 50,
+                output: 500
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:09.000Z',
+                type: 'assistant',
+                messageId: 'msg-2',
+                input: 70,
+                output: 100
+            })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath, { windowSeconds: 5 });
+
+        expect(metrics).toEqual({
+            totalDurationMs: 5000,
+            inputTokens: 120,
+            outputTokens: 600,
+            totalTokens: 720,
+            requestCount: 2
         });
     });
 
