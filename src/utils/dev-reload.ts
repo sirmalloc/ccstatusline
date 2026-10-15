@@ -70,6 +70,12 @@ export function writeDevReloadSnapshot(stateFile: string, snapshot: DevReloadSna
     fs.writeFileSync(stateFile, JSON.stringify(snapshot), 'utf-8');
 }
 
+// For when the settings file is written: a snapshot taken before that is
+// older than the file, so the next TUI should load the file instead
+export function discardDevReloadSnapshot(stateFile: string): void {
+    fs.rmSync(stateFile, { force: true });
+}
+
 // Null when there is nothing usable to restore; the TUI then loads normally.
 // Settings are re-validated because the reload may have changed the schema.
 export function readDevReloadSnapshot(stateFile: string): RestoredDevReloadSnapshot | null {

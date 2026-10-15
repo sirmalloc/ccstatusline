@@ -51,6 +51,7 @@ class MockTtyStream extends PassThrough {
 }
 
 const CTRL_R = '\u0012';
+const CTRL_S = '\u0013';
 
 // A TUI started by the dev reload supervisor after ctrl+r: it picks up the
 // snapshot the previous process left, and ctrl+r writes a new one
@@ -64,6 +65,8 @@ describe('App under dev reload', () => {
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-app-reload-'));
         stateFile = path.join(tempDir, 'state.json');
         initConfigPath(path.join(tempDir, 'settings.json'));
+        // A save also syncs widget hooks into Claude Code's settings
+        process.env.CLAUDE_CONFIG_DIR = path.join(tempDir, 'claude');
         process.env.CCSTATUSLINE_DEV_RELOAD = '1';
         process.env.CCSTATUSLINE_DEV_RELOAD_STATE = stateFile;
 
@@ -138,6 +141,53 @@ describe('App under dev reload', () => {
             expect(snapshot?.selectedLine).toBe(1);
             expect(snapshot?.settings.lines[1]).toEqual(edited.lines[1]);
             expect(snapshot?.originalSettings.lines).toEqual(DEFAULT_SETTINGS.lines);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+        }
+    });
+
+    // The supervisor relaunches with the same snapshot after a crash. Once the
+    // file has been saved, that snapshot's settings and original are older
+    // than the file, and the next save would write them back over it
+    it('keeps the snapshot for a crash after the reload, but drops it once the settings are saved', async () => {
+        writeDevReloadSnapshot(stateFile, {
+            settings: { ...DEFAULT_SETTINGS, lines: [[{ id: 'a', type: 'custom-text', customText: 'unsaved edit' }]] },
+            originalSettings: DEFAULT_SETTINGS,
+            screen: 'items',
+            selectedLine: 0,
+            menuSelections: {},
+            itemsCursor: 0
+        });
+
+        const stdin = new MockTtyStream();
+        const stdout = new MockTtyStream();
+        const chunks: string[] = [];
+        stdout.on('data', (chunk: Buffer | string) => {
+            chunks.push(chunk.toString());
+        });
+        const instance = render(React.createElement(App), {
+            stdin: stdin as unknown as NodeJS.ReadStream,
+            stdout: stdout as unknown as NodeJS.WriteStream,
+            stderr: new MockTtyStream() as unknown as NodeJS.WriteStream,
+            debug: true,
+            exitOnCtrlC: false,
+            patchConsole: false
+        });
+
+        try {
+            await waitFor(() => {
+                expect(stripAnsi(chunks.join(''))).toContain('unsaved edit');
+            });
+            expect(readDevReloadSnapshot(stateFile)?.settings.lines[0]?.[0]?.customText).toBe('unsaved edit');
+
+            stdin.write(CTRL_S);
+            await waitFor(() => {
+                expect(stripAnsi(chunks.join(''))).toContain('Configuration saved');
+            });
+            await waitFor(() => {
+                expect(readDevReloadSnapshot(stateFile)).toBeNull();
+            });
         } finally {
             instance.unmount();
             instance.cleanup();
