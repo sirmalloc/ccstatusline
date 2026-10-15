@@ -1,4 +1,3 @@
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
@@ -8,6 +7,11 @@ import * as path from 'node:path';
 import { z } from 'zod';
 
 import { getClaudeConfigDir } from './claude-settings';
+import { isExcludedFromProxy } from './no-proxy';
+import {
+    createProxyAgent,
+    type ClosableProxyAgent
+} from './proxy-agent';
 import type {
     UsageData,
     UsageDataField,
@@ -161,6 +165,7 @@ const UsageApiResponseSchema = z.looseObject({
 export const __testing = {
     CachedUsageDataSchema,
     UsageApiResponseSchema,
+    fetchFromUsageApi,
     parseUsageApiResponse
 };
 
@@ -765,34 +770,43 @@ const USAGE_API_TIMEOUT_MS = 5000;
 
 function getUsageApiProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    if (proxyUrl === '') {
+    if (proxyUrl === '' || isExcludedFromProxy(USAGE_API_HOST)) {
         return null;
     }
 
     return proxyUrl ?? null;
 }
 
-function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
+function getUsageApiRequest(token: string): { options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null {
     const proxyUrl = getUsageApiProxyUrl();
 
     try {
+        const proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
         return {
-            hostname: USAGE_API_HOST,
-            path: USAGE_API_PATH,
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'anthropic-beta': 'oauth-2025-04-20'
+            options: {
+                hostname: USAGE_API_HOST,
+                path: USAGE_API_PATH,
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'anthropic-beta': 'oauth-2025-04-20'
+                },
+                timeout: USAGE_API_TIMEOUT_MS,
+                ...(proxy ? { agent: proxy.agent } : {})
             },
-            timeout: USAGE_API_TIMEOUT_MS,
-            ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
+            proxy
         };
     } catch {
         return null;
     }
 }
 
-async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
+async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS): Promise<UsageApiFetchResult> {
+    const usageRequest = getUsageApiRequest(token);
+    if (!usageRequest) {
+        return { kind: 'error' };
+    }
+
     return new Promise((resolve) => {
         let settled = false;
 
@@ -801,16 +815,11 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
                 return;
             }
             settled = true;
+            clearTimeout(deadline);
             resolve(value);
         };
 
-        const requestOptions = getUsageApiRequestOptions(token);
-        if (!requestOptions) {
-            finish({ kind: 'error' });
-            return;
-        }
-
-        const request = https.request(requestOptions, (response) => {
+        const request = https.request(usageRequest.options, (response) => {
             let data = '';
             response.setEncoding('utf8');
 
@@ -841,6 +850,13 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
             request.destroy();
             finish({ kind: 'error' });
         });
+        // `timeout` only covers an idle socket, and behind a proxy the request
+        // has none until the proxy answers CONNECT
+        const deadline = setTimeout(() => {
+            request.destroy();
+            usageRequest.proxy?.close();
+            finish({ kind: 'error' });
+        }, deadlineMs);
         request.end();
     });
 }

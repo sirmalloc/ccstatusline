@@ -25,6 +25,8 @@ export type { ClaudeSettings };
 const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
+const stat = fs.promises.stat;
+const unlink = fs.promises.unlink;
 
 export const CCSTATUSLINE_COMMANDS = {
     AUTO_NPX: 'npx -y ccstatusline@latest',
@@ -140,6 +142,16 @@ export function getClaudeSettingsPath(): string {
     return path.join(getClaudeConfigDir(), 'settings.json');
 }
 
+async function removeIfExists(filePath: string): Promise<void> {
+    try {
+        await unlink(filePath);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+        }
+    }
+}
+
 /**
  * Creates a backup of the current Claude settings file.
  */
@@ -149,7 +161,12 @@ async function backupClaudeSettings(suffix = '.bak'): Promise<string | null> {
     try {
         if (fs.existsSync(settingsPath)) {
             const content = await readFile(settingsPath, 'utf-8');
-            await writeFile(backupPath, content, 'utf-8');
+            // The backup holds the same secrets (env, apiKeyHelper) as the
+            // settings, so it gets their permissions. It's recreated because
+            // an existing file keeps its own permissions when overwritten.
+            const mode = (await stat(settingsPath)).mode & 0o777;
+            await removeIfExists(backupPath);
+            await writeFile(backupPath, content, { encoding: 'utf-8', mode });
             return backupPath;
         }
     } catch (error) {
