@@ -269,6 +269,41 @@ describe('config utilities', () => {
         expect(merged.updatemessage).toBeUndefined();
     });
 
+    it('keeps current settings a v1 import holds values the migration drops for', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'v1-import-invalid-fields.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                lines: 'not a list',
+                flexMode: null,
+                compactThreshold: 'high',
+                defaultSeparator: '|'
+            }),
+            'utf-8'
+        );
+        const current: Settings = {
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'mine', type: 'git-branch' }]],
+            flexMode: 'full-minus-40',
+            compactThreshold: 80
+        };
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        expect(validation.presentKeys).toEqual(['defaultSeparator']);
+        const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
+        expect(merged.lines).toEqual(current.lines);
+        expect(merged.flexMode).toBe('full-minus-40');
+        expect(merged.compactThreshold).toBe(80);
+        expect(merged.defaultSeparator).toBe('|');
+    });
+
     it('preserves local installation metadata during a replace import', () => {
         const installation: InstallationMetadata = {
             method: 'pinned',

@@ -338,10 +338,12 @@ export async function validateImportFile(filePath: string): Promise<ImportValida
         return { status: 'invalid', reason: `Invalid config format: ${result.error.issues[0]?.message ?? 'unknown error'}` };
     }
 
-    // The keys the file holds, not the migrated result's: a merge applies what the
-    // file sets, never the version and update message a migration adds
+    // The keys the file holds that survived migration: a merge applies what the
+    // file sets, never the version and update message a migration adds, nor a
+    // default standing in for a value the v1 migration dropped as invalid
+    const migratedKeys = new Set(Object.keys(migrated as Record<string, unknown>));
     const presentKeys = Object.keys(parsed as Record<string, unknown>)
-        .filter((key): key is keyof Settings => key in result.data);
+        .filter((key): key is keyof Settings => migratedKeys.has(key) && key in result.data);
 
     return { status: 'valid', data: result.data, presentKeys };
 }
