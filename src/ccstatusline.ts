@@ -40,6 +40,7 @@ import {
     getTerminalWidth
 } from './utils/terminal';
 import { sanitizeTerminalText } from './utils/terminal-sanitize';
+import { fetchAccountEmail } from './utils/usage';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
 
@@ -98,6 +99,7 @@ async function renderMultipleLines(data: StatusJSON) {
     const hasCompactionWidget = lines.some(line => line.some(item => item.type === 'compaction-counter'));
     const hasThinkingEffortWidget = lines.some(line => line.some(item => item.type === 'thinking-effort'));
     const hasSessionNameWidget = lines.some(line => line.some(item => item.type === 'session-name'));
+    const hasAccountEmailWidget = lines.some(line => line.some(item => item.type === 'claude-account-email'));
     const needsTranscriptThinkingEffort = hasThinkingEffortWidget
         && (!data.effort || !('level' in data.effort));
     const requestedSpeedWindows = new Set<number>();
@@ -120,10 +122,11 @@ async function renderMultipleLines(data: StatusJSON) {
             includeSessionName: hasSessionNameWidget
         })
         : Promise.resolve(null);
-    const [transcriptAnalysis, usageData, claudeStatusData] = await Promise.all([
+    const [transcriptAnalysis, usageData, claudeStatusData, accountEmail] = await Promise.all([
         transcriptAnalysisPromise,
         prefetchUsageDataIfNeeded(lines, data),
-        prefetchClaudeStatusIfNeeded(lines)
+        prefetchClaudeStatusIfNeeded(lines),
+        hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(null)
     ]);
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
@@ -148,6 +151,7 @@ async function renderMultipleLines(data: StatusJSON) {
         windowedSpeedMetrics,
         usageData,
         claudeStatusData,
+        accountEmail,
         sessionDuration,
         transcriptSessionName: hasSessionNameWidget
             ? (transcriptAnalysis?.sessionName ?? null)

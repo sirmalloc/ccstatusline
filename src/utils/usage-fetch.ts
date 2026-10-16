@@ -766,6 +766,7 @@ function parseRetryAfterSeconds(headerValue: string | string[] | undefined, nowM
 
 const USAGE_API_HOST = 'api.anthropic.com';
 const USAGE_API_PATH = '/api/oauth/usage';
+const PROFILE_API_PATH = '/api/oauth/profile';
 const USAGE_API_TIMEOUT_MS = 5000;
 
 function getUsageApiProxyUrl(): string | null {
@@ -777,7 +778,7 @@ function getUsageApiProxyUrl(): string | null {
     return proxyUrl ?? null;
 }
 
-function getUsageApiRequest(token: string): { options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null {
+function getUsageApiRequest(token: string, apiPath: string): { options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null {
     const proxyUrl = getUsageApiProxyUrl();
 
     try {
@@ -785,7 +786,7 @@ function getUsageApiRequest(token: string): { options: https.RequestOptions; pro
         return {
             options: {
                 hostname: USAGE_API_HOST,
-                path: USAGE_API_PATH,
+                path: apiPath,
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -801,8 +802,8 @@ function getUsageApiRequest(token: string): { options: https.RequestOptions; pro
     }
 }
 
-async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS): Promise<UsageApiFetchResult> {
-    const usageRequest = getUsageApiRequest(token);
+async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS, apiPath = USAGE_API_PATH): Promise<UsageApiFetchResult> {
+    const usageRequest = getUsageApiRequest(token, apiPath);
     if (!usageRequest) {
         return { kind: 'error' };
     }
@@ -967,4 +968,105 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
         return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
+}
+
+// Claude Code records the signed-in account in .claude.json (oauthAccount)
+// at login and does not rewrite it when the credentials change underneath, so
+// that record can name a different account than the one the credentials, and
+// the usage above, belong to (#538). The profile endpoint answers for the
+// credentials themselves.
+const ACCOUNT_EMAIL_CACHE_FILE = path.join(CACHE_DIR, 'account-email.json');
+const ACCOUNT_EMAIL_LOCK_FILE = path.join(CACHE_DIR, 'account-email.lock');
+// Logins used side by side (one per CLAUDE_CONFIG_DIR profile) each keep an
+// entry instead of evicting each other on every render.
+const MAX_CACHED_ACCOUNT_EMAILS = 10;
+
+const ProfileApiResponseSchema = z.looseObject({ account: z.looseObject({ email: z.string().min(1).nullable().optional() }).nullable().optional() });
+const CachedAccountEmailsSchema = z.array(z.object({
+    tokenHash: z.string(),
+    email: z.string().min(1)
+}));
+const AccountEmailLockSchema = z.object({
+    blockedUntil: z.number(),
+    tokenHash: z.string()
+});
+
+type CachedAccountEmails = z.infer<typeof CachedAccountEmailsSchema>;
+
+function readCachedAccountEmails(): CachedAccountEmails {
+    try {
+        return parseJsonWithSchema(fs.readFileSync(ACCOUNT_EMAIL_CACHE_FILE, 'utf8'), CachedAccountEmailsSchema) ?? [];
+    } catch {
+        return [];
+    }
+}
+
+function writeCachedAccountEmails(entries: CachedAccountEmails): void {
+    try {
+        ensureCacheDirExists();
+        // Email addresses, so readable by this user only
+        fs.writeFileSync(ACCOUNT_EMAIL_CACHE_FILE, JSON.stringify(entries), { mode: 0o600 });
+    } catch {
+        // Ignore cache write errors
+    }
+}
+
+// A failed lookup holds off only the login it failed for. The deadline is
+// bounded like the usage lock's, so one written under a wrong clock cannot
+// stop lookups for good.
+function isAccountEmailLookupBlocked(tokenHash: string, now: number): boolean {
+    try {
+        const lock = parseJsonWithSchema(fs.readFileSync(ACCOUNT_EMAIL_LOCK_FILE, 'utf8'), AccountEmailLockSchema);
+        return lock?.tokenHash === tokenHash && lock.blockedUntil > now && lock.blockedUntil <= now + MAX_LOCK_HORIZON;
+    } catch {
+        return false;
+    }
+}
+
+function writeAccountEmailLock(tokenHash: string, blockedUntil: number): void {
+    try {
+        ensureCacheDirExists();
+        fs.writeFileSync(ACCOUNT_EMAIL_LOCK_FILE, JSON.stringify({ blockedUntil, tokenHash }));
+    } catch {
+        // Ignore lock file errors
+    }
+}
+
+/**
+ * The email of the account the usage credentials belong to, or null when there
+ * is no OAuth login or the lookup failed. Cached per login, so the profile
+ * endpoint is called again only when the login changes.
+ */
+export async function fetchAccountEmail(): Promise<string | null> {
+    const now = Math.floor(Date.now() / 1000);
+    const credentials = getUsageCredentialsWithBackoff(now);
+    if (!credentials) {
+        return null;
+    }
+
+    // Keyed like the usage cache: a refreshed access token keeps the entry,
+    // and a different login is looked up again.
+    const tokenHash = getUsageCacheIdentity(credentials).preferredHash;
+    const cachedEmails = readCachedAccountEmails();
+    const cached = cachedEmails.find(entry => entry.tokenHash === tokenHash);
+    if (cached) {
+        return cached.email;
+    }
+
+    if (isAccountEmailLookupBlocked(tokenHash, now)) {
+        return null;
+    }
+
+    const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
+        .catch((): UsageApiFetchResult => ({ kind: 'error' }));
+    const email = response.kind === 'success'
+        ? parseJsonWithSchema(response.body, ProfileApiResponseSchema)?.account?.email ?? null
+        : null;
+    if (email === null) {
+        writeAccountEmailLock(tokenHash, now + (response.kind === 'rate-limited' ? response.retryAfterSeconds : LOCK_MAX_AGE));
+        return null;
+    }
+
+    writeCachedAccountEmails([{ tokenHash, email }, ...cachedEmails].slice(0, MAX_CACHED_ACCOUNT_EMAILS));
+    return email;
 }
