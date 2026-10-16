@@ -71,6 +71,26 @@ describe('jsonl block metrics integration', () => {
         expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
     });
 
+    it.each(['claude (work)', 'cfg[1]', 'brace{a}', 'star*x', 'q?mark'])('finds transcripts under a config directory named %j', (dirName) => {
+        const configDir = path.join(tempClaudeDir, dirName);
+        process.env.CLAUDE_CONFIG_DIR = configDir;
+        const projectsDir = path.join(configDir, 'projects', 'project-a');
+        fs.mkdirSync(projectsDir, { recursive: true });
+
+        const now = new Date();
+        const blockStartSource = new Date(now.getTime() - (30 * 60 * 1000));
+        const recentActivity = new Date(now.getTime() - (10 * 60 * 1000));
+
+        fs.writeFileSync(path.join(projectsDir, 'session.jsonl'), [
+            makeUsageLine(blockStartSource),
+            makeUsageLine(recentActivity)
+        ].join('\n'));
+
+        const metrics = getBlockMetrics();
+
+        expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(blockStartSource).toISOString());
+    });
+
     it('returns null when the most recent activity is older than the session window', () => {
         const projectsDir = path.join(tempClaudeDir, 'projects', 'project-a');
         fs.mkdirSync(projectsDir, { recursive: true });

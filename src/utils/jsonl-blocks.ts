@@ -1,5 +1,4 @@
 import * as fs from 'node:fs';
-import path from 'node:path';
 import { globSync } from 'tinyglobby';
 
 import type { BlockMetrics } from '../types';
@@ -40,9 +39,9 @@ function findMostRecentBlockStartTime(
     const now = new Date();
 
     // Step 1: Find all JSONL files with their modification times
-    // Use forward slashes for glob patterns on all platforms (tinyglobby requirement)
-    const pattern = path.posix.join(rootDir.replace(/\\/g, '/'), 'projects', '**', '*.jsonl');
-    const files = globSync([pattern], {
+    // Keep the pattern relative to cwd: inside a pattern, characters a directory
+    // name can contain, such as ( ) [ ] { } * ?, are glob syntax
+    const files = globSync(['projects/**/*.jsonl'], {
         absolute: true,  // Ensure we get absolute paths
         cwd: rootDir     // Set working directory to rootDir
     });
