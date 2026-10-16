@@ -228,6 +228,10 @@ export function ImportPreviewDialog({
         }
     }
 
+    // The confirmation above unmounts the List, so it comes back on the mode
+    // the preview was showing rather than on the first row
+    const previewModeIndex = previewMode === 'merge' ? 1 : 0;
+
     const diffRows: React.JSX.Element[] = [];
 
     for (const key of topLevelKeys) {
@@ -315,6 +319,7 @@ export function ImportPreviewDialog({
                 items={items}
                 onSelect={handleSelect}
                 onSelectionChange={handleSelectionChange}
+                initialSelection={previewModeIndex}
             />
         </Box>
     );

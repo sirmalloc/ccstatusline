@@ -67,6 +67,25 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
+// An import that adds a shell command and leaves globalBold out, so Replace All
+// resets globalBold and Merge keeps it
+const COMMAND_IMPORT_CURRENT: Settings = { ...DEFAULT_SETTINGS, globalBold: true };
+const COMMAND_IMPORT_DATA: Settings = {
+    ...DEFAULT_SETTINGS,
+    flexMode: 'full-minus-40',
+    lines: [[{ id: 'c', type: 'custom-command', commandPath: 'echo hi' }], [], []]
+};
+const COMMAND_IMPORT_VALIDATION = {
+    status: 'valid' as const,
+    data: COMMAND_IMPORT_DATA,
+    presentKeys: ['version', 'flexMode', 'lines'] as (keyof Settings)[]
+};
+
+// The globalBold row of the last frame drawn
+function lastGlobalBoldRow(output: string): string | undefined {
+    return output.slice(output.lastIndexOf('globalBold:')).split('\n')[0];
+}
+
 describe('ImportPreviewDialog helpers', () => {
     it('includes optional settings that exist only in the imported config', () => {
         const current: Settings = { ...DEFAULT_SETTINGS };
@@ -268,6 +287,70 @@ describe('ImportPreviewDialog helpers', () => {
             await waitFor(() => {
                 expect(onApply).toHaveBeenCalledWith('replace');
             });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('keeps Merge highlighted after Cancel on the shell-command confirmation', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onApply = vi.fn();
+        const instance = render(React.createElement(ImportPreviewDialog, {
+            validation: COMMAND_IMPORT_VALIDATION,
+            currentSettings: COMMAND_IMPORT_CURRENT,
+            onApply,
+            onCancel: () => undefined
+        }), {
+            stdin,
+            stdout,
+            stderr,
+            debug: true,
+            exitOnCtrlC: false,
+            patchConsole: false
+        });
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  Replace All');
+            });
+            stdin.write('\u001B[B');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  Merge');
+            });
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  Cancel');
+                expect(stdout.getOutput()).toContain('Apply and run these commands');
+            });
+
+            stdout.clearOutput();
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  Merge');
+                expect(lastGlobalBoldRow(stdout.getOutput())).toBe('globalBold: true');
+            });
+            expect(stdout.getOutput()).not.toContain('▶  Replace All');
+
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  Cancel');
+                expect(stdout.getOutput()).toContain('Apply and run these commands');
+            });
+            stdin.write('\u001B[B');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  Apply and run these commands');
+            });
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(onApply).toHaveBeenCalledWith('merge');
+            });
+            expect(onApply).toHaveBeenCalledTimes(1);
         } finally {
             instance.unmount();
             instance.cleanup();
