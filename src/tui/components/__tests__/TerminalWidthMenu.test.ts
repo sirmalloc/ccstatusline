@@ -9,7 +9,18 @@ import {
     vi
 } from 'vitest';
 
-import { DEFAULT_SETTINGS } from '../../../types/Settings';
+import type { RenderContext } from '../../../types/RenderContext';
+import {
+    DEFAULT_SETTINGS,
+    type Settings
+} from '../../../types/Settings';
+import type { WidgetItem } from '../../../types/Widget';
+import { getVisibleWidth } from '../../../utils/ansi';
+import {
+    calculateMaxWidthsFromPreRendered,
+    preRenderAllWidgets,
+    renderStatusLine
+} from '../../../utils/renderer';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
     TERMINAL_WIDTH_OPTIONS,
@@ -96,6 +107,24 @@ describe('TerminalWidthMenu helpers', () => {
             value: 'full-until-compact'
         });
         expect(items[2]?.description).toContain('60%');
+    });
+
+    it('gives the number of columns the renderer reserves in Full width always', () => {
+        const widgets: WidgetItem[] = [{ id: 'text', type: 'custom-text', customText: 'x'.repeat(200) }];
+        const settings: Settings = { ...DEFAULT_SETTINGS, flexMode: 'full', colorLevel: 0 };
+        const context: RenderContext = { isPreview: false, terminalWidth: 100 };
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const line = renderStatusLine(
+            widgets,
+            settings,
+            context,
+            preRenderedLines[0] ?? [],
+            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
+        );
+        const reserved = 100 - getVisibleWidth(line);
+
+        const [fullWidth] = buildTerminalWidthItems('full', 60);
+        expect(fullWidth?.description).toContain(`full terminal width minus ${reserved} characters`);
     });
 
     it('marks the mode a config without flexMode gets as the default', () => {
