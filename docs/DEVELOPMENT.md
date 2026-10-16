@@ -127,7 +127,7 @@ Update checks and global package installs both validate release-version strings 
 - The entry point imports the TUI lazily for interactive mode; keep the Ink initialization path out of piped rendering. The distribution build uses code splitting, so ship the complete `dist/` directory.
 - Build target is Node.js 14+ (`dist/ccstatusline.js`)
 - `postbuild` replaces the bundled `__PACKAGE_VERSION__` placeholder from `package.json`; `ccstatusline --version` reads that value and exits before mode detection
-- During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
+- During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals and to re-measure a text when a string is inserted before an existing part of it (fixed upstream in ink 6.8.0)
 - React and React DOM are exact-version pins; dependency refreshes should update `package.json` and `bun.lock` together
 
 ## API Documentation
