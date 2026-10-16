@@ -103,6 +103,7 @@ function findMostRecentBlockStartTime(
         }
 
         // Look for a session gap in this chunk
+        const isLastChunk = lookbackHours === lookbackChunks[lookbackChunks.length - 1];
         continuousWorkStart = mostRecentTimestamp;
         for (let i = 1; i < timestamps.length; i++) {
             const currentTimestamp = timestamps[i];
@@ -114,8 +115,11 @@ function findMostRecentBlockStartTime(
             const gap = previousTimestamp.getTime() - currentTimestamp.getTime();
 
             if (gap >= sessionDurationMs) {
-                // Found a true session boundary
-                foundSessionGap = true;
+                // Transcripts last written before the cutoff weren't read, and
+                // their rows could fill the part of this gap before it. Unless the
+                // part after the cutoff spans a session by itself, look further back
+                foundSessionGap = isLastChunk
+                    || previousTimestamp.getTime() - cutoffTime.getTime() >= sessionDurationMs;
                 break;
             }
 
@@ -128,7 +132,7 @@ function findMostRecentBlockStartTime(
         }
 
         // If this was our last chunk, use what we have
-        if (lookbackHours === lookbackChunks[lookbackChunks.length - 1]) {
+        if (isLastChunk) {
             break;
         }
     }

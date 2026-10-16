@@ -17,6 +17,10 @@ function floorToHourUtc(timestamp: Date): Date {
     return floored;
 }
 
+function hoursAgo(now: Date, hours: number): Date {
+    return new Date(now.getTime() - (hours * 60 * 60 * 1000));
+}
+
 function makeUsageLine(timestamp: Date): string {
     return JSON.stringify({
         timestamp: timestamp.toISOString(),
@@ -47,6 +51,28 @@ function makeApiErrorLine(timestamp: Date): string {
             }
         }
     });
+}
+
+// A session left open since yesterday: one row 30h ago, then one every 30
+// minutes from 9h ago, so its own rows show a 21h gap
+function writeResumedSession(claudeDir: string, now: Date): void {
+    const projectDir = path.join(claudeDir, 'projects', 'project-a');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const rows = [hoursAgo(now, 30)];
+    for (let hours = 9; hours > 0; hours -= 0.5) {
+        rows.push(hoursAgo(now, hours));
+    }
+    fs.writeFileSync(path.join(projectDir, 'session.jsonl'), rows.map(row => makeUsageLine(row)).join('\n'));
+}
+
+// Another project's session with rows the given hours ago, last written at the newest
+function writeOtherProjectSession(claudeDir: string, now: Date, rowHoursAgo: number[]): void {
+    const projectDir = path.join(claudeDir, 'projects', 'project-b');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const transcriptPath = path.join(projectDir, 'session.jsonl');
+    fs.writeFileSync(transcriptPath, rowHoursAgo.map(hours => makeUsageLine(hoursAgo(now, hours))).join('\n'));
+    const lastWritten = hoursAgo(now, Math.min(...rowHoursAgo));
+    fs.utimesSync(transcriptPath, lastWritten, lastWritten);
 }
 
 describe('jsonl block metrics integration', () => {
@@ -148,6 +174,30 @@ describe('jsonl block metrics integration', () => {
 
         expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(firstRealRequest).toISOString());
         expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
+    });
+
+    it('reads further back when a gap reaches past the lookback, since an older transcript may fill it', () => {
+        const now = new Date();
+        writeResumedSession(tempClaudeDir, now);
+        // Last written 10.5h ago, just outside the first lookback, and fills the gap
+        writeOtherProjectSession(tempClaudeDir, now, [12, 11.5, 11, 10.5]);
+
+        const metrics = getBlockMetrics();
+
+        // One chain from 12h ago, through blocks starting about 7h and 2h ago
+        expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(hoursAgo(now, 2)).toISOString());
+    });
+
+    it('still ends the block chain at a gap that no older transcript fills', () => {
+        const now = new Date();
+        writeResumedSession(tempClaudeDir, now);
+        // Inside the gap, but more than 5h before the session resumed
+        writeOtherProjectSession(tempClaudeDir, now, [27, 26]);
+
+        const metrics = getBlockMetrics();
+
+        // One chain from 9h ago, through a block starting about 4h ago
+        expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(hoursAgo(now, 4)).toISOString());
     });
 
     it('returns null when the most recent activity is older than the session window', () => {
