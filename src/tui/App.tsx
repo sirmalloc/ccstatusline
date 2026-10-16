@@ -320,12 +320,13 @@ function clearInstallationMetadata(settings: Settings | null): Settings | null {
     return next;
 }
 
-export function getCurrentInstallation(
-    isClaudeInstalled: boolean,
+// Claude Code runs ccstatusline, so until its status line command is read, the saved
+// metadata describes the install
+export function classifyInstalledStatusLine(
     existingStatusLine: string | null,
     savedInstallation: InstallationMetadata | undefined
 ): InstallationMetadata {
-    return isClaudeInstalled && !existingStatusLine && savedInstallation
+    return !existingStatusLine && savedInstallation
         ? savedInstallation
         : classifyInstallation(existingStatusLine, savedInstallation);
 }
@@ -584,7 +585,9 @@ export const App: React.FC = () => {
         }
         // Global save shortcut
         if (key.ctrl && input === 's' && settings && screen !== 'confirm') {
-            const installation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings.installation);
+            const installation = isClaudeInstalled
+                ? classifyInstalledStatusLine(existingStatusLine, settings.installation)
+                : classifyInstallation(existingStatusLine, settings.installation);
             const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
                 ? inspectActiveGlobalCommand({ commandAvailability })
                 : null;
@@ -743,9 +746,9 @@ export const App: React.FC = () => {
 
     const handleUpdateCheck = useCallback(() => {
         setUpdateCheckerState({ status: 'checking' });
-        const installation = settings
-            ? getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings.installation)
-            : classifyInstallation(existingStatusLine, undefined);
+        const installation = isClaudeInstalled
+            ? classifyInstalledStatusLine(existingStatusLine, settings?.installation)
+            : classifyInstallation(existingStatusLine, settings?.installation);
         const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
             ? inspectActiveGlobalCommand({ commandAvailability })
             : null;
@@ -880,7 +883,9 @@ export const App: React.FC = () => {
             return null;
         }
 
-        const currentInstallation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, savedInstallation);
+        const currentInstallation = isClaudeInstalled
+            ? classifyInstalledStatusLine(existingStatusLine, savedInstallation)
+            : classifyInstallation(existingStatusLine, savedInstallation);
         const activeGlobalCommand = currentInstallation.method === 'pinned' || currentInstallation.method === 'self-managed'
             ? inspectActiveGlobalCommand({ commandAvailability })
             : null;
