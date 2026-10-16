@@ -190,6 +190,15 @@ describe('usage window helpers', () => {
         expect(result).toMatch(/^2026-04-27 7:00 PM /);
     });
 
+    it('normalizes spaced 12-hour day periods from locale data', () => {
+        // es-ES writes the day period as 'a. m.' and 'p. m.'
+        const result = formatUsageResetAt('2026-10-20T08:30:00.000Z', false, 'Europe/Madrid', 'es-ES', true);
+        expect(result).toMatch(/^2026-10-20 10:30 AM /);
+
+        const weekdayResult = formatUsageResetAt('2026-10-20T18:30:00.000Z', true, 'Europe/Madrid', 'es-ES', true, true);
+        expect(weekdayResult).toBe('mar 8:30 PM');
+    });
+
     it('keeps UTC behavior when timezone is undefined or "UTC"', () => {
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z')).toBe('2026-03-12 08:30 UTC');
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC')).toBe('2026-03-12 08:30 UTC');

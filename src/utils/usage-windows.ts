@@ -157,8 +157,10 @@ function formatResetAtUtc(date: Date, compact: boolean, hour12: boolean, weekday
 
 const DEFAULT_TZ_LOCALE = 'en-US';
 
+// 'pm', 'p.m.' and es-ES's 'p. m.' all become 'PM': each dot goes, with the
+// space after it
 function normalizeDayPeriod(dayPeriod: string): string {
-    return dayPeriod.replace(/\./g, '').toUpperCase();
+    return dayPeriod.replace(/\.\s*/g, '').toUpperCase();
 }
 
 function formatResetAtInTimezone(
