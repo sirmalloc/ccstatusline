@@ -50,6 +50,27 @@ describe('escape sequence parsing', () => {
         expect(getVisibleWidth('a\x1b7b\x1b8c')).toBe(3);
     });
 
+    // `tput sgr0` prints ESC ( B before its reset
+    it('hides an escape with intermediate bytes up to its final byte', () => {
+        expect(getVisibleText('\x1b[32mOK\x1b(B\x1b[m done')).toBe('OK done');
+        expect(getVisibleText('a\x1b$(Cb\x1b#8c')).toBe('abc');
+        expect(getVisibleWidth('a\x1b(Bb')).toBe(2);
+    });
+
+    it.each([
+        ['a DCS string', '\x1bPq#0;2;0;0;0\x1b\\'],
+        ['an APC string', '\x1b_Gpayload\x1b\\'],
+        ['a PM string', '\x1b^payload\x07'],
+        ['a SOS string', '\x1bXpayload\x9c']
+    ])('hides %s with its payload', (_label, sequence) => {
+        expect(getVisibleText(`a${sequence}b`)).toBe('ab');
+        expect(getVisibleWidth(`a${sequence}b`)).toBe(2);
+    });
+
+    it('ends an unterminated DCS string at the next escape', () => {
+        expect(getVisibleText('a\x1bPq#0\x1b[1mb')).toBe('ab');
+    });
+
     it('swallows a lone ESC at the end of the text', () => {
         expect(getVisibleText('ab\x1b')).toBe('ab');
         expect(getVisibleWidth('ab\x1b')).toBe(2);

@@ -198,6 +198,13 @@ describe('CustomCommandWidget', () => {
 
         expect(mockSpawnSync.mock.calls).toHaveLength(2);
     });
+
+    it('drops the charset escape in a tput reset when colours are not preserved', () => {
+        // `tput sgr0` prints ESC ( B, then ESC [ m
+        respondWith('\x1b[32mOK\x1b(B\x1b[m done');
+
+        expect(widget.render(createItem(), createContext(200), settings)).toBe('OK done');
+    });
     describe('maxWidth truncation', () => {
         const SGR_ORANGE = '\x1b[38;5;208m';
         const SGR_RESET = '\x1b[0m';

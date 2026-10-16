@@ -10,6 +10,8 @@ const BEL = '\x07';
 const C1_CSI = '\x9b';
 const C1_OSC = '\x9d';
 const ST = '\x9c';
+// What follows ESC in a DCS, SOS, PM or APC string
+const STRING_INTRODUCERS = new Set(['P', 'X', '^', '_']);
 const ZERO_WIDTH_JOINER = 0x200d;
 const COMBINING_ENCLOSING_KEYCAP = 0x20e3;
 const VARIATION_SELECTOR_START = 0xfe00;
@@ -338,6 +340,56 @@ function parseOsc(
     };
 }
 
+function isIntermediateByte(codePoint: number): boolean {
+    return codePoint >= 0x20 && codePoint <= 0x2f;
+}
+
+function sliceSequence(input: string, start: number, end: number): ParsedEscapeSequence {
+    return {
+        nextIndex: end,
+        sequence: input.slice(start, end)
+    };
+}
+
+// A DCS, SOS, PM or APC string, which the terminal swallows up to ST or BEL.
+// Any other ESC starts a new sequence, so an unterminated string doesn't hide
+// the text after it.
+function parseControlString(input: string, start: number): ParsedEscapeSequence {
+    for (let index = start + 2; index < input.length; index++) {
+        const current = input[index];
+        if (current === BEL || current === ST) {
+            return sliceSequence(input, start, index + 1);
+        }
+        if (current === ESC) {
+            return sliceSequence(input, start, input[index + 1] === '\\' ? index + 2 : index);
+        }
+    }
+
+    return sliceSequence(input, start, input.length);
+}
+
+// ESC and a character other than [ or ]
+function parseOtherEscape(input: string, start: number): ParsedEscapeSequence {
+    const next = input.charAt(start + 1);
+    if (STRING_INTRODUCERS.has(next)) {
+        return parseControlString(input, start);
+    }
+
+    // ESC, intermediate bytes, then a final byte: ESC ( B selects a character
+    // set (`tput sgr0` prints it), ESC # 8 fills the screen
+    if (isIntermediateByte(next.charCodeAt(0))) {
+        let end = start + 2;
+        while (end < input.length && isIntermediateByte(input.charCodeAt(end))) {
+            end++;
+        }
+        const final = input.charCodeAt(end);
+        return sliceSequence(input, start, final >= 0x30 && final <= 0x7e ? end + 1 : end);
+    }
+
+    // ESC 7, ESC c and the like
+    return sliceSequence(input, start, start + 2);
+}
+
 function parseEscapeSequence(input: string, index: number): ParsedEscapeSequence | null {
     const current = input[index];
     if (!current) {
@@ -353,10 +405,7 @@ function parseEscapeSequence(input: string, index: number): ParsedEscapeSequence
             return parseOsc(input, index, index + 2);
         }
         if (next) {
-            return {
-                nextIndex: index + 2,
-                sequence: input.slice(index, index + 2)
-            };
+            return parseOtherEscape(input, index);
         }
         return {
             nextIndex: input.length,
