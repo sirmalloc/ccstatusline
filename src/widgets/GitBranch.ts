@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
@@ -21,6 +24,7 @@ import {
     encodeGitRefForUrlPath,
     renderOsc8Link
 } from '../utils/hyperlink';
+import { isInsideJjRepo } from '../utils/jj';
 
 import { makeModifierText } from './shared/editor-display';
 import {
@@ -114,9 +118,11 @@ export class GitBranchWidget implements Widget {
         }
 
         // A detached HEAD (rebase, bisect, tag checkout) has no branch, so
-        // show its commit in parentheses, as git prompts do
+        // show its commit in parentheses, as git prompts do. jj keeps git's
+        // HEAD detached in a colocated repo, on a commit the user never
+        // checked out, so there it's no branch at all.
         const branch = this.getGitBranch(context);
-        const ref = branch ?? getGitShortSha(context);
+        const ref = branch ?? (this.isColocatedJjRepo(context) ? null : getGitShortSha(context));
         if (!ref) {
             return hideNoGit ? null : `${prefix}no git`;
         }
@@ -149,6 +155,26 @@ export class GitBranchWidget implements Widget {
         // has the same name
         const ref = runGit('symbolic-ref HEAD', context);
         return ref?.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
+    }
+
+    // jj finds its workspace from the nearest .jj above, past a git repo's own
+    // root, so `jj root` also succeeds in a plain git repo anywhere under a jj
+    // workspace. The repo is colocated only when its work tree holds the .jj.
+    private isColocatedJjRepo(context: RenderContext): boolean {
+        if (!isInsideJjRepo(context)) {
+            return false;
+        }
+
+        const topLevel = runGit('rev-parse --show-toplevel', context);
+        if (!topLevel) {
+            return false;
+        }
+
+        try {
+            return fs.statSync(path.join(topLevel, '.jj')).isDirectory();
+        } catch {
+            return false;
+        }
     }
 
     getCustomKeybinds(): CustomKeybind[] {
