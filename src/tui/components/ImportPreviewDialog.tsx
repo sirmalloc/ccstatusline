@@ -1,6 +1,7 @@
 import {
     Box,
-    Text
+    Text,
+    useInput
 } from 'ink';
 import React, { useState } from 'react';
 
@@ -175,6 +176,18 @@ export function ImportPreviewDialog({
         '-' as unknown as ListEntry<ImportMode>,
         { label: 'Cancel', value: 'cancel' }
     ];
+
+    // Escape steps back one screen: from the confirmation to the preview, then out
+    useInput((_, key) => {
+        if (!key.escape) {
+            return;
+        }
+        if (pendingMode) {
+            setPendingMode(null);
+            return;
+        }
+        onCancel();
+    });
 
     function handleSelect(value: ImportMode | 'back'): void {
         if (value === 'cancel' || value === 'back') {
