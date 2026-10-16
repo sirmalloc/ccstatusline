@@ -6,6 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
+    afterEach,
     beforeAll,
     describe,
     expect,
@@ -14,10 +15,44 @@ import {
 
 import {
     flushStdout,
+    getStdinTimeoutMs,
     isCompleteJson,
     readStdinBun,
     readStdinNode
 } from '../stdin';
+
+describe('getStdinTimeoutMs', () => {
+    const originalEnv = process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS;
+
+    afterEach(() => {
+        if (originalEnv === undefined) {
+            delete process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS;
+        } else {
+            process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS = originalEnv;
+        }
+    });
+
+    it('returns 3000 by default when environment variable is unset', () => {
+        delete process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS;
+        expect(getStdinTimeoutMs()).toBe(3000);
+    });
+
+    it('returns custom timeout when CCSTATUSLINE_STDIN_TIMEOUT_MS is set to a positive integer', () => {
+        process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS = '5000';
+        expect(getStdinTimeoutMs()).toBe(5000);
+    });
+
+    it('falls back to 3000 for invalid, zero, or negative values', () => {
+        process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS = 'abc';
+        expect(getStdinTimeoutMs()).toBe(3000);
+
+        process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS = '0';
+        expect(getStdinTimeoutMs()).toBe(3000);
+
+        process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS = '-500';
+        expect(getStdinTimeoutMs()).toBe(3000);
+    });
+});
 
 describe('isCompleteJson', () => {
     it('returns true for a single-line JSON object', () => {

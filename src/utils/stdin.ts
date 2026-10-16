@@ -22,7 +22,14 @@ function ignoreStreamError(): void {
     // Ignore stream cancellation or release errors
 }
 
-export { isCompleteJson };
+const DEFAULT_STDIN_TIMEOUT_MS = 3000;
+
+function getStdinTimeoutMs(): number {
+    const raw = Number(process.env.CCSTATUSLINE_STDIN_TIMEOUT_MS);
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_STDIN_TIMEOUT_MS;
+}
+
+export { getStdinTimeoutMs, isCompleteJson };
 
 export interface ReadStdinOptions {
     idleTimeoutMs?: number;
@@ -31,7 +38,7 @@ export interface ReadStdinOptions {
 }
 
 export async function readStdinBun(options?: ReadStdinOptions): Promise<string> {
-    const idleTimeoutMs = options?.idleTimeoutMs ?? 3000;
+    const idleTimeoutMs = options?.idleTimeoutMs ?? getStdinTimeoutMs();
     const stream = options?.stream ?? (typeof Bun !== 'undefined' ? Bun.stdin.stream() : undefined);
     if (!stream) {
         return '';
@@ -89,7 +96,7 @@ export async function readStdinBun(options?: ReadStdinOptions): Promise<string> 
 }
 
 export async function readStdinNode(options?: ReadStdinOptions): Promise<string> {
-    const idleTimeoutMs = options?.idleTimeoutMs ?? 3000;
+    const idleTimeoutMs = options?.idleTimeoutMs ?? getStdinTimeoutMs();
     const stream: Readable = options?.inputStream ?? process.stdin;
 
     stream.setEncoding('utf8');
