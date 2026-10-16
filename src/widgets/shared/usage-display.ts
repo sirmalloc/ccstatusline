@@ -172,6 +172,17 @@ export function toggleUsageWeekday(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'weekday');
 }
 
+// For the usage widgets that only ever render text. A type change in the widget
+// picker keeps the old widget's metadata, but its bar mode doesn't apply, nor
+// does inverting that bar's fill unless the widget shows used or remaining.
+export function getUsageTextModifierText(
+    item: WidgetItem,
+    options: UsageDisplayModifierOptions = {}
+): string | undefined {
+    const barKeys = options.showUsageDirection ? ['display'] : ['display', 'invert'];
+    return getUsageDisplayModifierText(removeMetadataKeys(item, barKeys), options);
+}
+
 interface UsageDisplayModifierOptions {
     includeCompact?: boolean;
     // Only for widgets that draw a time cursor: the cursor metadata outlives a
@@ -271,11 +282,19 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
-export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
+export function getUsageDirectionKeybind(item?: WidgetItem): CustomKeybind {
     const nextDirection = item && isUsageInverted(item) ? 'used' : 'remaining';
+    return { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' };
+}
+
+export function getUsageCompactKeybind(): CustomKeybind {
+    return COMPACT_TOGGLE_KEYBIND;
+}
+
+export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
     const keybinds: CustomKeybind[] = [
         PROGRESS_TOGGLE_KEYBIND,
-        { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
+        getUsageDirectionKeybind(item)
     ];
 
     if (item && includeCursor) {

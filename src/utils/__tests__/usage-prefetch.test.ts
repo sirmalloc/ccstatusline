@@ -327,6 +327,30 @@ describe('usage prefetch', () => {
         ]);
     });
 
+    it('reads the forecast widgets\' data from rate_limits without fetching', async () => {
+        const lines = makeLines(
+            [{ id: '1', type: 'block-forecast' }, { id: '2', type: 'block-limit-timer' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 42, sessionResetAt: epochToIso(1774020000) });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it.each(['block-forecast', 'block-limit-timer'])('fetches the reset time %s needs and keeps quiet when that fails', async (type) => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines([{ id: '1', type }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 42 });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['sessionResetAt'] }]
+        ]);
+    });
+
     it('returns no usage data instead of a rate-limit error for reset-only startup fetches', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
 

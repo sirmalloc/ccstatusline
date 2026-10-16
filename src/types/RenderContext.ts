@@ -3,6 +3,7 @@ import type {
     SkillsMetrics
 } from '../types';
 
+import type { SessionForecast } from './SessionForecast';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
@@ -51,6 +52,7 @@ export interface RenderContext {
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
+    sessionForecast?: SessionForecast | null;
     claudeStatusData?: ClaudeStatusRenderData | null;
     sessionDuration?: string | null;
     transcriptSessionName?: string | null;
