@@ -248,6 +248,24 @@ function formatResetAtInTimezone(
     }
 }
 
+// A chosen locale writes the weekday, day period and digits at UTC as in any
+// other zone; the time stays marked as UTC, with a Z in compact mode. Without
+// a locale, or with one Intl can't format, UTC keeps its fixed format
+function formatResetAtUtcInLocale(
+    date: Date,
+    compact: boolean,
+    locale: string | undefined,
+    hour12: boolean,
+    weekday: boolean
+): string {
+    const localized = locale ? formatResetAtInTimezone(date, compact, 'UTC', locale, hour12, weekday) : null;
+    if (localized) {
+        return compact ? `${localized}Z` : localized;
+    }
+
+    return formatResetAtUtc(date, compact, hour12, weekday);
+}
+
 export function formatUsageResetAt(
     resetAt: string | undefined,
     compact = false,
@@ -270,14 +288,7 @@ export function formatUsageResetAt(
     const hour12 = typeof localeOrHour12 === 'boolean' ? localeOrHour12 : hour12Arg;
 
     if (!timezone || timezone === 'UTC') {
-        // A chosen locale writes the weekday, day period and digits here as in
-        // any other zone; the time stays marked as UTC, with a Z in compact mode
-        const localized = locale ? formatResetAtInTimezone(date, compact, 'UTC', locale, hour12, weekday) : null;
-        if (localized) {
-            return compact ? `${localized}Z` : localized;
-        }
-
-        return formatResetAtUtc(date, compact, hour12, weekday);
+        return formatResetAtUtcInLocale(date, compact, locale, hour12, weekday);
     }
 
     const resolvedTimezone = timezone === 'local' ? undefined : timezone;
