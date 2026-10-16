@@ -180,6 +180,13 @@ function findMostRecentBlockStartTime(
     return null;
 }
 
+interface TranscriptRow {
+    timestamp?: string;
+    isSidechain?: boolean;
+    isApiErrorMessage?: boolean;
+    message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+}
+
 /**
  * Gets all timestamps from a JSONL file
  */
@@ -187,40 +194,13 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
     const timestamps: Date[] = [];
     try {
         for (const line of iterateJsonlLinesSync(filePath)) {
-            const json = parseJsonlLine(line) as {
-                timestamp?: string;
-                isSidechain?: boolean;
-                isApiErrorMessage?: boolean;
-                message?: { usage?: { input_tokens?: number; output_tokens?: number } };
-            } | null;
+            const json = parseJsonlLine(line) as TranscriptRow | null;
             if (!json) {
                 continue;
             }
 
-            // Only treat entries with real token usage as block activity
-            const usage = json.message?.usage;
-            if (!usage)
-                continue;
-
-            const hasInputTokens = typeof usage.input_tokens === 'number';
-            const hasOutputTokens = typeof usage.output_tokens === 'number';
-            if (!hasInputTokens || !hasOutputTokens)
-                continue;
-
-            if (json.isSidechain === true)
-                continue;
-
-            // Claude Code logs a rejected request (a usage limit, an expired
-            // login, an outage) as a row with all-zero usage; nothing was served
-            if (json.isApiErrorMessage === true)
-                continue;
-
-            const timestamp = json.timestamp;
-            if (typeof timestamp !== 'string')
-                continue;
-
-            const date = new Date(timestamp);
-            if (!Number.isNaN(date.getTime()))
+            const date = getActivityTimestamp(json);
+            if (date)
                 timestamps.push(date);
         }
 
@@ -228,6 +208,36 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
     } catch {
         return [];
     }
+}
+
+/**
+ * Gets when a transcript row was served, or null when the row isn't block activity
+ */
+function getActivityTimestamp(json: TranscriptRow): Date | null {
+    // Only treat entries with real token usage as block activity
+    const usage = json.message?.usage;
+    if (!usage)
+        return null;
+
+    const hasInputTokens = typeof usage.input_tokens === 'number';
+    const hasOutputTokens = typeof usage.output_tokens === 'number';
+    if (!hasInputTokens || !hasOutputTokens)
+        return null;
+
+    if (json.isSidechain === true)
+        return null;
+
+    // Claude Code logs a rejected request (a usage limit, an expired
+    // login, an outage) as a row with all-zero usage; nothing was served
+    if (json.isApiErrorMessage === true)
+        return null;
+
+    const timestamp = json.timestamp;
+    if (typeof timestamp !== 'string')
+        return null;
+
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? null : date;
 }
 
 /**
