@@ -63,6 +63,18 @@ describe('locale helpers', () => {
         });
     });
 
+    it('ranks a locale whose keyword is the search above the custom locale it spells', () => {
+        // 'uk' and 'ca' are keywords of en-GB and en-CA, and also the language
+        // codes of Ukrainian and Catalan
+        const ukMatches = filterLocaleOptions(getLocaleOptions(), 'uk');
+        expect(ukMatches[0]?.value).toBe('en-GB');
+        expect(ukMatches[1]).toMatchObject({ value: 'uk', description: 'Custom locale' });
+
+        const caMatches = filterLocaleOptions(getLocaleOptions(), 'ca');
+        expect(caMatches[0]?.value).toBe('en-CA');
+        expect(caMatches[1]).toMatchObject({ value: 'ca', description: 'Custom locale' });
+    });
+
     it('does not add a custom locale option for invalid typed locales', () => {
         const matches = filterLocaleOptions(getLocaleOptions(), 'not-a-locale');
 

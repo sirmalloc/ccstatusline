@@ -164,9 +164,16 @@ export function filterLocaleOptions(options: LocaleOption[], query: string): Loc
         return matches;
     }
 
+    // A typed tag the list doesn't offer comes first, after any locale that
+    // lists the search as a keyword: 'uk' and 'ca' are there to find en-GB
+    // and en-CA, though they also spell Ukrainian and Catalan
+    const keyword = query.trim().toLowerCase();
+    const isKeywordMatch = (option: LocaleOption): boolean => option.searchText.split(' ').includes(keyword);
+
     return [
+        ...matches.filter(isKeywordMatch),
         createCustomLocaleOption(canonicalQuery),
-        ...matches
+        ...matches.filter(option => !isKeywordMatch(option))
     ];
 }
 

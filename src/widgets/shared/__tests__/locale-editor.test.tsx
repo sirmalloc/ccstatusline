@@ -201,6 +201,25 @@ describe('UsageLocaleEditor', () => {
         }
     });
 
+    it('saves the locale a search keyword names, not the language code it spells', async () => {
+        const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
+
+        try {
+            await waitForEditor(rendered.stdout);
+            await search(rendered, 'uk', 'en-GB');
+
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledOnce();
+            });
+
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata?.locale).toBe('en-GB');
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
     it('cancels without saving', async () => {
         const rendered = renderEditor({ id: 'reset', type: 'reset-timer' });
 
