@@ -176,6 +176,32 @@ describe('jsonl block metrics integration', () => {
         expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
     });
 
+    it('ignores rows that are not served requests or lack a valid timestamp', () => {
+        const projectsDir = path.join(tempClaudeDir, 'projects', 'project-a');
+        fs.mkdirSync(projectsDir, { recursive: true });
+        const transcriptPath = path.join(projectsDir, 'session.jsonl');
+
+        const now = new Date();
+        const realRequest = new Date(now.getTime() - (45 * 60 * 1000));
+        const ignoredRowTime = new Date(now.getTime() - (10 * 60 * 1000));
+        const usage = { input_tokens: 100, output_tokens: 50 };
+
+        fs.writeFileSync(transcriptPath, [
+            JSON.stringify({ timestamp: 'not a date', message: { usage } }),
+            '{not json',
+            JSON.stringify({ type: 'user', timestamp: ignoredRowTime.toISOString(), message: { content: 'hello' } }),
+            JSON.stringify({ timestamp: ignoredRowTime.toISOString(), message: { usage: { input_tokens: 100 } } }),
+            JSON.stringify({ timestamp: ignoredRowTime.toISOString(), isSidechain: true, message: { usage } }),
+            JSON.stringify({ timestamp: ignoredRowTime.getTime(), message: { usage } }),
+            makeUsageLine(realRequest)
+        ].join('\n'));
+
+        const metrics = getBlockMetrics();
+
+        expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(realRequest).toISOString());
+        expect(metrics?.lastActivity.toISOString()).toBe(realRequest.toISOString());
+    });
+
     it('reads further back when a gap reaches past the lookback, since an older transcript may fill it', () => {
         const now = new Date();
         writeResumedSession(tempClaudeDir, now);
