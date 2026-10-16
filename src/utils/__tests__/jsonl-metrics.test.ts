@@ -933,6 +933,57 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('counts only the in-window share of tokens for a request that started before the window', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-window-straddle.jsonl');
+
+        // One 80s request at 50 output t/s, then its tool result 5s later, which
+        // ends the window. Only the last part of the request falls inside it.
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:20.000Z',
+                type: 'assistant',
+                input: 80,
+                output: 4000
+            }),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:25.000Z',
+                type: 'user'
+            })
+        ].join('\n'));
+
+        const metricsCollection = await getSpeedMetricsCollection(transcriptPath, { windowSeconds: [10, 40] });
+
+        expect(metricsCollection.sessionAverage).toEqual({
+            totalDurationMs: 80000,
+            inputTokens: 80,
+            outputTokens: 4000,
+            totalTokens: 4080,
+            requestCount: 1
+        });
+        // 5s of the request's 80s fall inside the 10s window: 1/16 of its tokens
+        expect(metricsCollection.windowed['10']).toEqual({
+            totalDurationMs: 5000,
+            inputTokens: 5,
+            outputTokens: 250,
+            totalTokens: 255,
+            requestCount: 1
+        });
+        // 35s of its 80s fall inside the 40s window: 7/16 of its tokens
+        expect(metricsCollection.windowed['40']).toEqual({
+            totalDurationMs: 35000,
+            inputTokens: 35,
+            outputTokens: 1750,
+            totalTokens: 1785,
+            requestCount: 1
+        });
+    });
+
     it('ignores sidechain and API error entries in speed metrics', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
@@ -1139,11 +1190,12 @@ describe('jsonl transcript metrics', () => {
             windowSeconds: 4
         });
 
+        // The subagent request ran 5s, 4s of it inside the window: 4/5 of its tokens
         expect(metrics).toEqual({
             totalDurationMs: 4000,
-            inputTokens: 30,
-            outputTokens: 60,
-            totalTokens: 90,
+            inputTokens: 24,
+            outputTokens: 48,
+            totalTokens: 72,
             requestCount: 1
         });
     });

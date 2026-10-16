@@ -298,6 +298,33 @@ function getIntervalsDurationMs(intervals: SpeedInterval[]): number {
     return intervals.reduce((total, interval) => total + (interval.endMs - interval.startMs), 0);
 }
 
+/**
+ * Cuts a request down to the part of its interval inside the window.
+ *
+ * A request's tokens are produced across its whole interval, so one that started
+ * before the window produced only some of them inside it. It keeps the share of
+ * its tokens that matches its share of time inside the window: all of its tokens
+ * over only the clipped time would overstate the speed.
+ */
+function clipRequestToWindow(request: SpeedRequest, windowStartMs: number, windowEndMs: number): SpeedRequest {
+    const { interval } = request;
+    if (!interval) {
+        return request;
+    }
+
+    const startMs = Math.max(interval.startMs, windowStartMs);
+    const endMs = Math.min(interval.endMs, windowEndMs);
+    const insideMs = Math.max(endMs - startMs, 0);
+    const fullMs = interval.endMs - interval.startMs;
+
+    return {
+        ...request,
+        inputTokens: request.inputTokens * insideMs / fullMs,
+        outputTokens: request.outputTokens * insideMs / fullMs,
+        interval: insideMs > 0 ? { startMs, endMs } : null
+    };
+}
+
 function createEmptySpeedMetrics(): SpeedMetrics {
     return {
         totalDurationMs: 0,
@@ -412,7 +439,7 @@ function buildSpeedMetrics(
         ? collected.requests.filter(request => request.assistantTimestampMs !== null
             && request.assistantTimestampMs >= windowStartMs
             && request.assistantTimestampMs <= windowEndMs
-        )
+        ).map(request => clipRequestToWindow(request, windowStartMs, windowEndMs))
         : collected.requests;
 
     let inputTokens = 0;
@@ -427,19 +454,7 @@ function buildSpeedMetrics(
             continue;
         }
 
-        if (windowStartMs === null || windowEndMs === null) {
-            intervals.push(request.interval);
-            continue;
-        }
-
-        const clippedStartMs = Math.max(request.interval.startMs, windowStartMs);
-        const clippedEndMs = Math.min(request.interval.endMs, windowEndMs);
-        if (clippedEndMs > clippedStartMs) {
-            intervals.push({
-                startMs: clippedStartMs,
-                endMs: clippedEndMs
-            });
-        }
+        intervals.push(request.interval);
     }
 
     const mergedIntervals = mergeIntervals(intervals);
