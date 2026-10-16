@@ -406,7 +406,11 @@ function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSp
     let latestTimestampMs: number | null = null;
 
     for (const part of parts) {
-        requests.push(...part.requests);
+        // One push per request: spreading a long transcript's requests into a
+        // single call exceeds the engine's argument limit and throws
+        for (const request of part.requests) {
+            requests.push(request);
+        }
 
         if (part.latestTimestampMs !== null && (latestTimestampMs === null || part.latestTimestampMs > latestTimestampMs)) {
             latestTimestampMs = part.latestTimestampMs;

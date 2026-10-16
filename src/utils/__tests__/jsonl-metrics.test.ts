@@ -692,6 +692,36 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('keeps token and speed metrics for a transcript with more usage rows than a call takes arguments', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'many-usage-rows.jsonl');
+
+        // More rows than Node (about 125k) or Bun (about 640k) accepts as
+        // arguments to a single function call
+        const rowCount = 700_000;
+        fs.writeFileSync(transcriptPath, `${JSON.stringify({
+            type: 'assistant',
+            message: {
+                usage: {
+                    input_tokens: 1,
+                    output_tokens: 2
+                }
+            }
+        })}\n`.repeat(rowCount));
+
+        const analysis = await getTranscriptAnalysis(transcriptPath, { includeSpeedMetrics: true });
+
+        expect(analysis.tokenMetrics.outputTokens).toBe(rowCount * 2);
+        expect(analysis.speedMetricsCollection?.sessionAverage).toEqual({
+            totalDurationMs: 0,
+            inputTokens: rowCount,
+            outputTokens: rowCount * 2,
+            totalTokens: rowCount * 3,
+            requestCount: rowCount
+        });
+    }, 30000);
+
     it('collects configured transcript metrics in one combined analysis', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
         tempRoots.push(root);

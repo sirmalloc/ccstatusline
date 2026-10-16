@@ -85,4 +85,25 @@ describe('jsonl block metrics integration', () => {
 
         expect(metrics).toBeNull();
     });
+
+    it('finds the current block in a transcript with more usage rows than a call takes arguments', () => {
+        const projectsDir = path.join(tempClaudeDir, 'projects', 'project-a');
+        fs.mkdirSync(projectsDir, { recursive: true });
+        const transcriptPath = path.join(projectsDir, 'long-session.jsonl');
+
+        const now = new Date();
+        const oldActivity = new Date(now.getTime() - (10 * 60 * 60 * 1000));
+        const recentActivity = new Date(now.getTime() - (40 * 60 * 1000));
+        // More rows than Node (about 125k) or Bun (about 640k) accepts as
+        // arguments to a single function call. The older row ends the lookback
+        // at its session gap, so the file is read once.
+        const rowCount = 700_000;
+        const recentLine = `${makeUsageLine(recentActivity)}\n`;
+        fs.writeFileSync(transcriptPath, `${makeUsageLine(oldActivity)}\n${recentLine.repeat(rowCount)}`);
+
+        const metrics = getBlockMetrics();
+
+        expect(metrics?.startTime.toISOString()).toBe(floorToHourUtc(recentActivity).toISOString());
+        expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
+    }, 30000);
 });
