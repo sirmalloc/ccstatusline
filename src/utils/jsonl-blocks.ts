@@ -186,6 +186,7 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
             const json = parseJsonlLine(line) as {
                 timestamp?: string;
                 isSidechain?: boolean;
+                isApiErrorMessage?: boolean;
                 message?: { usage?: { input_tokens?: number; output_tokens?: number } };
             } | null;
             if (!json) {
@@ -203,6 +204,11 @@ function getAllTimestampsFromFile(filePath: string): Date[] {
                 continue;
 
             if (json.isSidechain === true)
+                continue;
+
+            // Claude Code logs a rejected request (a usage limit, an expired
+            // login, an outage) as a row with all-zero usage; nothing was served
+            if (json.isApiErrorMessage === true)
                 continue;
 
             const timestamp = json.timestamp;
