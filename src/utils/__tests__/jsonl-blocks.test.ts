@@ -191,6 +191,7 @@ describe('jsonl block metrics integration', () => {
             '{not json',
             JSON.stringify({ type: 'user', timestamp: ignoredRowTime.toISOString(), message: { content: 'hello' } }),
             JSON.stringify({ timestamp: ignoredRowTime.toISOString(), message: { usage: { input_tokens: 100 } } }),
+            JSON.stringify({ timestamp: ignoredRowTime.toISOString(), message: { usage: { output_tokens: 50 } } }),
             JSON.stringify({ timestamp: ignoredRowTime.toISOString(), isSidechain: true, message: { usage } }),
             JSON.stringify({ timestamp: ignoredRowTime.getTime(), message: { usage } }),
             makeUsageLine(realRequest)
