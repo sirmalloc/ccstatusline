@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import * as childProcess from 'node:child_process';
 import * as fs from 'node:fs';
 import {
     afterEach,
@@ -435,6 +436,53 @@ describe('App after a global update run from the TUI', () => {
             };
             expect(saved.colorLevel).toBe(3);
             expect(saved.installation).toEqual({ method: 'pinned', installedVersion: '99.0.0' });
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App launched through npx', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it.skipIf(process.platform === 'win32')('still guards a pinned npm install older than the running TUI', async () => {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: '2.0.0' }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        // While npx runs the TUI, its cache's bin dir comes first on PATH
+        const responses: Record<string, string> = {
+            'which -a ccstatusline': '/home/alice/.npm/_npx/9f3c1e2a7b6d4c80/node_modules/.bin/ccstatusline\n/home/alice/.npm-global/bin/ccstatusline\n',
+            'npm prefix -g': '/home/alice/.npm-global\n'
+        };
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation((command, args) => {
+            const key = `${command} ${(args as string[]).join(' ')}`;
+            const response = responses[key];
+
+            if (response === undefined) {
+                throw new Error(`Unexpected command: ${key}`);
+            }
+
+            return response;
+        });
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
+            });
+            expect(rendered.getFrame()).toContain(`Claude Code is pinned to ccstatusline v2.0.0, but this TUI is v${getPackageVersion()}.`);
+            expect(rendered.getFrame()).toContain(`Update npm global install to v${getPackageVersion()}`);
         } finally {
             rendered.cleanup();
         }
