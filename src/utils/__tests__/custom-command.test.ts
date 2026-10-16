@@ -427,6 +427,50 @@ describe('runCustomCommand', () => {
             expect(Object.keys(cache.entries ?? {})).toEqual(['my-widget\x001000\x00s1\x00120']);
         });
 
+        it('leaves no temp file behind when the cache write cannot be renamed into place', () => {
+            vi.spyOn(Date, 'now').mockReturnValue(1000);
+            const home = useTempHome();
+            useFixedCwd();
+            alwaysRespond({ stdout: 'output' });
+
+            runCustomCommand(createRequest());
+
+            // Make the cache path a directory so the final rename always fails,
+            // the way a Windows virus scanner or sync client holding the file does.
+            const cachePath = getOnlyCachePath(home);
+            fs.rmSync(cachePath);
+            fs.mkdirSync(cachePath);
+            clearCustomCommandCache();
+
+            expect(runCustomCommand(createRequest())).toEqual({ status: 'ok', stdout: 'output' });
+            expect(fs.statSync(cachePath).isDirectory()).toBe(true);
+            expect(fs.readdirSync(getCacheDir(home)).filter(name => name.endsWith('.tmp'))).toEqual([]);
+        });
+
+        // While the rename keeps failing nothing reaches the cache, so every repaint
+        // misses and writes again. A held handle can block the cleanup as well.
+        it('leaves at most one temp file when the failed write cannot be cleaned up either', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            const home = useTempHome();
+            useFixedCwd();
+            alwaysRespond({ stdout: 'output' });
+
+            runCustomCommand(createRequest());
+
+            const cachePath = getOnlyCachePath(home);
+            fs.rmSync(cachePath);
+            fs.mkdirSync(cachePath);
+            vi.spyOn(fs, 'unlinkSync').mockImplementation(() => { throw errnoError('EPERM'); });
+
+            for (const now of [2000, 3000, 4000]) {
+                clearCustomCommandCache();
+                nowSpy.mockReturnValue(now);
+                expect(runCustomCommand(createRequest())).toEqual({ status: 'ok', stdout: 'output' });
+            }
+
+            expect(fs.readdirSync(getCacheDir(home)).filter(name => name.endsWith('.tmp'))).toHaveLength(1);
+        });
+
         // Custom command output is whatever its author chose to print, so the cache
         // file must not be readable by other accounts on the machine.
         it.skipIf(process.platform === 'win32')('writes the persisted cache owner-only', () => {
