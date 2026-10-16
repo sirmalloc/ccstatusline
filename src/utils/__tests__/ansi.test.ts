@@ -57,6 +57,12 @@ describe('escape sequence parsing', () => {
         expect(getVisibleWidth('a\x1b(Bb')).toBe(2);
     });
 
+    it('ends an escape with intermediate bytes where its final byte is missing', () => {
+        expect(getVisibleText('a\x1b(')).toBe('a');
+        expect(getVisibleText('a\x1b(😀b')).toBe('a😀b');
+        expect(getVisibleWidth('a\x1b(😀b')).toBe(4);
+    });
+
     it.each([
         ['a DCS string', '\x1bPq#0;2;0;0;0\x1b\\'],
         ['an APC string', '\x1b_Gpayload\x1b\\'],
