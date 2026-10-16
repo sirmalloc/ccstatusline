@@ -30,6 +30,10 @@ interface ListProps<V = string | number> extends BoxProps {
     showBackButton?: boolean;
     color?: ForegroundColorName;
     wrapNavigation?: boolean;
+    // When only the number of items changes, keeps the highlight on the item
+    // it was on instead of moving it to initialSelection. For a list whose
+    // initialSelection doesn't follow the highlight.
+    keepHighlightOnItemsChange?: boolean;
 }
 
 export function List<V = string | number>({
@@ -40,10 +44,16 @@ export function List<V = string | number>({
     showBackButton,
     color,
     wrapNavigation = true,
+    keepHighlightOnItemsChange = false,
     ...boxProps
 }: ListProps<V>) {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);
     const latestOnSelectionChangeRef = useRef(onSelectionChange);
+    // What the highlight was last fitted to. A new initialSelection moves it
+    // there, and so does a new number of items unless keepHighlightOnItemsChange
+    // is set: then it stays on the item it was on, or on the same row if that
+    // item is gone.
+    const fittedToRef = useRef<{ initialSelection: number; items: ListEntry<V>[] } | null>(null);
 
     const _items = useMemo(() => {
         if (showBackButton) {
@@ -52,7 +62,10 @@ export function List<V = string | number>({
         return items;
     }, [items, showBackButton]);
 
-    const selectableItems = _items.filter(item => item !== '-' && !item.disabled) as ListEntry<V>[];
+    const selectableItems = useMemo(
+        () => _items.filter(item => item !== '-' && !item.disabled) as ListEntry<V>[],
+        [_items]
+    );
     const selectedItem = selectableItems[selectedIndex];
     const selectedValue = selectedItem?.value;
     const actualIndex = _items.findIndex(item => item === selectedItem);
@@ -62,9 +75,25 @@ export function List<V = string | number>({
     }, [onSelectionChange]);
 
     useEffect(() => {
+        const fittedTo = fittedToRef.current;
+        fittedToRef.current = { initialSelection, items: selectableItems };
         const maxIndex = Math.max(selectableItems.length - 1, 0);
-        setSelectedIndex(Math.min(initialSelection, maxIndex));
-    }, [initialSelection, selectableItems.length]);
+
+        if (fittedTo?.initialSelection === initialSelection && fittedTo.items.length === selectableItems.length) {
+            return;
+        }
+
+        if (fittedTo?.initialSelection !== initialSelection || !keepHighlightOnItemsChange) {
+            setSelectedIndex(Math.min(initialSelection, maxIndex));
+            return;
+        }
+
+        setSelectedIndex((index) => {
+            const highlightedValue = fittedTo.items[index]?.value;
+            const keptIndex = selectableItems.findIndex(item => item.value === highlightedValue);
+            return keptIndex === -1 ? Math.min(index, maxIndex) : keptIndex;
+        });
+    }, [initialSelection, selectableItems, keepHighlightOnItemsChange]);
 
     useEffect(() => {
         if (selectedValue !== undefined) {

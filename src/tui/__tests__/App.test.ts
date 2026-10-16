@@ -40,7 +40,8 @@ import {
     pressKey,
     renderApp,
     setUpAppSandbox,
-    type AppSandbox
+    type AppSandbox,
+    type RenderedApp
 } from './helpers/render-app';
 import {
     letReactCatchUp,
@@ -535,6 +536,79 @@ describe('App save guard for an invalid settings.json', () => {
             expect(rendered.getFrame()).toContain('Edit Line 1');
             const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { lines: unknown };
             expect(Array.isArray(saved.lines)).toBe(true);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App main menu highlight across Ctrl+S', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify(DEFAULT_SETTINGS));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    // Changes Color Level, so the main menu offers Save & Exit, then moves down
+    // from Terminal Options, the entry last opened, through the given entries
+    async function changeAndMoveDown(rendered: RenderedApp, entries: string[]): Promise<void> {
+        await waitFor(() => {
+            expect(rendered.getFrame()).toContain('Main Menu');
+        });
+        await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+        await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+        await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+        await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
+        await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+        await pressKey(rendered, KEYS.enter, '(Truecolor)');
+        await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
+        for (const entry of entries) {
+            await pressKey(rendered, KEYS.down, `▶  ${entry}`);
+        }
+    }
+
+    const toInstall = ['🌐 Global Overrides', '📤 Export Config', '📥 Import Config', '📦 Install to Claude Code'];
+
+    it('keeps the highlighted entry, so Enter opens it', async () => {
+        const rendered = renderApp();
+
+        try {
+            await changeAndMoveDown(rendered, toInstall);
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            expect(rendered.getFrame()).not.toContain('💾 Save & Exit');
+            expect(rendered.getFrame()).toContain('▶  📦 Install to Claude Code');
+
+            await pressKey(rendered, KEYS.enter, 'Install ccstatusline to Claude Code');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    // Saving replaces Save & Exit and Exit without saving with a single Exit
+    const belowInstall = ['💾 Save & Exit', '❌ Exit without saving', '⭐ Like ccstatusline? Star us on GitHub'];
+
+    it.each([
+        { highlighted: '💾 Save & Exit', after: '🚪 Exit', above: '📦 Install to Claude Code' },
+        { highlighted: '❌ Exit without saving', after: '🚪 Exit', above: '📦 Install to Claude Code' },
+        { highlighted: '⭐ Like ccstatusline? Star us on GitHub', after: '⭐ Like ccstatusline? Star us on GitHub', above: '🚪 Exit' }
+    ])('highlights $after after a save from $highlighted', async ({ highlighted, after, above }) => {
+        const rendered = renderApp();
+
+        try {
+            await changeAndMoveDown(rendered, [...toInstall, ...belowInstall.slice(0, belowInstall.indexOf(highlighted) + 1)]);
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain(`▶  ${after}`);
+            });
+
+            await pressKey(rendered, KEYS.up, `▶  ${above}`);
         } finally {
             rendered.cleanup();
         }

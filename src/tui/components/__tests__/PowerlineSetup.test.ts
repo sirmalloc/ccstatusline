@@ -230,6 +230,82 @@ describe('PowerlineSetup helpers', () => {
             stderr.destroy();
         }
     });
+
+    it('highlights Separator when (t) turns Powerline on without a confirm', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        // In debug mode Ink writes each frame whole, in one write. Every
+        // frame here has a title with Powerline in it; bare cursor codes don't.
+        let lastFrame = '';
+        stdout.on('data', (chunk: Buffer | string) => {
+            const text = chunk.toString();
+            if (text.includes('Powerline')) {
+                lastFrame = text;
+            }
+        });
+        const onBack = vi.fn();
+        // Keeps the settings (t) writes, so the menu redraws with Powerline on
+        function StatefulPowerlineSetup() {
+            const [settings, setSettings] = React.useState<PowerlineSetupProps['settings']>({
+                ...DEFAULT_SETTINGS,
+                // No manual separators, so (t) needs no confirm
+                lines: [[{ id: '1', type: 'model' }]],
+                powerline: {
+                    ...DEFAULT_SETTINGS.powerline,
+                    enabled: false
+                }
+            });
+
+            return React.createElement(PowerlineSetup, {
+                settings,
+                powerlineFontStatus: { installed: true },
+                onUpdate: setSettings,
+                onBack,
+                onInstallFonts: vi.fn(),
+                installingFonts: false,
+                fontInstallMessage: null,
+                onClearMessage: vi.fn()
+            });
+        }
+        const instance = render(
+            React.createElement(StatefulPowerlineSetup),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            // Back is the only entry while Powerline is off
+            await waitFor(() => {
+                expect(lastFrame).toContain('▶  ← Back');
+            });
+
+            stdin.write('t');
+            await waitFor(() => {
+                expect(lastFrame).toContain('✓ Enabled');
+                expect(lastFrame).toContain('▶  Separator');
+            });
+            expect(lastFrame).not.toContain('▶  ← Back');
+
+            stdin.write('\r');
+            await waitFor(() => {
+                expect(lastFrame).toContain('Powerline Separator Configuration');
+            });
+            expect(onBack).not.toHaveBeenCalled();
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
 });
 
 describe('PowerlineSeparatorEditor', () => {
