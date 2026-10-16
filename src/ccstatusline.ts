@@ -36,14 +36,14 @@ import {
     isWidgetSpeedWindowEnabled
 } from './utils/speed-window';
 import {
+    flushStdout,
+    readStdin
+} from './utils/stdin';
+import {
     getPackageVersion,
     getTerminalWidth
 } from './utils/terminal';
 import { sanitizeTerminalText } from './utils/terminal-sanitize';
-import {
-    flushStdout,
-    readStdin
-} from './utils/stdin';
 import { prefetchUsageDataIfNeeded } from './utils/usage-prefetch';
 import { ensureWindowsUtf8CodePage } from './utils/windows-code-page';
 
@@ -51,7 +51,6 @@ function hasSessionDurationInStatusJson(data: StatusJSON): boolean {
     const durationMs = data.cost?.total_duration_ms;
     return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0;
 }
-
 
 async function renderMultipleLines(data: StatusJSON) {
     const settings = await loadSettings();
