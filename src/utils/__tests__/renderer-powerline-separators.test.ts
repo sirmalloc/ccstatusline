@@ -234,6 +234,22 @@ describe('powerline widgets that preserve their own colors', () => {
         expect(line).toBe(`${A_BG_CODE}\x1b[0;32m${A_BG_CODE}ok\x1b[49m${A_BG_CODE} then\x1b[m${A_BG_CODE}\x1b[0m`);
     });
 
+    it('re-applies bold and dim after the command\'s own resets too', () => {
+        const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG, bold: true, dim: true }];
+
+        const line = render(widgets, { 0: '\x1b[32m+5\x1b[0m \x1b[31m-3\x1b[22m!' });
+
+        expect(line).toBe(
+            `${BOLD}\x1b[2m${A_BG_CODE}\x1b[32m+5\x1b[0m${BOLD}\x1b[2m${A_BG_CODE} \x1b[31m-3\x1b[22m${BOLD}\x1b[2m!\x1b[0m`
+        );
+    });
+
+    it('re-applies bold after the command\'s own reset in a segment without a background', () => {
+        const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, bold: true }];
+
+        expect(render(widgets, { 0: '\x1b[32m+5\x1b[0m -3' })).toBe(`${BOLD}\x1b[32m+5\x1b[0m${BOLD} -3\x1b[0m`);
+    });
+
     it('does not mistake a 0 or 49 inside an extended color for a reset', () => {
         const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG }];
         const content = '\x1b[38;5;0mk\x1b[38;2;0;49;0mg\x1b[48;5;49mb';

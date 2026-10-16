@@ -396,31 +396,83 @@ export function stripSgrCodes(text: string): string {
     return text.replace(SGR_REGEX, '');
 }
 
-// Track background operations in order: a later explicit color overrides a
-// reset (0, an empty parameter, or 49). Skip extended color arguments so their
-// values aren't mistaken for resets or background operations.
-function sgrClearsBackground(sequence: string): boolean {
+// What an SGR parameter does to an attribute: clears it, sets it, or leaves
+// it alone (undefined)
+type SgrEffect = 'clear' | 'set' | undefined;
+
+// The background is cleared by 0 (also an empty parameter) and 49
+function getBackgroundEffect(param: number | undefined): SgrEffect {
+    if (param === 0 || param === 49) {
+        return 'clear';
+    }
+    if (param !== undefined && ((param >= 40 && param <= 47) || (param >= 100 && param <= 107) || param === 48)) {
+        return 'set';
+    }
+    return undefined;
+}
+
+// Bold (set by 1) and dim (set by 2) are both cleared by 0 and 22
+function getIntensityEffect(param: number | undefined, setBy: 1 | 2): SgrEffect {
+    if (param === 0 || param === 22) {
+        return 'clear';
+    }
+    return param === setBy ? 'set' : undefined;
+}
+
+interface SgrClears {
+    background: boolean;
+    bold: boolean;
+    dim: boolean;
+}
+
+// Track each attribute's operations in order: a later explicit setting
+// overrides a reset. Skip extended color arguments so their values aren't
+// mistaken for resets or background operations.
+function getSgrClears(sequence: string): SgrClears {
     const introducerLength = sequence.startsWith(C1_CSI) ? 1 : 2;
     const params = sequence.slice(introducerLength, -1).split(';').map(param => Number.parseInt(param || '0', 10));
-    let clearsBackground = false;
+    const clears: SgrClears = { background: false, bold: false, dim: false };
+    const track = (attribute: keyof SgrClears, effect: SgrEffect) => {
+        if (effect) {
+            clears[attribute] = effect === 'clear';
+        }
+    };
     for (let i = 0; i < params.length; i++) {
         const param = params[i];
-        if (param === 0 || param === 49) {
-            clearsBackground = true;
-        } else if (param !== undefined && ((param >= 40 && param <= 47) || (param >= 100 && param <= 107) || param === 48)) {
-            clearsBackground = false;
-        }
+        track('background', getBackgroundEffect(param));
+        track('bold', getIntensityEffect(param, 1));
+        track('dim', getIntensityEffect(param, 2));
         if (param === 38 || param === 48 || param === 58) {
             i += params[i + 1] === 5 ? 2 : 4;
         }
     }
-    return clearsBackground;
+    return clears;
 }
 
-// Re-apply a background after each SGR sequence in the text that clears it,
-// so text that resets its own styling stays on the background it's drawn on.
-export function restoreBackgroundAfterResets(text: string, backgroundCode: string): string {
-    return text.replace(SGR_REGEX, sequence => (sgrClearsBackground(sequence) ? sequence + backgroundCode : sequence));
+// The styling restoreStyleAfterResets re-applies, with the background as the
+// SGR code that sets it
+export interface RestoredStyle {
+    background?: string;
+    bold?: boolean;
+    dim?: boolean;
+}
+
+// Re-apply a widget's own styling after each SGR sequence in the text that
+// clears it, so text that resets its own styling keeps the background, bold
+// and dim it's drawn with.
+export function restoreStyleAfterResets(text: string, style: RestoredStyle): string {
+    const background = style.background ?? '';
+    if (!background && !style.bold && !style.dim) {
+        return text;
+    }
+
+    return text.replace(SGR_REGEX, (sequence) => {
+        const clears = getSgrClears(sequence);
+        return sequence
+            + (style.bold && clears.bold ? '\x1b[1m' : '')
+            + (style.dim && clears.dim ? '\x1b[2m' : '')
+            + (clears.background ? background : '');
+    });
 }
 
 export function stripOscCodes(text: string): string {

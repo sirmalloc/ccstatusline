@@ -7,7 +7,7 @@ import {
 import {
     getVisibleText,
     getVisibleWidth,
-    restoreBackgroundAfterResets,
+    restoreStyleAfterResets,
     stripOscCodes,
     stripSgrCodes,
     truncateStyledText
@@ -126,23 +126,23 @@ describe('stripSgrCodes', () => {
     });
 });
 
-describe('restoreBackgroundAfterResets', () => {
+describe('restoreStyleAfterResets', () => {
     const BG = '\x1b[44m';
 
     it('re-applies the background after every sequence that clears it', () => {
-        expect(restoreBackgroundAfterResets('\x1b[31ma\x1b[0mb\x1b[mc\x1b[00md\x1b[;1me\x1b[39;49mf', BG))
+        expect(restoreStyleAfterResets('\x1b[31ma\x1b[0mb\x1b[mc\x1b[00md\x1b[;1me\x1b[39;49mf', { background: BG }))
             .toBe(`\x1b[31ma\x1b[0m${BG}b\x1b[m${BG}c\x1b[00m${BG}d\x1b[;1m${BG}e\x1b[39;49m${BG}f`);
     });
 
     it('re-applies the background after an 8-bit reset', () => {
-        expect(restoreBackgroundAfterResets('\x9b31ma\x9b0mb\x9b49mc', BG))
+        expect(restoreStyleAfterResets('\x9b31ma\x9b0mb\x9b49mc', { background: BG }))
             .toBe(`\x9b31ma\x9b0m${BG}b\x9b49m${BG}c`);
     });
 
     it('leaves other styling, and the arguments of extended colors, alone', () => {
         const text = '\x1b[1;31ma\x1b[38;5;0mb\x1b[48;2;0;49;0mc\x1b[58;5;49md\x1b[39me';
 
-        expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
+        expect(restoreStyleAfterResets(text, { background: BG })).toBe(text);
     });
 
     it.each([
@@ -152,14 +152,45 @@ describe('restoreBackgroundAfterResets', () => {
     ])('keeps the explicit background after a reset in SGR %s', (params) => {
         const text = `\x1b[${params}mtext`;
 
-        expect(restoreBackgroundAfterResets(text, BG)).toBe(text);
+        expect(restoreStyleAfterResets(text, { background: BG })).toBe(text);
     });
 
     it.each([
         '41;0', '107;49', '48;5;49;0', '48;2;0;49;0;49',
         '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0'
     ])('restores the background when the final background operation clears it in SGR %s', (params) => {
-        expect(restoreBackgroundAfterResets(`\x1b[${params}mtext`, BG))
+        expect(restoreStyleAfterResets(`\x1b[${params}mtext`, { background: BG }))
             .toBe(`\x1b[${params}m${BG}text`);
+    });
+
+    it('re-applies bold and dim after every sequence that clears them', () => {
+        expect(restoreStyleAfterResets('\x1b[32ma\x1b[0mb\x1b[1mc\x1b[22md\x1b[me', { bold: true, dim: true }))
+            .toBe('\x1b[32ma\x1b[0m\x1b[1m\x1b[2mb\x1b[1mc\x1b[22m\x1b[1m\x1b[2md\x1b[m\x1b[1m\x1b[2me');
+    });
+
+    it('re-applies only what each sequence clears', () => {
+        expect(restoreStyleAfterResets('a\x1b[0mb\x1b[49mc\x1b[22md', { background: BG, bold: true }))
+            .toBe(`a\x1b[0m\x1b[1m${BG}b\x1b[49m${BG}c\x1b[22m\x1b[1md`);
+    });
+
+    it('re-applies only dim when the sequence sets bold again itself', () => {
+        expect(restoreStyleAfterResets('a\x1b[22;1mb', { bold: true, dim: true }))
+            .toBe('a\x1b[22;1m\x1b[2mb');
+    });
+
+    it.each([
+        '22;1', '0;1', '1', '2', '49',
+        '38;5;22', '48;2;0;22;0', '58;5;0'
+    ])('re-applies bold after a reset but not after SGR %s, which leaves it on', (params) => {
+        expect(restoreStyleAfterResets(`a\x1b[0mb\x1b[${params}mc`, { bold: true }))
+            .toBe(`a\x1b[0m\x1b[1mb\x1b[${params}mc`);
+    });
+
+    it.each([
+        '0', '', '22', '1;22', '2;0', '0;2', '22;2',
+        '38;5;1;22', '0;38;5;1'
+    ])('restores bold when the last operation on it in SGR %s clears it', (params) => {
+        expect(restoreStyleAfterResets(`\x1b[${params}mtext`, { bold: true }))
+            .toBe(`\x1b[${params}m\x1b[1mtext`);
     });
 });
