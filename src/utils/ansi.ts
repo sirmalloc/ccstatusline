@@ -346,8 +346,15 @@ function parseOsc(
     };
 }
 
-function isIntermediateByte(codePoint: number): boolean {
-    return codePoint >= 0x20 && codePoint <= 0x2f;
+// The bytes after ESC in ESC ( B and the like: intermediate bytes, then a
+// final byte. Past the end of the input, codePointAt gives undefined, which is
+// neither.
+function isIntermediateByte(codePoint: number | undefined): boolean {
+    return codePoint !== undefined && codePoint >= 0x20 && codePoint <= 0x2f;
+}
+
+function isEscapeFinalByte(codePoint: number | undefined): boolean {
+    return codePoint !== undefined && codePoint >= 0x30 && codePoint <= 0x7e;
 }
 
 function sliceSequence(input: string, start: number, end: number): ParsedEscapeSequence {
@@ -383,13 +390,12 @@ function parseOtherEscape(input: string, start: number): ParsedEscapeSequence {
 
     // ESC, intermediate bytes, then a final byte: ESC ( B selects a character
     // set (`tput sgr0` prints it), ESC # 8 fills the screen
-    if (isIntermediateByte(next.charCodeAt(0))) {
+    if (isIntermediateByte(next.codePointAt(0))) {
         let end = start + 2;
-        while (end < input.length && isIntermediateByte(input.charCodeAt(end))) {
+        while (end < input.length && isIntermediateByte(input.codePointAt(end))) {
             end++;
         }
-        const final = input.charCodeAt(end);
-        return sliceSequence(input, start, final >= 0x30 && final <= 0x7e ? end + 1 : end);
+        return sliceSequence(input, start, isEscapeFinalByte(input.codePointAt(end)) ? end + 1 : end);
     }
 
     // ESC 7, ESC c and the like
