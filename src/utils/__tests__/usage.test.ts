@@ -287,6 +287,13 @@ describe('usage window helpers', () => {
         expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'en-US', false, true)).toBe('Sun 08:30Z');
     });
 
+    it('keeps the fixed UTC format when Intl rejects the supplied locale', () => {
+        // 'de_DE' is not a valid language tag, so Intl throws on it
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'de_DE', false, true)).toBe('Sun 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'de_DE', false, true)).toBe('Sun 08:30Z');
+        expect(formatUsageResetAt('2026-03-12T20:30:00.000Z', false, 'UTC', 'de_DE', true)).toBe('2026-03-12 8:30 PM UTC');
+    });
+
     it('formats reset timestamps with weekday in a specific IANA timezone', () => {
         const result = formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', 'en-US', false, true);
         expect(result).toMatch(/^Sun 17:30 /);
