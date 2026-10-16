@@ -33,9 +33,9 @@ const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline',
 
 let settingsPath = DEFAULT_SETTINGS_PATH;
 let lastLoadError: string | null = null;
-// A migration the last load couldn't back up: its settings are in use, but the file
-// keeps the original until a backup of it can be written (see saveSettings)
-let unsavedMigration: { original: Buffer; fromVersion: number } | null = null;
+// Whether the last load couldn't back up a migration: its settings are in use, but the
+// file keeps the original until a backup of it can be written (see saveSettings)
+let unsavedMigration = false;
 
 export function getConfigLoadError(): string | null {
     return lastLoadError;
@@ -49,7 +49,7 @@ export function getConfigLoadNotice(): string | null {
 export function initConfigPath(filePath?: string): void {
     settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
     // A migration held for the previous file doesn't apply to this one
-    unsavedMigration = null;
+    unsavedMigration = false;
 }
 
 export function getConfigPath(): string {
@@ -174,6 +174,30 @@ async function writeMigrationBackup(original: Buffer, fromVersion: number, paths
     await writeFile(backupPath, original, { mode });
 }
 
+// The bytes of settings.json and the version they'd be migrated from, or null when it
+// is missing or doesn't need migrating
+async function readUnmigratedSettings(paths: SettingsPaths): Promise<{ original: Buffer; fromVersion: number } | null> {
+    let original: Buffer;
+    try {
+        original = await readFile(paths.settingsPath);
+    } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+
+    let data: unknown;
+    try {
+        data = JSON.parse(original.toString('utf-8'));
+    } catch {
+        return null;
+    }
+    return needsMigration(data, CURRENT_VERSION)
+        ? { original, fromVersion: detectVersion(data) }
+        : null;
+}
+
 function inMemoryDefaults(): Settings {
     // Defaults held in memory only (version included via the schema default).
     // Returned on recovery without writing, so a malformed file is preserved.
@@ -207,7 +231,7 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
  */
 export async function loadSettings(): Promise<Settings> {
     lastLoadError = null;
-    unsavedMigration = null;
+    unsavedMigration = false;
     const paths = getSettingsPaths();
 
     try {
@@ -265,7 +289,7 @@ export async function loadSettings(): Promise<Settings> {
                 // Without the backup, the migration serves this run from memory and isn't
                 // written. Its update message waits as well, since counting it down rewrites
                 // the file.
-                unsavedMigration = { original, fromVersion: migratedFrom };
+                unsavedMigration = true;
                 const { updatemessage, ...migrated } = result.data;
                 return {
                     ...migrated,
@@ -290,10 +314,15 @@ export async function saveSettings(settings: Settings): Promise<void> {
     const paths = getSettingsPaths();
 
     // Replacing a file whose migration is held in memory keeps its original first, and
-    // fails without writing if that still can't be done
+    // fails without writing if that still can't be done. The file is read again, as it
+    // may have changed since the load: edited, which needs those bytes kept instead, or
+    // migrated by another run, which has kept its own backup that this mustn't replace.
     if (unsavedMigration) {
-        await writeMigrationBackup(unsavedMigration.original, unsavedMigration.fromVersion, paths);
-        unsavedMigration = null;
+        const unmigrated = await readUnmigratedSettings(paths);
+        if (unmigrated) {
+            await writeMigrationBackup(unmigrated.original, unmigrated.fromVersion, paths);
+        }
+        unsavedMigration = false;
     }
 
     // Always include version when saving

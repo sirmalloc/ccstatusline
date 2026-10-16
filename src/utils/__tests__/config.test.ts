@@ -605,6 +605,53 @@ describe('config utilities', () => {
         expect(getConfigLoadNotice()).toBeNull();
     });
 
+    it('backs up the file as it is now when it was edited while its migration was held in memory', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { backupPath } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+        // Replaced in place by a config of another older version
+        const edited = JSON.stringify({
+            version: 3,
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            flexMode: 'full-until-compact'
+        });
+        fs.writeFileSync(settingsPath, edited, 'utf-8');
+        fs.rmdirSync(backupPath);
+
+        await saveSettings({ ...settings, globalBold: true });
+
+        expect(fs.readFileSync(`${settingsPath}.v3.bak`, 'utf-8')).toBe(edited);
+        expect(fs.existsSync(backupPath)).toBe(false);
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number; globalBold?: boolean };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.globalBold).toBe(true);
+    });
+
+    it('keeps the backup another run made when it migrated the file while a migration was held in memory', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { backupPath } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+        // Edited in place, then backed up and migrated by another run (such as a status
+        // line render) once the backup could be written
+        const editedLines = [[{ id: 'widget-1', type: 'model' }]];
+        const edited = JSON.stringify({ version: 2, lines: editedLines, flexMode: 'full-until-compact' });
+        fs.rmdirSync(backupPath);
+        fs.writeFileSync(backupPath, edited, 'utf-8');
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({ version: CURRENT_VERSION, lines: editedLines, flexMode: 'full-until-compact' }),
+            'utf-8'
+        );
+
+        await saveSettings({ ...settings, globalBold: true });
+
+        expect(fs.readFileSync(backupPath, 'utf-8')).toBe(edited);
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number; globalBold?: boolean };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.globalBold).toBe(true);
+        expect(getConfigLoadNotice()).toBeNull();
+    });
+
     it('refuses to save over a migration held in memory while its backup still cannot be written', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
         const { original } = writeV2SettingsWithBlockedBackup();
