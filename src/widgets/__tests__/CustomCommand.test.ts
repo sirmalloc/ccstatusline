@@ -173,6 +173,15 @@ describe('CustomCommandWidget', () => {
         expect(renderParsed(null)).not.toHaveProperty('terminal_width');
     });
 
+    it.each([
+        ['color codes around an empty value', '\x1b[32m\x1b[0m'],
+        ['a link with no text', '\x1b]8;;https://example.com\x1b\\\x1b]8;;\x1b\\']
+    ])('renders nothing when preserved output is only %s', (_case, stdout) => {
+        respondWith(stdout);
+
+        expect(widget.render({ ...createItem(), preserveColors: true }, createContext(200), settings)).toBeNull();
+    });
+
     it('runs the command on every render when no cache TTL is configured', () => {
         renderParsed(142);
         renderParsed(142);

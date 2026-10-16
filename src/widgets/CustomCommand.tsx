@@ -90,6 +90,12 @@ export class CustomCommandWidget implements Widget {
                 output = getVisibleText(output);
             }
 
+            // Output with no visible text, such as color codes around an empty
+            // value, renders empty whether or not its colors are preserved
+            if (!getVisibleText(output)) {
+                return null;
+            }
+
             // Truncate by display columns, skipping escape sequences and never
             // splitting a grapheme. A cut can drop the command's own trailing
             // reset, so close any SGR styling it left open; otherwise the
