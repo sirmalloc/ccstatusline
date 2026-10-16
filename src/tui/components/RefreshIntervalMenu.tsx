@@ -173,6 +173,8 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
     const [refreshInput, setRefreshInput] = useState(() => getRefreshInputValue(currentInterval));
     const [ttlInput, setTtlInput] = useState(() => String(gitCacheTtlSeconds));
     const [validationError, setValidationError] = useState<string | null>(null);
+    // A prompt unmounts the List, so it comes back on the row that opened it
+    const [selectedItem, setSelectedItem] = useState(0);
 
     const ttlFields: Record<TtlField, TtlFieldConfig> = {
         gitCacheTtl: {
@@ -346,6 +348,10 @@ export const RefreshIntervalMenu: React.FC<RefreshIntervalMenuProps> = ({
                         setTtlInput(String(ttlFields[value].currentValue));
                         setEditingTtlField(value);
                     }}
+                    onSelectionChange={(_, index) => {
+                        setSelectedItem(index);
+                    }}
+                    initialSelection={selectedItem}
                     showBackButton={true}
                 />
             )}
