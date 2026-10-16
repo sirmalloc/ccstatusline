@@ -140,6 +140,11 @@ describe('stripSgrCodes', () => {
         expect(stripSgrCodes('\x1b[1m\x9b38;5;208mbold\x9b0m\x1b[22m')).toBe('bold');
     });
 
+    it('removes color codes written with colons', () => {
+        expect(stripSgrCodes('\x1b[38:5:196mred\x1b[0m')).toBe('red');
+        expect(stripSgrCodes('\x1b[38:2::255:0:0mred\x1b[4:3m curly\x9b4:0m')).toBe('red curly');
+    });
+
     it('leaves other CSI sequences and hyperlinks alone', () => {
         const text = `\x1b[2K\x9b2J${OSC8_OPEN}link${OSC8_CLOSE}${C1_OSC8_OPEN}c1${C1_OSC8_CLOSE}`;
 
@@ -169,7 +174,8 @@ describe('restoreBackgroundAfterResets', () => {
     it.each([
         '0;40', '0;41', '0;47', '0;100', '0;107',
         '49;41', ';41', '0;48;5;49', '0;48;2;0;49;0',
-        '41;0;42', '0;41;38;5;0', '0;41;58;5;49'
+        '41;0;42', '0;41;38;5;0', '0;41;58;5;49',
+        '0;48:5:49', '0;48:2::0:49:0', '0;38:2::0:0:0;41'
     ])('keeps the explicit background after a reset in SGR %s', (params) => {
         const text = `\x1b[${params}mtext`;
 
@@ -178,7 +184,8 @@ describe('restoreBackgroundAfterResets', () => {
 
     it.each([
         '41;0', '107;49', '48;5;49;0', '48;2;0;49;0;49',
-        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0'
+        '0;41;49', '0;41;', '0;38;5;0', '49;58;2;0;49;0',
+        '0;38:5:196', '48:5:1;0', '48:2::0:49:0;49', '0;58:2::0:49:0'
     ])('restores the background when the final background operation clears it in SGR %s', (params) => {
         expect(restoreBackgroundAfterResets(`\x1b[${params}mtext`, BG))
             .toBe(`\x1b[${params}m${BG}text`);

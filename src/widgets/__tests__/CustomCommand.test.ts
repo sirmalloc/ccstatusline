@@ -230,6 +230,13 @@ describe('CustomCommandWidget', () => {
             expect(output.endsWith(SGR_RESET)).toBe(true);
         });
 
+        it('closes a colour written with colons that the truncation cut off', () => {
+            const output = renderWith('\x1b[38:5:208mfeature/login-refactor\x1b[0m', { preserveColors: true, maxWidth: 20 }) ?? '';
+
+            expect(getVisibleText(output)).toBe('feature/login-ref...');
+            expect(output.endsWith(SGR_RESET)).toBe(true);
+        });
+
         it('never cuts preserveColors output in the middle of an escape sequence', () => {
             const output = renderWith(`${SGR_ORANGE}feature/login-refactor${SGR_RESET}`, { preserveColors: true, maxWidth: 10 }) ?? '';
 

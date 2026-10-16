@@ -21,8 +21,9 @@ const VARIATION_SELECTOR_SUPPLEMENT_END = 0xe01ef;
 const REGIONAL_INDICATOR_START = 0x1f1e6;
 const REGIONAL_INDICATOR_END = 0x1f1ff;
 
-// Color codes, written with ESC [ or the 8-bit CSI
-const SGR_REGEX = /(?:\x1b\[|\x9b)[0-9;]*m/g;
+// Color codes, written with ESC [ or the 8-bit CSI, and with ; or the ITU
+// colons (38:5:196) between parameters
+const SGR_REGEX = /(?:\x1b\[|\x9b)[0-9;:]*m/g;
 // Lowest code point that can extend a display cluster (U+0300 is the first
 // \p{Mark}; ZWJ, variation selectors, the keycap and emoji modifiers are all
 // higher), so a printable ASCII character followed by anything below it is a
@@ -447,10 +448,13 @@ export function stripSgrCodes(text: string): string {
 
 // Track background operations in order: a later explicit color overrides a
 // reset (0, an empty parameter, or 49). Skip extended color arguments so their
-// values aren't mistaken for resets or background operations.
+// values aren't mistaken for resets or background operations. Written with
+// colons (38:5:196, 48:2::255:0:0), an extended color holds its arguments in
+// its own parameter, so there is nothing after it to skip.
 function sgrClearsBackground(sequence: string): boolean {
     const introducerLength = sequence.startsWith(C1_CSI) ? 1 : 2;
-    const params = sequence.slice(introducerLength, -1).split(';').map(param => Number.parseInt(param || '0', 10));
+    const fields = sequence.slice(introducerLength, -1).split(';');
+    const params = fields.map(param => Number.parseInt(param || '0', 10));
     let clearsBackground = false;
     for (let i = 0; i < params.length; i++) {
         const param = params[i];
@@ -459,7 +463,7 @@ function sgrClearsBackground(sequence: string): boolean {
         } else if (param !== undefined && ((param >= 40 && param <= 47) || (param >= 100 && param <= 107) || param === 48)) {
             clearsBackground = false;
         }
-        if (param === 38 || param === 48 || param === 58) {
+        if ((param === 38 || param === 48 || param === 58) && !fields[i]?.includes(':')) {
             i += params[i + 1] === 5 ? 2 : 4;
         }
     }
