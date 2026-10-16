@@ -191,6 +191,11 @@ function computeClusterWidth(cluster: string): number {
         return 0;
     }
 
+    // The sanitizer prints a tab as one space
+    if (cluster.startsWith('\t')) {
+        return 1;
+    }
+
     const clusterStringWidth = stringWidth(cluster);
     if (shouldTreatClusterAsNarrowTextPictograph(cluster, clusterStringWidth)) {
         return 1;

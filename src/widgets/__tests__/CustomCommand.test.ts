@@ -268,5 +268,9 @@ describe('CustomCommandWidget', () => {
         it('still truncates plain output with an ellipsis', () => {
             expect(renderWith('feature/login-refactor', { maxWidth: 20 })).toBe('feature/login-ref...');
         });
+
+        it('counts a tab as one column, the space the renderer prints for it', () => {
+            expect(renderWith('0\t3 ahead/behind', { maxWidth: 10 })).toBe('0\t3 ahe...');
+        });
     });
 });

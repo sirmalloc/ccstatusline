@@ -399,7 +399,7 @@ With caching enabled, both output and failure markers are reused until the TTL e
 
 > ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands are terminated at the configured timeout, and inherited output pipes cannot keep capture waiting indefinitely after that deadline. On Linux/macOS, timeout termination targets the command's process group; on Windows, it targets the shell process. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
 
-Rendered widget output filters terminal controls such as clipboard writes, title changes, cursor movement, and screen clearing. With **preserve colors** enabled, ANSI styling and OSC 8 hyperlinks remain supported; Powerline backgrounds are restored after command output resets its styling.
+Rendered widget output filters terminal controls such as clipboard writes, title changes, cursor movement, and screen clearing. Tabs print as single spaces. With **preserve colors** enabled, ANSI styling and OSC 8 hyperlinks remain supported; Powerline backgrounds are restored after command output resets its styling.
 
 Output capture is limited to 1 MiB; exceeding it displays `[Error]`. Successful output is limited to 16,384 characters before color handling and optional max-width truncation.
 
