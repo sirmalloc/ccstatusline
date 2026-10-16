@@ -199,7 +199,9 @@ function formatResetAtInTimezone(
         const hour = get('hour');
         const minute = get('minute');
         const dayPeriod = get('dayPeriod');
-        const tzName = get('timeZoneName');
+        // UTC keeps its fixed label: a few locales name it otherwise, el-GR
+        // as 'Συντονισμένη Παγκόσμια Ώρα'
+        const tzName = timezone === 'UTC' ? 'UTC' : get('timeZoneName');
 
         if (weekday) {
             const weekdayName = get('weekday');
@@ -269,7 +271,7 @@ export function formatUsageResetAt(
 
     if (!timezone || timezone === 'UTC') {
         // A chosen locale writes the weekday, day period and digits here as in
-        // any other zone; compact mode still marks the time as UTC with a Z
+        // any other zone; the time stays marked as UTC, with a Z in compact mode
         const localized = locale ? formatResetAtInTimezone(date, compact, 'UTC', locale, hour12, weekday) : null;
         if (localized) {
             return compact ? `${localized}Z` : localized;

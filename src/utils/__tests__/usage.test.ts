@@ -273,6 +273,13 @@ describe('usage window helpers', () => {
         expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'ja-JP', true)).toBe('03-15 8:30 午前Z');
     });
 
+    it('labels UTC reset timestamps UTC whatever the locale calls the zone', () => {
+        // el-GR names UTC 'Συντονισμένη Παγκόσμια Ώρα'
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'el-GR')).toBe('2026-03-15 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'UTC', 'el-GR', false, true)).toBe('Κυρ 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'el-GR')).toBe('03-15 08:30Z');
+    });
+
     it('formats UTC reset timestamps in en-US the same as without a locale', () => {
         expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC', 'en-US')).toBe('2026-03-12 08:30 UTC');
         expect(formatUsageResetAt('2026-03-12T20:30:00.000Z', true, 'UTC', 'en-US', true)).toBe('03-12 8:30 PMZ');
