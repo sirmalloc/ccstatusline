@@ -148,10 +148,10 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
 }
 
 // Before a migration rewrites the file, the original is kept beside it as
-// <file>.v<N>.bak (N being the version it was migrated from). It gets the
-// original's permissions, since custom commands can carry credentials, and is
-// recreated because an existing file keeps its own permissions when overwritten.
-async function writeMigrationBackup(content: string, fromVersion: number, paths: SettingsPaths): Promise<void> {
+// <file>.v<N>.bak (N being the version it was migrated from), byte for byte. It
+// gets the original's permissions, since custom commands can carry credentials, and
+// is recreated because an existing file keeps its own permissions when overwritten.
+async function writeMigrationBackup(original: Buffer, fromVersion: number, paths: SettingsPaths): Promise<void> {
     const backupPath = `${paths.settingsPath}.v${fromVersion}.bak`;
     const mode = await getReplacedFileMode(paths.settingsPath);
     try {
@@ -161,7 +161,7 @@ async function writeMigrationBackup(content: string, fromVersion: number, paths:
             throw error;
         }
     }
-    await writeFile(backupPath, content, { encoding: 'utf-8', mode });
+    await writeFile(backupPath, original, { mode });
 }
 
 function inMemoryDefaults(): Settings {
@@ -202,7 +202,8 @@ export async function loadSettings(): Promise<Settings> {
         if (!fs.existsSync(paths.settingsPath))
             return await writeDefaultSettings(paths);
 
-        const content = await readFile(paths.settingsPath, 'utf-8');
+        const original = await readFile(paths.settingsPath);
+        const content = original.toString('utf-8');
         let rawData: unknown;
 
         try {
@@ -246,7 +247,7 @@ export async function loadSettings(): Promise<Settings> {
         // is backed up, so a migration can never overwrite the user's file unrecoverably.
         if (migratedFrom !== null) {
             try {
-                await writeMigrationBackup(content, migratedFrom, paths);
+                await writeMigrationBackup(original, migratedFrom, paths);
             } catch (error) {
                 console.error('Failed to back up settings.json before migrating it, using defaults (file left unchanged):', error);
                 lastLoadError = 'settings.json could not be backed up before migrating';

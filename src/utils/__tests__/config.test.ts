@@ -493,6 +493,25 @@ describe('config utilities', () => {
         expect(fs.readFileSync(`${settingsPath}.v2.bak`, 'utf-8')).toBe(original);
     });
 
+    // An editor saving in a legacy encoding leaves bytes that aren't UTF-8; JSON.parse
+    // still takes the decoded text, so only a byte copy keeps the original intact
+    it('keeps the original bytes in the backup, even ones that are not UTF-8', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = Buffer.concat([
+            Buffer.from('{"version":2,"lines":[[{"id":"1","type":"custom-text","customText":"caf'),
+            Buffer.from([0xe9]),
+            Buffer.from('"}]]}')
+        ]);
+        fs.writeFileSync(settingsPath, original);
+
+        await loadSettings();
+
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(`${settingsPath}.v2.bak`).equals(original)).toBe(true);
+    });
+
     // Custom commands can carry credentials, so the copy a migration keeps must
     // stay as private as the file it came from
     it.skipIf(process.platform === 'win32')('gives a migration backup the permissions of a private settings file', async () => {
