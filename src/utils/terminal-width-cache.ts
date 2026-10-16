@@ -23,6 +23,7 @@ export interface WidthCacheDeps {
     readFileSync: (path: string) => string;
     writeFileSync: (path: string, data: string) => void;
     renameSync: (from: string, to: string) => void;
+    unlinkSync: (path: string) => void;
     mkdirSync: (path: string) => void;
     now: () => number;
     cachePath: string;
@@ -36,6 +37,7 @@ const defaultDeps: WidthCacheDeps = {
     readFileSync: (p: string) => fs.readFileSync(p, 'utf-8'),
     writeFileSync: (p: string, data: string) => { fs.writeFileSync(p, data, 'utf-8'); },
     renameSync: (from: string, to: string) => { fs.renameSync(from, to); },
+    unlinkSync: (p: string) => { fs.unlinkSync(p); },
     mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
     now: () => Date.now(),
     cachePath: defaultCachePath()
@@ -200,9 +202,21 @@ export function writeCachedWidth(
             entries[sessionId] = { width, createdAt: now };
             const cache: PersistentWidthCache = { version: CACHE_SCHEMA_VERSION, entries };
 
-            const tempPath = `${deps.cachePath}.${process.pid}.tmp`;
-            deps.writeFileSync(tempPath, JSON.stringify(cache));
-            deps.renameSync(tempPath, deps.cachePath);
+            // Stable temp name, as in git.ts writePersistentCache: a held
+            // handle (e.g. a Windows virus scanner or sync client) can make the
+            // rename and the cleanup unlink both fail, and with a name unique
+            // to the process every render would then leave one more orphan.
+            // Writers use it under the lock; one that proceeds unlocked can at
+            // worst leave malformed JSON, which readCache treats as a miss.
+            const tempPath = `${deps.cachePath}.tmp`;
+            try {
+                deps.writeFileSync(tempPath, JSON.stringify(cache));
+                deps.renameSync(tempPath, deps.cachePath);
+            } catch {
+                try {
+                    deps.unlinkSync(tempPath);
+                } catch { /* best-effort cleanup; ignore */ }
+            }
         });
     } catch {
         // Best-effort cache; the statusline must render regardless.
