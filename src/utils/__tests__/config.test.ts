@@ -37,6 +37,7 @@ let applyImport: (
 ) => Settings;
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
+let getConfigLoadNotice: () => string | null;
 let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
 let consoleErrorSpy: MockInstance<typeof console.error>;
 
@@ -53,6 +54,22 @@ function getClaudeConfigDir(): string {
     return path.join(MOCK_HOME_DIR, '.claude');
 }
 
+// A v2 settings.json whose migration backup can't be written, because a directory
+// stands where it goes. Removing the directory lets the backup be written.
+function writeV2SettingsWithBlockedBackup(): { original: string; backupPath: string } {
+    const { settingsPath, configDir } = getSettingsPaths();
+    fs.mkdirSync(configDir, { recursive: true });
+    const original = JSON.stringify({
+        version: 2,
+        lines: [[{ id: 'widget-1', type: 'git-branch', metadata: { hideNoGit: 'true' } }]],
+        flexMode: 'full-minus-40'
+    });
+    fs.writeFileSync(settingsPath, original, 'utf-8');
+    const backupPath = `${settingsPath}.v2.bak`;
+    fs.mkdirSync(backupPath);
+    return { original, backupPath };
+}
+
 describe('config utilities', () => {
     beforeAll(async () => {
         const configModule = await import('../config');
@@ -63,6 +80,7 @@ describe('config utilities', () => {
         applyImport = configModule.applyImport;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
+        getConfigLoadNotice = configModule.getConfigLoadNotice;
         saveInstallationMetadata = configModule.saveInstallationMetadata;
     });
 
@@ -528,24 +546,84 @@ describe('config utilities', () => {
         expect(fs.statSync(`${settingsPath}.v3.bak`).mode & 0o777).toBe(0o600);
     });
 
-    it('leaves the file untouched when the migration backup cannot be written', async () => {
+    it('uses the migration in memory and leaves the file untouched when its backup cannot be written', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
-        fs.mkdirSync(configDir, { recursive: true });
-        const original = JSON.stringify({
-            version: 2,
-            lines: [[{ id: 'widget-1', type: 'model' }]]
-        });
-        fs.writeFileSync(settingsPath, original, 'utf-8');
-        // A directory where the backup should go makes the backup write fail.
-        fs.mkdirSync(`${settingsPath}.v2.bak`);
+        const { original, backupPath } = writeV2SettingsWithBlockedBackup();
 
         const settings = await loadSettings();
 
+        // The user's settings, migrated: v4 turned the hide flag into a hide list
         expect(settings.version).toBe(CURRENT_VERSION);
+        expect(settings.lines).toEqual([[{ id: 'widget-1', type: 'git-branch', metadata: { hide: 'no-git' } }]]);
+        expect(settings.flexMode).toBe('full-minus-40');
+        // The update message the migration adds waits until it's written, since
+        // counting it down rewrites the file
         expect(settings.updatemessage).toBeUndefined();
         expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.readdirSync(backupPath)).toEqual([]);
+        expect(fs.readdirSync(configDir).sort()).toEqual(['settings.json', 'settings.json.v2.bak']);
+        // Not a load error, as the file is valid, and nothing on stderr, which every
+        // status line render would repeat
+        expect(getConfigLoadError()).toBeNull();
+        expect(getConfigLoadNotice()).toBe('settings.json could not be backed up before migrating');
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('writes the backup and the migration on a later load once the backup can be written', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { original, backupPath } = writeV2SettingsWithBlockedBackup();
+        // The default is 'full', so this run got the user's settings
+        expect((await loadSettings()).flexMode).toBe('full-minus-40');
+        fs.rmdirSync(backupPath);
+
+        const settings = await loadSettings();
+
+        expect(settings.updatemessage?.message).toContain('v2.0.2');
+        expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
+        const migrated = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { version?: number };
+        expect(migrated.version).toBe(CURRENT_VERSION);
+        expect(getConfigLoadNotice()).toBeNull();
+    });
+
+    it('backs up the original before a save replaces a migration held in memory', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { original, backupPath } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+        fs.rmdirSync(backupPath);
+
+        await saveSettings({ ...settings, globalBold: true });
+
+        expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
+            version?: number;
+            flexMode?: string;
+            globalBold?: boolean;
+        };
+        expect(saved.version).toBe(CURRENT_VERSION);
+        expect(saved.flexMode).toBe('full-minus-40');
+        expect(saved.globalBold).toBe(true);
+        expect(getConfigLoadNotice()).toBeNull();
+    });
+
+    it('refuses to save over a migration held in memory while its backup still cannot be written', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const { original } = writeV2SettingsWithBlockedBackup();
+        const settings = await loadSettings();
+
+        await expect(saveSettings({ ...settings, globalBold: true })).rejects.toThrow();
+
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
         expect(fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
-        expect(getConfigLoadError()).toBe('settings.json could not be backed up before migrating');
+        expect(getConfigLoadNotice()).toBe('settings.json could not be backed up before migrating');
+    });
+
+    it('does not record installation metadata over a migration it cannot back up', async () => {
+        const { settingsPath } = getSettingsPaths();
+        const { original } = writeV2SettingsWithBlockedBackup();
+
+        await saveInstallationMetadata({ method: 'pinned' });
+
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
     });
 
     it('keeps the migration backup beside a symlinked settings file', async () => {

@@ -10,6 +10,7 @@ import {
 } from 'vitest';
 
 import {
+    CURRENT_VERSION,
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
@@ -19,6 +20,7 @@ import { getPackageVersion } from '../../utils/terminal';
 import * as updateChecker from '../../utils/update-checker';
 import {
     applyTuiImport,
+    buildConfigLoadNotice,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
     clearInstallMenuSelection,
@@ -535,6 +537,61 @@ describe('App save guard for an invalid settings.json', () => {
             expect(rendered.getFrame()).toContain('Edit Line 1');
             const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { lines: unknown };
             expect(Array.isArray(saved.lines)).toBe(true);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App with a migration it could not back up', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('builds a notice that says the settings shown are migrated and a save backs up the file', () => {
+        expect(buildConfigLoadNotice(null)).toBeNull();
+        const notice = buildConfigLoadNotice('settings.json could not be backed up before migrating');
+        expect(notice).toContain('could not be backed up before migrating');
+        expect(notice).toContain('showing the migrated settings');
+        expect(notice).toContain('backs up the file first');
+    });
+
+    it('shows the migrated settings and saves only once the original can be backed up', async () => {
+        const original = JSON.stringify({
+            version: 3,
+            lines: [[{ id: 'mine', type: 'custom-text', customText: 'My own line' }]]
+        });
+        fs.writeFileSync(sandbox.settingsPath, original);
+        const backupPath = `${sandbox.settingsPath}.v3.bak`;
+        // A directory where the backup goes makes the backup write fail
+        fs.mkdirSync(backupPath);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('could not be backed up before migrating');
+                expect(rendered.getFrame()).toContain('My own line');
+            });
+
+            await pressKey(rendered, KEYS.ctrlS, '✗ Could not save configuration');
+            expect(fs.readFileSync(sandbox.settingsPath, 'utf-8')).toBe(original);
+
+            fs.rmdirSync(backupPath);
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            expect(fs.readFileSync(backupPath, 'utf-8')).toBe(original);
+            expect(JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8'))).toMatchObject({
+                version: CURRENT_VERSION,
+                lines: [[{ id: 'mine', type: 'custom-text', customText: 'My own line' }]]
+            });
+            expect(rendered.getFrame()).not.toContain('could not be backed up');
         } finally {
             rendered.cleanup();
         }

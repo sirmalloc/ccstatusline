@@ -38,6 +38,7 @@ import {
     applyImport,
     exportConfig,
     getConfigLoadError,
+    getConfigLoadNotice,
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
@@ -457,6 +458,14 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
     return `⚠ ${configLoadError} — showing defaults; saving here overwrites the file.`;
 }
 
+export function buildConfigLoadNotice(configLoadNotice: string | null): string | null {
+    if (!configLoadNotice) {
+        return null;
+    }
+
+    return `⚠ ${configLoadNotice} — showing the migrated settings; saving here backs up the file first.`;
+}
+
 export function buildInvalidConfigSaveConfirm(
     configLoadError: string | null,
     onConfirm: () => void,
@@ -482,6 +491,7 @@ export const App: React.FC = () => {
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
     const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+    const [configLoadNotice, setConfigLoadNotice] = useState<string | null>(null);
     const [screen, setScreen] = useState<AppScreen>('main');
     const [selectedLine, setSelectedLine] = useState(0);
     const [previewWidgets, setPreviewWidgets] = useState<WidgetItem[] | null>(null);
@@ -529,9 +539,11 @@ export const App: React.FC = () => {
             setSettings(loadedSettings);
             setOriginalSettings(cloneSettings(loadedSettings));
             // Capture why settings.json was rejected (if at all) so the TUI can warn and
-            // guard saves. Read it here, in the load callback: the module-scoped signal is
-            // reset by any later loadSettings/saveInstallationMetadata call.
+            // guard saves, and whether its migration is held unsaved. Read them here, in the
+            // load callback: the module-scoped signals are reset by any later
+            // loadSettings/saveInstallationMetadata call.
             setConfigLoadError(getConfigLoadError());
+            setConfigLoadNotice(getConfigLoadNotice());
         });
         void isInstalled()
             .then(setIsClaudeInstalled)
@@ -604,8 +616,9 @@ export const App: React.FC = () => {
                         await saveSettings(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
-                        // File is valid again after an explicit save → clear the banner + guard.
+                        // File is valid and current again after an explicit save → clear the banners + guard.
                         setConfigLoadError(null);
+                        setConfigLoadNotice(null);
                         setFlashMessage({
                             text: '✓ Configuration saved',
                             color: 'green'
@@ -681,8 +694,9 @@ export const App: React.FC = () => {
                         });
 
                         // Install re-ran loadSettings internally — re-sync the captured
-                        // config-load error so the banner/guard reflect the file's current state.
+                        // config-load error and notice so the banners/guard reflect the file's current state.
                         setConfigLoadError(getConfigLoadError());
+                        setConfigLoadNotice(getConfigLoadNotice());
 
                         const installedStatusLineState = await loadClaudeStatusLineState();
                         setIsClaudeInstalled(true);
@@ -776,6 +790,7 @@ export const App: React.FC = () => {
 
                     await saveInstallationMetadata(installation);
                     setConfigLoadError(getConfigLoadError());
+                    setConfigLoadNotice(getConfigLoadNotice());
                     setSettings(prev => prev
                         ? { ...prev, installation }
                         : prev);
@@ -913,6 +928,7 @@ export const App: React.FC = () => {
 
             await saveInstallationMetadata(installation);
             setConfigLoadError(getConfigLoadError());
+            setConfigLoadNotice(getConfigLoadNotice());
             setSettings(prev => prev
                 ? { ...prev, installation }
                 : prev);
@@ -955,6 +971,7 @@ export const App: React.FC = () => {
                 try {
                     await uninstallStatusLine();
                     setConfigLoadError(getConfigLoadError());
+                    setConfigLoadNotice(getConfigLoadNotice());
                     removedClaudeSettings = true;
 
                     for (const packageManager of selection.packageManagers) {
@@ -1171,6 +1188,7 @@ export const App: React.FC = () => {
     };
 
     const configWarning = buildConfigLoadWarning(configLoadError);
+    const configNotice = buildConfigLoadNotice(configLoadNotice);
     // Label drafts affect only the preview until Enter accepts the edit.
     const previewLines = screen === 'items' && previewWidgets
         ? settings.lines.map((line, index) => index === selectedLine ? previewWidgets : line)
@@ -1195,6 +1213,9 @@ export const App: React.FC = () => {
             </Box>
             {configWarning && (
                 <Text color='red' wrap='wrap'>{configWarning}</Text>
+            )}
+            {configNotice && (
+                <Text color='yellow' wrap='wrap'>{configNotice}</Text>
             )}
             {isCustomConfigPath() && (
                 <Text dimColor>{`Config: ${getConfigPath()}`}</Text>

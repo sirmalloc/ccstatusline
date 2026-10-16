@@ -33,13 +33,23 @@ const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline',
 
 let settingsPath = DEFAULT_SETTINGS_PATH;
 let lastLoadError: string | null = null;
+// A migration the last load couldn't back up: its settings are in use, but the file
+// keeps the original until a backup of it can be written (see saveSettings)
+let unsavedMigration: { original: Buffer; fromVersion: number } | null = null;
 
 export function getConfigLoadError(): string | null {
     return lastLoadError;
 }
 
+// Why the settings in use, though the user's own, differ from what the file holds
+export function getConfigLoadNotice(): string | null {
+    return unsavedMigration ? 'settings.json could not be backed up before migrating' : null;
+}
+
 export function initConfigPath(filePath?: string): void {
     settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+    // A migration held for the previous file doesn't apply to this one
+    unsavedMigration = null;
 }
 
 export function getConfigPath(): string {
@@ -190,11 +200,14 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
  * (see getConfigLoadError), and leaves the file untouched for the user to fix. The
  * file is written only when it is missing (first run), or when a readable config is
  * migrated to the current version AND the migrated result validates first AND the
- * original has been backed up beside it (see writeMigrationBackup). All writes go
- * through writeSettingsJson, which is atomic (temp file + rename).
+ * original has been backed up beside it (see writeMigrationBackup). If that backup
+ * can't be written, the migration is returned in memory only (see getConfigLoadNotice)
+ * and the next load tries again. All writes go through writeSettingsJson, which is
+ * atomic (temp file + rename).
  */
 export async function loadSettings(): Promise<Settings> {
     lastLoadError = null;
+    unsavedMigration = null;
     const paths = getSettingsPaths();
 
     try {
@@ -248,10 +261,16 @@ export async function loadSettings(): Promise<Settings> {
         if (migratedFrom !== null) {
             try {
                 await writeMigrationBackup(original, migratedFrom, paths);
-            } catch (error) {
-                console.error('Failed to back up settings.json before migrating it, using defaults (file left unchanged):', error);
-                lastLoadError = 'settings.json could not be backed up before migrating';
-                return inMemoryDefaults();
+            } catch {
+                // Without the backup, the migration serves this run from memory and isn't
+                // written. Its update message waits as well, since counting it down rewrites
+                // the file.
+                unsavedMigration = { original, fromVersion: migratedFrom };
+                const { updatemessage, ...migrated } = result.data;
+                return {
+                    ...migrated,
+                    lines: upgradeLegacyWidgetTypes(migrated.lines)
+                };
             }
             await writeSettingsJson(rawData, paths);
         }
@@ -269,6 +288,13 @@ export async function loadSettings(): Promise<Settings> {
 
 export async function saveSettings(settings: Settings): Promise<void> {
     const paths = getSettingsPaths();
+
+    // Replacing a file whose migration is held in memory keeps its original first, and
+    // fails without writing if that still can't be done
+    if (unsavedMigration) {
+        await writeMigrationBackup(unsavedMigration.original, unsavedMigration.fromVersion, paths);
+        unsavedMigration = null;
+    }
 
     // Always include version when saving
     const settingsWithVersion = {
@@ -387,6 +413,12 @@ export async function saveInstallationMetadata(metadata: InstallationMetadata | 
     // file. Metadata is non-critical and is persisted on the next clean save.
     if (getConfigLoadError() !== null) {
         console.error('Skipping installation-metadata write: settings.json is unreadable (left unchanged).');
+        return;
+    }
+    // Nor when the load just failed to back it up before migrating: writing would put
+    // the migration over it with no copy of the original
+    if (getConfigLoadNotice() !== null) {
+        console.error('Skipping installation-metadata write: settings.json could not be backed up before migrating (left unchanged).');
         return;
     }
 
