@@ -266,6 +266,20 @@ describe('usage window helpers', () => {
         expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', true, false, true)).toBe('Sun 8:30 AMZ');
     });
 
+    it('formats UTC reset timestamps in the supplied locale', () => {
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'de-DE', false, true)).toBe('So 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'de-DE', false, true)).toBe('So 08:30Z');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, undefined, 'ja-JP', true)).toBe('2026-03-15 8:30 午前 UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'ja-JP', true)).toBe('03-15 8:30 午前Z');
+    });
+
+    it('formats UTC reset timestamps in en-US the same as without a locale', () => {
+        expect(formatUsageResetAt('2026-03-12T08:30:00.000Z', false, 'UTC', 'en-US')).toBe('2026-03-12 08:30 UTC');
+        expect(formatUsageResetAt('2026-03-12T20:30:00.000Z', true, 'UTC', 'en-US', true)).toBe('03-12 8:30 PMZ');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'UTC', 'en-US', true, true)).toBe('Sun 8:30 AM UTC');
+        expect(formatUsageResetAt('2026-03-15T08:30:00.000Z', true, 'UTC', 'en-US', false, true)).toBe('Sun 08:30Z');
+    });
+
     it('formats reset timestamps with weekday in a specific IANA timezone', () => {
         const result = formatUsageResetAt('2026-03-15T08:30:00.000Z', false, 'Asia/Tokyo', 'en-US', false, true);
         expect(result).toMatch(/^Sun 17:30 /);

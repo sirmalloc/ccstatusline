@@ -268,6 +268,13 @@ export function formatUsageResetAt(
     const hour12 = typeof localeOrHour12 === 'boolean' ? localeOrHour12 : hour12Arg;
 
     if (!timezone || timezone === 'UTC') {
+        // A chosen locale writes the weekday, day period and digits here as in
+        // any other zone; compact mode still marks the time as UTC with a Z
+        const localized = locale ? formatResetAtInTimezone(date, compact, 'UTC', locale, hour12, weekday) : null;
+        if (localized) {
+            return compact ? `${localized}Z` : localized;
+        }
+
         return formatResetAtUtc(date, compact, hour12, weekday);
     }
 
