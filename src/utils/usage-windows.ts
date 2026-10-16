@@ -173,6 +173,10 @@ function formatResetAtInTimezone(
 ): string | null {
     try {
         const options: Intl.DateTimeFormatOptions = {
+            // The parts fill a YYYY-MM-DD layout, so they must be Gregorian
+            // whatever calendar the locale defaults to: ar-SA's is Islamic
+            // under some runtimes' ICU data, th-TH's Buddhist, fa-IR's Persian
+            calendar: 'gregory',
             timeZone: timezone,
             hour: '2-digit',
             minute: '2-digit',

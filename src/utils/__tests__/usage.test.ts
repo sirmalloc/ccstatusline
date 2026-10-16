@@ -225,6 +225,23 @@ describe('usage window helpers', () => {
         expect(en).toBe('2026-04-27 19:00 GMT+9');
     });
 
+    it('uses the Gregorian calendar whatever calendar the locale defaults to', () => {
+        // ar-SA defaults to Gregorian or to the Islamic calendar depending on the
+        // runtime's ICU data; th-TH defaults to the Buddhist calendar and fa-IR
+        // to the Persian one. The digits stay the locale's own.
+        const ar = formatUsageResetAt('2026-10-13T21:05:00.000Z', false, 'America/Chicago', 'ar-SA');
+        expect(ar).toMatch(/^٢٠٢٦-١٠-١٣ ١٦:٠٥ /);
+
+        const arCompact = formatUsageResetAt('2026-10-13T21:05:00.000Z', true, 'America/Chicago', 'ar-SA');
+        expect(arCompact).toBe('١٠-١٣ ١٦:٠٥');
+
+        const th = formatUsageResetAt('2026-10-13T21:05:00.000Z', false, 'Asia/Bangkok', 'th-TH');
+        expect(th).toMatch(/^2026-10-14 04:05 /);
+
+        const fa = formatUsageResetAt('2026-10-13T21:05:00.000Z', false, 'Asia/Tehran', 'fa-IR');
+        expect(fa).toMatch(/^۲۰۲۶-۱۰-۱۴ ۰۰:۳۵ /);
+    });
+
     it('compact mode drops the locale-dependent timezone abbreviation', () => {
         const ja = formatUsageResetAt('2026-04-27T10:00:00.000Z', true, 'Asia/Tokyo', 'ja-JP');
         expect(ja).toBe('04-27 19:00');
