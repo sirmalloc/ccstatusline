@@ -27,6 +27,7 @@ const INCIDENTS_PATH = '/api/v2/incidents.json';
 const MAJOR_STATUS_BODY = '{"status":{"indicator":"major"}}';
 
 const statusLine: WidgetItem[][] = [[{ id: '1', type: 'claude-status' }]];
+const historyLine: WidgetItem[][] = [[{ id: '1', type: 'claude-status', metadata: { history: 'true' } }]];
 
 interface ProbeOptions {
     lines?: WidgetItem[][];
@@ -214,5 +215,57 @@ describe('Claude Status cache', () => {
 
         expect(probe.requests).toEqual(expectedRequests);
         expect(probe.result).toEqual({ indicator: expectedIndicator });
+    });
+
+    describe('while the status page is unreachable', () => {
+        it('keeps serving the last status for up to an hour', () => {
+            harness.seedCache(cachedStatus(NOW - 50 * MINUTE_MS, 'major'));
+
+            const probe = harness.runProbe();
+
+            expect(probe.requests).toEqual([STATUS_PATH]);
+            expect(probe.result).toEqual({ indicator: 'major' });
+        });
+
+        it.each([
+            ['the fetch fails', null, [STATUS_PATH]],
+            ['the failure backoff holds off fetching', NOW - 10 * SECOND_MS, []]
+        ])('reports the status unknown once the last one is over an hour old and %s', (_label, lockMtimeMs, expectedRequests) => {
+            harness.seedCache(cachedStatus(NOW - 2 * HOUR_MS, 'major'));
+            if (lockMtimeMs !== null) {
+                harness.seedFailureLock(lockMtimeMs);
+            }
+
+            const probe = harness.runProbe();
+
+            expect(probe.requests).toEqual(expectedRequests);
+            expect(probe.result).toEqual({ error: true });
+        });
+
+        // Written while the system clock ran fast, since corrected: its age
+        // can't be known, so it isn't served as the last status either
+        it('reports the status unknown when the last one is dated hours in the future', () => {
+            harness.seedCache(cachedStatus(NOW + 2 * HOUR_MS, 'none'));
+
+            const probe = harness.runProbe();
+
+            expect(probe.requests).toEqual([STATUS_PATH]);
+            expect(probe.result).toEqual({ error: true });
+        });
+
+        it('stops an incident still open in a two-day-old cache from filling the history strip', () => {
+            const fetchedAt = NOW - 48 * HOUR_MS;
+            harness.seedCache({
+                fetchedAt,
+                indicator: 'major',
+                incidents: [{ impact: 'critical', startMs: fetchedAt - HOUR_MS, endMs: null }],
+                incidentsQueried: true
+            });
+
+            const probe = harness.runProbe({ lines: historyLine });
+
+            expect(probe.requests).toEqual([STATUS_PATH, INCIDENTS_PATH]);
+            expect(probe.result).toEqual({ error: true });
+        });
     });
 });

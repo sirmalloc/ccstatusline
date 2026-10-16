@@ -22,6 +22,11 @@ const CACHE_FILE = path.join(CACHE_DIR, 'claude-status.json');
 const LOCK_FILE = path.join(CACHE_DIR, 'claude-status.lock');
 const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 minutes
 const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed fetch
+// Longest the last fetched status stands in while the status page can't be
+// reached; past it the widget shows `?`, as with no data at all. Staying under
+// one six-hour history block means an incident still open in the cache colors
+// the same blocks it would had it ended when last seen, never unseen hours.
+const STALE_MAX_AGE = 3600;      // seconds
 
 const STATUS_HOST = 'status.claude.com';
 /** The status page itself, which the widget can link to. */
@@ -391,7 +396,9 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     }
 
     const serveStaleOrError = (): ClaudeServiceStatusData => {
-        if (diskCache && isCacheUsable(diskCache, includeIncidents)) {
+        if (diskCache
+            && isWithinAge(Math.floor(diskCache.fetchedAt / 1000), nowSeconds, STALE_MAX_AGE)
+            && isCacheUsable(diskCache, includeIncidents)) {
             return toStatusData(diskCache);
         }
         return { error: true };
