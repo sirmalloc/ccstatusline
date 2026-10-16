@@ -12,6 +12,7 @@ import {
 import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
+    TERMINAL_WIDTH_OPTIONS,
     TerminalWidthMenu,
     buildTerminalWidthItems,
     getTerminalWidthSelectionIndex,
@@ -81,19 +82,36 @@ describe('TerminalWidthMenu helpers', () => {
         expect(items).toHaveLength(3);
         expect(items[0]).toMatchObject({
             label: 'Full width always',
+            sublabel: '(default)',
             value: 'full'
         });
         expect(items[1]).toMatchObject({
             label: 'Full width minus 40',
-            sublabel: '(default)',
             value: 'full-minus-40'
         });
+        expect(items[1]?.sublabel).toBeUndefined();
         expect(items[2]).toMatchObject({
             label: 'Full width until compact',
             sublabel: '(threshold 60%, active)',
             value: 'full-until-compact'
         });
         expect(items[2]?.description).toContain('60%');
+    });
+
+    it('marks the mode a config without flexMode gets as the default', () => {
+        const defaultMode = DEFAULT_SETTINGS.flexMode;
+
+        for (const selectedOption of TERMINAL_WIDTH_OPTIONS.filter(mode => mode !== defaultMode)) {
+            const marked = buildTerminalWidthItems(selectedOption, 60)
+                .filter(item => item.sublabel === '(default)')
+                .map(item => item.value);
+            expect(marked).toEqual([defaultMode]);
+        }
+
+        // Once the default is chosen, its active mark replaces the default one
+        const items = buildTerminalWidthItems(defaultMode, 60);
+        expect(items.find(item => item.value === defaultMode)?.sublabel).toBe('(active)');
+        expect(items.some(item => item.sublabel === '(default)')).toBe(false);
     });
 
     it('returns the current option index for list selection', () => {

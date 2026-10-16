@@ -44,13 +44,13 @@ export function buildTerminalWidthItems(
         {
             value: 'full',
             label: 'Full width always',
-            sublabel: selectedOption === 'full' ? '(active)' : undefined,
+            sublabel: selectedOption === 'full' ? '(active)' : '(default)',
             description: 'Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it is not recommended to use this mode.'
         },
         {
             value: 'full-minus-40',
             label: 'Full width minus 40',
-            sublabel: selectedOption === 'full-minus-40' ? '(active)' : '(default)',
+            sublabel: selectedOption === 'full-minus-40' ? '(active)' : undefined,
             description: 'Leaves a gap to the right of the status line to accommodate the auto-compact message. This prevents wrapping but may leave unused space. This limitation exists because we cannot detect when the message will appear.'
         },
         {
