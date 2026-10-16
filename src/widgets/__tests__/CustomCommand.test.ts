@@ -14,6 +14,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import type { Settings } from '../../types/Settings';
+import { StatusJSONSchema } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
 import {
     getVisibleText,
@@ -167,6 +168,19 @@ describe('CustomCommandWidget', () => {
     it('still passes through the existing data fields', () => {
         const model = renderParsed(142).model as { display_name?: string } | undefined;
         expect(model?.display_name).toBe('Sonnet');
+    });
+
+    it('pipes Claude Code\'s JSON as it arrived, not the validated copy', () => {
+        const rawData = {
+            model: { id: 'claude-opus-4-6', display_name: 'Opus', family: 'opus' },
+            workspace: { current_dir: '/p', project_dir: '/p', added_dirs: ['/extra'], git_worktree: 'wt' },
+            cost: { total_cost_usd: '1.5' }
+        };
+        const context: RenderContext = { ...createContext(142), data: StatusJSONSchema.parse(rawData), rawData };
+
+        const output = widget.render(createItem(), context, settings);
+
+        expect(JSON.parse(output ?? '{}')).toEqual({ ...rawData, terminal_width: 142 });
     });
 
     it('omits terminal_width when the width is unknown', () => {

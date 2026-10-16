@@ -64,10 +64,11 @@ export class CustomCommandWidget implements Widget {
         if (context.isPreview) {
             return item.commandPath ? `[cmd: ${item.commandPath.substring(0, 20)}${item.commandPath.length > 20 ? '...' : ''}]` : '[No command]';
         } else if (item.commandPath && context.data) {
+            const payload = context.rawData ?? context.data;
             const jsonInput = JSON.stringify(
                 typeof context.terminalWidth === 'number'
-                    ? { ...context.data, terminal_width: context.terminalWidth }
-                    : context.data
+                    ? { ...payload, terminal_width: context.terminalWidth }
+                    : payload
             );
             const result = runCustomCommand({
                 command: item.commandPath,
