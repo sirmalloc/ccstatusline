@@ -237,10 +237,18 @@ function writeCachedClaudeStatus(cache: CachedClaudeStatus): void {
     }
 }
 
+// Whether a timestamp lies within maxAgeSeconds of now. One dated ahead of now
+// still counts within that window, since clocks sharing a home directory can
+// sit a little apart; further ahead, it was written under a clock since set
+// back, and trusting it would hold that state until real time caught up.
+function isWithinAge(stampSeconds: number, nowSeconds: number, maxAgeSeconds: number): boolean {
+    return Math.abs(nowSeconds - stampSeconds) < maxAgeSeconds;
+}
+
 function isFailureLockActive(nowSeconds: number): boolean {
     try {
         const lockMtime = Math.floor(fs.statSync(LOCK_FILE).mtimeMs / 1000);
-        return nowSeconds - lockMtime < FAILURE_BACKOFF;
+        return isWithinAge(lockMtime, nowSeconds, FAILURE_BACKOFF);
     } catch {
         return false;
     }
@@ -369,14 +377,14 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     const nowSeconds = Math.floor(nowMs / 1000);
 
     if (memoryCache
-        && nowSeconds - Math.floor(memoryCache.fetchedAt / 1000) < CACHE_MAX_AGE
+        && isWithinAge(Math.floor(memoryCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
         && isCacheUsable(memoryCache, includeIncidents)) {
         return toStatusData(memoryCache);
     }
 
     const diskCache = readCachedClaudeStatus();
     if (diskCache
-        && nowSeconds - Math.floor(diskCache.fetchedAt / 1000) < CACHE_MAX_AGE
+        && isWithinAge(Math.floor(diskCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
         && isCacheUsable(diskCache, includeIncidents)) {
         memoryCache = diskCache;
         return toStatusData(diskCache);
