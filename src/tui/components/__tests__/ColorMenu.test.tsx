@@ -253,7 +253,9 @@ describe('ColorMenu', () => {
             );
 
             try {
-                await flushInk();
+                await waitFor(() => {
+                    expect(stripAnsi(stdout.getOutput())).toContain('▶  1: Thinking Effort');
+                });
                 return stripAnsi(stdout.getOutput().split('Configure Colors').at(-1) ?? '');
             } finally {
                 instance.unmount();
