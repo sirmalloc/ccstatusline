@@ -59,12 +59,6 @@ function createMockStdout(): CapturedWriteStream {
     });
 }
 
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
-    });
-}
-
 function StatefulItemsEditor({ initialWidgets }: { initialWidgets: WidgetItem[] }) {
     const [widgets, setWidgets] = useState(initialWidgets);
 
@@ -96,24 +90,28 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input');
+            });
             expect(stripAnsi(stdout.getOutput())).not.toContain('(compact)');
 
             stdout.clearOutput();
             stdin.write('.');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input (compact)');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input (compact)');
+            });
 
             stdout.clearOutput();
             stdin.write('.');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input (whole)');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input (whole)');
+            });
 
             stdout.clearOutput();
             stdin.write('.');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Tokens Input');
+            });
             expect(stripAnsi(stdout.getOutput())).not.toContain('(compact)');
             expect(stripAnsi(stdout.getOutput())).not.toContain('(whole)');
         } finally {
@@ -154,8 +152,9 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Cache Read (session) (compact)');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Cache Read (session) (compact)');
+            });
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -182,31 +181,40 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('(e)dit label…');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(e)dit label…');
+            });
 
             stdout.clearOutput();
             stdin.write('e');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('(default: "Model: ")');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(default: "Model: ")');
+            });
 
-            // Trim "Model: " down to "M", one backspace per keypress
-            for (const key of Array.from('odel: ', () => '\x7f')) {
-                stdin.write(key);
-                await flushInk();
+            // Trim "Model: " down to "M", one backspace per keypress. The
+            // cursor shows as a space after the text.
+            for (const text of ['Model:', 'Model', 'Mode', 'Mod', 'Mo', 'M']) {
+                stdin.write('\x7f');
+                await waitFor(() => {
+                    expect(stripAnsi(stdout.getOutput())).toContain(`"${text} " (default: "Model: ")`);
+                });
             }
             stdin.write(' ');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('"M  " (default: "Model: ")');
+            });
             stdout.clearOutput();
             stdin.write('\r');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "M ")');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "M ")');
+            });
 
             stdout.clearOutput();
             stdin.write('r');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(raw value)');
+            });
             const rawOutput = stripAnsi(stdout.getOutput());
-            expect(rawOutput).toContain('(raw value)');
             expect(rawOutput).not.toContain('(e)dit label…');
             expect(rawOutput).not.toContain('(label:');
         } finally {
@@ -239,20 +247,29 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "M ")');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "M ")');
+            });
 
             stdin.write('\x1b[C');
-            await flushInk();
-            for (const char of query) {
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('Search: (none)');
+            });
+            for (const [index, char] of Array.from(query).entries()) {
+                // The search row drops the trailing space a typed space leaves
+                const typed = query.slice(0, index + 1).trimEnd();
+                stdout.clearOutput();
                 stdin.write(char);
-                await flushInk();
+                await waitFor(() => {
+                    expect(stripAnsi(stdout.getOutput())).toContain(`Search: ${typed}`);
+                });
             }
             stdout.clearOutput();
             stdin.write('\r');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain(`1. ${name}`);
+            });
             const output = stripAnsi(stdout.getOutput());
-            expect(output).toContain(`1. ${name}`);
             if (keepsLabel) {
                 expect(output).toContain('(label: "M ")');
             } else {
@@ -285,19 +302,26 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Model');
+            });
             stdin.write('e');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(default: "Model: ")');
+            });
 
             // One macrotask apart: separate keypresses, but no re-render between them
             stdin.write('\x7f');
             await new Promise(resolve => setImmediate(resolve));
             stdin.write('\x7f');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('"Model " (default: "Model: ")');
+            });
             stdout.clearOutput();
             stdin.write('\r');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "Model")');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Model (label: "Model")');
+            });
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -365,11 +389,14 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Model');
+            });
             stdout.clearOutput();
             stdin.write('e');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('"\u{1F469}\u200D\u{1F4BB}  " (default: "Model: ")');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('"\u{1F469}\u200D\u{1F4BB}  " (default: "Model: ")');
+            });
         } finally {
             instance.unmount();
             instance.cleanup();
@@ -397,19 +424,29 @@ describe('ItemsEditor', () => {
         );
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Block Timer');
+            });
             stdin.write('e');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(default: "Block ")');
+            });
             stdout.clearOutput();
             stdin.write('\r');
-            await flushInk();
-            expect(stripAnsi(stdout.getOutput())).toContain('(label: "Block ")');
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(label: "Block ")');
+            });
 
+            stdout.clearOutput();
             stdin.write('e');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('(default: "Block ")');
+            });
             stdout.clearOutput();
             stdin.write('\t');
-            await flushInk();
+            await waitFor(() => {
+                expect(stripAnsi(stdout.getOutput())).toContain('1. Block Timer');
+            });
             expect(stripAnsi(stdout.getOutput())).not.toContain('(label:');
         } finally {
             instance.unmount();
