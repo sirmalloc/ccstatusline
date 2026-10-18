@@ -429,6 +429,8 @@ For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+See the [contributor guide](CONTRIBUTING.md) for setup, checks, and compatibility requirements.
+
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
