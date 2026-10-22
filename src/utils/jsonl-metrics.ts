@@ -99,12 +99,18 @@ interface TokenMetricAccumulator {
     mostRecentPostCompactionTimestampMs: number | null;
 }
 
+interface PendingTokenMetricEntry {
+    messageId: string | null;
+    entry: TokenMetricEntry;
+    countable: boolean;
+    includePostCompactionUsage: boolean;
+}
+
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
-    lastUsageEntry: TokenMetricEntry | null;
+    pending: PendingTokenMetricEntry | null;
     sawCompactBoundary: boolean;
-    boundaryAfterLastUsage: boolean;
     lastCompactBoundaryPostTokens: number | null;
 }
 
@@ -169,18 +175,40 @@ function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
-        lastUsageEntry: null,
+        pending: null,
         sawCompactBoundary: false,
-        boundaryAfterLastUsage: false,
         lastCompactBoundaryPostTokens: null
     };
+}
+
+/**
+ * Claude Code writes one transcript row per content block (thinking, text,
+ * each tool_use) of a single API response. Those rows share `message.id`,
+ * carry identical prompt-side usage and a non-decreasing `output_tokens`, so
+ * only the last row of a message may be counted. Rows are held here until the
+ * next message starts (or the scan ends), which keeps the single pass over
+ * the file.
+ */
+function getMessageId(data: TranscriptLine | null): string | null {
+    const id = data?.message?.id;
+    return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+function flushPendingTokenMetricEntry(state: TokenMetricState): void {
+    const pending = state.pending;
+    state.pending = null;
+    if (pending?.countable) {
+        accumulateTokenMetricEntry(state.metrics, pending.entry, pending.includePostCompactionUsage);
+    }
 }
 
 function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
     const compactBoundary = isCompactBoundary(data);
     if (compactBoundary) {
         state.sawCompactBoundary = true;
-        state.boundaryAfterLastUsage = true;
+        if (state.pending) {
+            state.pending.includePostCompactionUsage = false;
+        }
         state.lastCompactBoundaryPostTokens = getCompactBoundaryPostTokens(data);
         resetPostCompactionUsage(state.metrics);
     }
@@ -199,19 +227,30 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
+            state.pending = null;
         }
-        if (!state.hasStopReasonField || entry.stopReason) {
-            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+
+        const messageId = getMessageId(data);
+        if (messageId === null || messageId !== state.pending?.messageId) {
+            flushPendingTokenMetricEntry(state);
         }
-        state.lastUsageEntry = entry;
-        state.boundaryAfterLastUsage = compactBoundary;
+        // A later row of the same message supersedes the earlier one.
+        state.pending = {
+            messageId,
+            entry,
+            countable: !state.hasStopReasonField || Boolean(entry.stopReason),
+            includePostCompactionUsage: !compactBoundary
+        };
     }
 }
 
 function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
-    if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
-        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+    // The last message may still be streaming (stop_reason: null); count its
+    // latest row once so live updates reflect it.
+    if (state.pending && state.hasStopReasonField && state.pending.entry.stopReason === null) {
+        state.pending.countable = true;
     }
+    flushPendingTokenMetricEntry(state);
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
         ? contextLengthFromUsageTokens(usage)
@@ -317,14 +356,30 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
+    lastUserTimestampMs: number | null;
+    pendingMessageId: string | null;
+    pendingRequest: SpeedRequest | null;
+    pendingStartMs: number | null;
+}
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
     return {
         requests: [],
         latestTimestampMs: null,
-        lastUserTimestampMs: null
+        lastUserTimestampMs: null,
+        pendingMessageId: null,
+        pendingRequest: null,
+        pendingStartMs: null
     };
+}
+
+function flushPendingSpeedRequest(state: SpeedMetricCollectorState): void {
+    if (state.pendingRequest) {
+        state.requests.push(state.pendingRequest);
+    }
+    state.pendingRequest = null;
+    state.pendingMessageId = null;
 }
 
 function collectSpeedMetricRecord(
@@ -350,18 +405,29 @@ function collectSpeedMetricRecord(
         return;
     }
 
-    let interval: SpeedInterval | null = null;
-    if (timestampMs !== null && state.lastUserTimestampMs !== null && timestampMs > state.lastUserTimestampMs) {
-        interval = { startMs: state.lastUserTimestampMs, endMs: timestampMs };
+    const usage = parseUsageTokens(data.message.usage);
+    const messageId = getMessageId(data);
+    if (messageId === null || messageId !== state.pendingMessageId) {
+        flushPendingSpeedRequest(state);
+        // Tool results can be written between content blocks of the same response,
+        // so the request starts at the user row before its first block, not its last.
+        state.pendingStartMs = state.lastUserTimestampMs;
     }
 
-    const usage = parseUsageTokens(data.message.usage);
-    state.requests.push({
+    const startMs = state.pendingStartMs;
+    let interval: SpeedInterval | null = null;
+    if (timestampMs !== null && startMs !== null && timestampMs > startMs) {
+        interval = { startMs, endMs: timestampMs };
+    }
+    // One request per API response: rows sharing a message id are content
+    // blocks of the same response, and the last one carries the full usage.
+    state.pendingMessageId = messageId;
+    state.pendingRequest = {
         inputTokens: usage.input,
         outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
         interval
-    });
+    };
 }
 
 async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
@@ -370,6 +436,7 @@ async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: bo
         const data = parseJsonlLine(line) as TranscriptLine | null;
         collectSpeedMetricRecord(state, data, parseTimestampMs(data?.timestamp), ignoreSidechain);
     }
+    flushPendingSpeedRequest(state);
 
     return state;
 }
@@ -577,6 +644,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
 
         let speedMetricsCollection: SpeedMetricsCollection | null = null;
         if (speedState) {
+            flushPendingSpeedRequest(speedState);
             const collected: CollectedSpeedMetrics[] = [speedState];
             if (referencedAgentIds) {
                 const subagentPaths = getSubagentTranscriptPaths(transcriptPath, referencedAgentIds);
