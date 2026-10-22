@@ -468,6 +468,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [statuslin.es](https://statuslin.es) - Community gallery of Claude Code status lines with live, sandbox-rendered previews.
 - [claude-carbon](https://github.com/gwittebolle/claude-carbon) - Live CO2 estimate for your Claude Code sessions, next to the cost. Ships a `--segment` mode built to embed as a Custom Command widget.
 - [claudenews](https://github.com/bhpark1013/claudenews) - Developer news in your status line while the agent works: Hacker News, GitHub Trending, and per-language sources, with optional translation and short summaries. Ships a `--segment` mode built to embed as a Custom Command widget.
+- [claude-eta](https://github.com/harshece16/claude-eta) - Predicts how long the current Claude Code turn and its running subagents will take, learned from your own session history. Zero tokens, one Python file; works as a Custom Command widget.
 
 ## 🙏 Acknowledgments
 
