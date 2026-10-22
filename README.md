@@ -468,7 +468,7 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - [statuslin.es](https://statuslin.es) - Community gallery of Claude Code status lines with live, sandbox-rendered previews.
 - [claude-carbon](https://github.com/gwittebolle/claude-carbon) - Live CO2 estimate for your Claude Code sessions, next to the cost. Ships a `--segment` mode built to embed as a Custom Command widget.
 - [claudenews](https://github.com/bhpark1013/claudenews) - Developer news in your status line while the agent works: Hacker News, GitHub Trending, and per-language sources, with optional translation and short summaries. Ships a `--segment` mode built to embed as a Custom Command widget.
-- [ccx](https://github.com/aaronwong1999/ccx) - macOS menu bar app that hands a task between Claude Code and Codex with its full context. Reads the usage cache ccstatusline keeps for its usage widgets to warn before Claude's 5-hour or weekly limit runs out and offer the switch in one click.
+- [ccx](https://github.com/aaronwong1999/ccx) - macOS menu bar app that hands a task between Claude Code and Codex with its full context. When ccstatusline's usage widgets fetch usage themselves, ccx reads the cache they keep to warn before Claude's 5-hour or weekly limit runs out and offer the switch in one click.
 
 ## 🙏 Acknowledgments
 
