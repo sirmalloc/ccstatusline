@@ -921,6 +921,29 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('times a response from before its first block when a tool result lands between its blocks', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-tool-result.jsonl');
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:00.000Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:04.000Z', type: 'assistant', input: 200, output: 40, messageId: 'msg_a' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:09.500Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:10.000Z', type: 'assistant', input: 200, output: 1000, messageId: 'msg_a' })
+        ].join('\n'));
+
+        const metrics = await getSpeedMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            totalDurationMs: 10000,
+            inputTokens: 200,
+            outputTokens: 1000,
+            totalTokens: 1200,
+            requestCount: 1
+        });
+    });
+
     it('calculates windowed speed metrics from recent requests only', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);

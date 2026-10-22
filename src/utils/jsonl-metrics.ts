@@ -360,6 +360,7 @@ interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
     lastUserTimestampMs: number | null;
     pendingMessageId: string | null;
     pendingRequest: SpeedRequest | null;
+    pendingStartMs: number | null;
 }
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
@@ -368,7 +369,8 @@ function createSpeedMetricCollector(): SpeedMetricCollectorState {
         latestTimestampMs: null,
         lastUserTimestampMs: null,
         pendingMessageId: null,
-        pendingRequest: null
+        pendingRequest: null,
+        pendingStartMs: null
     };
 }
 
@@ -403,15 +405,19 @@ function collectSpeedMetricRecord(
         return;
     }
 
-    let interval: SpeedInterval | null = null;
-    if (timestampMs !== null && state.lastUserTimestampMs !== null && timestampMs > state.lastUserTimestampMs) {
-        interval = { startMs: state.lastUserTimestampMs, endMs: timestampMs };
-    }
-
     const usage = parseUsageTokens(data.message.usage);
     const messageId = getMessageId(data);
     if (messageId === null || messageId !== state.pendingMessageId) {
         flushPendingSpeedRequest(state);
+        // Tool results can be written between content blocks of the same response,
+        // so the request starts at the user row before its first block, not its last.
+        state.pendingStartMs = state.lastUserTimestampMs;
+    }
+
+    const startMs = state.pendingStartMs;
+    let interval: SpeedInterval | null = null;
+    if (timestampMs !== null && startMs !== null && timestampMs > startMs) {
+        interval = { startMs, endMs: timestampMs };
     }
     // One request per API response: rows sharing a message id are content
     // blocks of the same response, and the last one carries the full usage.
