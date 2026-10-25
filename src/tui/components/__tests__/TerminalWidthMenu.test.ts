@@ -81,11 +81,12 @@ describe('TerminalWidthMenu helpers', () => {
         expect(items).toHaveLength(3);
         expect(items[0]).toMatchObject({
             label: 'Full width always',
+            sublabel: '(default)',
             value: 'full'
         });
         expect(items[1]).toMatchObject({
             label: 'Full width minus 40',
-            sublabel: '(default)',
+            sublabel: undefined,
             value: 'full-minus-40'
         });
         expect(items[2]).toMatchObject({
@@ -94,6 +95,19 @@ describe('TerminalWidthMenu helpers', () => {
             value: 'full-until-compact'
         });
         expect(items[2]?.description).toContain('60%');
+    });
+
+    it('marks the mode new settings get as the default', () => {
+        expect(DEFAULT_SETTINGS.flexMode).toBe('full');
+
+        const fullMinus40Items = buildTerminalWidthItems('full-minus-40', 60);
+        expect(fullMinus40Items[0]?.sublabel).toBe('(default)');
+        expect(fullMinus40Items[1]?.sublabel).toBe('(active)');
+
+        // The active mode says so, even when it is also the default
+        const fullItems = buildTerminalWidthItems('full', 60);
+        expect(fullItems[0]?.sublabel).toBe('(active)');
+        expect(fullItems[1]?.sublabel).toBeUndefined();
     });
 
     it('returns the current option index for list selection', () => {
