@@ -7,8 +7,11 @@ import {
     vi
 } from 'vitest';
 
+import { DEFAULT_SETTINGS } from '../../types/Settings';
+import type { StatusJSON } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
-import * as usage from '../usage';
+import * as usage from '../../utils/usage';
+import { BlockResetTimerWidget } from '../../widgets/BlockResetTimer';
 import {
     extractUsageDataFromRateLimits,
     hasUsageDependentWidgets,
@@ -400,6 +403,34 @@ describe('usage prefetch', () => {
         const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 40, resets_at: 1774020000 + 5 * 60 * 60 } } });
 
         expect(usageData).toEqual({ sessionUsage: 40, sessionResetAt: epochToIso(1774020000 + 5 * 60 * 60) });
+    });
+
+    it.each(['expired', 'stale'] as const)('uses only the payload fallback to render under-limit timers with %s API data', async (cacheState) => {
+        const now = 1774020000;
+        const resetAt = now + 4 * 60 * 60;
+        vi.useFakeTimers({ now: now * 1000, toFake: ['Date'] });
+        const apiData: UsageData = {
+            sessionUsage: 100,
+            sessionResetAt: epochToIso(cacheState === 'expired' ? now - 20 * 60 : resetAt)
+        };
+        mockFetchUsageData.mockResolvedValue(apiData);
+        vi.spyOn(usage, 'isStaleUsageFallback').mockImplementation(data => cacheState === 'stale' && data === apiData);
+
+        const item: WidgetItem = { id: 'reset', type: 'reset-timer', metadata: { hide: 'under-limit' } };
+        const widget = new BlockResetTimerWidget();
+        for (const percentage of [undefined, null, 0, 97, 100]) {
+            const data: StatusJSON = { rate_limits: { five_hour: { used_percentage: percentage, resets_at: resetAt } } };
+            const usageData = await prefetchUsageDataIfNeeded(makeLines([item]), data);
+
+            // General usage data still merges API fields, but rejected API data
+            // must not decide visibility when the payload has no percentage.
+            expect(usageData?.sessionUsage).toBe(percentage ?? 100);
+            expect(usageData?.apiSessionUsage).toBeUndefined();
+            expect(widget.render(item, { data, usageData }, DEFAULT_SETTINGS)).toBe(percentage === 100 ? 'Reset: 4hr' : null);
+        }
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([item]));
+        expect(widget.render(item, { usageData }, DEFAULT_SETTINGS)).toBeNull();
     });
 
     it('keeps the cached block percent while its block is still running', async () => {

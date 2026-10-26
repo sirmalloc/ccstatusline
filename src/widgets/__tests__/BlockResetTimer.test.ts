@@ -170,14 +170,20 @@ describe('BlockResetTimerWidget', () => {
             ['unknown', {}],
             ['unknown with a usage error', { error: 'timeout' as const }]
         ])('hides the timer when the block\'s usage is %s', (_label, usageData) => {
-            expect(render(new BlockResetTimerWidget(), item, { usageData })).toBeNull();
+            expect(render(new BlockResetTimerWidget(), item, {
+                usageData,
+                data: { rate_limits: { five_hour: { used_percentage: 'sessionUsage' in usageData ? usageData.sessionUsage : undefined } } }
+            })).toBeNull();
         });
 
         it.each([
             ['at 100%', 100],
             ['over 100%', 100.4]
         ])('shows the timer when the block\'s usage is %s', (_label, sessionUsage) => {
-            expect(render(new BlockResetTimerWidget(), item, { usageData: { sessionUsage } })).toBe('Reset: 1hr 43m');
+            expect(render(new BlockResetTimerWidget(), item, {
+                usageData: { sessionUsage },
+                data: { rate_limits: { five_hour: { used_percentage: sessionUsage } } }
+            })).toBe('Reset: 1hr 43m');
         });
 
         // The payload's percent comes from this session's last response, so the
@@ -186,7 +192,10 @@ describe('BlockResetTimerWidget', () => {
             ['the API reaches 100% while the payload lags', { sessionUsage: 97, apiSessionUsage: 100 }, 'Reset: 1hr 43m'],
             ['the API is under 100% after the payload reached it', { sessionUsage: 100, apiSessionUsage: 2 }, null]
         ])('reads the usage API\'s percent over the payload\'s when %s', (_label, usageData, expected) => {
-            expect(render(new BlockResetTimerWidget(), item, { usageData })).toBe(expected);
+            expect(render(new BlockResetTimerWidget(), item, {
+                usageData,
+                data: { rate_limits: { five_hour: { used_percentage: usageData.sessionUsage } } }
+            })).toBe(expected);
         });
 
         it('keeps showing the timer under 100% when the state is off', () => {
@@ -202,7 +211,10 @@ describe('BlockResetTimerWidget', () => {
         it('hides rather than loads at 100% with no reset window when no-data is also on', () => {
             mockResolveUsageWindowWithFallback.mockReturnValue(null);
 
-            expect(render(new BlockResetTimerWidget(), { ...item, metadata: { hide: 'no-data,under-limit' } }, { usageData: { sessionUsage: 100 } })).toBeNull();
+            expect(render(new BlockResetTimerWidget(), { ...item, metadata: { hide: 'no-data,under-limit' } }, {
+                usageData: { sessionUsage: 100 },
+                data: { rate_limits: { five_hour: { used_percentage: 100 } } }
+            })).toBeNull();
         });
     });
 

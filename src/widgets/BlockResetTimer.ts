@@ -145,10 +145,11 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         const usageData = context.usageData ?? {};
-        // The usage API's percent when there is one (see usage-prefetch.ts), and
-        // the raw percent, not the rounded one: 99.7% isn't the limit yet.
-        const sessionUsage = usageData.apiSessionUsage ?? usageData.sessionUsage;
-        const atSessionLimit = sessionUsage !== undefined && sessionUsage >= 100;
+        // Prefer the API percent accepted by prefetch, then the original payload.
+        // Merged sessionUsage can still contain a rejected stale/expired API value.
+        // Use the raw percent, not the rounded one: 99.7% isn't the limit yet.
+        const sessionUsage = usageData.apiSessionUsage ?? context.data?.rate_limits?.five_hour?.used_percentage;
+        const atSessionLimit = typeof sessionUsage === 'number' && sessionUsage >= 100;
         if (!atSessionLimit && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
             return null;
         }
