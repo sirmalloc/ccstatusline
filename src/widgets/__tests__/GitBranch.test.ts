@@ -1,5 +1,9 @@
 import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -150,15 +154,66 @@ describe('GitBranchWidget', () => {
     it('should render the short commit on a detached HEAD', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
 
         expect(render({ hideNoGit: true })).toBe('⎇ (ddfb2de)');
-        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+        expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+    });
+
+    describe('in a jj workspace', () => {
+        // A jj workspace, with a plain git repo nested in it at code/app
+        let workspaceDir: string;
+
+        beforeEach(() => {
+            workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-branch-jj-'));
+            fs.mkdirSync(path.join(workspaceDir, '.jj'));
+            fs.mkdirSync(path.join(workspaceDir, 'code', 'app'), { recursive: true });
+        });
+
+        afterEach(() => {
+            fs.rmSync(workspaceDir, { recursive: true, force: true });
+        });
+
+        // jj keeps git's HEAD detached in a colocated repo, so its commit isn't
+        // one the user checked out: Git Branch reads it as no branch, as before
+        // it showed detached commits
+        it.each([
+            [false, '⎇ no git'],
+            [true, null]
+        ])('should treat a colocated jj repo\'s detached HEAD as no branch (hide no git: %s)', (hideNoGit, expected) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+            mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
+            mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
+
+            expect(render({ hideNoGit })).toBe(expected);
+            expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
+            expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--show-toplevel']);
+            expect(mockExecFileSync.mock.calls).toHaveLength(4);
+        });
+
+        // jj finds its workspace from the nearest .jj above, past the git repo's
+        // own root, so `jj root` succeeds here too, but jj doesn't manage this
+        // repo's HEAD
+        it('should render the short commit on a detached HEAD in a git repo nested in it', () => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+            mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
+            mockExecFileSync.mockReturnValueOnce(`${path.join(workspaceDir, 'code', 'app')}\n`);
+            mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
+
+            expect(render({ hideNoGit: true })).toBe('⎇ (ddfb2de)');
+            expect(mockExecFileSync.mock.calls[4]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+        });
     });
 
     it('should link a detached HEAD to its commit', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
         mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
 
@@ -180,8 +235,9 @@ describe('GitBranchWidget', () => {
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
-    it('should render no git when branch and commit lookups are empty', () => {
+    it('should render no git when branch, jj and commit lookups are empty', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
 
