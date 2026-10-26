@@ -16,6 +16,7 @@ import {
     recordSessionUsageReading,
     type SessionUsageHistoryDeps
 } from '../session-usage-history';
+import { getUsageFetchedAtMs } from '../usage';
 
 const CACHE_PATH = '/cache/ccstatusline/session-usage-history.json';
 const MINUTE = 60 * 1000;
@@ -133,6 +134,37 @@ describe('recordSessionUsageReading', () => {
         deps.percentSeenAt = () => NOW - 40 * MINUTE;
 
         expect(recordSessionUsageReading('/p', RESET_AT, 20, deps)).toEqual([[NOW - 50 * MINUTE, NOW - 40 * MINUTE, 20]]);
+    });
+
+    // A cached usage API percent was fetched before now, maybe long before
+    it('dates a new percent by when it was seen', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20]] }] }));
+        deps.percentSeenAt = () => NOW - 3 * MINUTE;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 25, deps)).toEqual([
+            [NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20],
+            [NOW - 3 * MINUTE, NOW - 3 * MINUTE, 25]
+        ]);
+    });
+
+    it('dates a new percent no earlier than the last one was seen', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 50 * MINUTE, NOW - 2 * MINUTE, 20]] }] }));
+        deps.percentSeenAt = () => NOW - 3 * MINUTE;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 25, deps)).toEqual([
+            [NOW - 50 * MINUTE, NOW - 2 * MINUTE, 20],
+            [NOW - 2 * MINUTE, NOW - 2 * MINUTE, 25]
+        ]);
+    });
+
+    it('dates a new percent now when nothing shows when it was seen', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20]] }] }));
+        deps.percentSeenAt = () => undefined;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 25, deps)).toEqual([
+            [NOW - 50 * MINUTE, NOW - 45 * MINUTE, 20],
+            [NOW, NOW, 25]
+        ]);
     });
 
     it('skips the write when an idle session\'s percent has been seen up to its last response', () => {
@@ -443,13 +475,14 @@ describe('getDefaultSessionUsageHistoryDeps', () => {
         expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath)).percentSeenAt?.()).toBe(NOW - 40 * MINUTE);
     });
 
-    // Without a five-hour percent in the payload, it comes from the usage API
-    it('takes a percent the payload doesn\'t carry as seen now', () => {
+    // Without a five-hour percent in the payload, it comes from the usage API,
+    // maybe from its cache
+    it('dates a percent the payload doesn\'t carry by when the usage API sent it', () => {
         fs.writeFileSync(transcriptPath, `${transcriptEntry('assistant', NOW - 40 * MINUTE, { message: { model: 'claude-opus-4-1' } })}\n`);
 
-        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, { seven_day: { used_percentage: 20 } })).percentSeenAt).toBeUndefined();
-        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, null)).percentSeenAt).toBeUndefined();
-        expect(getDefaultSessionUsageHistoryDeps().percentSeenAt).toBeUndefined();
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, { seven_day: { used_percentage: 20 } })).percentSeenAt).toBe(getUsageFetchedAtMs);
+        expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, null)).percentSeenAt).toBe(getUsageFetchedAtMs);
+        expect(getDefaultSessionUsageHistoryDeps().percentSeenAt).toBe(getUsageFetchedAtMs);
     });
 
     // The payload's percent is still from a response: one before this

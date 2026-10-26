@@ -13,6 +13,7 @@ import {
     LOOKBACK_MS,
     type SessionUsageReading
 } from './session-forecast';
+import { getUsageFetchedAtMs } from './usage';
 
 const HISTORY_SCHEMA_VERSION = 1 as const;
 // One window's reset time jitters by under a second between sources (the API
@@ -48,11 +49,11 @@ export interface SessionUsageHistoryDeps {
     statSync: (path: string) => { mtimeMs: number };
     mkdirSync: (path: string) => void;
     now: () => number;
-    // When the percent given was seen, for one that can be older than now: a
+    // When the percent given was seen, which can be well before now: a
     // payload's is from its session's last API response, and Claude Code's
-    // refresh interval re-renders an idle session with that same percent.
-    // Undefined when nothing shows when that was. Left out, the percent is
-    // current, as the usage API's is.
+    // refresh interval re-renders an idle session with that same percent; the
+    // usage API's can come from its cache. Undefined when nothing shows when
+    // that was. Left out, the percent is current.
     percentSeenAt?: () => number | undefined;
     cachePath: string;
 }
@@ -93,7 +94,8 @@ function getLastResponseAtMs(transcriptPath: string | undefined): number | undef
 
 // Built per call rather than at import, so the path follows HOME at render time.
 // The payload's 5-hour percent, which wins over the usage API's, dates from its
-// session's last response; the API's counts as seen now.
+// session's last response; the API's from when the API sent it, which for a
+// cached one can be hours ago.
 export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON): SessionUsageHistoryDeps {
     const isPayloadPercent = typeof payload?.rate_limits?.five_hour?.used_percentage === 'number';
     return {
@@ -105,7 +107,7 @@ export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON): Session
         statSync: (p: string) => fs.statSync(p),
         mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
         now: () => Date.now(),
-        percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload.transcript_path) : undefined,
+        percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload.transcript_path) : getUsageFetchedAtMs,
         cachePath: path.join(os.homedir(), '.cache', 'ccstatusline', 'session-usage-history.json')
     };
 }
@@ -174,19 +176,25 @@ function pruneWindows(windows: SessionUsageWindow[], nowMs: number): SessionUsag
         });
 }
 
-// An unchanged percent was seen again when it was observed, which can be well
-// before now: an idle session's refresh renders repeat its last response's.
-// The stretch since stays a gap, which the forecast spreads a change across
-// (usage on another device, say) rather than taking the percent as unchanged
-// until now. With no time for it (a new transcript after /clear has no
-// response yet), the reading's own last sighting stands.
-function getUnchangedSeenAtMs(deps: SessionUsageHistoryDeps, nowMs: number, lastSeenMs: number): number {
-    if (!deps.percentSeenAt) {
-        return nowMs;
-    }
+// When the percent was observed, which can be well before now: an idle
+// session's refresh renders repeat its last response's, and a rate-limited
+// usage API leaves its cache's in place. The stretch since stays a gap, which
+// the forecast spreads a change across (usage on another device, say) rather
+// than taking the percent as unchanged until now. Undefined with no time for
+// it (a new transcript after /clear has no response yet). Looked up once per
+// render, and only when needed: a payload's means reading the transcript.
+function getSeenAtLookup(deps: SessionUsageHistoryDeps, nowMs: number): () => number | undefined {
+    let looked = false;
+    let seenAtMs: number | undefined;
+    return () => {
+        if (!looked) {
+            looked = true;
+            seenAtMs = deps.percentSeenAt ? deps.percentSeenAt() : nowMs;
+            seenAtMs = seenAtMs !== undefined && Number.isFinite(seenAtMs) ? Math.min(nowMs, seenAtMs) : undefined;
+        }
 
-    const seenAtMs = deps.percentSeenAt();
-    return seenAtMs !== undefined && Number.isFinite(seenAtMs) ? Math.min(nowMs, seenAtMs) : lastSeenMs;
+        return seenAtMs;
+    };
 }
 
 // Removes the history's temp files that other renders left a minute or more
@@ -232,6 +240,7 @@ export function recordSessionUsageReading(
 ): SessionUsageReading[] {
     const nowMs = deps.now();
     const clampedPercent = Math.max(0, Math.min(100, percent));
+    const seenAt = getSeenAtLookup(deps, nowMs);
 
     const profiles: Record<string, SessionUsageWindow[]> = {};
     for (const [key, windows] of Object.entries(readHistory(deps).profiles)) {
@@ -258,18 +267,21 @@ export function recordSessionUsageReading(
     }
 
     if (last?.[2] !== clampedPercent) {
-        readings.push([nowMs, nowMs, clampedPercent]);
+        // A new percent can't have been seen before the last one was
+        const firstSeenMs = Math.max(seenAt() ?? nowMs, last?.[1] ?? Number.NEGATIVE_INFINITY);
+        readings.push([firstSeenMs, firstSeenMs, clampedPercent]);
     } else if (nowMs - last[1] < LAST_SEEN_WRITE_INTERVAL_MS) {
         // Not even now is a minute past the last sighting, so there's no need
         // to look up when the percent was seen
         return readings;
     } else {
-        const seenAtMs = getUnchangedSeenAtMs(deps, nowMs, last[1]);
-        if (seenAtMs - last[1] < LAST_SEEN_WRITE_INTERVAL_MS) {
+        // With no time for the percent, the reading's own last sighting stands
+        const lastSeenMs = seenAt() ?? last[1];
+        if (lastSeenMs - last[1] < LAST_SEEN_WRITE_INTERVAL_MS) {
             return readings;
         }
 
-        last[1] = seenAtMs;
+        last[1] = lastSeenMs;
     }
 
     const tempPath = `${deps.cachePath}.${process.pid}.tmp`;
