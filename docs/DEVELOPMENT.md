@@ -27,6 +27,11 @@ bun install
 # Run in TUI mode
 bun run start
 
+# Run in TUI mode with in-place reload: ctrl+r restarts on the latest code,
+# keeping unsaved settings, the current screen and cursor. --config is
+# optional and keeps a scratch setup separate from your real config.
+CCSTATUSLINE_DEV_RELOAD=1 bun run start --config /tmp/ccstatusline-dev.json
+
 # Test piped mode with example payload
 bun run example
 
