@@ -33,6 +33,7 @@ import {
     renderUsageTimezoneEditor
 } from './shared/timezone-editor';
 import {
+    SESSION_UNDER_LIMIT_HIDEABLE_STATE,
     USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
@@ -78,7 +79,7 @@ export class BlockResetTimerWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, SESSION_UNDER_LIMIT_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -144,6 +145,14 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         const usageData = context.usageData ?? {};
+        // Prefer the API percent accepted by prefetch, then the original payload.
+        // Merged sessionUsage can still contain a rejected stale/expired API value.
+        // Use the raw percent, not the rounded one: 99.7% isn't the limit yet.
+        const sessionUsage = usageData.apiSessionUsage ?? context.data?.rate_limits?.five_hour?.used_percentage;
+        const atSessionLimit = typeof sessionUsage === 'number' && sessionUsage >= 100;
+        if (!atSessionLimit && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
+            return null;
+        }
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {
