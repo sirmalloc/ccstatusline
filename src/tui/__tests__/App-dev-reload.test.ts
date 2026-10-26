@@ -30,6 +30,11 @@ import * as powerline from '../../utils/powerline';
 import { App } from '../App';
 import * as claudeStatus from '../claude-status';
 
+import {
+    KEYS,
+    pressKey,
+    renderApp
+} from './helpers/render-app';
 import { waitFor } from './helpers/wait-for-ink';
 
 class MockTtyStream extends PassThrough {
@@ -86,6 +91,33 @@ describe('App under dev reload', () => {
         initConfigPath();
         chalk.level = savedChalkLevel;
         fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it.each(['main', 'lines', 'colorLines'])('captures the live cursor on %s without activating it', async (screen) => {
+        const settings = { ...DEFAULT_SETTINGS, lines: [[], []] };
+        writeDevReloadSnapshot(stateFile, {
+            settings,
+            originalSettings: settings,
+            screen,
+            selectedLine: 0,
+            menuSelections: {},
+            itemsCursor: 0
+        });
+        const rendered = renderApp();
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain(screen === 'main' ? 'Main Menu' : 'Select Line');
+            });
+            const highlight = screen === 'main' ? '▶  🎨 Edit Colors' : '▶  ☰ Line 2';
+            await pressKey(rendered, KEYS.down, highlight);
+            fs.rmSync(stateFile);
+            rendered.stdin.write(CTRL_R);
+            await waitFor(() => {
+                expect(readDevReloadSnapshot(stateFile)?.menuSelections[screen === 'main' ? 'main' : 'lines']).toBe(1);
+            });
+        } finally {
+            rendered.cleanup();
+        }
     });
 
     it('resumes where ctrl+r left off, and ctrl+r saves where it is now', async () => {
