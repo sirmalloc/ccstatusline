@@ -13,7 +13,10 @@ import {
     LOOKBACK_MS,
     type SessionUsageReading
 } from './session-forecast';
-import { getUsageFetchedAtMs } from './usage';
+import {
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint
+} from './usage';
 
 const HISTORY_SCHEMA_VERSION = 1 as const;
 // One window's reset time jitters by under a second between sources (the API
@@ -61,6 +64,9 @@ export interface SessionUsageHistoryDeps {
     // usage API's can come from its cache. Undefined when nothing shows when
     // that was. Left out, the percent is current.
     percentSeenAt?: () => number | undefined;
+    // The login the percent belongs to (see getUsageLoginFingerprint), or null
+    // when none is found. Left out, the history goes by config directory alone.
+    loginFingerprint?: () => string | null;
     cachePath: string;
 }
 
@@ -115,6 +121,7 @@ export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON): Session
         mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
         now: () => Date.now(),
         percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload.transcript_path) : getUsageFetchedAtMs,
+        loginFingerprint: getUsageLoginFingerprint,
         cachePath: path.join(os.homedir(), '.cache', 'ccstatusline', 'session-usage-history.json')
     };
 }

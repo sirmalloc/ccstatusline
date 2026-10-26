@@ -16,6 +16,7 @@ import * as claudeSettings from '../claude-settings';
 import {
     getMacKeychainConfigDirService,
     getUsageCredentials,
+    getUsageLoginFingerprint,
     getUsageToken,
     parseMacKeychainCredentialCandidates
 } from '../usage-fetch';
@@ -325,6 +326,33 @@ describe('getUsageToken', () => {
             `find-generic-password -s ${configDirService} -w`,
             `find-generic-password -s ${configDirService} -w`
         ]);
+    });
+});
+
+describe('getUsageLoginFingerprint', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.spyOn(claudeSettings, 'getClaudeConfigDir').mockReturnValue('/fake/claude');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    // Claude Code reissues the access token every few hours; /login brings a
+    // new refresh token
+    it('stays the same across an access-token refresh, and changes with the login', () => {
+        mockCredentialsFile(makeTokenPayload('access-1', 'refresh-1'));
+        const login = getUsageLoginFingerprint();
+        mockCredentialsFile(makeTokenPayload('access-2', 'refresh-1'));
+        const refreshed = getUsageLoginFingerprint();
+        mockCredentialsFile(makeTokenPayload('access-3', 'refresh-2'));
+        const otherLogin = getUsageLoginFingerprint();
+
+        expect(login).toBe(createHash('sha256').update('refresh-1').digest('hex').slice(0, 16));
+        expect(refreshed).toBe(login);
+        expect(otherLogin).not.toBe(login);
     });
 });
 

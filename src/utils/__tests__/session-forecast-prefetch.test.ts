@@ -104,12 +104,42 @@ describe('computeSessionForecastIfNeeded', () => {
         expect(forecast?.limitInMs).toBeNull();
     });
 
-    it('files readings under the Claude config directory', () => {
+    it('files readings under the Claude config directory and login', () => {
         const deps = makeDeps();
+        deps.loginFingerprint = () => 'aaaaaaaaaaaaaaaa';
+
+        computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], usageData, deps);
+
+        expect(storedProfiles(deps)).toEqual([`${path.resolve(PROFILE)}#aaaaaaaaaaaaaaaa`]);
+    });
+
+    // Signed in with a token from the environment, say
+    it('files readings under the Claude config directory alone without a login', () => {
+        const deps = makeDeps();
+        deps.loginFingerprint = () => null;
 
         computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], usageData, deps);
 
         expect(storedProfiles(deps)).toEqual([path.resolve(PROFILE)]);
+    });
+
+    // After /login to another account in the same config directory, that
+    // account's block can reset at the very moment the last one's does. Its
+    // lower percent isn't a stale session's to drop.
+    it('keeps another login\'s readings apart, even when its block resets at the same moment', () => {
+        const deps = makeDeps();
+        const lines: WidgetItem[][] = [[{ id: '1', type: 'block-forecast' }]];
+
+        deps.loginFingerprint = () => 'aaaaaaaaaaaaaaaa';
+        computeSessionForecastIfNeeded(lines, { ...usageData, sessionUsage: 100 }, deps);
+        deps.loginFingerprint = () => 'bbbbbbbbbbbbbbbb';
+        const forecast = computeSessionForecastIfNeeded(lines, { ...usageData, sessionUsage: 10 }, deps);
+
+        expect(forecast?.currentPercent).toBe(10);
+        expect(storedProfiles(deps)).toEqual([
+            `${path.resolve(PROFILE)}#aaaaaaaaaaaaaaaa`,
+            `${path.resolve(PROFILE)}#bbbbbbbbbbbbbbbb`
+        ]);
     });
 
     it('shares one history whether or not the config directory has a trailing slash', () => {
@@ -132,9 +162,15 @@ describe('computeSessionForecastIfNeeded', () => {
         ['no usage data', null]
     ])('does nothing with %s', (_label, data: RenderUsageData | null) => {
         const deps = makeDeps();
+        let loginLookups = 0;
+        deps.loginFingerprint = () => {
+            loginLookups += 1;
+            return null;
+        };
 
         expect(computeSessionForecastIfNeeded([[{ id: '1', type: 'block-forecast' }]], data, deps)).toBeNull();
         expect(deps.reads).toBe(0);
+        expect(loginLookups).toBe(0);
     });
 
     it('clamps a session percent over 100 and has nothing to forecast', () => {

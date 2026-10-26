@@ -1,6 +1,7 @@
 export {
     fetchUsageData,
-    getUsageFetchedAtMs
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint
 } from './usage-fetch';
 export {
     formatUsageDuration,

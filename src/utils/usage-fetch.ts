@@ -677,6 +677,16 @@ function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
     return credentials;
 }
 
+/**
+ * The login whose usage the status line shows: the usage cache's fingerprint
+ * of it (see getUsageCacheIdentity), or null with no OAuth login found. It
+ * stays the same across access-token refreshes, and changes with /login.
+ */
+export function getUsageLoginFingerprint(): string | null {
+    const credentials = getUsageCredentialsWithBackoff(Math.floor(Date.now() / 1000));
+    return credentials ? getUsageCacheIdentity(credentials).preferredHash : null;
+}
+
 function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): { data: UsageData; fetchedAtMs: number } | null {
     try {
         const fetchedAtMs = fs.statSync(CACHE_FILE).mtimeMs;

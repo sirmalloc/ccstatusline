@@ -16,7 +16,10 @@ import {
     recordSessionUsageReading,
     type SessionUsageHistoryDeps
 } from '../session-usage-history';
-import { getUsageFetchedAtMs } from '../usage';
+import {
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint
+} from '../usage';
 
 const CACHE_PATH = '/cache/ccstatusline/session-usage-history.json';
 const LOCK_PATH = `${CACHE_PATH}.lock`;
@@ -570,6 +573,10 @@ describe('getDefaultSessionUsageHistoryDeps', () => {
         expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, { seven_day: { used_percentage: 20 } })).percentSeenAt).toBe(getUsageFetchedAtMs);
         expect(getDefaultSessionUsageHistoryDeps(payload(transcriptPath, null)).percentSeenAt).toBe(getUsageFetchedAtMs);
         expect(getDefaultSessionUsageHistoryDeps().percentSeenAt).toBe(getUsageFetchedAtMs);
+    });
+
+    it('tells logins apart by the usage credentials', () => {
+        expect(getDefaultSessionUsageHistoryDeps().loginFingerprint).toBe(getUsageLoginFingerprint);
     });
 
     // The payload's percent is still from a response: one before this

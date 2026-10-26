@@ -15,7 +15,9 @@ const SESSION_FORECAST_WIDGET_TYPES = new Set(['block-forecast', 'block-limit-ti
 /**
  * Records this render's session percent and forecasts the 5-hour window, once
  * per status line, for Block Forecast and Block Limit Timer to read. Each
- * Claude config directory keeps its own history: its account has its own window.
+ * Claude config directory keeps its own history: its account has its own
+ * window. So does each login within it: after /login to another account, that
+ * account's window can reset at the very moment the last one's does.
  */
 export function computeSessionForecastIfNeeded(
     lines: WidgetItem[][],
@@ -34,6 +36,8 @@ export function computeSessionForecastIfNeeded(
     }
 
     const clampedPercent = Math.max(0, Math.min(100, percent));
-    const readings = recordSessionUsageReading(getClaudeConfigDir(), resetAtMs, clampedPercent, deps);
+    const login = deps.loginFingerprint?.() ?? null;
+    const profileKey = login === null ? getClaudeConfigDir() : `${getClaudeConfigDir()}#${login}`;
+    const readings = recordSessionUsageReading(profileKey, resetAtMs, clampedPercent, deps);
     return forecastSessionUsage({ readings, nowMs, resetAtMs, percent: clampedPercent });
 }
