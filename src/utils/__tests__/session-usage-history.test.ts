@@ -19,6 +19,7 @@ import {
 import { getUsageFetchedAtMs } from '../usage';
 
 const CACHE_PATH = '/cache/ccstatusline/session-usage-history.json';
+const LOCK_PATH = `${CACHE_PATH}.lock`;
 const MINUTE = 60 * 1000;
 const NOW = Date.UTC(2026, 9, 8, 13, 17);
 const RESET_AT = Date.UTC(2026, 9, 8, 15, 0);
@@ -57,6 +58,14 @@ function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<str
         writeFileSync: (p: string, data: string) => {
             deps.writes += 1;
             files.set(p, data);
+            mtimes.set(p, deps.now());
+        },
+        createFileExclusiveSync: (p: string) => {
+            if (files.has(p)) {
+                throw new Error('EEXIST');
+            }
+
+            files.set(p, '');
             mtimes.set(p, deps.now());
         },
         renameSync: (from: string, to: string) => {
@@ -331,6 +340,84 @@ describe('recordSessionUsageReading', () => {
     it('clamps percents to 0-100', () => {
         expect(recordSessionUsageReading('/p', RESET_AT, 104, makeDeps())).toEqual([[NOW, NOW, 100]]);
         expect(recordSessionUsageReading('/p', RESET_AT, -3, makeDeps())).toEqual([[NOW, NOW, 0]]);
+    });
+
+    // Renders of every session and profile share the file, and one could
+    // otherwise write back what it read before another's write landed
+    it('reads the history again under its lock, keeping what another render wrote since', () => {
+        const before = history({ '/work': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 30]] }] });
+        const written = history({ '/work': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 30], [NOW, NOW, 31]] }] });
+        const deps = makeDeps(before);
+        const read = deps.readFileSync;
+        deps.readFileSync = (p: string) => {
+            const content = read(p);
+            deps.files.set(CACHE_PATH, JSON.stringify(written));
+            return content;
+        };
+
+        expect(recordSessionUsageReading('/personal', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+        expect(stored(deps)).toEqual(history({
+            '/work': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 2 * MINUTE, 30], [NOW, NOW, 31]] }],
+            '/personal': [{ resetAt: RESET_AT, readings: [[NOW, NOW, 42]] }]
+        }));
+        expect(deps.files.has(LOCK_PATH)).toBe(false);
+    });
+
+    // A later render records the same percent with the same time, as it's
+    // dated by when it was seen
+    it('leaves the write to a later render while another holds the lock', () => {
+        const deps = makeDeps();
+        deps.files.set(LOCK_PATH, '');
+        deps.mtimes.set(LOCK_PATH, NOW - 1000);
+        deps.percentSeenAt = () => NOW - 10_000;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW - 10_000, NOW - 10_000, 42]]);
+        expect(deps.writes).toBe(0);
+        expect(deps.files.has(LOCK_PATH)).toBe(true);
+
+        deps.files.delete(LOCK_PATH);
+        deps.now = () => NOW + 5000;
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW - 10_000, NOW - 10_000, 42]]);
+        expect(stored(deps)).toEqual(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 10_000, NOW - 10_000, 42]] }] }));
+    });
+
+    it.each([
+        ['left by a render that died holding it', NOW - 11_000],
+        ['dated ahead by a clock since set back', NOW + 11_000]
+    ])('takes over a lock %s', (_label, lockedAtMs) => {
+        const deps = makeDeps();
+        deps.files.set(LOCK_PATH, '');
+        deps.mtimes.set(LOCK_PATH, lockedAtMs);
+
+        recordSessionUsageReading('/p', RESET_AT, 42, deps);
+
+        expect(stored(deps)).toEqual(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW, NOW, 42]] }] }));
+        expect(deps.files.has(LOCK_PATH)).toBe(false);
+    });
+
+    it('leaves the write when a dead render\'s lock can\'t be removed', () => {
+        const deps = makeDeps();
+        deps.files.set(LOCK_PATH, '');
+        deps.mtimes.set(LOCK_PATH, NOW - 11_000);
+        deps.unlinkSync = () => {
+            throw new Error('EPERM');
+        };
+
+        expect(recordSessionUsageReading('/p', RESET_AT, 42, deps)).toEqual([[NOW, NOW, 42]]);
+        expect(deps.writes).toBe(0);
+    });
+
+    it('doesn\'t take the lock when there\'s nothing to write', () => {
+        const deps = makeDeps(history({ '/p': [{ resetAt: RESET_AT, readings: [[NOW - 5 * MINUTE, NOW - 30_000, 42]] }] }));
+        let locks = 0;
+        deps.createFileExclusiveSync = () => {
+            locks += 1;
+        };
+
+        recordSessionUsageReading('/p', RESET_AT, 42, deps);
+
+        expect(locks).toBe(0);
     });
 
     it('still returns the readings when the write fails', () => {

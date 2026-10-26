@@ -43,6 +43,13 @@ function makeDeps(initial?: unknown): SessionUsageHistoryDeps & { files: Map<str
             return content;
         },
         writeFileSync: (p: string, data: string) => { files.set(p, data); },
+        createFileExclusiveSync: (p: string) => {
+            if (files.has(p)) {
+                throw new Error('EEXIST');
+            }
+
+            files.set(p, '');
+        },
         renameSync: (from: string, to: string) => {
             files.set(to, files.get(from) ?? '');
             files.delete(from);
