@@ -356,7 +356,9 @@ describe('GitBranchWidget', () => {
     describe('fish style', () => {
         it.each([
             { name: 'collapses a plain branch to its first letter', branch: 'main', expected: '⎇ m' },
-            { name: 'keeps the last segment full', branch: 'feature/worktree', expected: '⎇ f/worktree' }
+            { name: 'keeps the last segment full', branch: 'feature/worktree', expected: '⎇ f/worktree' },
+            { name: 'preserves a non-BMP character in a single segment', branch: '🚀launch', expected: '⎇ 🚀' },
+            { name: 'preserves non-BMP characters in abbreviated segments', branch: '🚀launch/🧪tests/topic', expected: '⎇ 🚀/🧪/topic' }
         ])('$name', ({ branch, expected }) => {
             mockExecFileSync.mockReturnValueOnce('true\n');
             mockExecFileSync.mockReturnValueOnce(branch);

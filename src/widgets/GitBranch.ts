@@ -180,9 +180,9 @@ export class GitBranchWidget implements Widget {
         }
         const parts = branch.split('/');
         if (parts.length === 1) {
-            return branch[0] ?? '';
+            return Array.from(branch)[0] ?? '';
         }
-        return parts.map((part, index) => (index === parts.length - 1 ? part : part[0] ?? '')).join('/');
+        return parts.map((part, index) => (index === parts.length - 1 ? part : Array.from(part)[0] ?? '')).join('/');
     }
 
     // jj finds its workspace from the nearest .jj above, past a git repo's own

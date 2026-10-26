@@ -88,9 +88,9 @@ export class GitWorktreeWidget implements Widget {
         }
         const parts = worktree.split('/');
         if (parts.length === 1) {
-            return worktree[0] ?? '';
+            return Array.from(worktree)[0] ?? '';
         }
-        return parts.map((part, index) => (index === parts.length - 1 ? part : part[0] ?? '')).join('/');
+        return parts.map((part, index) => (index === parts.length - 1 ? part : Array.from(part)[0] ?? '')).join('/');
     }
 
     private getGitWorktree(context: RenderContext): string | null {

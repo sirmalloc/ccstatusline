@@ -173,7 +173,9 @@ describe('GitWorktreeWidget', () => {
     describe('fish style', () => {
         it.each([
             { name: 'collapses the main worktree to its first letter', gitDir: '.git\n/some/path\n', expected: '𖠰 m' },
-            { name: 'keeps the last segment full', gitDir: '/some/path/.git/worktrees/some-dir/some-worktree\n/some/path/.git\n', expected: '𖠰 s/some-worktree' }
+            { name: 'keeps the last segment full', gitDir: '/some/path/.git/worktrees/some-dir/some-worktree\n/some/path/.git\n', expected: '𖠰 s/some-worktree' },
+            { name: 'preserves a non-BMP character in a single segment', gitDir: '/some/path/.git/worktrees/🚀launch\n/some/path/.git\n', expected: '𖠰 🚀' },
+            { name: 'preserves non-BMP characters in abbreviated segments', gitDir: '/some/path/.git/worktrees/🚀launch/🧪tests/topic\n/some/path/.git\n', expected: '𖠰 🚀/🧪/topic' }
         ])('$name', ({ gitDir, expected }) => {
             mockExecFileSync.mockReturnValueOnce('true\n');
             mockExecFileSync.mockReturnValueOnce(gitDir);
