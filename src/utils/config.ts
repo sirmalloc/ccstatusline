@@ -29,9 +29,14 @@ const readlink = fs.promises.readlink;
 const realpath = fs.promises.realpath;
 const stat = fs.promises.stat;
 
-const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+// Resolved on every call, not once at import time: tests replace os.homedir()
+// with a temp directory after this module has loaded, and the default path has
+// to follow so an install test can never touch the developer's real file.
+function getDefaultSettingsPath(): string {
+    return path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+}
 
-let settingsPath = DEFAULT_SETTINGS_PATH;
+let settingsPath = getDefaultSettingsPath();
 let lastLoadError: string | null = null;
 
 export function getConfigLoadError(): string | null {
@@ -39,7 +44,7 @@ export function getConfigLoadError(): string | null {
 }
 
 export function initConfigPath(filePath?: string): void {
-    settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+    settingsPath = filePath ? path.resolve(filePath) : getDefaultSettingsPath();
 }
 
 export function getConfigPath(): string {
@@ -47,7 +52,7 @@ export function getConfigPath(): string {
 }
 
 export function isCustomConfigPath(): boolean {
-    return settingsPath !== DEFAULT_SETTINGS_PATH;
+    return settingsPath !== getDefaultSettingsPath();
 }
 
 interface SettingsPaths {
