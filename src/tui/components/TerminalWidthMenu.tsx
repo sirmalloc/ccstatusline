@@ -55,7 +55,7 @@ export function buildTerminalWidthItems(
             value: 'full',
             label: 'Full width always',
             sublabel: getSublabel('full'),
-            description: 'Uses the full terminal width minus 4 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it is not recommended to use this mode.'
+            description: 'Uses the full terminal width minus 6 characters for terminal padding. If the auto-compact message appears, it may cause the line to wrap.\n\nNOTE: If /ide integration is enabled, it is not recommended to use this mode.'
         },
         {
             value: 'full-minus-40',
