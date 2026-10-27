@@ -6,6 +6,8 @@ import {
 
 import { shouldInsertInput } from '../../utils/input-guards';
 
+import { useCursorBlink } from './cursor-blink';
+
 // cursor is a string index that always sits on a grapheme boundary, so
 // multi-codepoint emoji move and delete as a single character
 export interface TextCursorState {
@@ -68,26 +70,27 @@ export function applyTextCursorInput(state: TextCursorState, input: string, key:
 }
 
 /** The text with the grapheme under the cursor in inverse video (a trailing block at the end). */
-export function renderTextWithCursor({ text, cursor }: TextCursorState): string {
+export function renderTextWithCursor({ text, cursor }: TextCursorState, visible = true): string {
     let offset = 0;
     const rendered = getGraphemes(text)
         .map((grapheme) => {
             const underCursor = offset === cursor;
             offset += grapheme.length;
-            return underCursor ? `\x1b[7m${grapheme}\x1b[27m` : grapheme;
+            return underCursor && visible ? `\x1b[7m${grapheme}\x1b[27m` : grapheme;
         })
         .join('');
 
-    return cursor === text.length ? `${rendered}\x1b[7m \x1b[27m` : rendered;
+    return cursor === text.length ? `${rendered}${visible ? '\x1b[7m \x1b[27m' : ' '}` : rendered;
 }
 
 export function useTextCursor(initialText: string) {
     const [state, setState] = useState<TextCursorState>({ text: initialText, cursor: initialText.length });
     const latestState = useRef(state);
+    const cursorVisible = useCursorBlink();
 
     return {
         text: state.text,
-        display: renderTextWithCursor(state),
+        display: renderTextWithCursor(state, cursorVisible),
         getText: (): string => latestState.current.text,
         // Returns whether the key was consumed, so callers can fall through
         // to their own bindings

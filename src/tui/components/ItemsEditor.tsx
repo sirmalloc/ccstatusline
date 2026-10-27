@@ -3,7 +3,10 @@ import {
     Text,
     useInput
 } from 'ink';
-import React, { useState } from 'react';
+import React, {
+    useEffect,
+    useState
+} from 'react';
 
 import type { Settings } from '../../types/Settings';
 import type {
@@ -54,7 +57,11 @@ import {
 export interface ItemsEditorProps {
     widgets: WidgetItem[];
     onUpdate: (widgets: WidgetItem[]) => void;
+    onPreviewChange?: (widgets: WidgetItem[] | null) => void;
     onBack: () => void;
+    // Lets the caller restore the cursor, e.g. after a dev reload
+    initialSelectedIndex?: number;
+    onSelectedIndexChange?: (index: number) => void;
     lineNumber: number;
     settings: Settings;
 }
@@ -67,13 +74,27 @@ function isMergedIntoPreviousWidget(widgets: WidgetItem[], index: number): boole
     return Boolean(widgets[index - 1]?.merge);
 }
 
-export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onBack, lineNumber, settings }) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
+export const ItemsEditor: React.FC<ItemsEditorProps> = ({
+    widgets,
+    onUpdate,
+    onPreviewChange,
+    onBack,
+    initialSelectedIndex = 0,
+    onSelectedIndexChange,
+    lineNumber,
+    settings
+}) => {
+    const [selectedIndex, setSelectedIndex] = useState(() => Math.min(initialSelectedIndex, Math.max(0, widgets.length - 1)));
     const [moveMode, setMoveMode] = useState(false);
     const [customEditorWidget, setCustomEditorWidget] = useState<CustomEditorWidgetState | null>(null);
     const [widgetPicker, setWidgetPicker] = useState<WidgetPickerState | null>(null);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const separatorChars = ['|', '-', ',', ' '];
+
+    // Discard a label draft if navigation unmounts the editor (for example, a save dialog).
+    useEffect(() => () => {
+        onPreviewChange?.(null);
+    }, [onPreviewChange]);
 
     const widgetCatalog = getWidgetCatalog(settings);
     const widgetCategories = ['All', ...getWidgetCatalogCategories(widgetCatalog)];
@@ -113,10 +134,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         const newWidgets = [...widgets];
         newWidgets[selectedIndex] = updatedWidget;
         onUpdate(newWidgets);
+        onPreviewChange?.(null);
         setCustomEditorWidget(null);
     };
 
     const handleEditorCancel = () => {
+        onPreviewChange?.(null);
         setCustomEditorWidget(null);
     };
 
@@ -326,6 +349,10 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
         ? (pickerEntries.find(entry => entry.type === widgetPicker.selectedType) ?? pickerEntries[0])
         : null;
 
+    useEffect(() => {
+        onSelectedIndexChange?.(selectedIndex);
+    }, [onSelectedIndexChange, selectedIndex]);
+
     // Build main help text (without custom keybinds)
     let helpText = hasWidgets
         ? '↑↓ select, ←→ open type picker'
@@ -375,6 +402,11 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({ widgets, onUpdate, onB
                 defaultLabel={customEditorWidget.impl.getLabelPrefix(customEditorWidget.widget)}
                 onComplete={handleEditorComplete}
                 onCancel={handleEditorCancel}
+                onPreview={(updatedWidget) => {
+                    const previewWidgets = [...widgets];
+                    previewWidgets[selectedIndex] = updatedWidget;
+                    onPreviewChange?.(previewWidgets);
+                }}
             />
         );
     }
