@@ -539,6 +539,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
     let lastTimestampMs: number | null = null;
     let thinkingEffort: ResolvedThinkingEffort | undefined;
     let sessionName: string | null = null;
+    let automaticTitle: string | null = null;
 
     try {
         for await (const line of iterateJsonlLines(transcriptPath)) {
@@ -572,6 +573,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
             }
             if (options.includeSessionName) {
                 sessionName = getSessionNameFromRecord(data) ?? sessionName;
+                automaticTitle = getSessionNameFromRecord(data, 'ai-title') ?? automaticTitle;
             }
         }
 
@@ -604,7 +606,7 @@ async function scanTranscript(transcriptPath: string, options: TranscriptScanOpt
             speedMetricsCollection,
             compactionData,
             thinkingEffort,
-            sessionName
+            sessionName: sessionName ?? automaticTitle
         };
     } catch {
         return emptyResult;
