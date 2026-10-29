@@ -1272,7 +1272,7 @@ export const App: React.FC = () => {
     };
 
     const configWarning = buildConfigLoadWarning(configLoadError);
-    // Label drafts affect only the preview until Enter accepts the edit.
+    // Label drafts and the picker's highlighted widget affect only the preview until Enter accepts them.
     const previewLines = screen === 'items' && previewWidgets
         ? settings.lines.map((line, index) => index === selectedLine ? previewWidgets : line)
         : settings.lines;
