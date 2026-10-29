@@ -423,7 +423,7 @@ function cacheUsageData(data: UsageData, now: number, fetchedAtMs: number): Usag
 
 /**
  * When the usage API sent the values fetchUsageData last returned, in ms, or
- * undefined after an error. Served from the cache, during a rate limit say,
+ * undefined when no usage data is available. Served from the cache during a rate limit,
  * they can be hours old.
  */
 export function getUsageFetchedAtMs(): number | undefined {
@@ -465,11 +465,17 @@ function getStaleUsageOrError(
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
     const stale = readStaleUsageCache(cacheIdentity, now);
-    if (stale && !stale.data.error && hasRequiredUsageFields(stale.data, requiredFields)) {
-        if (hasUsageCacheOutlivedRefresh(now)) {
-            staleUsageFallbacks.add(stale.data);
+    if (stale && !stale.data.error) {
+        const complete = hasRequiredUsageFields(stale.data, requiredFields);
+        if (complete || requiredFields.some(field => hasRequiredUsageField(stale.data, field))) {
+            // Widgets share this response: an expired window must not discard
+            // another widget's valid fields. Only missing fields use the error.
+            const data = complete ? stale.data : { ...stale.data, error };
+            if (hasUsageCacheOutlivedRefresh(now)) {
+                staleUsageFallbacks.add(data);
+            }
+            return cacheUsageData(data, now, stale.fetchedAtMs);
         }
-        return cacheUsageData(stale.data, now, stale.fetchedAtMs);
     }
 
     return setCachedUsageError(error, now, errorCacheMaxAge);

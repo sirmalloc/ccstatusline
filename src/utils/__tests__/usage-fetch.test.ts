@@ -2212,7 +2212,10 @@ describe('fetchUsageData error handling', () => {
 
     // Overnight, last night's 95% would otherwise stay on screen after its
     // window reset, for as long as the API keeps refusing
-    it('leaves out stale cached windows that have already reset', () => {
+    it.each([
+        { requiredFields: [] },
+        { requiredFields: ['sessionUsage', 'weeklyUsage'] }
+    ])('leaves out stale cached windows that have already reset with required fields $requiredFields', ({ requiredFields }) => {
         const harness = createProbeHarness();
 
         try {
@@ -2241,12 +2244,34 @@ describe('fetchUsageData error handling', () => {
                 pathDir: home.bin,
                 responseBody: rateLimitedResponseBody,
                 responseHeaders: { 'retry-after': '3600' },
+                requiredFields,
                 statusCode: 429
             });
 
-            expect(rateLimitedResult.first).toEqual({ weeklyUsage: 40, weeklyResetAt });
+            expect(rateLimitedResult.first).toEqual({
+                weeklyUsage: 40,
+                weeklyResetAt,
+                ...(requiredFields.length > 0 ? { error: 'rate-limited' } : {})
+            });
+            expect(rateLimitedResult.second).toEqual(rateLimitedResult.first);
+            expect(rateLimitedResult.requestCount).toBe(1);
             expect(rateLimitedResult.fetchedAtMs).toBe(fetchedAtMs);
             expect(rateLimitedResult.staleFallback).toEqual([true, true]);
+
+            const mixedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 2 * 60 * 60 * 1000 + 1000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage', 'weeklyUsage']
+            });
+
+            expect(mixedResult.first).toEqual({ weeklyUsage: 40, weeklyResetAt, error: 'rate-limited' });
+            expect(mixedResult.second).toEqual(mixedResult.first);
+            expect(mixedResult.requestCount).toBe(0);
+            expect(mixedResult.fetchedAtMs).toBe(fetchedAtMs);
+            expect(mixedResult.staleFallback).toEqual([true, true]);
 
             const sessionResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
