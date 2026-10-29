@@ -2377,9 +2377,10 @@ describe('fetchAccountEmail', () => {
             expect(result.requestHost).toBe('api.anthropic.com');
             expect(result.requestPath).toBe('/api/oauth/profile');
             expect(result.requestAuthorization).toBe('Bearer current-access-token');
-            expect(readCacheFile(home.home, 'account-email.json')).toEqual([
-                { tokenHash: fingerprint('current-refresh-token'), email: 'current@example.com' }
-            ]);
+            expect(readCacheFile(home.home, `account-email-${fingerprint('current-refresh-token')}.json`)).toEqual({
+                tokenHash: fingerprint('current-refresh-token'),
+                email: 'current@example.com'
+            });
         } finally {
             harness.cleanup();
         }
@@ -2401,7 +2402,7 @@ describe('fetchAccountEmail', () => {
                 target: 'account-email'
             });
 
-            const cacheFile = path.join(home.home, '.cache', 'ccstatusline', 'account-email.json');
+            const cacheFile = path.join(home.home, '.cache', 'ccstatusline', `account-email-${fingerprint('test-token')}.json`);
             expect(fs.statSync(cacheFile).mode & 0o777).toBe(0o600);
         } finally {
             harness.cleanup();
@@ -2462,8 +2463,11 @@ describe('fetchAccountEmail', () => {
 
             expect(result.first).toEqual({ status: 'available', email: 'current@example.com' });
             expect(result.requestCount).toBe(1);
+            expect(readCacheFile(home.home, `account-email-${fingerprint('current-refresh-token')}.json`)).toEqual({
+                tokenHash: fingerprint('current-refresh-token'),
+                email: 'current@example.com'
+            });
             expect(readCacheFile(home.home, 'account-email.json')).toEqual([
-                { tokenHash: fingerprint('current-refresh-token'), email: 'current@example.com' },
                 { tokenHash: fingerprint('previous-refresh-token'), email: 'previous@example.com' }
             ]);
         } finally {

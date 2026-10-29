@@ -1,5 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import {
+    createHash,
+    randomBytes
+} from 'node:crypto';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as os from 'node:os';
@@ -1096,60 +1099,122 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 // that record can name a different account than the one the credentials, and
 // the usage above, belong to (#538). The profile endpoint answers for the
 // credentials themselves.
-const ACCOUNT_EMAIL_CACHE_FILE = path.join(CACHE_DIR, 'account-email.json');
-function getAccountEmailLockPath(tokenHash: string): string {
-    return path.join(CACHE_DIR, `account-email-${tokenHash}.lock`);
+// Read the old shared cache for existing entries, but never modify it.
+const LEGACY_ACCOUNT_EMAIL_CACHE_FILE = path.join(CACHE_DIR, 'account-email.json');
+function getAccountEmailPath(tokenHash: string, suffix: 'json' | 'lock' | 'inflight'): string {
+    return path.join(CACHE_DIR, `account-email-${tokenHash}.${suffix}`);
 }
-// Logins used side by side (one per CLAUDE_CONFIG_DIR profile) each keep an
-// entry instead of evicting each other on every render.
-const MAX_CACHED_ACCOUNT_EMAILS = 10;
 
 const ProfileApiResponseSchema = z.looseObject({ account: z.looseObject({ email: z.string().min(1).nullable().optional() }).nullable().optional() });
-const CachedAccountEmailsSchema = z.array(z.object({
+const CachedAccountEmailSchema = z.object({
     tokenHash: z.string(),
     email: z.string().min(1)
-}));
+});
 const AccountEmailLockSchema = z.object({
     blockedUntil: z.number(),
     tokenHash: z.string()
 });
 
-type CachedAccountEmails = z.infer<typeof CachedAccountEmailsSchema>;
-
-function readCachedAccountEmails(): CachedAccountEmails {
+function readCachedAccountEmail(tokenHash: string): string | null {
     try {
-        return parseJsonWithSchema(fs.readFileSync(ACCOUNT_EMAIL_CACHE_FILE, 'utf8'), CachedAccountEmailsSchema) ?? [];
+        const entry = parseJsonWithSchema(fs.readFileSync(getAccountEmailPath(tokenHash, 'json'), 'utf8'), CachedAccountEmailSchema);
+        if (entry?.tokenHash === tokenHash) {
+            return entry.email;
+        }
     } catch {
-        return [];
+        // Try a matching entry from the previous shared cache.
+    }
+    try {
+        const entries = parseJsonWithSchema(fs.readFileSync(LEGACY_ACCOUNT_EMAIL_CACHE_FILE, 'utf8'), z.array(CachedAccountEmailSchema));
+        return entries?.find(entry => entry.tokenHash === tokenHash)?.email ?? null;
+    } catch {
+        return null;
     }
 }
 
-function writeCachedAccountEmails(entries: CachedAccountEmails): void {
+function writeCachedAccountEmail(tokenHash: string, email: string, owner: string): void {
+    const cachePath = getAccountEmailPath(tokenHash, 'json');
+    const tempPath = `${cachePath}.${owner}.tmp`;
+    try {
+        fs.writeFileSync(tempPath, JSON.stringify({ tokenHash, email }), { mode: 0o600, flag: 'wx' });
+        fs.renameSync(tempPath, cachePath);
+    } catch {
+        // Ignore cache write errors.
+    } finally {
+        try {
+            fs.unlinkSync(tempPath);
+        } catch {
+            // Already renamed or never created.
+        }
+    }
+}
+
+// Hold an exclusive lease across the request and its cache/backoff writes.
+// A crashed render cannot block future lookups indefinitely. The lease is
+// longer than the five-second request deadline; an expired owner cannot write.
+const AccountEmailLeaseSchema = z.object({ owner: z.string(), expiresAt: z.number() });
+function acquireAccountEmailLease(tokenHash: string, now: number): string | null {
+    const leasePath = getAccountEmailPath(tokenHash, 'inflight');
+    const owner = randomBytes(16).toString('hex');
     try {
         ensureCacheDirExists();
-        // Email addresses, so readable by this user only
-        fs.writeFileSync(ACCOUNT_EMAIL_CACHE_FILE, JSON.stringify(entries), { mode: 0o600 });
+        try {
+            const existing = fs.readFileSync(leasePath, 'utf8');
+            const lease = parseJsonWithSchema(existing, AccountEmailLeaseSchema);
+            const stale = lease
+                ? lease.expiresAt <= now || lease.expiresAt > now + LOCK_MAX_AGE
+                : Math.abs(now - fs.statSync(leasePath).mtimeMs / 1000) > LOCK_MAX_AGE;
+            if (stale) {
+                fs.unlinkSync(leasePath);
+            }
+        } catch {
+            // Missing lease: exclusive creation below arbitrates contenders.
+        }
+        fs.writeFileSync(leasePath, JSON.stringify({ owner, expiresAt: now + LOCK_MAX_AGE }), { flag: 'wx', mode: 0o600 });
+        return owner;
     } catch {
-        // Ignore cache write errors
+        return null;
+    }
+}
+
+function ownsAccountEmailLease(tokenHash: string, owner: string): boolean {
+    try {
+        const lease = parseJsonWithSchema(fs.readFileSync(getAccountEmailPath(tokenHash, 'inflight'), 'utf8'), AccountEmailLeaseSchema);
+        return lease?.owner === owner && lease.expiresAt > Math.floor(Date.now() / 1000);
+    } catch {
+        return false;
+    }
+}
+
+function releaseAccountEmailLease(tokenHash: string, owner: string): void {
+    try {
+        if (ownsAccountEmailLease(tokenHash, owner)) {
+            fs.unlinkSync(getAccountEmailPath(tokenHash, 'inflight'));
+        }
+    } catch {
+        // Best-effort cleanup; an abandoned lease expires.
     }
 }
 
 // A failed lookup holds off only the login it failed for. The deadline is
 // bounded like the usage lock's, so one written under a wrong clock cannot
 // stop lookups for good.
-function isAccountEmailLookupBlocked(tokenHash: string, now: number): boolean {
+function readAccountEmailBackoff(tokenHash: string, now: number): number {
     try {
-        const lock = parseJsonWithSchema(fs.readFileSync(getAccountEmailLockPath(tokenHash), 'utf8'), AccountEmailLockSchema);
-        return lock?.tokenHash === tokenHash && lock.blockedUntil > now && lock.blockedUntil <= now + MAX_LOCK_HORIZON;
+        const lock = parseJsonWithSchema(fs.readFileSync(getAccountEmailPath(tokenHash, 'lock'), 'utf8'), AccountEmailLockSchema);
+        return lock?.tokenHash === tokenHash && lock.blockedUntil > now && lock.blockedUntil <= now + MAX_LOCK_HORIZON
+            ? lock.blockedUntil
+            : 0;
     } catch {
-        return false;
+        return 0;
     }
 }
 
 function writeAccountEmailLock(tokenHash: string, blockedUntil: number): void {
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(getAccountEmailLockPath(tokenHash), JSON.stringify({ blockedUntil, tokenHash }));
+        const deadline = Math.max(blockedUntil, readAccountEmailBackoff(tokenHash, Math.floor(Date.now() / 1000)));
+        fs.writeFileSync(getAccountEmailPath(tokenHash, 'lock'), JSON.stringify({ blockedUntil: deadline, tokenHash }));
     } catch {
         // Ignore lock file errors
     }
@@ -1170,26 +1235,45 @@ export async function fetchAccountEmail(): Promise<AccountEmailResult> {
     // Keyed like the usage cache: a refreshed access token keeps the entry,
     // and a different login is looked up again.
     const tokenHash = getUsageCacheIdentity(credentials).preferredHash;
-    const cachedEmails = readCachedAccountEmails();
-    const cached = cachedEmails.find(entry => entry.tokenHash === tokenHash);
-    if (cached) {
-        return { status: 'available', email: cached.email };
+    const cached = readCachedAccountEmail(tokenHash);
+    if (cached !== null) {
+        return { status: 'available', email: cached };
     }
 
-    if (isAccountEmailLookupBlocked(tokenHash, now)) {
+    if (readAccountEmailBackoff(tokenHash, now)) {
+        return { status: 'unavailable' };
+    }
+    const owner = acquireAccountEmailLease(tokenHash, now);
+    if (owner === null) {
         return { status: 'unavailable' };
     }
 
-    const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
-        .catch((): UsageApiFetchResult => ({ kind: 'error' }));
-    const email = response.kind === 'success'
-        ? parseJsonWithSchema(response.body, ProfileApiResponseSchema)?.account?.email ?? null
-        : null;
-    if (email === null) {
-        writeAccountEmailLock(tokenHash, now + (response.kind === 'rate-limited' ? response.retryAfterSeconds : LOCK_MAX_AGE));
-        return { status: 'unavailable' };
-    }
+    try {
+        // Another render may have finished between our first read and lease.
+        const latest = readCachedAccountEmail(tokenHash);
+        if (latest !== null) {
+            return { status: 'available', email: latest };
+        }
+        if (readAccountEmailBackoff(tokenHash, Math.floor(Date.now() / 1000))) {
+            return { status: 'unavailable' };
+        }
+        const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
+            .catch((): UsageApiFetchResult => ({ kind: 'error' }));
+        if (!ownsAccountEmailLease(tokenHash, owner)) {
+            return { status: 'unavailable' };
+        }
+        const email = response.kind === 'success'
+            ? parseJsonWithSchema(response.body, ProfileApiResponseSchema)?.account?.email ?? null
+            : null;
+        if (email === null) {
+            const responseTime = Math.floor(Date.now() / 1000);
+            writeAccountEmailLock(tokenHash, responseTime + (response.kind === 'rate-limited' ? response.retryAfterSeconds : LOCK_MAX_AGE));
+            return { status: 'unavailable' };
+        }
 
-    writeCachedAccountEmails([{ tokenHash, email }, ...cachedEmails].slice(0, MAX_CACHED_ACCOUNT_EMAILS));
-    return { status: 'available', email };
+        writeCachedAccountEmail(tokenHash, email, owner);
+        return { status: 'available', email };
+    } finally {
+        releaseAccountEmailLease(tokenHash, owner);
+    }
 }
