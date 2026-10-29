@@ -17,6 +17,7 @@ import {
     type FormatOptions
 } from './shared/format-options';
 import { isNerdFontEnabled } from './shared/metadata';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -46,6 +47,7 @@ const CROSS_MARK = '✗';
 type RemoteFormat = typeof FORMATS[number];
 
 const DEFAULT_FORMAT: RemoteFormat = 'icon';
+const LABEL = 'remote ';
 
 function canUseNerdFont(item: WidgetItem): boolean {
     const format = getFormat(item, FORMAT_OPTIONS);
@@ -67,20 +69,23 @@ function formatStatus(item: WidgetItem, enabled: boolean): string {
     const icon = nerdFont
         ? getSlotSymbol(item, enabled ? ON_SLOT : OFF_SLOT)
         : SATELLITE_EMOJI;
+    // These built-in icons can draw across two cells despite reporting width one.
+    // Custom glyphs keep their normal gap, since their drawn width is font-dependent.
+    const minimumIconWidth = nerdFont && (icon === SATELLITE_NERD_FONT || icon === SATELLITE_SLASH_NERD_FONT) ? 2 : 0;
 
     switch (format) {
         case 'icon':
             return nerdFont ? icon : (rawValue ? stateDot : `${icon} ${stateDot}`);
         case 'icon-text':
-            return rawValue ? stateText : joinSymbol(icon, stateText);
+            return rawValue ? stateText : joinSymbol(icon, stateText, minimumIconWidth);
         case 'text':
             return stateText;
         case 'word':
             return rawValue ? stateText : `remote ${stateText}`;
         case 'label-check':
-            return rawValue ? (enabled ? CHECK_EMOJI : CROSS_EMOJI) : `remote ${enabled ? CHECK_EMOJI : CROSS_EMOJI}`;
+            return formatRawOrLabeledValue(item, LABEL, enabled ? CHECK_EMOJI : CROSS_EMOJI);
         case 'label-mark':
-            return rawValue ? (enabled ? CHECK_MARK : CROSS_MARK) : `remote ${enabled ? CHECK_MARK : CROSS_MARK}`;
+            return formatRawOrLabeledValue(item, LABEL, enabled ? CHECK_MARK : CROSS_MARK);
     }
 }
 
@@ -89,6 +94,11 @@ export class RemoteControlStatusWidget implements Widget {
     getDescription(): string { return 'Shows whether Claude Code remote control is attached to the current session'; }
     getDisplayName(): string { return 'Remote Control Status'; }
     getCategory(): string { return 'Core'; }
+
+    getLabelPrefix(item: WidgetItem): string | undefined {
+        const format = getFormat(item, FORMAT_OPTIONS);
+        return format === 'label-check' || format === 'label-mark' ? LABEL : undefined;
+    }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {

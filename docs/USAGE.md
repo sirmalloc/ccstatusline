@@ -298,6 +298,7 @@ Widget picker:
 The keybind footer in the TUI only shows shortcuts that apply to the currently selected widget. Plain-letter shortcuts ignore Ctrl and Alt/Option modifiers, so combinations such as `Ctrl+S` do not also trigger the letter action.
 
 Widget-specific shortcuts:
+- **Remote Control Status**: `e` edits the label in `label-check` and `label-mark` formats when raw value is off. The override is shared by these two formats; Tab in the label editor restores `remote `.
 - **Glyph widgets** (Git Branch, Git Worktree, Git Worktree Mode, Git Staged, Git Unstaged, Git Untracked, Git Conflicts, Git Ahead/Behind, Git Status, Git Changes, Git Insertions, Git Deletions, Git Clean Status, Git Is Fork, JJ Revision, JJ Bookmarks, JJ Workspace, JJ Changes, JJ Insertions, JJ Deletions, Remote Control Status with Nerd Font icons): `g` set custom glyphs for the widget's symbols; Backspace in the editor renders without one, and multi-symbol widgets (Ahead/Behind, Status, Conflicts, Changes, Clean Status, Remote Control Status on/off) edit each part in one list
 - **Git Branch**: `l` toggle clickable branch links (GitHub, GitLab, self-hosted), `w` set a maximum visible width (blank removes the limit)
 - **Git Root Dir**: `l` cycle IDE links (`off` → `VS Code` → `Cursor`), `w` set a maximum visible width (blank removes the limit)
