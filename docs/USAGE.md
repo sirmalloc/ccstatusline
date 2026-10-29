@@ -191,7 +191,7 @@ The Skills widget reads skill activity recorded by Claude Code hooks, which run 
 
 ## Usage Credentials and Cache
 
-Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials`, then matching suffixed services, then the credentials file.
+Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials` by service name, then retries that service with the OS username if no OAuth token was found, then tries matching suffixed services and the credentials file. A successful service-only lookup still takes precedence; the username retry does not replace a stale but well-formed token.
 
 The usage cache uses a fingerprint of the refresh token when available, falling back to the access token. Access-token rotation with an unchanged refresh token preserves fresh and stale usage snapshots, including during rate-limit backoff; a changed login fingerprint invalidates the old account's cache.
 

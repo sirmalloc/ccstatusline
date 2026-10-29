@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Mock } from 'vitest';
 import {
@@ -139,6 +140,7 @@ describe('getUsageToken', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         vi.spyOn(claudeSettings, 'getClaudeConfigDir').mockReturnValue('/fake/claude');
+        vi.spyOn(os, 'userInfo').mockReturnValue({ username: 'testuser' } as unknown as os.UserInfo<string>);
         mockedExecFileSync.mockReset();
     });
 
@@ -163,6 +165,67 @@ describe('getUsageToken', () => {
         expect(getSecurityCallLog()).toEqual([
             'find-generic-password -s Claude Code-credentials -w',
             'find-generic-password -s Claude Code-credentials -w'
+        ]);
+    });
+
+    it('reads the OS-username account when the service-only lookup returns an item without an OAuth token', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command !== 'security' || !args) {
+                throw new Error(`Unexpected security args: ${args?.join(' ')}`);
+            }
+
+            const isCredentialsService = args[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials';
+            if (isCredentialsService && args.includes('-a') && args[args.indexOf('-a') + 1] === 'testuser') {
+                return makeTokenPayload('account-token', 'account-refresh-token');
+            }
+
+            if (isCredentialsService) {
+                // Service-only match: an unrelated account's MCP-only item.
+                return JSON.stringify({ mcpOAuth: { some: 'value' } });
+            }
+
+            throw new Error(`Unexpected security args: ${args.join(' ')}`);
+        });
+
+        expect(getUsageCredentials()).toEqual({
+            accessToken: 'account-token',
+            refreshToken: 'account-refresh-token'
+        });
+        expect(getSecurityCallLog()).toEqual([
+            'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w'
+        ]);
+    });
+
+    it('skips the OS-username account read when the username cannot be resolved', () => {
+        // os.userInfo() throws when the uid has no passwd entry (some containers).
+        vi.spyOn(os, 'userInfo').mockImplementation(() => {
+            throw new Error('no passwd entry');
+        });
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile(makeTokenPayload('file-token'));
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command !== 'security' || !args) {
+                throw new Error(`Unexpected security args: ${args?.join(' ')}`);
+            }
+
+            if (args[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials') {
+                throw new Error('missing exact credential');
+            }
+
+            if (args[0] === 'dump-keychain') {
+                return '';
+            }
+
+            throw new Error(`Unexpected security args: ${args.join(' ')}`);
+        });
+
+        expect(getUsageToken()).toBe('file-token');
+        expect(getSecurityCallLog()).toEqual([
+            'find-generic-password -s Claude Code-credentials -w',
+            'dump-keychain'
         ]);
     });
 
@@ -198,9 +261,11 @@ describe('getUsageToken', () => {
         expect(getUsageToken()).toBe('hashed-token');
         expect(getSecurityCallLog()).toEqual([
             'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w',
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-new -w',
             'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w',
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-new -w'
         ]);
@@ -235,9 +300,11 @@ describe('getUsageToken', () => {
         expect(getUsageToken()).toBe('file-token');
         expect(getSecurityCallLog()).toEqual([
             'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w',
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-hashed -w',
             'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w',
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-hashed -w'
         ]);
@@ -259,6 +326,7 @@ describe('getUsageToken', () => {
         expect(getUsageToken()).toBeNull();
         expect(getSecurityCallLog()).toEqual([
             'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w',
             'dump-keychain',
             'find-generic-password -s Claude Code-credentials-hashed -w'
         ]);

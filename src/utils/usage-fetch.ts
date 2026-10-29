@@ -545,11 +545,14 @@ export function parseMacKeychainCredentialCandidates(rawDump: string, servicePre
         .map(candidate => candidate.service);
 }
 
-function readMacKeychainSecret(service: string): string | null {
+function readMacKeychainSecret(service: string, account?: string): string | null {
     try {
+        const args = account
+            ? ['find-generic-password', '-s', service, '-a', account, '-w']
+            : ['find-generic-password', '-s', service, '-w'];
         return execFileSync(
             'security',
-            ['find-generic-password', '-s', service, '-w'],
+            args,
             { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: MACOS_SECURITY_TIMEOUT_MS, windowsHide: true }
         ).trim();
     } catch {
@@ -557,9 +560,26 @@ function readMacKeychainSecret(service: string): string | null {
     }
 }
 
-function readUsageCredentialsFromMacKeychainService(service: string): UsageCredentials | null {
-    const secret = readMacKeychainSecret(service);
+function readUsageCredentialsFromMacKeychainService(service: string, account?: string): UsageCredentials | null {
+    const secret = readMacKeychainSecret(service, account);
     return secret ? parseUsageCredentials(secret) : null;
+}
+
+function getOsUsername(): string | null {
+    try {
+        return os.userInfo().username;
+    } catch {
+        return null;
+    }
+}
+
+// The login keychain can hold several items under one service, differing only by
+// account; a service-only lookup returns whichever matches first, which may be an
+// entry lacking `claudeAiOauth`. Claude Code reads/writes with an explicit account
+// (the OS username), so mirror that.
+function readUsageCredentialsFromMacKeychainUserAccount(service: string): UsageCredentials | null {
+    const osUsername = getOsUsername();
+    return osUsername ? readUsageCredentialsFromMacKeychainService(service, osUsername) : null;
 }
 
 function listMacKeychainCredentialCandidates(): string[] {
@@ -640,6 +660,7 @@ export function getUsageCredentials(): UsageCredentials | null {
     }
 
     return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageCredentialsFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE)
         ?? readUsageCredentialsFromMacKeychainCandidates()
         ?? readUsageCredentialsFromCredentialsFile();
 }
@@ -650,8 +671,8 @@ export function getUsageToken(): string | null {
 
 // A lookup that finds no OAuth login (an API-key user, a logged-out profile)
 // stands for LOCK_MAX_AGE across renders, as it already does within one
-// process: on macOS the default profile's lookup runs `security` twice, once
-// for a full keychain dump. The record names the credential stores it
+// process: on macOS the default profile's lookup can run `security` multiple
+// times, including a full keychain dump. The record names the credential stores it
 // covers, so one profile's miss never suppresses another profile's lookup.
 const NO_CREDENTIALS_LOCK_FILE = path.join(CACHE_DIR, 'usage-credentials.lock');
 const NoCredentialsLockSchema = z.object({
