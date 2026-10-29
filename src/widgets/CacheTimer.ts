@@ -263,6 +263,14 @@ function getReportedRemainingSeconds(context: RenderContext): number | null {
     return expiresAt - Date.now() / 1000;
 }
 
+function getReportedTtlSeconds(context: RenderContext): number | null {
+    switch (context.data?.prompt_cache?.ttl) {
+        case '5m': return 300;
+        case '1h': return 3600;
+        default: return null;
+    }
+}
+
 function formatCountdown(remaining: number): string {
     if (remaining <= 0) {
         return 'COLD';
@@ -333,7 +341,7 @@ export class CacheTimerWidget implements Widget {
 
         const reportedRemaining = getReportedRemainingSeconds(context);
         if (reportedRemaining !== null) {
-            const ttlSeconds = getTtlSeconds(item);
+            const ttlSeconds = getReportedTtlSeconds(context) ?? getTtlSeconds(item);
             const glyph = getStateSymbol(item, reportedRemaining, ttlSeconds);
             return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(reportedRemaining)));
         }

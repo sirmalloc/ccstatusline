@@ -95,6 +95,28 @@ describe('CacheTimer widget', () => {
         expect(new CacheTimerWidget().render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 35:00');
     });
 
+    it.each([
+        { ttl: '1h', configured: '300', remaining: 600, expected: 'Cache: 🔴 10:00' },
+        { ttl: '1h', configured: '300', remaining: 1500, expected: 'Cache: 🟡 25:00' },
+        { ttl: '5m', configured: '3600', remaining: 240, expected: 'Cache: 🟢 4:00' }
+    ])('uses reported $ttl instead of configured $configured seconds for the glyph', ({ ttl, configured, remaining, expected }) => {
+        const now = 1800000000000;
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const context: RenderContext = { data: { prompt_cache: { ttl, expires_at: now / 1000 + remaining } } };
+
+        expect(new CacheTimerWidget().render(item({ metadata: { ttlSeconds: configured } }), context, DEFAULT_SETTINGS)).toBe(expected);
+    });
+
+    it.each([undefined, null, '', 'unknown'])('falls back to configured glyph thresholds for an unavailable reported TTL: %j', (ttl) => {
+        const now = 1800000000000;
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const context: RenderContext = { data: { prompt_cache: { ttl, expires_at: now / 1000 + 240 } } };
+        const widget = new CacheTimerWidget();
+
+        expect(widget.render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 4:00');
+        expect(widget.render(item({ metadata: { ttlSeconds: '3600' } }), context, DEFAULT_SETTINGS)).toBe('Cache: 🔴 4:00');
+    });
+
     it('renders reported expiry without a transcript and preserves raw values and glyph overrides', () => {
         const now = 1800000000000;
         vi.spyOn(Date, 'now').mockReturnValue(now);
