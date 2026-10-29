@@ -32,6 +32,7 @@ export interface MainMenuProps {
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
+    onSelectionChange?: (index: number) => void;
     powerlineFontStatus: PowerlineFontStatus;
     settings: Settings | null;
     installation?: InstallationMetadata;
@@ -213,6 +214,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     isClaudeInstalled,
     hasChanges,
     initialSelection = 0,
+    onSelectionChange,
     powerlineFontStatus,
     settings,
     installation,
@@ -248,6 +250,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                     onSelect(value, index);
                 }}
                 initialSelection={initialSelection}
+                onSelectionChange={(_, index) => onSelectionChange?.(index)}
             />
         </Box>
     );

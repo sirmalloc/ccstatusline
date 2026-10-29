@@ -32,6 +32,7 @@ import {
     withWidgetSpeedWindowSeconds
 } from '../../utils/speed-window';
 
+import { BlinkingCursor } from './BlinkingCursor';
 import { makeModifierText } from './editor-display';
 import { isHidden } from './hideable';
 import { formatRawOrLabeledValue } from './raw-or-labeled';
@@ -95,6 +96,10 @@ function calculateSpeed(kind: SpeedWidgetKind, metrics: SpeedMetrics): number | 
 
 export function getSpeedWidgetDisplayName(kind: SpeedWidgetKind): string {
     return SPEED_WIDGET_CONFIG[kind].displayName;
+}
+
+export function getSpeedWidgetLabel(kind: SpeedWidgetKind): string {
+    return SPEED_WIDGET_CONFIG[kind].label;
 }
 
 export function getSpeedWidgetDescription(kind: SpeedWidgetKind): string {
@@ -205,7 +210,7 @@ const SpeedWindowEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, on
                     {' '}
                 </Text>
                 <Text>{windowInput}</Text>
-                <Text backgroundColor='gray' color='black'>{' '}</Text>
+                <BlinkingCursor>{' '}</BlinkingCursor>
             </Box>
             <Text dimColor>0 disables window mode and averages the full session. Press Enter to save, ESC to cancel.</Text>
         </Box>

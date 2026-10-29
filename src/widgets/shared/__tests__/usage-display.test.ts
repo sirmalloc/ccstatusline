@@ -7,6 +7,7 @@ import {
 import type { WidgetItem } from '../../../types/Widget';
 import {
     cycleUsageDisplayMode,
+    isAtSessionLimit,
     makeSliderBar
 } from '../usage-display';
 
@@ -88,5 +89,30 @@ describe('cycleUsageDisplayMode with slider', () => {
         expect(third.metadata?.cursor).toBe('true');
         expect(fourth.metadata?.cursor).toBe('true');
         expect(fifth.metadata?.cursor).toBeUndefined();
+    });
+});
+
+// Block Usage's at-limit and Block Reset Timer's under-limit states both read
+// this, so the two always swap at the same render
+describe('isAtSessionLimit', () => {
+    it.each([
+        ['under 100%', { sessionUsage: 60 }, false],
+        ['just under 100%, which a whole-number percent shows as 100%', { sessionUsage: 99.7 }, false],
+        ['at 100%', { sessionUsage: 100 }, true],
+        ['over 100%', { sessionUsage: 100.4 }, true],
+        ['unknown', {}, false],
+        ['the usage API at 100% while the payload lags', { sessionUsage: 97, apiSessionUsage: 100 }, true],
+        ['the usage API under 100% after the payload reached it', { sessionUsage: 100, apiSessionUsage: 2 }, false]
+    ])('is %s → %s', (_label, usageData, expected) => {
+        const payloadPercent = 'sessionUsage' in usageData ? usageData.sessionUsage : undefined;
+
+        expect(isAtSessionLimit({ usageData, data: { rate_limits: { five_hour: { used_percentage: payloadPercent } } } })).toBe(expected);
+    });
+
+    // Merged usage data keeps an API percent prefetch rejected, as stale or
+    // from a block that has since reset, when the payload has none of its own
+    it('isn\'t at 100% from an API percent prefetch rejected', () => {
+        expect(isAtSessionLimit({ usageData: { sessionUsage: 100 }, data: { rate_limits: { five_hour: { resets_at: 1 } } } })).toBe(false);
+        expect(isAtSessionLimit({ usageData: { sessionUsage: 100 } })).toBe(false);
     });
 });

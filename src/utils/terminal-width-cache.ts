@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 const CACHE_SCHEMA_VERSION = 1 as const;
 const PRUNE_AFTER_MS = 60 * 60 * 1000;

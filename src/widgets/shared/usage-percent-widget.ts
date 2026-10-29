@@ -40,9 +40,9 @@ import {
     toggleUsageInverted
 } from './usage-display';
 
-export type UsagePercentWidgetKind = 'session' | 'weekly' | 'weekly-sonnet' | 'weekly-opus' | 'fable-weekly';
+export type UsagePercentWidgetKind = 'session' | 'weekly' | 'weekly-sonnet' | 'weekly-opus' | 'fable-weekly' | 'spend-limit';
 
-type UsagePercentField = 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage' | 'fableUsage';
+type UsagePercentField = 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage' | 'fableUsage' | 'spendLimitUsage';
 
 interface UsageCursorOptions { cursorPercent: number }
 
@@ -52,13 +52,15 @@ interface UsagePercentWidgetKindConfig {
     description: string;
     previewPercent: number;
     usageField: UsagePercentField;
+    // The value comes from the statusline payload, so usage API errors say nothing about it.
+    ignoreApiError?: boolean;
 }
 
 const USAGE_PERCENT_WIDGET_CONFIG: Record<UsagePercentWidgetKind, UsagePercentWidgetKindConfig> = {
     'session': {
-        label: 'Session: ',
-        displayName: 'Session Usage',
-        description: 'Shows daily/session API usage percentage',
+        label: '5h: ',
+        displayName: 'Block Usage',
+        description: 'Shows the current 5-hour block\'s usage percentage',
         previewPercent: 20,
         usageField: 'sessionUsage'
     },
@@ -89,6 +91,14 @@ const USAGE_PERCENT_WIDGET_CONFIG: Record<UsagePercentWidgetKind, UsagePercentWi
         description: 'Shows Fable-only weekly usage percentage',
         previewPercent: 4,
         usageField: 'fableUsage'
+    },
+    'spend-limit': {
+        label: 'Spend Limit: ',
+        displayName: 'Spend Limit Usage',
+        description: 'Shows the percentage of your Claude apps gateway spend limit used',
+        previewPercent: 40,
+        usageField: 'spendLimitUsage',
+        ignoreApiError: true
     }
 };
 
@@ -106,6 +116,10 @@ function resolveUsageWindow(kind: UsagePercentWidgetKind, data: RenderUsageData,
     }
     if (kind === 'weekly-opus') {
         return resolveWeeklyOpusUsageWindow(data);
+    }
+    if (kind === 'spend-limit') {
+        // The payload does not say how long the limit's period is, so there is no window to place a cursor in.
+        return null;
     }
     return resolveFableUsageWindow(data);
 }
@@ -139,6 +153,10 @@ export function getUsagePercentWidgetDisplayName(kind: UsagePercentWidgetKind): 
     return USAGE_PERCENT_WIDGET_CONFIG[kind].displayName;
 }
 
+export function getUsagePercentWidgetLabel(kind: UsagePercentWidgetKind): string {
+    return USAGE_PERCENT_WIDGET_CONFIG[kind].label;
+}
+
 export function getUsagePercentWidgetDescription(kind: UsagePercentWidgetKind): string {
     return USAGE_PERCENT_WIDGET_CONFIG[kind].description;
 }
@@ -146,7 +164,7 @@ export function getUsagePercentWidgetDescription(kind: UsagePercentWidgetKind): 
 export function getUsagePercentWidgetEditorDisplay(kind: UsagePercentWidgetKind, item: WidgetItem): WidgetEditorDisplay {
     return {
         displayText: getUsagePercentWidgetDisplayName(kind),
-        modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true })
+        modifierText: getUsageDisplayModifierText(item, { showUsageDirection: true, includeCursor: true })
     };
 }
 
@@ -185,7 +203,7 @@ export function renderUsagePercentWidgetValue(
     const data: RenderUsageData = context.usageData ?? {};
     const usagePercent = data[config.usageField];
     if (usagePercent === undefined) {
-        if (data.error) {
+        if (data.error && !config.ignoreApiError) {
             return isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)
                 ? null
                 : getUsageErrorMessage(data.error);

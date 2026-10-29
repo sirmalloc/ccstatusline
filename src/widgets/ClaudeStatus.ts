@@ -12,15 +12,23 @@ import type {
     ClaudeStatusColorKey
 } from '../utils/claude-service-status';
 import {
+    CLAUDE_STATUS_PAGE_URL,
     computeIncidentHistoryBuckets,
     getClaudeStatusFgCode,
     isClaudeStatusHistoryEnabled
 } from '../utils/claude-service-status';
+import { renderOsc8Link } from '../utils/hyperlink';
 
+import {
+    isMetadataFlagEnabled,
+    toggleMetadataFlag
+} from './shared/metadata';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 const LABEL = 'Claude: ';
 const HISTORY_BAR_CHAR = '▮';
+const LINK_KEY = 'linkToStatusPage';
+const TOGGLE_LINK_ACTION = 'toggle-link';
 
 const INDICATOR_TEXT: Record<string, string> = {
     none: 'ok',
@@ -52,15 +60,25 @@ export class ClaudeStatusWidget implements Widget {
     getDescription(): string { return 'Shows Claude service status from status.claude.com with an optional 48h incident history strip'; }
     getDisplayName(): string { return 'Claude Status'; }
     getCategory(): string { return 'Core'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const modifiers: string[] = [];
+        if (isClaudeStatusHistoryEnabled(item))
+            modifiers.push('history');
+        if (isMetadataFlagEnabled(item, LINK_KEY))
+            modifiers.push('status link');
         return {
             displayText: this.getDisplayName(),
-            modifierText: isClaudeStatusHistoryEnabled(item) ? '(history)' : undefined
+            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === TOGGLE_LINK_ACTION) {
+            return toggleMetadataFlag(item, LINK_KEY);
+        }
+
         if (action === 'toggle-history') {
             return {
                 ...item,
@@ -74,7 +92,14 @@ export class ClaudeStatusWidget implements Widget {
         return null;
     }
 
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+    // With the link on, the whole widget, history strip included, opens the
+    // status page; an unknown status too, when the page is most worth a look
+    render(item: WidgetItem, context: RenderContext, settings: Settings): string {
+        const text = this.renderStatus(item, context, settings);
+        return isMetadataFlagEnabled(item, LINK_KEY) ? renderOsc8Link(CLAUDE_STATUS_PAGE_URL, text) : text;
+    }
+
+    private renderStatus(item: WidgetItem, context: RenderContext, settings: Settings): string {
         const showHistory = isClaudeStatusHistoryEnabled(item);
         const colorLevel = getColorLevelString(settings.colorLevel);
         const colorize = (text: string, key: ClaudeStatusColorKey): string => {
@@ -90,11 +115,11 @@ export class ClaudeStatusWidget implements Widget {
 
         if (context.isPreview) {
             if (!showHistory) {
-                return formatRawOrLabeledValue(item, LABEL, 'ok');
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'ok');
             }
             const previewBuckets: ClaudeIncidentImpact[] = ['none', 'none', 'minor', 'none', 'major', 'none', 'critical', 'none'];
             const previewBar = previewBuckets.map(bucket => colorize(HISTORY_BAR_CHAR, bucket)).join('');
-            const previewStatus = colorize(formatRawOrLabeledValue(item, LABEL, 'ok'), 'none');
+            const previewStatus = colorize(formatRawOrLabeledValue(item, this.getLabelPrefix(), 'ok'), 'none');
             return `${previewStatus} ${previewBar}`;
         }
 
@@ -102,21 +127,21 @@ export class ClaudeStatusWidget implements Widget {
         if (!data || data.error || data.indicator === undefined) {
             // Degrade quietly on fetch/parse failures instead of breaking the line.
             if (showHistory) {
-                return colorize(formatRawOrLabeledValue(item, LABEL, '?'), 'unknown');
+                return colorize(formatRawOrLabeledValue(item, this.getLabelPrefix(), '?'), 'unknown');
             }
-            return formatRawOrLabeledValue(item, LABEL, '?');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), '?');
         }
 
         const statusText = INDICATOR_TEXT[data.indicator] ?? data.indicator;
         if (!showHistory) {
-            return formatRawOrLabeledValue(item, LABEL, statusText);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), statusText);
         }
 
         // Color the label together with the status. The renderer deliberately
         // skips its theme foreground while preserving the multi-colored strip,
         // so leaving the label uncolored could make it unreadable in Powerline.
         const coloredStatus = colorize(
-            formatRawOrLabeledValue(item, LABEL, statusText),
+            formatRawOrLabeledValue(item, this.getLabelPrefix(), statusText),
             getIndicatorColorKey(data.indicator)
         );
         const buckets = computeIncidentHistoryBuckets(data.incidents ?? [], Date.now());
@@ -126,7 +151,8 @@ export class ClaudeStatusWidget implements Widget {
 
     getCustomKeybinds(): CustomKeybind[] {
         return [
-            { key: 'h', label: '(h)istory toggle', action: 'toggle-history' }
+            { key: 'h', label: '(h)istory toggle', action: 'toggle-history' },
+            { key: 'l', label: '(l)ink to status page', action: TOGGLE_LINK_ACTION }
         ];
     }
 
