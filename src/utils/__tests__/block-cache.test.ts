@@ -262,6 +262,21 @@ describe('getCachedBlockMetrics integration', () => {
         expect(result).toBeNull();
     });
 
+    it('should recalculate when the cached block starts in the future', async () => {
+        const { getCachedBlockMetrics, writeBlockCache } = await import('../jsonl');
+
+        // Written while the system clock ran ahead, before it was set back
+        const futureStartTime = new Date();
+        futureStartTime.setHours(futureStartTime.getHours() + 2);
+
+        writeBlockCache(futureStartTime);
+
+        const result = getCachedBlockMetrics();
+
+        // Should return null because the block hasn't started and no real JSONL files exist
+        expect(result).toBeNull();
+    });
+
     it('should recalculate when no cache exists', async () => {
         const { getCachedBlockMetrics } = await import('../jsonl');
 
@@ -357,6 +372,22 @@ describe('getCachedBlockMetrics negative caching', () => {
         expect(getCachedBlockMetrics()).toBeNull();
 
         expect(readRawCache().emptyUntil).not.toBe(lapsed);
+    });
+
+    it('scans again when a record reaches further out than one interval', async () => {
+        const { getCachedBlockMetrics } = await import('../jsonl');
+        const cachePath = getBlockCachePath();
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        // Written while the system clock ran ahead, before it was set back
+        const farAhead = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+        fs.writeFileSync(cachePath, JSON.stringify({
+            emptyUntil: farAhead,
+            configDir: path.resolve(process.env.CLAUDE_CONFIG_DIR ?? '')
+        }));
+
+        expect(getCachedBlockMetrics()).toBeNull();
+
+        expect(readRawCache().emptyUntil).not.toBe(farAhead);
     });
 
     it('ignores a record belonging to another config directory', async () => {

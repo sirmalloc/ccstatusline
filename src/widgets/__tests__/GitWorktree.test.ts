@@ -11,8 +11,10 @@ import type {
     RenderContext,
     WidgetItem
 } from '../../types';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { GitWorktreeWidget } from '../GitWorktree';
 
 vi.mock('node:child_process', () => ({
@@ -32,6 +34,7 @@ function render(options: {
     cwd?: string;
     hideNoGit?: boolean;
     isPreview?: boolean;
+    metadata?: Record<string, string>;
     rawValue?: boolean;
 } = {}) {
     const widget = new GitWorktreeWidget();
@@ -39,15 +42,21 @@ function render(options: {
         isPreview: options.isPreview,
         data: options.cwd ? { cwd: options.cwd } : undefined
     };
+    const metadata = {
+        ...options.metadata,
+        ...(options.hideNoGit ? { hide: 'no-git' } : {})
+    };
     const item: WidgetItem = {
         id: 'git-worktree',
         type: 'git-worktree',
         rawValue: options.rawValue,
-        metadata: options.hideNoGit ? { hide: 'no-git' } : undefined
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined
     };
 
     return widget.render(item, context);
 }
+
+mockExecutableResolution();
 
 describe('GitWorktreeWidget', () => {
     beforeEach(() => {
@@ -69,10 +78,10 @@ describe('GitWorktreeWidget', () => {
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('𖠰 some-worktree');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--is-inside-work-tree']);
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['rev-parse', '--git-dir', '--git-common-dir']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--git-dir', '--git-common-dir']);
         expectGitExecOptions(mockExecFileSync.mock.calls[1]?.[2], '/tmp/worktree');
     });
 
@@ -159,5 +168,31 @@ describe('GitWorktreeWidget', () => {
         mockExecFileSync.mockReturnValueOnce('C:\\repo\\worktrees\\some-worktree\nC:\\repo\n');
 
         expect(render()).toBe('𖠰 some-worktree');
+    });
+
+    describe('fish style', () => {
+        it.each([
+            { name: 'collapses the main worktree to its first letter', gitDir: '.git\n/some/path\n', expected: '𖠰 m' },
+            { name: 'keeps the last segment full', gitDir: '/some/path/.git/worktrees/some-dir/some-worktree\n/some/path/.git\n', expected: '𖠰 s/some-worktree' },
+            { name: 'preserves a non-BMP character in a single segment', gitDir: '/some/path/.git/worktrees/🚀launch\n/some/path/.git\n', expected: '𖠰 🚀' },
+            { name: 'preserves non-BMP characters in abbreviated segments', gitDir: '/some/path/.git/worktrees/🚀launch/🧪tests/topic\n/some/path/.git\n', expected: '𖠰 🚀/🧪/topic' }
+        ])('$name', ({ gitDir, expected }) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce(gitDir);
+
+            expect(render({ metadata: { fishStyle: 'true' } })).toBe(expected);
+        });
+
+        it('shows the fish-style modifier and keybind in the editor', () => {
+            const widget = new GitWorktreeWidget();
+
+            expect(widget.getEditorDisplay({ id: 'git-worktree', type: 'git-worktree', metadata: { fishStyle: 'true' } }).modifierText)
+                .toBe('(fish-style)');
+            expect(widget.getCustomKeybinds()).toContainEqual({
+                key: 'f',
+                label: '(f)ish style',
+                action: 'toggle-fish-style'
+            });
+        });
     });
 });

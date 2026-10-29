@@ -63,8 +63,10 @@ describe('calculateContextPercentage', () => {
                 }
             };
 
+            // Input, cache creation and cache read only (30k of 200k): output
+            // tokens aren't in the context, as with Claude Code's used_percentage
             const percentage = calculateContextPercentage(context);
-            expect(percentage).toBe(20);
+            expect(percentage).toBe(15);
         });
 
         it('should return derived percentage metrics from current usage when used_percentage is missing', () => {
@@ -83,7 +85,7 @@ describe('calculateContextPercentage', () => {
             };
 
             expect(calculateContextPercentageMetrics(context)).toEqual({
-                usedPercentage: 20,
+                usedPercentage: 15,
                 windowSize: 200000
             });
         });

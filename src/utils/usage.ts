@@ -1,4 +1,10 @@
-export { fetchUsageData } from './usage-fetch';
+export {
+    fetchAccountEmail,
+    fetchUsageData,
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint,
+    isStaleUsageFallback
+} from './usage-fetch';
 export {
     formatUsageDuration,
     formatUsageResetAt,

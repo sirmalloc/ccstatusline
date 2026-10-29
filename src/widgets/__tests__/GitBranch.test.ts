@@ -1,5 +1,9 @@
 import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
+    afterEach,
     beforeEach,
     describe,
     expect,
@@ -10,8 +14,10 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { expectGitExecOptions } from '../../utils/__tests__/git-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { renderOsc8Link } from '../../utils/hyperlink';
 import { GitBranchWidget } from '../GitBranch';
 
@@ -59,6 +65,8 @@ function render(options: {
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
 
+mockExecutableResolution();
+
 describe('GitBranchWidget', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -85,10 +93,10 @@ describe('GitBranchWidget', () => {
 
         expect(render({ cwd: '/tmp/worktree' })).toBe('⎇ feature/worktree');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['rev-parse', '--is-inside-work-tree']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--is-inside-work-tree']);
         expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2], '/tmp/worktree');
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('git');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['symbolic-ref', 'HEAD']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'symbolic-ref', 'HEAD']);
         expectGitExecOptions(mockExecFileSync.mock.calls[1]?.[2], '/tmp/worktree');
     });
 
@@ -143,18 +151,69 @@ describe('GitBranchWidget', () => {
         ));
     });
 
-    it('should render the short commit on a detached HEAD', () => {
+    it.each(['false', 'true'])('should render the short commit on a detached HEAD (fish style: %s)', (fishStyle) => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
 
-        expect(render({ hideNoGit: true })).toBe('⎇ (ddfb2de)');
-        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual(['rev-parse', '--short', 'HEAD']);
+        expect(render({ hideNoGit: true, metadata: { fishStyle } })).toBe('⎇ (ddfb2de)');
+        expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
+        expect(mockExecFileSync.mock.calls[2]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+    });
+
+    describe.each(['false', 'true'])('in a jj workspace (fish style: %s)', (fishStyle) => {
+        // A jj workspace, with a plain git repo nested in it at code/app
+        let workspaceDir: string;
+
+        beforeEach(() => {
+            workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-git-branch-jj-'));
+            fs.mkdirSync(path.join(workspaceDir, '.jj'));
+            fs.mkdirSync(path.join(workspaceDir, 'code', 'app'), { recursive: true });
+        });
+
+        afterEach(() => {
+            fs.rmSync(workspaceDir, { recursive: true, force: true });
+        });
+
+        // jj keeps git's HEAD detached in a colocated repo, so its commit isn't
+        // one the user checked out: Git Branch reads it as no branch, as before
+        // it showed detached commits
+        it.each([
+            [false, '⎇ no git'],
+            [true, null]
+        ])('should treat a colocated jj repo\'s detached HEAD as no branch (hide no git: %s)', (hideNoGit, expected) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+            mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
+            mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
+
+            expect(render({ hideNoGit, metadata: { fishStyle } })).toBe(expected);
+            expect(mockExecFileSync.mock.calls[2]?.[0]).toBe('jj');
+            expect(mockExecFileSync.mock.calls[3]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--show-toplevel']);
+            expect(mockExecFileSync.mock.calls).toHaveLength(4);
+        });
+
+        // jj finds its workspace from the nearest .jj above, past the git repo's
+        // own root, so `jj root` succeeds here too, but jj doesn't manage this
+        // repo's HEAD
+        it('should render the short commit on a detached HEAD in a git repo nested in it', () => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+            mockExecFileSync.mockReturnValueOnce(`${workspaceDir}\n`);
+            mockExecFileSync.mockReturnValueOnce(`${path.join(workspaceDir, 'code', 'app')}\n`);
+            mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
+
+            expect(render({ hideNoGit: true, metadata: { fishStyle } })).toBe('⎇ (ddfb2de)');
+            expect(mockExecFileSync.mock.calls[4]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--short', 'HEAD']);
+        });
     });
 
     it('should link a detached HEAD to its commit', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
         mockExecFileSync.mockImplementationOnce(() => { throw new Error('fatal: ref HEAD is not a symbolic ref'); });
+        mockExecFileSync.mockImplementationOnce(() => { throw new Error('Error: There is no jj repo in "."'); });
         mockExecFileSync.mockReturnValueOnce('ddfb2de\n');
         mockExecFileSync.mockReturnValueOnce('git@github.com:owner/repo.git');
 
@@ -176,8 +235,9 @@ describe('GitBranchWidget', () => {
         expect(render({ hideNoGit: true })).toBeNull();
     });
 
-    it('should render no git when branch and commit lookups are empty', () => {
+    it('should render no git when branch, jj and commit lookups are empty', () => {
         mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
         mockExecFileSync.mockReturnValueOnce('');
 
@@ -290,6 +350,32 @@ describe('GitBranchWidget', () => {
             const toggled = widget.handleEditorAction('toggle-link', item);
 
             expect(toggled?.metadata).toEqual({ hide: 'no-git' });
+        });
+    });
+
+    describe('fish style', () => {
+        it.each([
+            { name: 'collapses a plain branch to its first letter', branch: 'main', expected: '⎇ m' },
+            { name: 'keeps the last segment full', branch: 'feature/worktree', expected: '⎇ f/worktree' },
+            { name: 'preserves a non-BMP character in a single segment', branch: '🚀launch', expected: '⎇ 🚀' },
+            { name: 'preserves non-BMP characters in abbreviated segments', branch: '🚀launch/🧪tests/topic', expected: '⎇ 🚀/🧪/topic' }
+        ])('$name', ({ branch, expected }) => {
+            mockExecFileSync.mockReturnValueOnce('true\n');
+            mockExecFileSync.mockReturnValueOnce(branch);
+
+            expect(render({ metadata: { fishStyle: 'true' } })).toBe(expected);
+        });
+
+        it('shows the fish-style modifier and keybind in the editor', () => {
+            const widget = new GitBranchWidget();
+
+            expect(widget.getEditorDisplay({ id: 'git-branch', type: 'git-branch', metadata: { fishStyle: 'true' } }).modifierText)
+                .toBe('(fish-style)');
+            expect(widget.getCustomKeybinds()).toContainEqual({
+                key: 'f',
+                label: '(f)ish style',
+                action: 'toggle-fish-style'
+            });
         });
     });
 });

@@ -10,7 +10,9 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { GitConflictsWidget } from '../GitConflicts';
 
 vi.mock('node:child_process', () => ({
@@ -59,9 +61,11 @@ function mockConflictCount(count: number) {
             `100644 hash 1\tconflict-${index}`,
             `100644 hash 2\tconflict-${index}`,
             `100644 hash 3\tconflict-${index}`
-        ].join('\n')).join('\n')
+        ].join('\0') + '\0').join('')
     );
 }
+
+mockExecutableResolution();
 
 describe('GitConflictsWidget', () => {
     beforeEach(() => {
@@ -133,6 +137,16 @@ describe('GitConflictsWidget', () => {
         mockConflictCount(2);
 
         expect(render()).toBe('⚠2');
+    });
+
+    it('counts filenames with repeated spaces separately', () => {
+        mockExecFileSync.mockReturnValueOnce('true\n');
+        mockExecFileSync.mockReturnValueOnce(
+            ['a b.txt', 'a  b.txt'].flatMap(filename => [1, 2, 3].map(stage => `100644 hash ${stage}\t${filename}\0`)).join('')
+        );
+
+        expect(render()).toBe('⚠2');
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'ls-files', '--unmerged', '-z']);
     });
 
     it('renders raw conflicts as a numeric count', () => {
