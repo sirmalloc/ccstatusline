@@ -183,6 +183,10 @@ Claude Code only runs a custom `statusLine` command in a workspace whose trust d
 
 To confirm, look up the project path in `~/.claude.json` under `projects` and check its `hasTrustDialogAccepted` value. Setting it to `true` (or accepting the trust dialog when Claude Code shows it) and starting a new session restores the status line.
 
+### Skills always shows none
+
+The Skills widget reads skill activity recorded by Claude Code hooks, which run your status line command with `--hook`. Saving the configuration adds them only when that command contains `ccstatusline`, since any other command may be another tool's script; the TUI says so when a save leaves them out. If your status line command is a wrapper script that runs ccstatusline, put `ccstatusline` in the script's name (for example `~/.claude/ccstatusline-wrapper.sh`), have it pass its arguments and input on (`ccstatusline "$@"`), and save again.
+
 ## Usage Credentials and Cache
 
 Usage API requests read credentials from the active Claude config directory's `.credentials.json` on Linux and Windows. On macOS, a custom `CLAUDE_CONFIG_DIR` selects its matching Keychain service first, then falls back only to that profile's credentials file. `CLAUDE_SECURESTORAGE_CONFIG_DIR`, when set, overrides the value used to select the Keychain service; an empty value selects the default service lookup. With the default service lookup, ccstatusline tries `Claude Code-credentials`, then matching suffixed services, then the credentials file.
@@ -276,7 +280,7 @@ Common controls in the line editor:
 - `r` toggle raw value (supported widgets)
 - `e` edit the label shown before the value when raw value is off (labeled widgets)
 - `.` cycle precise/compact/whole number formatting (supported widgets)
-- `m` cycle merge mode (`off` → `merge` → `merge no padding`); on the last widget, clear an existing merge
+- `m` cycle merge mode (`off` → `merge` → `merge no padding`); on the last widget, clear an existing merge. A merge joins the widget to the next one. When the next one renders nothing (a widget hidden at zero or without data), the merge carries on past it only if that widget is merged onward too; otherwise it ends there, and the usual separator follows
 - `x` exclude the selected widget and the rest of its line from shared Powerline column widths (shown only when Powerline auto-alignment is enabled)
 - `Esc` go back
 
@@ -339,6 +343,7 @@ Supported states by widget family:
 - **Session Clock**: `zero` hides durations under one minute
 - **Block Timer**: `no-data` hides the `0hr 0m` / empty-bar display when no block is active
 - **Block Reset Timer / Weekly Reset Timer**: `no-data` hides both the `[Loading]` placeholder and the usage-error placeholders while no reset window is available
+- **Block Reset Timer**: `under-limit` hides the timer until the 5-hour block's usage reaches 100%, so the reset countdown appears only once the block's limit is hit. It reads the block's raw percent from the usage API, so a usage percent shown as `100%` after rounding 99.7% still counts as under the limit. The status payload's percent comes from that session's last response and stops moving while the session sits idle, so it's used only when the API can't be reached. The API's answer is cached for 3 minutes and shared by every session. A cached answer from a block that has already reset (the cache outliving the reset, or the API failing since) is ignored, and the payload's percent stands in until a fresh one arrives.
 - **Input/Output/Total Speed**: `no-data` hides the `—` placeholder when no speed data exists
 - **Output Style**: `default-value` hides the widget when the style is `default`
 - **Compaction Counter**: `zero` hides the counter before any compaction occurs
