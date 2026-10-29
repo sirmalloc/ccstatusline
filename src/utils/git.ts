@@ -260,7 +260,7 @@ function getRepositoryFilterOverrideArgs(cwd: string | undefined): string[] | nu
  * files, none of the repository's own filter drivers or external diff tools.
  * Throws when git fails, or when the repository's filters can't be turned off.
  */
-export function execGit(args: string[], cwd: string | undefined): string {
+export function execGit(args: string[], cwd: string | undefined, encoding: 'utf8' | 'latin1' = 'utf8'): string {
     const [subcommand = '', ...rest] = args;
     const workTreeArgs = WORK_TREE_COMMAND_ARGS.get(subcommand);
     const filterArgs = workTreeArgs ? getRepositoryFilterOverrideArgs(cwd) : [];
@@ -271,7 +271,7 @@ export function execGit(args: string[], cwd: string | undefined): string {
     return execFileSync(
         resolveExecutable('git'),
         [...GIT_HARDENING_ARGS, ...filterArgs, subcommand, ...(workTreeArgs ?? []), ...rest],
-        gitExecOptions(cwd)
+        { ...gitExecOptions(cwd), encoding }
     );
 }
 
@@ -515,8 +515,14 @@ export function runGit(command: string, context: RenderContext): string | null {
 }
 
 export function runGitArgs(args: string[], context: RenderContext, cacheCommand?: string): string | null {
+    return runGitArgsEncoded(args, context, cacheCommand, 'utf8');
+}
+
+function runGitArgsEncoded(args: string[], context: RenderContext, cacheCommand: string | undefined, encoding: 'utf8' | 'latin1'): string | null {
     const cwd = resolveGitCwd(context);
-    const cacheToken = cacheCommand ?? args.join('\0');
+    const commandToken = cacheCommand ?? args.join('\0');
+    // Byte-preserving output must never reuse an older, lossy UTF-8 entry.
+    const cacheToken = encoding === 'utf8' ? commandToken : `${encoding}\0${commandToken}`;
     const memoryCacheKey = `${cacheToken}|${cwd ?? ''}`;
     const persistentCacheKey = cacheToken;
     const metadata = getGitRepoMetadata(cwd);
@@ -543,7 +549,8 @@ export function runGitArgs(args: string[], context: RenderContext, cacheCommand?
 
     let result: string | null;
     try {
-        const output = execGit(args, cwd).trimEnd();
+        const rawOutput = execGit(args, cwd, encoding);
+        const output = encoding === 'utf8' ? rawOutput.trimEnd() : rawOutput;
         result = output.length > 0 ? output : null;
     } catch {
         result = null;
@@ -700,14 +707,16 @@ export function getGitAheadBehind(context: RenderContext): GitAheadBehind | null
 }
 
 export function getGitConflictCount(context: RenderContext): number {
-    const output = runGit('ls-files --unmerged', context);
+    // Latin-1 maps each byte to a distinct code point, preserving arbitrary Git
+    // pathnames through string comparisons and the JSON cache. It is not display text.
+    const output = runGitArgsEncoded(['ls-files', '--unmerged', '-z'], context, undefined, 'latin1');
     if (!output)
         return 0;
 
-    // Count unique file paths (unmerged files appear 3 times in output)
-    const files = new Set(output.split('\n').map((line) => {
-        const parts = line.split(/\s+/).slice(3);
-        return parts.join(' ');
+    // Preserve exact paths while deduplicating the index stages for each file.
+    const files = new Set(output.split('\0').map((entry) => {
+        const separator = entry.indexOf('\t');
+        return separator === -1 ? '' : entry.slice(separator + 1);
     }).filter(path => path.length > 0));
     return files.size;
 }
