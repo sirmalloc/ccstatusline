@@ -7,6 +7,32 @@ import {
 import { StatusJSONSchema } from '../StatusJSON';
 
 describe('StatusJSONSchema numeric coercion', () => {
+    it('coerces prompt cache numeric fields while preserving the reported state', () => {
+        const result = StatusJSONSchema.parse({
+            prompt_cache: {
+                warm: true,
+                caching_observed: true,
+                ttl: '1h',
+                expires_at: '1800000300',
+                hit_ratio: '0.97',
+                recache_tokens_if_cold: '200000'
+            }
+        });
+
+        expect(result.prompt_cache).toEqual({
+            warm: true,
+            caching_observed: true,
+            ttl: '1h',
+            expires_at: 1800000300,
+            hit_ratio: 0.97,
+            recache_tokens_if_cold: 200000
+        });
+    });
+
+    it.each([undefined, null, {}, { warm: null, caching_observed: null, expires_at: null }])('accepts optional prompt cache data: %j', (prompt_cache) => {
+        expect(StatusJSONSchema.parse({ prompt_cache }).prompt_cache).toEqual(prompt_cache);
+    });
+
     it('coerces numeric strings to numbers', () => {
         const result = StatusJSONSchema.safeParse({
             cost: {
