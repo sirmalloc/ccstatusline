@@ -18,6 +18,7 @@ import type {
 import type { WidgetHookDef } from '../utils/hooks';
 import { shouldInsertInput } from '../utils/input-guards';
 
+import { BlinkingCursor } from './shared/BlinkingCursor';
 import { makeModifierText } from './shared/editor-display';
 import { isHidden } from './shared/hideable';
 import { removeMetadataKeys } from './shared/metadata';
@@ -31,7 +32,7 @@ const EDIT_LIST_LIMIT_ACTION = 'edit-list-limit';
 const EMPTY_HIDEABLE_STATE: HideableState = { key: 'empty', label: 'when no skills have been used' };
 
 function parseListLimit(item: WidgetItem): number {
-    const parsed = parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
+    const parsed = Number.parseInt(item.metadata?.[LIST_LIMIT_KEY] ?? '0', 10);
     if (Number.isNaN(parsed) || parsed < 0) {
         return 0;
     }
@@ -41,7 +42,6 @@ function parseListLimit(item: WidgetItem): number {
 function setListLimit(item: WidgetItem, limit: number): WidgetItem {
     if (limit <= 0) {
         const { [LIST_LIMIT_KEY]: removedLimit, ...restMetadata } = item.metadata ?? {};
-        void removedLimit;
         return {
             ...item,
             metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined
@@ -174,7 +174,7 @@ const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCance
         }
 
         if (key.return) {
-            const parsed = parseInt(limitInput, 10);
+            const parsed = Number.parseInt(limitInput, 10);
             const limit = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
             onComplete(setListLimit(widget, limit));
         } else if (key.escape) {
@@ -192,7 +192,7 @@ const SkillsEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCance
                 <Box>
                     <Text>Enter max skills to show (0 for unlimited): </Text>
                     <Text>{limitInput}</Text>
-                    <Text backgroundColor='gray' color='black'>{' '}</Text>
+                    <BlinkingCursor>{' '}</BlinkingCursor>
                 </Box>
                 <Text dimColor>Press Enter to save, ESC to cancel</Text>
             </Box>

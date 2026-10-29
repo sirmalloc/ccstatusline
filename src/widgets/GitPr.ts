@@ -114,7 +114,6 @@ export class GitPrWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        void settings;
         const showStatus = !isHidden(item, STATUS_HIDEABLE_STATE.key);
         const showTitle = !isHidden(item, TITLE_HIDEABLE_STATE.key);
 

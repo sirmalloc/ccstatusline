@@ -76,7 +76,8 @@ export class GitRootDirWidget implements Widget {
         const ideLinkMode = this.getIdeLinkMode(item);
 
         if (context.isPreview) {
-            const name = 'my-repo';
+            // With a width limit, a sample long enough for the limit to show
+            const name = applyMaxWidth(item.maxWidth ? 'my-long-repository-name' : 'my-repo', item.maxWidth);
             return ideLinkMode ? renderOsc8Link(buildIdeFileUrl('/Users/example/my-repo', ideLinkMode), name) : name;
         }
 
@@ -149,9 +150,6 @@ export class GitRootDirWidget implements Widget {
             [LEGACY_CURSOR_LINK_KEY]: removedLegacyLink,
             ...restMetadata
         } = item.metadata ?? {};
-
-        void removedIdeLink;
-        void removedLegacyLink;
 
         return {
             ...item,

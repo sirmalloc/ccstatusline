@@ -4,6 +4,7 @@ import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
+    HideableState,
     Widget,
     WidgetEditorDisplay,
     WidgetEditorProps,
@@ -20,6 +21,7 @@ import {
     resolveUsageWindowWithFallback
 } from '../utils/usage';
 
+import { isHidden } from './shared/hideable';
 import {
     LOCALE_EDITOR_ACTION,
     renderUsageLocaleEditor
@@ -31,6 +33,8 @@ import {
     renderUsageTimezoneEditor
 } from './shared/timezone-editor';
 import {
+    SESSION_UNDER_LIMIT_HIDEABLE_STATE,
+    USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
     getUsageDisplayModifierText,
@@ -38,6 +42,7 @@ import {
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
+    isAtSessionLimit,
     isUsage12HourClock,
     isUsageCompact,
     isUsageDateMode,
@@ -51,6 +56,9 @@ import {
     toggleUsageInverted
 } from './shared/usage-display';
 
+const LABEL = 'Reset: ';
+const BAR_LABEL = 'Reset ';
+
 const BLOCK_RESET_PREVIEW_AT = '2026-03-12T08:30:00.000Z';
 const USAGE_TIMER_LOADING_MESSAGE = '[Loading]';
 
@@ -59,12 +67,20 @@ export class BlockResetTimerWidget implements Widget {
     getDescription(): string { return 'Shows time remaining until current 5hr block reset window'; }
     getDisplayName(): string { return 'Block Reset Timer'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(item: WidgetItem): string {
+        const displayMode = getUsageDisplayMode(item);
+        return isUsageProgressMode(displayMode) || isUsageSliderMode(displayMode) ? BAR_LABEL : LABEL;
+    }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return {
             displayText: this.getDisplayName(),
             modifierText: getUsageDisplayModifierText(item, { includeCompact: true, includeDate: true })
         };
+    }
+
+    getHideableStates(): HideableState[] {
+        return [USAGE_NO_DATA_HIDEABLE_STATE, SESSION_UNDER_LIMIT_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -104,7 +120,7 @@ export class BlockResetTimerWidget implements Widget {
             if (isUsageProgressMode(displayMode)) {
                 const barWidth = getUsageProgressBarWidth(displayMode);
                 const progressBar = makeTimerProgressBar(previewPercent, barWidth);
-                return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${formatPercent(previewPercent, format)}`);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(previewPercent, format)}`);
             }
 
             if (isUsageSliderMode(displayMode)) {
@@ -112,7 +128,7 @@ export class BlockResetTimerWidget implements Widget {
                 const sliderDisplay = displayMode === 'slider'
                     ? `${slider} ${formatPercent(previewPercent, format)}`
                     : slider;
-                return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderDisplay);
             }
 
             if (dateMode) {
@@ -123,28 +139,35 @@ export class BlockResetTimerWidget implements Widget {
                     getUsageLocale(item),
                     isUsage12HourClock(item)
                 );
-                return formatRawOrLabeledValue(item, 'Reset: ', resetAt ?? (compact ? '03-12 08:30Z' : '2026-03-12 08:30 UTC'));
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), resetAt ?? (compact ? '03-12 08:30Z' : '2026-03-12 08:30 UTC'));
             }
 
-            return formatRawOrLabeledValue(item, 'Reset: ', compact ? '4h30m' : '4hr 30m');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), compact ? '4h30m' : '4hr 30m');
         }
 
         const usageData = context.usageData ?? {};
+        if (!isAtSessionLimit(context) && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
+            return null;
+        }
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {
+            if (isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)) {
+                return null;
+            }
+
             if (usageData.error) {
                 return getUsageErrorMessage(usageData.error);
             }
 
-            return formatRawOrLabeledValue(item, 'Reset: ', USAGE_TIMER_LOADING_MESSAGE);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), USAGE_TIMER_LOADING_MESSAGE);
         }
 
         if (isUsageProgressMode(displayMode)) {
             const barWidth = getUsageProgressBarWidth(displayMode);
             const percent = inverted ? window.remainingPercent : window.elapsedPercent;
             const progressBar = makeTimerProgressBar(percent, barWidth);
-            return formatRawOrLabeledValue(item, 'Reset ', `[${progressBar}] ${formatPercent(percent, format)}`);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), `[${progressBar}] ${formatPercent(percent, format)}`);
         }
 
         if (isUsageSliderMode(displayMode)) {
@@ -153,7 +176,7 @@ export class BlockResetTimerWidget implements Widget {
             const sliderDisplay = displayMode === 'slider'
                 ? `${slider} ${formatPercent(percent, format)}`
                 : slider;
-            return formatRawOrLabeledValue(item, 'Reset ', sliderDisplay);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderDisplay);
         }
 
         if (dateMode) {
@@ -161,12 +184,12 @@ export class BlockResetTimerWidget implements Widget {
             const locale = getUsageLocale(item);
             const resetAt = formatUsageResetAt(usageData.sessionResetAt, compact, timezone, locale, isUsage12HourClock(item));
             if (resetAt) {
-                return formatRawOrLabeledValue(item, 'Reset: ', resetAt);
+                return formatRawOrLabeledValue(item, this.getLabelPrefix(item), resetAt);
             }
         }
 
         const remainingTime = formatUsageDuration(window.remainingMs, compact);
-        return formatRawOrLabeledValue(item, 'Reset: ', remainingTime);
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(item), remainingTime);
     }
 
     getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {

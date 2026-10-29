@@ -80,6 +80,7 @@ describe('WeeklyOpusUsageWidget', () => {
         expectedRawProgress: '[███████░░░░░░░░░] 42.1%',
         expectedRawTime: '42.1%',
         expectedTime: 'Weekly Opus: 42.1%',
+        expectedWholePercentTime: 'Weekly Opus: 42%',
         modifierItem: {
             id: 'weekly-opus',
             type: 'weekly-opus-usage',

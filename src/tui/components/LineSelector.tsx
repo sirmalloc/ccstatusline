@@ -12,6 +12,8 @@ import React, {
 
 import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { getPlainInput } from '../../utils/input-guards';
+import { moveItem } from '../../utils/move-item';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { List } from './List';
@@ -22,6 +24,7 @@ interface LineSelectorProps {
     onBack: () => void;
     onLinesUpdate: (lines: WidgetItem[][]) => void;
     initialSelection?: number;
+    onSelectionChange?: (index: number) => void;
     title?: string;
     blockIfPowerlineActive?: boolean;
     settings?: Settings;
@@ -34,6 +37,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     onBack,
     onLinesUpdate,
     initialSelection = 0,
+    onSelectionChange,
     title,
     blockIfPowerlineActive = false,
     settings,
@@ -51,6 +55,10 @@ const LineSelector: React.FC<LineSelectorProps> = ({
     useEffect(() => {
         setSelectedIndex(initialSelection);
     }, [initialSelection]);
+
+    useEffect(() => {
+        onSelectionChange?.(selectedIndex);
+    }, [onSelectionChange, selectedIndex]);
 
     const selectedLine = useMemo(
         () => localLines[selectedIndex],
@@ -86,6 +94,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
     // Handle keyboard input
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (showDeleteDialog) {
             return;
         }
@@ -98,24 +107,14 @@ const LineSelector: React.FC<LineSelectorProps> = ({
 
         if (moveMode) {
             if (key.upArrow && localLines.length > 1) {
-                const newLines = [...localLines];
                 const targetIndex = selectedIndex - 1 < 0 ? localLines.length - 1 : selectedIndex - 1;
-                const temp = newLines[selectedIndex];
-                const prev = newLines[targetIndex];
-                if (temp && prev) {
-                    [newLines[selectedIndex], newLines[targetIndex]] = [prev, temp];
-                }
+                const newLines = moveItem(localLines, selectedIndex, targetIndex);
                 setLocalLines(newLines);
                 onLinesUpdate(newLines);
                 setSelectedIndex(targetIndex);
             } else if (key.downArrow && localLines.length > 1) {
-                const newLines = [...localLines];
                 const targetIndex = selectedIndex + 1 > localLines.length - 1 ? 0 : selectedIndex + 1;
-                const temp = newLines[selectedIndex];
-                const next = newLines[targetIndex];
-                if (temp && next) {
-                    [newLines[selectedIndex], newLines[targetIndex]] = [next, temp];
-                }
+                const newLines = moveItem(localLines, selectedIndex, targetIndex);
                 setLocalLines(newLines);
                 onLinesUpdate(newLines);
                 setSelectedIndex(targetIndex);
@@ -125,7 +124,7 @@ const LineSelector: React.FC<LineSelectorProps> = ({
             return;
         }
 
-        switch (input) {
+        switch (shortcut) {
             case 'a':
                 if (allowEditing) {
                     appendLine();

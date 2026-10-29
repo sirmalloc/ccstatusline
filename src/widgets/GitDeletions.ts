@@ -1,55 +1,27 @@
-import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
+import type { WidgetItem } from '../types/Widget';
+import type { GitChangeCounts } from '../utils/git';
+
+import { GitLineCountWidget } from './shared/git-count-widget';
 import {
-    getGitChangeCounts,
-    isInsideGitWorkTree
-} from '../utils/git';
+    getSlotSymbol,
+    type SymbolSlot
+} from './shared/symbol-override';
 
-import {
-    NO_GIT_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+const DELETIONS_SLOT: SymbolSlot = { id: 'symbolDeletions', label: 'Deletions', defaultSymbol: '-' };
 
-const ZERO_HIDEABLE_STATE: HideableState = { key: 'zero', label: 'when the deletion count is zero' };
+export class GitDeletionsWidget extends GitLineCountWidget {
+    protected readonly zeroLabel = 'when the deletion count is zero';
+    protected readonly slots = [DELETIONS_SLOT];
 
-export class GitDeletionsWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
     getDescription(): string { return 'Shows git deletions count'; }
     getDisplayName(): string { return 'Git Deletions'; }
-    getCategory(): string { return 'Git'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected isZero(changes: GitChangeCounts): boolean {
+        return changes.deletions === 0;
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_GIT_HIDEABLE_STATE, ZERO_HIDEABLE_STATE];
+    protected formatCounts(item: WidgetItem, changes: GitChangeCounts): string {
+        return `${getSlotSymbol(item, DELETIONS_SLOT)}${changes.deletions}`;
     }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return '-10';
-        }
-
-        if (!isInsideGitWorkTree(context)) {
-            return hideNoGit ? null : '(no git)';
-        }
-
-        const changes = getGitChangeCounts(context);
-        if (changes.deletions === 0 && isHidden(item, ZERO_HIDEABLE_STATE.key)) {
-            return null;
-        }
-
-        return `-${changes.deletions}`;
-    }
-
-    supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
 }

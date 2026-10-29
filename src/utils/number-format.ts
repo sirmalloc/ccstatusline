@@ -43,7 +43,6 @@ export function cycleNumberStyle(item: WidgetItem): WidgetItem {
 
     if (nextStyle === undefined && decimals === undefined) {
         const { numberFormat, ...restItem } = item;
-        void numberFormat; // Intentionally unused
         return restItem;
     }
 

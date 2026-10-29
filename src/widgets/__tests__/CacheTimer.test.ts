@@ -1,12 +1,13 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
     afterEach,
     beforeEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
 import type { RenderContext } from '../../types';
@@ -24,6 +25,17 @@ const sidechain = (type: string, seconds: number): string => JSON.stringify({ ty
 const apiError = (seconds: number): string => JSON.stringify({ type: 'assistant', timestamp: isoAgo(seconds), isApiErrorMessage: true });
 const assistantUsage = (seconds: number, usage: object): string => JSON.stringify({ type: 'assistant', timestamp: isoAgo(seconds), message: { usage } });
 const noCacheUsage = { cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+// Synthetic user-role rows Claude Code writes without sending a request:
+// Esc-interrupt markers and local slash-command bookkeeping.
+const userText = (text: string): string => JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } });
+const userString = (content: string, extra: object = {}): string => JSON.stringify({ type: 'user', message: { role: 'user', content }, ...extra });
+const interrupted = userText('[Request interrupted by user]');
+const interruptedToolUse = userText('[Request interrupted by user for tool use]');
+const commandCaveat = userString('<local-command-caveat>Caveat: synthetic</local-command-caveat>', { isMeta: true });
+const localCommand = userString('<command-name>/cost</command-name>\n<command-message>cost</command-message>\n<command-args></command-args>');
+const localStdout = userString('<local-command-stdout>synthetic output</local-command-stdout>');
+const promptCommand = userString('<command-message>review</command-message>\n<command-name>/review</command-name>');
+const promptExpansion = userString('Expanded command prompt', { isMeta: true });
 
 describe('CacheTimer widget', () => {
     let tmpDir: string;
@@ -34,6 +46,7 @@ describe('CacheTimer widget', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -71,6 +84,49 @@ describe('CacheTimer widget', () => {
         const context = transcriptContext([assistant(60), pendingUser]);
         expect(widget.render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
         expect(widget.render(item(hidden), context, DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
+    });
+
+    it('uses reported expiry instead of a resumed transcript and the configured TTL', () => {
+        const now = 1800000000000;
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const context = transcriptContext([assistant(10800), pendingUser]);
+        context.data = { ...context.data, prompt_cache: { warm: true, caching_observed: true, ttl: '1h', expires_at: now / 1000 + 2100 } };
+
+        expect(new CacheTimerWidget().render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🟢 35:00');
+    });
+
+    it('renders reported expiry without a transcript and preserves raw values and glyph overrides', () => {
+        const now = 1800000000000;
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        const context: RenderContext = { data: { prompt_cache: { expires_at: now / 1000 + 240 } } };
+
+        expect(new CacheTimerWidget().render(item({ rawValue: true }), context, DEFAULT_SETTINGS)).toBe('🟢 4:00');
+        expect(new CacheTimerWidget().render(item({ rawValue: true, metadata: { symbolFresh: '+' } }), context, DEFAULT_SETTINGS)).toBe('+ 4:00');
+    });
+
+    it.each([
+        { warm: false },
+        { warm: false, expires_at: 1800000300 },
+        { warm: true, expires_at: 1799999999 }
+    ])('renders a reported cold cache before checking the transcript: %j', (prompt_cache) => {
+        vi.spyOn(Date, 'now').mockReturnValue(1800000000000);
+        const context: RenderContext = { data: { prompt_cache } };
+
+        expect(new CacheTimerWidget().render(item(hidden), context, DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+    });
+
+    it.each([
+        null,
+        {},
+        { caching_observed: false, warm: false, expires_at: 0 },
+        { expires_at: null },
+        { expires_at: Number.NaN },
+        { expires_at: Number.POSITIVE_INFINITY }
+    ])('falls back to the transcript when reported cache state is unavailable: %j', (prompt_cache) => {
+        const context = transcriptContext([pendingUser]);
+        context.data = { ...context.data, prompt_cache };
+
+        expect(new CacheTimerWidget().render(item(), context, DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
     });
 
     const buckets = [
@@ -136,6 +192,27 @@ describe('CacheTimer widget', () => {
         const widget = new CacheTimerWidget();
         expect(widget.render(item(), transcriptContext([pendingUser, apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
         expect(widget.render(item(), transcriptContext([assistant(400), pendingUser, apiError(5)]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+    });
+
+    it('does not report HOT after a turn interrupted with Esc', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext([assistant(400), pendingUser, interrupted]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        expect(widget.render(item(), transcriptContext([assistant(400), pendingUser, interruptedToolUse]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        expect(widget.render(item(), transcriptContext([pendingUser, interrupted]), DEFAULT_SETTINGS)).toBe('Cache: n/a');
+    });
+
+    it('does not report HOT after a local slash command', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext([assistant(400), commandCaveat, localCommand, localStdout]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+        // Some local commands record no stdout row at all.
+        expect(widget.render(item(), transcriptContext([assistant(400), commandCaveat, localCommand]), DEFAULT_SETTINGS)).toBe('Cache: ❄️ COLD');
+    });
+
+    it('still reports HOT for a prompt slash command that is sent to the model', () => {
+        const widget = new CacheTimerWidget();
+        expect(widget.render(item(), transcriptContext([assistant(60), promptCommand, promptExpansion]), DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
+        // A new prompt after an interrupt is in flight again.
+        expect(widget.render(item(), transcriptContext([assistant(60), interrupted, pendingUser]), DEFAULT_SETTINGS)).toBe('Cache: 🔥 HOT');
     });
 
     it('starts the countdown from rows with cache reads or cache writes', () => {

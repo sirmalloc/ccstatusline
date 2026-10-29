@@ -1,49 +1,44 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
+    CustomKeybind,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    getJjChangeCounts,
-    isInsideJjRepo
-} from '../utils/jj';
+import { getJjChangeCounts } from '../utils/jj';
 
+import { JjWidgetBase } from './shared/jj-widget-base';
 import {
-    NO_JJ_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+    getSlotSymbol,
+    getSymbolKeybind,
+    renderSymbolSlotsEditor,
+    type SymbolSlot
+} from './shared/symbol-override';
 
-export class JjInsertionsWidget implements Widget {
+const INSERTIONS_SLOT: SymbolSlot = { id: 'symbolInsertions', label: 'Insertions', defaultSymbol: '+' };
+
+export class JjInsertionsWidget extends JjWidgetBase<number> {
+    protected readonly previewValue = 42;
+    protected readonly noJjText = '(no jj)';
+
     getDefaultColor(): string { return 'green'; }
     getDescription(): string { return 'Shows jujutsu insertions count'; }
     getDisplayName(): string { return 'JJ Insertions'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected getValue(context: RenderContext): number {
+        return getJjChangeCounts(context).insertions;
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_JJ_HIDEABLE_STATE];
+    protected formatValue(item: WidgetItem, insertions: number): string {
+        return `${getSlotSymbol(item, INSERTIONS_SLOT)}${insertions}`;
     }
 
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
+    getCustomKeybinds(): CustomKeybind[] {
+        return [getSymbolKeybind()];
+    }
 
-        if (context.isPreview) {
-            return '+42';
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : '(no jj)';
-        }
-
-        const changes = getJjChangeCounts(context);
-        return `+${changes.insertions}`;
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolSlotsEditor(props, [INSERTIONS_SLOT]);
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
 }

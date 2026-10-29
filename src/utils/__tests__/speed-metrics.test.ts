@@ -68,6 +68,13 @@ describe('formatSpeed', () => {
         expect(formatSpeed(1000)).toBe('1.0k t/s');
     });
 
+    it('switches to k notation once the value would round up to 1000', () => {
+        // 999.95–999.99 previously rendered as "1000.0 t/s" instead of "1.0k t/s".
+        expect(formatSpeed(999.96)).toBe('1.0k t/s');
+        expect(formatSpeed(999.99)).toBe('1.0k t/s');
+        expect(formatSpeed(999.94)).toBe('999.9 t/s');
+    });
+
     it('formats high speeds in k notation with one decimal place', () => {
         expect(formatSpeed(1250)).toBe('1.3k t/s');
     });

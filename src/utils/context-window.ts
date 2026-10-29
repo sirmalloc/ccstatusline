@@ -104,11 +104,14 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
         : null;
 
     const usedTokens = currentUsageTotalTokens ?? usedTokensFromPercentage;
+    // Output tokens aren't in the context until the next turn reads them back
+    // as input, so count only input tokens, as the context length does.
+    const percentageTokens = contextLengthTokens ?? usedTokens;
 
     const usedPercentage = rawUsedPercentage !== null
         ? clampPercentage(rawUsedPercentage)
-        : usedTokens !== null && windowSize !== null && windowSize > 0
-            ? clampPercentage((usedTokens / windowSize) * 100)
+        : percentageTokens !== null && windowSize !== null && windowSize > 0
+            ? clampPercentage((percentageTokens / windowSize) * 100)
             : null;
 
     const remainingPercentage = rawRemainingPercentage !== null
@@ -125,7 +128,7 @@ export function getContextWindowMetrics(data?: StatusJSON): ContextWindowMetrics
     return {
         windowSize,
         usedTokens,
-        contextLengthTokens: contextLengthTokens ?? usedTokens,
+        contextLengthTokens: percentageTokens,
         usedPercentage,
         remainingPercentage,
         totalInputTokens,
