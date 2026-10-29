@@ -30,6 +30,7 @@ const { execFileSync: realExecFileSync } = require('node:child_process') as { ex
 interface UsageProbeResult {
     first: Record<string, unknown>;
     second: Record<string, unknown>;
+    staleFallback: [boolean, boolean];
     lockExists: boolean;
     cacheExists: boolean;
     requestCount: number;
@@ -37,6 +38,7 @@ interface UsageProbeResult {
     requestHost: string | null;
     homedir: string;
     lockContents: string | null;
+    fetchedAtMs: number | null;
 }
 
 interface TokenHome {
@@ -155,7 +157,7 @@ https.request = (...args) => {
     return request;
 };
 
-const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
+const { fetchUsageData, getUsageFetchedAtMs, isStaleUsageFallback } = await import(${JSON.stringify(usageModulePath)});
 
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
@@ -168,13 +170,15 @@ const second = await fetchUsageData({ requiredFields });
 process.stdout.write(JSON.stringify({
     first,
     second,
+    staleFallback: [isStaleUsageFallback(first), isStaleUsageFallback(second)],
     lockExists: fs.existsSync(lockFile),
     cacheExists: fs.existsSync(cacheFile),
     requestCount,
     proxyAgentConfigured,
     requestHost,
     homedir: os.homedir(),
-    lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null
+    lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null,
+    fetchedAtMs: getUsageFetchedAtMs() ?? null
 }));
 `;
 
@@ -1489,6 +1493,82 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('dates a fetched answer by when it came, and an error by nothing', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const successHome = harness.createTokenHome('fetched-at-success');
+            const errorHome = harness.createTokenHome('fetched-at-error');
+
+            const success = harness.runProbe({
+                claudeConfigDir: successHome.claudeConfig,
+                home: successHome.home,
+                mode: 'success',
+                nowMs,
+                pathDir: successHome.bin,
+                responseBody: successResponseBody
+            });
+            const error = harness.runProbe({
+                claudeConfigDir: errorHome.claudeConfig,
+                home: errorHome.home,
+                mode: 'error',
+                nowMs,
+                pathDir: errorHome.bin
+            });
+
+            expect(success.requestCount).toBe(1);
+            expect(success.fetchedAtMs).toBe(nowMs);
+            expect(error.first).toEqual({ error: 'api-error' });
+            expect(error.fetchedAtMs).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // The forecast history goes by when a percent was seen, and a cached one
+    // isn't current: through a rate limit it can be hours old.
+    it('dates cached usage by when the cache was written, fresh or served through a rate limit', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const freshHome = harness.createTokenHome('fetched-at-fresh-cache');
+            const staleHome = harness.createTokenHome('fetched-at-stale-cache');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const fresh = seedUsageCache(freshHome.home, { sessionUsage: 5, tokenHash: matchingHash });
+            const stale = seedUsageCache(staleHome.home, { sessionUsage: 5, tokenHash: matchingHash });
+            const backedOffNowMs = stale.mtimeMs + 2 * 60 * 60 * 1000;
+            fs.writeFileSync(path.join(staleHome.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(backedOffNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const freshResult = harness.runProbe({
+                claudeConfigDir: freshHome.claudeConfig,
+                home: freshHome.home,
+                mode: 'unexpected',
+                nowMs: fresh.mtimeMs + 60000,
+                pathDir: freshHome.bin,
+                requiredFields: ['sessionUsage']
+            });
+            const staleResult = harness.runProbe({
+                claudeConfigDir: staleHome.claudeConfig,
+                home: staleHome.home,
+                mode: 'unexpected',
+                nowMs: backedOffNowMs,
+                pathDir: staleHome.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(freshResult.first).toEqual({ sessionUsage: 5 });
+            expect(freshResult.fetchedAtMs).toBe(fresh.mtimeMs);
+            expect(staleResult.first).toEqual({ sessionUsage: 5 });
+            expect(staleResult.fetchedAtMs).toBe(stale.mtimeMs);
+            expect(freshResult.requestCount + staleResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('refetches when the refresh token changes (account switch)', () => {
         const harness = createProbeHarness();
 
@@ -1768,6 +1848,118 @@ describe('fetchUsageData error handling', () => {
             });
             expect(postBackoffResult.second).toEqual(postBackoffResult.first);
             expect(postBackoffResult.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // The stale fallback carries no error, so a caller that must not take an
+    // old reading for the API's current answer needs it marked.
+    it.each([
+        ['a rate-limit backoff', true, 0],
+        ['a failed request', false, 1]
+    ])('marks the stale cache served through %s as a stale fallback', (_label, backedOff, requestCount) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`stale-fallback-${requestCount}`);
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 97, tokenHash });
+            // Long past CACHE_MAX_AGE, so only the fallback serves the cache,
+            // and it has outlived any refresh
+            const staleNowMs = mtimeMs + 40 * 60 * 1000;
+            if (backedOff) {
+                fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                    blockedUntil: Math.floor(staleNowMs / 1000) + 3600,
+                    error: 'rate-limited'
+                }));
+            }
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: backedOff ? 'unexpected' : 'error',
+                nowMs: staleNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 97 });
+            // The second call answers from memory, with the same stale cache
+            expect(result.second).toEqual(result.first);
+            expect(result.staleFallback).toEqual([true, true]);
+            expect(result.requestCount).toBe(requestCount);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // Another render's ordinary refresh holds its in-flight lock for up to
+    // LOCK_MAX_AGE once the cache expires. The cache served through that lock is
+    // as current as a cache hit unless it has outlived the lock too.
+    it.each([
+        ['doesn\'t mark a cache that has just expired', 185, false],
+        ['marks a cache older than the in-flight lock allows', 215, true]
+    ])('%s while another render\'s refresh is in flight', (_label, cacheAgeSeconds, staleFallback) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`refresh-in-flight-${cacheAgeSeconds}`);
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 97, tokenHash });
+            const refreshNowMs = mtimeMs + cacheAgeSeconds * 1000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(refreshNowMs / 1000) + 28,
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: refreshNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 97 });
+            expect(result.second).toEqual(result.first);
+            expect(result.staleFallback).toEqual([staleFallback, staleFallback]);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('doesn\'t mark a fresh answer or a cache hit as a stale fallback', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('stale-fallback-unmarked');
+            const fetchedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(fetchedResult.requestCount).toBe(1);
+            expect(fetchedResult.staleFallback).toEqual([false, false]);
+
+            const cacheFile = path.join(home.home, '.cache', 'ccstatusline', 'usage.json');
+            const cacheHitResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: fs.statSync(cacheFile).mtimeMs + 5000,
+                pathDir: home.bin
+            });
+
+            expect(cacheHitResult.first).toEqual(fetchedResult.first);
+            expect(cacheHitResult.requestCount).toBe(0);
+            expect(cacheHitResult.staleFallback).toEqual([false, false]);
         } finally {
             harness.cleanup();
         }

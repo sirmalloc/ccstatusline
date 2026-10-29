@@ -17,6 +17,7 @@ import type {
 } from '../types/Widget';
 import { shouldInsertInput } from '../utils/input-guards';
 
+import { BlinkingCursor } from './shared/BlinkingCursor';
 import { MERGE_TARGET_HIDDEN_HIDEABLE_STATE } from './shared/hideable';
 import { getGraphemes } from './shared/text-cursor';
 
@@ -80,9 +81,9 @@ const CustomSymbolEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, o
                 Enter custom symbol:
                 {' '}
                 {symbol ? (
-                    <Text inverse>{symbol}</Text>
+                    <BlinkingCursor inverse>{symbol}</BlinkingCursor>
                 ) : (
-                    <Text inverse dimColor>(empty)</Text>
+                    <BlinkingCursor inverse dimColor>(empty)</BlinkingCursor>
                 )}
             </Text>
             <Text dimColor>Type any character or emoji, Backspace clear, Enter save, ESC cancel</Text>

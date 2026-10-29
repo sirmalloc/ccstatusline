@@ -62,6 +62,11 @@ function writeRawClaudeSettings(content: string): void {
 
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
+    // Every home lookup in this file resolves into the temp directory: an
+    // install test must never touch the developer's real configs, even when
+    // a code change (or a mutation-testing mutant) breaks the settings parse
+    // and the code path materialises defaults.
+    vi.spyOn(os, 'homedir').mockReturnValue(testClaudeConfigDir);
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
     config.initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
@@ -69,6 +74,13 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     config.initConfigPath();
+    // Tests may delete CLAUDE_CONFIG_DIR (the default-path resolution test);
+    // restore it so later tests and other files don't reach the real home
+    if (ORIGINAL_CLAUDE_CONFIG_DIR === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+        process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+    }
     if (testClaudeConfigDir) {
         fs.rmSync(testClaudeConfigDir, { recursive: true, force: true });
     }
