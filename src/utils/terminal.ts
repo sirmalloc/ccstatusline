@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { probeWidthNative } from './terminal-native';
+import { probeTerminalNative } from './terminal-native';
 import {
     readCachedWidth,
     writeCachedWidth
@@ -45,13 +45,30 @@ function probeTerminalWidth(): number | null {
         return null;
     }
 
-    // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Returns null on
-    // other platforms and falls through to the portable ps/stty walk below.
-    const nativeWidth = probeWidthNative();
-    if (nativeWidth !== null) {
-        return nativeWidth;
+    // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Inconclusive
+    // on other platforms and falls through to the portable ps/stty walk below.
+    const native = probeTerminalNative();
+    if (native.width !== null) {
+        return native.width;
     }
 
+    // When /proc already showed that no ancestor has a controlling terminal,
+    // `ps -o tty=` would print "?" for every one of them, so the ps walk (two
+    // spawns per ancestor) cannot find a width. Skip it.
+    if (!native.noControllingTTY) {
+        const width = probeAncestorWidth();
+        if (width !== null) {
+            return width;
+        }
+    }
+
+    // No `tput cols` fallback: with no terminal on its stdio, tput prints
+    // terminfo's default (80) rather than a real width, and a made-up width
+    // truncates the line where null leaves it whole.
+    return null;
+}
+
+function probeAncestorWidth(): number | null {
     // Claude Code can spawn ccstatusline with piped stdio, leaving the immediate
     // parent process without a controlling TTY. Walk up a few ancestors until we
     // find the shell process that owns the real PTY.
@@ -75,9 +92,6 @@ function probeTerminalWidth(): number | null {
         }
     }
 
-    // No `tput cols` fallback: with no terminal on its stdio, tput prints
-    // terminfo's default (80) rather than a real width, and a made-up width
-    // truncates the line where null leaves it whole.
     return null;
 }
 
