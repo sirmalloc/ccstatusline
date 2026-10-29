@@ -94,3 +94,4 @@ export { VoiceStatusWidget } from './VoiceStatus';
 export { FastModeWidget } from './FastMode';
 export { RemoteControlStatusWidget } from './RemoteControlStatus';
 export { CacheTimerWidget } from './CacheTimer';
+export { RCloneQueueWidget } from './RCloneQueue';
