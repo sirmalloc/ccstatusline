@@ -171,4 +171,39 @@ describe('StatusJSONSchema numeric coercion', () => {
         expect(result.data.rate_limits?.spend_limit?.used_percentage).toBe(12);
         expect(result.data.rate_limits?.spend_limit?.used_usd).toBeUndefined();
     });
+
+    it('parses fast_mode', () => {
+        const result = StatusJSONSchema.safeParse({ fast_mode: true });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.fast_mode).toBe(true);
+    });
+
+    it('accepts null fast_mode', () => {
+        const result = StatusJSONSchema.safeParse({ fast_mode: null });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.fast_mode).toBeNull();
+    });
+
+    // One widget's field must not blank the whole status line
+    it('drops a malformed fast_mode and keeps the rest of the payload', () => {
+        const result = StatusJSONSchema.safeParse({ fast_mode: 'yes', model: { id: 'claude-opus-4-6' } });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.fast_mode).toBeUndefined();
+        expect(result.data.model).toEqual({ id: 'claude-opus-4-6' });
+    });
 });

@@ -8,9 +8,12 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
+import { isHidden } from './shared/hideable';
 import {
+    SESSION_AT_LIMIT_HIDEABLE_STATE,
     USAGE_NO_DATA_HIDEABLE_STATE,
-    getUsagePercentCustomKeybinds
+    getUsagePercentCustomKeybinds,
+    isAtSessionLimit
 } from './shared/usage-display';
 import {
     getUsagePercentWidgetDescription,
@@ -33,7 +36,7 @@ export class SessionUsageWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, SESSION_AT_LIMIT_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -41,6 +44,10 @@ export class SessionUsageWidget implements Widget {
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
+        // The preview keeps its sample
+        if (!context.isPreview && isHidden(item, SESSION_AT_LIMIT_HIDEABLE_STATE.key) && isAtSessionLimit(context)) {
+            return null;
+        }
         return renderUsagePercentWidgetValue('session', item, context, settings);
     }
 
