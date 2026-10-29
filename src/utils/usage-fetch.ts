@@ -1,18 +1,27 @@
-import { execFileSync } from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import * as https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import * as os from 'os';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { z } from 'zod';
 
 import { getClaudeConfigDir } from './claude-settings';
+import { isExcludedFromProxy } from './no-proxy';
+import {
+    createProxyAgent,
+    type ClosableProxyAgent
+} from './proxy-agent';
 import type {
     UsageData,
+    UsageDataField,
     UsageError
 } from './usage-types';
-import { UsageErrorSchema } from './usage-types';
+import {
+    UsageErrorSchema,
+    WEEKLY_MODEL_USAGE_BUCKETS,
+    setUsageField
+} from './usage-types';
 
 // Cache configuration
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
@@ -21,12 +30,32 @@ const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
+// Upper bound on how far ahead a lock may block fetching. The longest
+// legitimate lock is a 429 Retry-After, which servers keep far below a day.
+// The JSON lock stores an absolute deadline, so unlike the legacy mtime lock
+// it cannot age out on its own: one bogus timestamp (a mocked clock, a system
+// clock jump) otherwise wedges usage fetching permanently, with every widget
+// stuck on [Timeout] and no code path able to recover.
+const MAX_LOCK_HORIZON = 24 * 60 * 60; // seconds
 const MACOS_USAGE_CREDENTIALS_SERVICE = 'Claude Code-credentials';
 const MACOS_SECURITY_DUMP_MAX_BUFFER = 8 * 1024 * 1024;
-
-type UsageDataField = Exclude<keyof UsageData, 'error'>;
+// Keychain reads normally take milliseconds. A `security` call blocked on an
+// unlock prompt must not hold the status line until someone answers it.
+const MACOS_SECURITY_TIMEOUT_MS = 5000;
 
 export interface FetchUsageDataOptions { requiredFields?: readonly UsageDataField[] }
+
+// The access token is what the API is called with; the refresh token is kept
+// alongside it only to fingerprint the account (see getUsageCacheIdentity).
+interface UsageCredentials {
+    accessToken: string;
+    refreshToken?: string;
+}
+
+interface UsageCacheIdentity {
+    preferredHash: string;
+    accessTokenHash: string;
+}
 
 const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageLimit',
@@ -34,24 +63,43 @@ const EXTRA_USAGE_DETAIL_FIELDS = new Set<UsageDataField>([
     'extraUsageUtilization'
 ]);
 
+const FABLE_USAGE_FIELDS = new Set<UsageDataField>([
+    'fableUsage',
+    'fableResetAt'
+]);
+
 // Maps each window reset field to the utilization field parsed from the same
 // API bucket. A null bucket (Enterprise accounts have no rate-limit windows,
 // #343) parses to utilization 0 with no resets_at, so once the utilization is
 // cached the missing timestamp is conclusive and refetching cannot produce it.
+// The per-model entries are derived from WEEKLY_MODEL_USAGE_BUCKETS (see
+// usage-types.ts) instead of hand-listed, so this can't drift from the schemas
+// below when a model bucket is added or renamed.
 const WINDOW_RESET_FIELD_SENTINELS: Partial<Record<UsageDataField, UsageDataField>> = {
     sessionResetAt: 'sessionUsage',
     weeklyResetAt: 'weeklyUsage',
-    weeklySonnetResetAt: 'weeklySonnetUsage',
-    weeklyOpusResetAt: 'weeklyOpusUsage'
+    ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.resetField, bucket.usageField]))
 };
 
-const UsageCredentialsSchema = z.object({ claudeAiOauth: z.object({ accessToken: z.string().nullable().optional() }).optional() });
+const UsageCredentialsSchema = z.object({
+    claudeAiOauth: z.object({
+        accessToken: z.string().nullable().optional(),
+        refreshToken: z.string().nullable().optional()
+    }).optional()
+});
 const UsageLockErrorSchema = z.enum(['timeout', 'rate-limited', 'parse-error']);
 const UsageLockSchema = z.object({
     blockedUntil: z.number(),
     error: UsageLockErrorSchema.optional()
 });
 
+// The per-model fields (weeklySonnetUsage, weeklyOpusUsage, ...) are declared
+// by hand here and in UsageApiResponseSchema below because Zod object shapes
+// need statically-known keys to keep field-level type inference for the
+// parse* functions further down. usage-fetch.test.ts's schema-parity test
+// asserts both schemas cover every WEEKLY_MODEL_USAGE_BUCKETS entry, so a
+// bucket added to one but not the other fails a test instead of silently
+// dropping data after a cache round-trip.
 const CachedUsageDataSchema = z.object({
     sessionUsage: z.number().nullable().optional(),
     sessionResetAt: z.string().nullable().optional(),
@@ -61,6 +109,8 @@ const CachedUsageDataSchema = z.object({
     weeklySonnetResetAt: z.string().nullable().optional(),
     weeklyOpusUsage: z.number().nullable().optional(),
     weeklyOpusResetAt: z.string().nullable().optional(),
+    fableUsage: z.number().nullable().optional(),
+    fableResetAt: z.string().nullable().optional(),
     extraUsageEnabled: z.boolean().nullable().optional(),
     extraUsageLimit: z.number().nullable().optional(),
     extraUsageUsed: z.number().nullable().optional(),
@@ -78,11 +128,28 @@ const UsageApiBucketSchema = z.looseObject({
 
 type UsageApiBucket = z.infer<typeof UsageApiBucketSchema>;
 
+// Newer accounts migrated off the flat five_hour/seven_day buckets report the
+// same windows inside a limits[] array instead (#503). Per-model weekly usage
+// is reported there as weekly_scoped entries identified by
+// scope.model.display_name. Only the fields this module reads are declared;
+// loose-object passes everything else through without failing validation.
+const UsageApiLimitSchema = z.looseObject({
+    kind: z.string().nullable().optional(),
+    percent: z.number().nullable().optional(),
+    resets_at: z.string().nullable().optional(),
+    scope: z.looseObject({ model: z.looseObject({ display_name: z.string().nullable().optional() }).nullable().optional() }).nullable().catch(null).optional()
+});
+
+type UsageApiLimit = z.infer<typeof UsageApiLimitSchema>;
+
+// See the comment on CachedUsageDataSchema above re: why the legacy per-model
+// keys are hand-declared rather than generated from WEEKLY_MODEL_USAGE_BUCKETS.
 const UsageApiResponseSchema = z.looseObject({
     five_hour: UsageApiBucketSchema,
     seven_day: UsageApiBucketSchema,
     seven_day_sonnet: UsageApiBucketSchema,
     seven_day_opus: UsageApiBucketSchema,
+    limits: z.array(UsageApiLimitSchema).nullable().optional(),
     extra_usage: z.looseObject({
         is_enabled: z.boolean().nullable().optional(),
         monthly_limit: z.number().nullable().optional(),
@@ -92,8 +159,59 @@ const UsageApiResponseSchema = z.looseObject({
     }).nullable().optional()
 });
 
+// Exposed only so usage-fetch.test.ts can assert schema/registry parity (see
+// the comment on CachedUsageDataSchema above) and the limits[]-vs-legacy-field
+// precedence (see parseUsageApiResponse) without duplicating the shapes/logic.
+export const __testing = {
+    CachedUsageDataSchema,
+    UsageApiResponseSchema,
+    fetchFromUsageApi,
+    parseUsageApiResponse
+};
+
 function getUsageApiBucketUtilization(bucket: UsageApiBucket): number | undefined {
     return bucket === null ? 0 : bucket?.utilization ?? undefined;
+}
+
+function findUsageApiLimit(limits: UsageApiLimit[] | null | undefined, kind: string): UsageApiLimit | undefined {
+    return limits?.find(limit => limit.kind === kind);
+}
+
+// Mirrors the null-bucket placeholder guard for #343 above: a limits[] entry
+// reporting 0% with no resets_at is not a real usage window, so the
+// limits[] fallback below must not resurrect it as a phantom 0% reading.
+//
+// weekly_scoped entries naming a concrete model are exempt: accounts with a
+// per-model quota report that entry as percent 0 / resets_at null until the
+// model is first used in the current window (resets_at fills in on first use,
+// percent stays 0), so for those the zero reading is real data - the same
+// state a null legacy per-model bucket already reports as 0 via
+// getUsageApiBucketUtilization. Accounts without the quota omit the entry
+// entirely, so this cannot resurrect a phantom window.
+function isPlaceholderUsageApiLimit(limit: UsageApiLimit): boolean {
+    if (limit.scope?.model?.display_name) {
+        return false;
+    }
+    return (limit.percent ?? 0) === 0 && (limit.resets_at ?? null) === null;
+}
+
+function getUsageApiLimitPercent(limit: UsageApiLimit | undefined): number | undefined {
+    return limit && !isPlaceholderUsageApiLimit(limit) ? limit.percent ?? undefined : undefined;
+}
+
+function getUsageApiLimitResetAt(limit: UsageApiLimit | undefined): string | undefined {
+    return limit && !isPlaceholderUsageApiLimit(limit) ? limit.resets_at ?? undefined : undefined;
+}
+
+// Finds a model's weekly quota in the new limits[] array. Display names can
+// include a model-family prefix (for example "Claude 3.5 Fable"), so matching
+// is case-insensitive and accepts the registry name as a substring.
+function findWeeklyScopedLimit(limits: UsageApiLimit[] | null | undefined, modelDisplayName: string): UsageApiLimit | undefined {
+    const normalizedModelName = modelDisplayName.toLowerCase();
+    return limits?.find(limit => (
+        limit.kind === 'weekly_scoped'
+        && (limit.scope?.model?.display_name ?? '').toLowerCase().includes(normalizedModelName)
+    ));
 }
 
 function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null {
@@ -105,9 +223,16 @@ function parseJsonWithSchema<T>(rawJson: string, schema: z.ZodType<T>): T | null
     }
 }
 
-function parseUsageAccessToken(rawJson: string): string | null {
-    const parsed = parseJsonWithSchema(rawJson, UsageCredentialsSchema);
-    return parsed?.claudeAiOauth?.accessToken ?? null;
+function parseUsageCredentials(rawJson: string): UsageCredentials | null {
+    const oauth = parseJsonWithSchema(rawJson, UsageCredentialsSchema)?.claudeAiOauth;
+    if (!oauth?.accessToken) {
+        return null;
+    }
+
+    return {
+        accessToken: oauth.accessToken,
+        refreshToken: oauth.refreshToken ?? undefined
+    };
 }
 
 function parseCachedUsageData(rawJson: string): UsageData | null {
@@ -127,6 +252,8 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
         weeklySonnetResetAt: parsed.weeklySonnetResetAt ?? undefined,
         weeklyOpusUsage: parsed.weeklyOpusUsage ?? undefined,
         weeklyOpusResetAt: parsed.weeklyOpusResetAt ?? undefined,
+        fableUsage: parsed.fableUsage ?? undefined,
+        fableResetAt: parsed.fableResetAt ?? undefined,
         extraUsageEnabled: parsed.extraUsageEnabled ?? undefined,
         extraUsageLimit: parsed.extraUsageLimit ?? undefined,
         extraUsageUsed: parsed.extraUsageUsed ?? undefined,
@@ -136,54 +263,112 @@ function parseCachedUsageData(rawJson: string): UsageData | null {
     };
 }
 
-// One-way fingerprint of the usage token, persisted alongside the cache so a
-// login switch (e.g. enterprise<->personal, a different token) invalidates the
-// cache immediately instead of waiting out the TTL. A truncated SHA-256 is a
-// stable identifier, not the token itself, so it is safe to write to disk.
+// One-way fingerprint of the usage credentials, persisted alongside the cache
+// so a login switch (e.g. enterprise<->personal, a different account)
+// invalidates the cache immediately instead of waiting out the TTL. A
+// truncated SHA-256 is a stable identifier, not the token itself, so it is
+// safe to write to disk.
 function fingerprintUsageToken(token: string): string {
     return createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+// Prefer the refresh token so access-token rotation preserves the cache when
+// the refresh token is unchanged. Also accept the current access-token hash
+// from older caches; the next successful fetch writes the preferred hash.
+function getUsageCacheIdentity(credentials: UsageCredentials): UsageCacheIdentity {
+    const accessTokenHash = fingerprintUsageToken(credentials.accessToken);
+    return {
+        preferredHash: credentials.refreshToken ? fingerprintUsageToken(credentials.refreshToken) : accessTokenHash,
+        accessTokenHash
+    };
 }
 
 function readCachedTokenHash(rawJson: string): string | undefined {
     return parseJsonWithSchema(rawJson, CachedTokenHashSchema)?.tokenHash;
 }
 
-function tokenHashMatches(cachedHash: string | undefined, currentHash: string | null): boolean {
+function tokenHashMatches(cachedHash: string | undefined, identity: UsageCacheIdentity | null): boolean {
     // With no current token we cannot fingerprint-gate, so fall through to the
     // existing no-token handling rather than discarding an otherwise usable cache.
-    if (currentHash === null) {
+    if (identity === null) {
         return true;
     }
-    return cachedHash === currentHash;
+    return cachedHash === identity.preferredHash || cachedHash === identity.accessTokenHash;
 }
 
-function parseUsageApiResponse(rawJson: string): UsageData | null {
+// parsed is a UsageApiResponseSchema-derived looseObject: declared keys (like
+// the legacy seven_day_sonnet/seven_day_opus fallback below) keep their exact
+// types, but looseObject's passthrough means indexing by a dynamic string
+// (bucket.apiBucketKey) only has `unknown` to offer TS -- hence the cast,
+// scoped to this one lookup rather than to the whole parsed object.
+function getLegacyUsageApiBucket(parsed: Record<string, unknown>, apiBucketKey: string): UsageApiBucket {
+    return parsed[apiBucketKey] as UsageApiBucket;
+}
+
+export function parseUsageApiResponse(rawJson: string): UsageData | null {
     const parsed = parseJsonWithSchema(rawJson, UsageApiResponseSchema);
     if (!parsed) {
         return null;
     }
 
-    return {
-        sessionUsage: getUsageApiBucketUtilization(parsed.five_hour),
-        sessionResetAt: parsed.five_hour?.resets_at ?? undefined,
-        weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day),
-        weeklyResetAt: parsed.seven_day?.resets_at ?? undefined,
-        weeklySonnetUsage: getUsageApiBucketUtilization(parsed.seven_day_sonnet),
-        weeklySonnetResetAt: parsed.seven_day_sonnet?.resets_at ?? undefined,
-        weeklyOpusUsage: getUsageApiBucketUtilization(parsed.seven_day_opus),
-        weeklyOpusResetAt: parsed.seven_day_opus?.resets_at ?? undefined,
+    // Flat five_hour/seven_day buckets are the primary source. On accounts
+    // migrated to the limits[] shape those buckets may be missing/null, so
+    // each field falls back to the matching limits[] entry independently -
+    // the percentage and resets_at can each come from a different source (#503).
+    const sessionLimit = findUsageApiLimit(parsed.limits, 'session');
+    const weeklyLimit = findUsageApiLimit(parsed.limits, 'weekly_all');
+
+    const result: UsageData = {
+        sessionUsage: getUsageApiBucketUtilization(parsed.five_hour) ?? getUsageApiLimitPercent(sessionLimit),
+        sessionResetAt: parsed.five_hour?.resets_at ?? getUsageApiLimitResetAt(sessionLimit),
+        weeklyUsage: getUsageApiBucketUtilization(parsed.seven_day) ?? getUsageApiLimitPercent(weeklyLimit),
+        weeklyResetAt: parsed.seven_day?.resets_at ?? getUsageApiLimitResetAt(weeklyLimit),
         extraUsageEnabled: parsed.extra_usage?.is_enabled ?? undefined,
         extraUsageLimit: parsed.extra_usage?.monthly_limit ?? undefined,
         extraUsageUsed: parsed.extra_usage?.used_credits ?? undefined,
         extraUsageUtilization: parsed.extra_usage?.utilization ?? undefined,
         extraUsageCurrency: parsed.extra_usage?.currency ?? undefined
     };
+
+    for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+        const scopedLimit = findWeeklyScopedLimit(parsed.limits, bucket.modelDisplayName);
+        const legacyBucket = bucket.apiBucketKey
+            ? getLegacyUsageApiBucket(parsed, bucket.apiBucketKey)
+            : undefined;
+
+        // weekly_scoped is authoritative per field. Legacy flat buckets remain
+        // a fallback for models/API versions that still populate them.
+        setUsageField(
+            result,
+            bucket.usageField,
+            getUsageApiLimitPercent(scopedLimit) ?? getUsageApiBucketUtilization(legacyBucket)
+        );
+        setUsageField(
+            result,
+            bucket.resetField,
+            getUsageApiLimitResetAt(scopedLimit) ?? legacyBucket?.resets_at ?? undefined
+        );
+    }
+
+    return result;
 }
 
 // Memory caches
 let cachedUsageData: UsageData | null = null;
 let usageCacheTime = 0;
 let usageErrorCacheMaxAge = LOCK_MAX_AGE;
+// When the usage API sent cachedUsageData's values, in ms: a cache file's are
+// as old as the file, which may have been written hours ago
+let usageFetchedAtMs: number | undefined;
+// The last good cache each time getStaleUsageOrError serves it after it has
+// outlived a refresh, because the usage API couldn't be reached. Like a fresh
+// answer, it carries no error.
+const staleUsageFallbacks = new WeakSet<UsageData>();
+
+/** Whether fetchUsageData returned this data as a stale fallback that lags the usage API, rather than from the API or a current cache. */
+export function isStaleUsageFallback(data: UsageData): boolean {
+    return staleUsageFallbacks.has(data);
+}
 
 type UsageLockError = z.infer<typeof UsageLockErrorSchema>;
 
@@ -205,14 +390,25 @@ function setCachedUsageError(error: UsageError, now: number, maxAge = LOCK_MAX_A
     cachedUsageData = errorData;
     usageCacheTime = now;
     usageErrorCacheMaxAge = maxAge;
+    usageFetchedAtMs = undefined;
     return errorData;
 }
 
-function cacheUsageData(data: UsageData, now: number): UsageData {
+function cacheUsageData(data: UsageData, now: number, fetchedAtMs: number): UsageData {
     cachedUsageData = data;
     usageCacheTime = now;
     usageErrorCacheMaxAge = LOCK_MAX_AGE;
+    usageFetchedAtMs = fetchedAtMs;
     return data;
+}
+
+/**
+ * When the usage API sent the values fetchUsageData last returned, in ms, or
+ * undefined after an error. Served from the cache, during a rate limit say,
+ * they can be hours old.
+ */
+export function getUsageFetchedAtMs(): number | undefined {
+    return usageFetchedAtMs;
 }
 
 function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean {
@@ -228,7 +424,14 @@ function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean 
     // Once the API has reported the extra usage state, missing detail fields are
     // conclusive: accounts without a configured monthly limit never report
     // monthly_limit/utilization, so refetching cannot produce them (#413).
-    return data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field);
+    if (data.extraUsageEnabled !== undefined && EXTRA_USAGE_DETAIL_FIELDS.has(field)) {
+        return true;
+    }
+
+    // Once the API has reported the core usage state, a missing fable window is
+    // conclusive: legacy accounts and non-Fable plans never report a fable
+    // limit, so refetching cannot produce it.
+    return (data.sessionUsage !== undefined || data.weeklyUsage !== undefined) && FABLE_USAGE_FIELDS.has(field);
 }
 
 function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageDataField[] = []): boolean {
@@ -238,13 +441,16 @@ function hasRequiredUsageFields(data: UsageData, requiredFields: readonly UsageD
 function getStaleUsageOrError(
     error: UsageError,
     now: number,
-    currentTokenHash: string | null,
+    cacheIdentity: UsageCacheIdentity | null,
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache(currentTokenHash);
-    if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
-        return cacheUsageData(stale, now);
+    const stale = readStaleUsageCache(cacheIdentity);
+    if (stale && !stale.data.error && hasRequiredUsageFields(stale.data, requiredFields)) {
+        if (hasUsageCacheOutlivedRefresh(now)) {
+            staleUsageFallbacks.add(stale.data);
+        }
+        return cacheUsageData(stale.data, now, stale.fetchedAtMs);
     }
 
     return setCachedUsageError(error, now, errorCacheMaxAge);
@@ -347,16 +553,16 @@ function readMacKeychainSecret(service: string, account?: string): string | null
         return execFileSync(
             'security',
             args,
-            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true }
+            { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: MACOS_SECURITY_TIMEOUT_MS, windowsHide: true }
         ).trim();
     } catch {
         return null;
     }
 }
 
-function readUsageTokenFromMacKeychainService(service: string, account?: string): string | null {
+function readUsageCredentialsFromMacKeychainService(service: string, account?: string): UsageCredentials | null {
     const secret = readMacKeychainSecret(service, account);
-    return secret ? parseUsageAccessToken(secret) : null;
+    return secret ? parseUsageCredentials(secret) : null;
 }
 
 function getOsUsername(): string | null {
@@ -371,9 +577,9 @@ function getOsUsername(): string | null {
 // account; a service-only lookup returns whichever matches first, which may be an
 // entry lacking `claudeAiOauth`. Claude Code reads/writes with an explicit account
 // (the OS username), so mirror that.
-function readUsageTokenFromMacKeychainUserAccount(service: string): string | null {
+function readUsageCredentialsFromMacKeychainUserAccount(service: string): UsageCredentials | null {
     const osUsername = getOsUsername();
-    return osUsername ? readUsageTokenFromMacKeychainService(service, osUsername) : null;
+    return osUsername ? readUsageCredentialsFromMacKeychainService(service, osUsername) : null;
 }
 
 function listMacKeychainCredentialCandidates(): string[] {
@@ -385,6 +591,7 @@ function listMacKeychainCredentialCandidates(): string[] {
                 encoding: 'utf8',
                 maxBuffer: MACOS_SECURITY_DUMP_MAX_BUFFER,
                 stdio: ['pipe', 'pipe', 'ignore'],
+                timeout: MACOS_SECURITY_TIMEOUT_MS,
                 windowsHide: true
             }
         );
@@ -395,63 +602,171 @@ function listMacKeychainCredentialCandidates(): string[] {
     }
 }
 
-function readUsageTokenFromMacKeychainCandidates(): string | null {
+function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | null {
     const candidates = listMacKeychainCredentialCandidates();
 
     for (const service of candidates) {
-        const token = readUsageTokenFromMacKeychainService(service);
-        if (token) {
-            return token;
+        const credentials = readUsageCredentialsFromMacKeychainService(service);
+        if (credentials) {
+            return credentials;
         }
     }
 
     return null;
 }
 
-function readUsageTokenFromCredentialsFile(): string | null {
+function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
     try {
         const credFile = path.join(getClaudeConfigDir(), '.credentials.json');
-        return parseUsageAccessToken(fs.readFileSync(credFile, 'utf8'));
+        return parseUsageCredentials(fs.readFileSync(credFile, 'utf8'));
     } catch {
         return null;
     }
+}
+
+// Claude Code stores each non-default profile's credential under its own
+// keychain service: the plain name plus `-<sha256(configDir)[:8]>`, added
+// whenever CLAUDE_CONFIG_DIR is set. CLAUDE_SECURESTORAGE_CONFIG_DIR, when
+// present, replaces the hash input (an empty value forces the plain name).
+// The hash input is the raw environment value, NFC-normalized but not
+// resolved — the goal is to reproduce the exact string Claude Code's own
+// service-name builder hashes, not to locate a directory (#521). Returns
+// null for the default profile.
+export function getMacKeychainConfigDirService(): string | null {
+    const rawConfigDir = process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? '';
+    if (rawConfigDir === '') {
+        return null;
+    }
+
+    const configDir = rawConfigDir.normalize('NFC');
+    const suffix = createHash('sha256').update(configDir).digest('hex').slice(0, 8);
+    return `${MACOS_USAGE_CREDENTIALS_SERVICE}-${suffix}`;
+}
+
+export function getUsageCredentials(): UsageCredentials | null {
+    if (process.platform !== 'darwin') {
+        return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const configDirService = getMacKeychainConfigDirService();
+    if (configDirService !== null) {
+        // A non-default profile owns exactly one keychain service name. On a
+        // miss, the plain service and the other suffixed items all belong to
+        // other profiles (or MCP servers), so fall through only to the
+        // profile's own .credentials.json rather than surface another
+        // account's usage.
+        return readUsageCredentialsFromMacKeychainService(configDirService)
+            ?? readUsageCredentialsFromCredentialsFile();
+    }
+
+    return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageCredentialsFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE)
+        ?? readUsageCredentialsFromMacKeychainCandidates()
+        ?? readUsageCredentialsFromCredentialsFile();
 }
 
 export function getUsageToken(): string | null {
-    if (process.platform !== 'darwin') {
-        return readUsageTokenFromCredentialsFile();
-    }
-
-    return readUsageTokenFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageTokenFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageTokenFromMacKeychainCandidates()
-        ?? readUsageTokenFromCredentialsFile();
+    return getUsageCredentials()?.accessToken ?? null;
 }
 
-function readStaleUsageCache(currentTokenHash: string | null): UsageData | null {
+// A lookup that finds no OAuth login (an API-key user, a logged-out profile)
+// stands for LOCK_MAX_AGE across renders, as it already does within one
+// process: on macOS the default profile's lookup can run `security` multiple
+// times, including a full keychain dump. The record names the credential stores it
+// covers, so one profile's miss never suppresses another profile's lookup.
+const NO_CREDENTIALS_LOCK_FILE = path.join(CACHE_DIR, 'usage-credentials.lock');
+const NoCredentialsLockSchema = z.object({
+    blockedUntil: z.number(),
+    source: z.string()
+});
+
+function getUsageCredentialsSource(): string {
+    return JSON.stringify([getMacKeychainConfigDirService(), getClaudeConfigDir()]);
+}
+
+function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
+    const source = getUsageCredentialsSource();
     try {
-        const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
-        if (!tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)) {
+        const lock = parseJsonWithSchema(fs.readFileSync(NO_CREDENTIALS_LOCK_FILE, 'utf8'), NoCredentialsLockSchema);
+        // Bounded like the usage lock, so a deadline written before the clock
+        // was set back cannot stretch the backoff.
+        if (lock?.source === source && lock.blockedUntil > now && lock.blockedUntil <= now + LOCK_MAX_AGE) {
             return null;
         }
-        return parseCachedUsageData(rawCache);
+    } catch {
+        // No recorded miss - look the credentials up
+    }
+
+    const credentials = getUsageCredentials();
+    if (!credentials) {
+        try {
+            ensureCacheDirExists();
+            fs.writeFileSync(NO_CREDENTIALS_LOCK_FILE, JSON.stringify({ blockedUntil: now + LOCK_MAX_AGE, source }));
+        } catch {
+            // Ignore lock file errors
+        }
+    }
+
+    return credentials;
+}
+
+/**
+ * The login whose usage the status line shows: the usage cache's fingerprint
+ * of it (see getUsageCacheIdentity), or null with no OAuth login found. It
+ * stays the same across access-token refreshes, and changes with /login.
+ */
+export function getUsageLoginFingerprint(): string | null {
+    const credentials = getUsageCredentialsWithBackoff(Math.floor(Date.now() / 1000));
+    return credentials ? getUsageCacheIdentity(credentials).preferredHash : null;
+}
+
+function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): { data: UsageData; fetchedAtMs: number } | null {
+    try {
+        const fetchedAtMs = fs.statSync(CACHE_FILE).mtimeMs;
+        const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+        if (!tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)) {
+            return null;
+        }
+        const data = parseCachedUsageData(rawCache);
+        return data ? { data, fetchedAtMs } : null;
     } catch {
         return null;
     }
 }
 
-function writeUsageLock(blockedUntil: number, error: UsageLockError): void {
+// A refresh started as the cache expired keeps its in-flight lock, which a
+// failed request also leaves in place, for up to LOCK_MAX_AGE, and other
+// renders serve the cache through it meanwhile. Only a cache older than that
+// has outlived a refresh.
+function hasUsageCacheOutlivedRefresh(now: number): boolean {
     try {
-        ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, JSON.stringify({ blockedUntil, error }));
+        const fileAge = now - Math.floor(fs.statSync(CACHE_FILE).mtimeMs / 1000);
+        return Math.abs(fileAge) >= CACHE_MAX_AGE + LOCK_MAX_AGE;
     } catch {
-        // Ignore lock file errors
+        return true;
     }
 }
 
-function clearUsageLock(): void {
+function writeUsageLock(blockedUntil: number, error: UsageLockError): string {
+    const contents = JSON.stringify({ blockedUntil, error });
     try {
-        fs.rmSync(LOCK_FILE, { force: true });
+        ensureCacheDirExists();
+        fs.writeFileSync(LOCK_FILE, contents);
+    } catch {
+        // Ignore lock file errors
+    }
+    return contents;
+}
+
+// Remove the lock only while it still holds the in-flight record this process
+// wrote. A concurrent render may have replaced it with a 429 Retry-After lock
+// in the meantime; deleting that would let the next render fetch inside the
+// server's backoff window.
+function clearOwnUsageLock(ownContents: string): void {
+    try {
+        if (fs.readFileSync(LOCK_FILE, 'utf8') === ownContents) {
+            fs.rmSync(LOCK_FILE, { force: true });
+        }
     } catch {
         // Ignore lock file errors
     }
@@ -464,7 +779,10 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
         const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
         if (parsed) {
             hasValidJsonLock = true;
-            if (parsed.blockedUntil > now) {
+            // Past deadline, or one implausibly far ahead: treat as no lock and
+            // fetch. The fetch rewrites the file with a sane deadline, so a
+            // poisoned lock self-heals on the very next render.
+            if (parsed.blockedUntil > now && parsed.blockedUntil <= now + MAX_LOCK_HORIZON) {
                 return {
                     blockedUntil: parsed.blockedUntil,
                     error: parsed.error ?? 'timeout'
@@ -524,34 +842,43 @@ const USAGE_API_TIMEOUT_MS = 5000;
 
 function getUsageApiProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    if (proxyUrl === '') {
+    if (proxyUrl === '' || isExcludedFromProxy(USAGE_API_HOST)) {
         return null;
     }
 
     return proxyUrl ?? null;
 }
 
-function getUsageApiRequestOptions(token: string): https.RequestOptions | null {
+function getUsageApiRequest(token: string): { options: https.RequestOptions; proxy: ClosableProxyAgent | null } | null {
     const proxyUrl = getUsageApiProxyUrl();
 
     try {
+        const proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
         return {
-            hostname: USAGE_API_HOST,
-            path: USAGE_API_PATH,
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'anthropic-beta': 'oauth-2025-04-20'
+            options: {
+                hostname: USAGE_API_HOST,
+                path: USAGE_API_PATH,
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'anthropic-beta': 'oauth-2025-04-20'
+                },
+                timeout: USAGE_API_TIMEOUT_MS,
+                ...(proxy ? { agent: proxy.agent } : {})
             },
-            timeout: USAGE_API_TIMEOUT_MS,
-            ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
+            proxy
         };
     } catch {
         return null;
     }
 }
 
-async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
+async function fetchFromUsageApi(token: string, deadlineMs = USAGE_API_TIMEOUT_MS): Promise<UsageApiFetchResult> {
+    const usageRequest = getUsageApiRequest(token);
+    if (!usageRequest) {
+        return { kind: 'error' };
+    }
+
     return new Promise((resolve) => {
         let settled = false;
 
@@ -560,16 +887,11 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
                 return;
             }
             settled = true;
+            clearTimeout(deadline);
             resolve(value);
         };
 
-        const requestOptions = getUsageApiRequestOptions(token);
-        if (!requestOptions) {
-            finish({ kind: 'error' });
-            return;
-        }
-
-        const request = https.request(requestOptions, (response) => {
+        const request = https.request(usageRequest.options, (response) => {
             let data = '';
             response.setEncoding('utf8');
 
@@ -600,6 +922,13 @@ async function fetchFromUsageApi(token: string): Promise<UsageApiFetchResult> {
             request.destroy();
             finish({ kind: 'error' });
         });
+        // `timeout` only covers an idle socket, and behind a proxy the request
+        // has none until the proxy answers CONNECT
+        const deadline = setTimeout(() => {
+            request.destroy();
+            usageRequest.proxy?.close();
+            finish({ kind: 'error' });
+        }, deadlineMs);
         request.end();
     });
 }
@@ -619,24 +948,29 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         }
     }
 
-    // Resolve the token up front (before lock/rate-limit checks so auth
-    // failures are not masked as timeout) and fingerprint it so the file cache
-    // can be invalidated on an account switch: a different token, written by a
+    // Resolve the credentials up front (before lock/rate-limit checks so auth
+    // failures are not masked as timeout) and fingerprint them so the file cache
+    // can be invalidated on an account switch: a different login, written by a
     // logout/login, no longer matches the cached fingerprint.
-    const token = getUsageToken();
-    const currentTokenHash = token ? fingerprintUsageToken(token) : null;
+    const credentials = getUsageCredentialsWithBackoff(now);
+    const token = credentials?.accessToken ?? null;
+    const cacheIdentity = credentials ? getUsageCacheIdentity(credentials) : null;
 
     // Check file cache
     try {
         const stat = fs.statSync(CACHE_FILE);
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
-        if (fileAge < CACHE_MAX_AGE) {
+        // A file dated ahead of now still counts within one cache lifetime: a
+        // concurrent render may have written it after this one read the clock.
+        // Further ahead, it was written under a clock since set back, and
+        // trusting it would keep that data on screen until real time caught up.
+        if (Math.abs(fileAge) < CACHE_MAX_AGE) {
             const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
-                && tokenHashMatches(readCachedTokenHash(rawCache), currentTokenHash)
+                && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
                 && hasRequiredUsageFields(fileData, requiredFields)) {
-                return cacheUsageData(fileData, now);
+                return cacheUsageData(fileData, now, stat.mtimeMs);
             }
         }
     } catch {
@@ -644,7 +978,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
     }
 
     if (!token) {
-        return getStaleUsageOrError('no-credentials', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('no-credentials', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
 
     const activeLock = readActiveUsageLock(now);
@@ -652,13 +986,13 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         return getStaleUsageOrError(
             activeLock.error,
             now,
-            currentTokenHash,
+            cacheIdentity,
             Math.max(1, activeLock.blockedUntil - now),
             requiredFields
         );
     }
 
-    writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
+    const inFlightLock = writeUsageLock(now + LOCK_MAX_AGE, 'timeout');
 
     // Fetch from API using Node's https module
     try {
@@ -666,29 +1000,29 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
         if (response.kind === 'rate-limited') {
             writeUsageLock(now + response.retryAfterSeconds, 'rate-limited');
-            return getStaleUsageOrError('rate-limited', now, currentTokenHash, response.retryAfterSeconds, requiredFields);
+            return getStaleUsageOrError('rate-limited', now, cacheIdentity, response.retryAfterSeconds, requiredFields);
         }
 
         if (response.kind === 'error') {
-            return getStaleUsageOrError('api-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('api-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         const usageData = parseUsageApiResponse(response.body);
         if (!usageData) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Validate we got actual data
         if (usageData.sessionUsage === undefined && usageData.weeklyUsage === undefined) {
             writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-            return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+            return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
         }
 
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: currentTokenHash ?? undefined }));
+            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: cacheIdentity?.preferredHash }));
         } catch {
             // Ignore cache write errors
         }
@@ -697,12 +1031,12 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // the caller's requested fields. Incomplete 200 responses are cached but
         // still need the short throttle so later renders do not refetch every time.
         if (hasRequiredUsageFields(usageData, requiredFields)) {
-            clearUsageLock();
+            clearOwnUsageLock(inFlightLock);
         }
 
-        return cacheUsageData(usageData, now);
+        return cacheUsageData(usageData, now, Date.now());
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
-        return getStaleUsageOrError('parse-error', now, currentTokenHash, LOCK_MAX_AGE, requiredFields);
+        return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
     }
 }

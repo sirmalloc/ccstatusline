@@ -258,6 +258,47 @@ describe('renderer dim styling', () => {
         expect(resetAfterMidIndex).toBeLessThan(tailIndex);
     });
 
+    it('ends dim but keeps bold through the powerline separator after a bold, dimmed widget', () => {
+        // Hex colors produce raw codes, independent of chalk's color detection.
+        const fg = '\x1b[38;2;236;239;244m';
+        const colorReset = '\x1b[49m\x1b[39m';
+        const widgets: WidgetItem[] = [
+            {
+                id: 'w1',
+                type: 'custom-text',
+                customText: 'head',
+                color: 'hex:ECEFF4',
+                bold: true,
+                dim: true
+            },
+            {
+                id: 'w2',
+                type: 'custom-text',
+                customText: 'tail',
+                color: 'hex:ECEFF4'
+            }
+        ];
+
+        const line = renderLine(widgets, {
+            terminalWidth: 200,
+            settings: {
+                colorLevel: 3,
+                powerline: {
+                    ...DEFAULT_SETTINGS.powerline,
+                    enabled: true,
+                    separators: ['\uE0B0'],
+                    separatorInvertBackground: [false]
+                }
+            }
+        });
+
+        expect(line).toBe(
+            `${BOLD}${DIM}${fg}head${colorReset}${INTENSITY_RESET_BOLD}`
+            + `\uE0B0${INTENSITY_RESET}`
+            + `${fg}tail${colorReset}`
+        );
+    });
+
     it('dims parens spans in powerline mode', () => {
         const widgets: WidgetItem[] = [
             {

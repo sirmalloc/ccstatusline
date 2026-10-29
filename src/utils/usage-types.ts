@@ -15,11 +15,17 @@ export interface UsageData {
     weeklySonnetResetAt?: string; // seven_day_sonnet.resets_at
     weeklyOpusUsage?: number;     // seven_day_opus.utilization (percentage)
     weeklyOpusResetAt?: string;   // seven_day_opus.resets_at
+    fableUsage?: number;
+    fableResetAt?: string;
+    spendLimitUsage?: number;      // rate_limits.spend_limit.used_percentage (statusline payload only)
+    spendLimitUsedUsd?: number;    // rate_limits.spend_limit.used_usd
+    spendLimitLimitUsd?: number;   // rate_limits.spend_limit.limit_usd
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;      // in cents (divide by 100 for dollars)
     extraUsageUsed?: number;       // in cents (divide by 100 for dollars)
     extraUsageUtilization?: number; // percentage 0-100
     extraUsageCurrency?: string;   // ISO 4217 currency code (e.g. 'USD', 'EUR')
+    apiSessionUsage?: number;      // the usage API's own sessionUsage, never rate_limits'; see usage-prefetch.ts
     error?: UsageError;
 }
 
@@ -30,3 +36,43 @@ export interface UsageWindowMetrics {
     elapsedPercent: number;
     remainingPercent: number;
 }
+
+export type UsageDataField = Exclude<keyof UsageData, 'error' | 'apiSessionUsage'>;
+
+// Fields that exist only in the statusline payload, never in the usage API
+// response or its on-disk cache.
+export type StatuslineOnlyUsageField = 'spendLimitUsage' | 'spendLimitUsedUsd' | 'spendLimitLimitUsd';
+
+// TypeScript can't narrow `target[field] = value` when `field` is a plain
+// UsageDataField union at the call site (it can't prove `value`'s type
+// matches whichever union member `field` happens to be), but it can when both
+// are tied to the same generic `K` here. Shared because both usage-fetch.ts
+// and usage-prefetch.ts need to assign UsageData fields by a dynamic key.
+export function setUsageField<K extends UsageDataField>(target: Partial<UsageData>, field: K, value: UsageData[K]): void {
+    target[field] = value;
+}
+
+// Single source of truth for per-model weekly usage buckets. Every place that
+// used to hand-list models (the widget registry, API/cache schemas, and
+// rate-limits extractor) now derives from this array, so adding or renaming a
+// model bucket can't desync one of those spots from the others.
+export interface WeeklyModelUsageBucket {
+    widgetType: string;
+    // As of 2026-07, /api/oauth/usage reports per-model weekly usage as an
+    // entry in its `limits` array (kind: "weekly_scoped", matched by
+    // scope.model.display_name), not as a flat bucket -- the older
+    // seven_day_sonnet/seven_day_opus-style flat keys were observed returning
+    // null even for models with real usage. modelDisplayName drives that
+    // limits[] lookup; apiBucketKey is present only for models that also have
+    // a legacy flat API/statusline bucket.
+    modelDisplayName: string; // e.g. "Sonnet", matched case-insensitively against limits[].scope.model.display_name
+    apiBucketKey?: string; // legacy flat key, e.g. "seven_day_sonnet"
+    usageField: Exclude<UsageDataField, StatuslineOnlyUsageField>;
+    resetField: Exclude<UsageDataField, StatuslineOnlyUsageField>;
+}
+
+export const WEEKLY_MODEL_USAGE_BUCKETS: readonly WeeklyModelUsageBucket[] = [
+    { widgetType: 'weekly-sonnet-usage', modelDisplayName: 'Sonnet', apiBucketKey: 'seven_day_sonnet', usageField: 'weeklySonnetUsage', resetField: 'weeklySonnetResetAt' },
+    { widgetType: 'weekly-opus-usage', modelDisplayName: 'Opus', apiBucketKey: 'seven_day_opus', usageField: 'weeklyOpusUsage', resetField: 'weeklyOpusResetAt' },
+    { widgetType: 'fable-weekly-usage', modelDisplayName: 'Fable', usageField: 'fableUsage', resetField: 'fableResetAt' }
+];

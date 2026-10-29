@@ -68,30 +68,81 @@ describe('ExtraUsageUtilizationWidget', () => {
         })).toBe('Overage: 2.6%');
     });
 
-    it('exposes and toggles hide-if-disabled configuration', () => {
+    // The usage API reports `utilization: null` until the first charge of the
+    // month, while still reporting the amount spent and the monthly limit.
+    it('derives utilization from spent and limit when the API reports none', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const item: WidgetItem = { id: 'extra', type: 'extra-usage-utilization' };
+
+        expect(render(widget, item, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageLimit: 5000,
+                extraUsageUsed: 0
+            }
+        })).toBe('Overage: 0.0%');
+        expect(render(widget, item, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageLimit: 5000,
+                extraUsageUsed: 1250
+            }
+        })).toBe('Overage: 25.0%');
+    });
+
+    it('prefers the API-reported utilization over the derived one', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+
+        expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageLimit: 5000,
+                extraUsageUsed: 1250,
+                extraUsageUtilization: 40
+            }
+        })).toBe('Overage: 40.0%');
+    });
+
+    it('renders nothing without a usable monthly limit to derive utilization from', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+        const item: WidgetItem = { id: 'extra', type: 'extra-usage-utilization' };
+
+        expect(render(widget, item, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageUsed: 1250
+            }
+        })).toBeNull();
+        expect(render(widget, item, {
+            usageData: {
+                extraUsageEnabled: true,
+                extraUsageLimit: 0,
+                extraUsageUsed: 0
+            }
+        })).toBeNull();
+    });
+
+    it('declares the disabled and no-data hideable states alongside display keybinds', () => {
         const widget = new ExtraUsageUtilizationWidget();
         const baseItem: WidgetItem = { id: 'extra', type: 'extra-usage-utilization' };
 
         expect(widget.getCustomKeybinds(baseItem)).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' }
         ]);
         expect(widget.getCustomKeybinds({
             ...baseItem,
             metadata: { display: 'progress' }
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'u', label: '(u) show remaining', action: 'toggle-invert' }
         ]);
         expect(widget.getCustomKeybinds({
             ...baseItem,
             metadata: { invert: 'true' }
         })).toEqual([
             { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' },
-            { key: 'u', label: '(u) show used', action: 'toggle-invert' },
-            { key: 'h', label: '(h)ide if disabled', action: 'toggle-hide-disabled' }
+            { key: 'u', label: '(u) show used', action: 'toggle-invert' }
         ]);
         expect(widget.getEditorDisplay(baseItem).modifierText).toBe('(used)');
         expect(widget.getEditorDisplay({
@@ -99,16 +150,22 @@ describe('ExtraUsageUtilizationWidget', () => {
             metadata: { invert: 'true' }
         }).modifierText).toBe('(remaining)');
 
-        const hidden = widget.handleEditorAction('toggle-hide-disabled', baseItem);
-        expect(hidden?.metadata?.hideIfDisabled).toBe('true');
-        expect(widget.getEditorDisplay(hidden ?? baseItem).modifierText).toBe('(used, hide if disabled)');
-        expect(widget.getEditorDisplay({
-            ...baseItem,
-            metadata: { display: 'progress', hideIfDisabled: 'true' }
-        }).modifierText).toBe('(long bar, used, hide if disabled)');
+        expect(widget.getHideableStates().map(state => state.key)).toEqual(['disabled', 'no-data']);
+    });
 
-        const shown = widget.handleEditorAction('toggle-hide-disabled', hidden ?? baseItem);
-        expect(shown?.metadata?.hideIfDisabled).toBe('false');
+    it('does not show a time cursor carried over from a usage widget', () => {
+        // A usage bar's cursor metadata survives a type change in the picker,
+        // but this widget never draws a cursor
+        const widget = new ExtraUsageUtilizationWidget();
+
+        const modifierText = widget.getEditorDisplay({
+            id: 'extra',
+            type: 'extra-usage-utilization',
+            metadata: { display: 'progress', cursor: 'true' }
+        }).modifierText;
+
+        expect(modifierText).toContain('bar');
+        expect(modifierText).not.toContain('time cursor');
     });
 
     it('shows usage errors only when required extra usage data is missing', () => {
@@ -118,6 +175,18 @@ describe('ExtraUsageUtilizationWidget', () => {
 
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
         expect(render(widget, { id: 'extra', type: 'extra-usage-utilization' }, { usageData: { extraUsageEnabled: true } })).toBeNull();
+    });
+
+    it('hides usage errors when the no-data state is enabled', () => {
+        const widget = new ExtraUsageUtilizationWidget();
+
+        mockGetUsageErrorMessage.mockReturnValue('[Timeout]');
+
+        expect(render(widget, {
+            id: 'extra',
+            metadata: { hide: 'no-data' },
+            type: 'extra-usage-utilization'
+        }, { usageData: { error: 'timeout' } })).toBeNull();
     });
 
     it('renders n/a when extra usage is disabled', () => {
@@ -145,7 +214,7 @@ describe('ExtraUsageUtilizationWidget', () => {
 
         const hiddenItem: WidgetItem = {
             id: 'extra',
-            metadata: { hideIfDisabled: 'true' },
+            metadata: { hide: 'disabled' },
             type: 'extra-usage-utilization'
         };
 

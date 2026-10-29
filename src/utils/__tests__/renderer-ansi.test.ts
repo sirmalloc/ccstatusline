@@ -202,6 +202,22 @@ describe('renderer ANSI/OSC handling', () => {
         expect(truncated).toContain(OSC8_CLOSE);
         expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(8);
     });
+
+    it('never returns text wider than maxWidth when an escape splits a cluster', () => {
+        // U+2764 + SGR + U+FE0F: the escape-stripped text measures 2 columns per
+        // heart, but each run between escapes measures 1 + 0.
+        const heart = '\u2764\x1b[31m\uFE0F\x1b[39m';
+        const text = heart.repeat(6);
+        expect(getVisibleWidth(text)).toBe(12);
+
+        for (const ellipsis of [true, false]) {
+            for (let maxWidth = 1; maxWidth < 12; maxWidth++) {
+                const truncated = truncateStyledText(text, maxWidth, { ellipsis });
+                expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(maxWidth);
+            }
+        }
+        expect(getVisibleText(truncateStyledText(text, 9))).toBe('\u2764\uFE0F'.repeat(3) + '...');
+    });
 });
 
 describe('renderer minimalist mode', () => {
@@ -232,5 +248,36 @@ describe('renderer minimalist mode', () => {
         const content = preRenderedLines[0]?.[0]?.content;
 
         expect(content).toBe('Model: Claude');
+    });
+});
+
+describe('renderer color levels', () => {
+    const widgets: WidgetItem[] = [
+        { id: 'hex', type: 'custom-text', customText: 'hex', color: 'hex:FF0000', backgroundColor: 'hex:0000FF' },
+        { id: 'sep', type: 'separator' },
+        { id: 'a256', type: 'custom-text', customText: 'a256', color: 'ansi256:100', backgroundColor: 'ansi256:20' }
+    ];
+    const extendedColorCode = /\x1b\[[34]8;[25];/;
+
+    it('emits no 256-color or truecolor escapes at No Color and Basic', () => {
+        for (const colorLevel of [0, 1] as const) {
+            for (const enabled of [false, true]) {
+                const line = renderLine(widgets, {
+                    settings: { colorLevel, powerline: { ...DEFAULT_SETTINGS.powerline, enabled } },
+                    terminalWidth: 80
+                });
+
+                expect(getVisibleText(line)).toContain('hex');
+                expect(line).not.toMatch(extendedColorCode);
+            }
+        }
+    });
+
+    it('keeps them at 256-color and truecolor levels', () => {
+        for (const colorLevel of [2, 3] as const) {
+            const line = renderLine(widgets, { settings: { colorLevel }, terminalWidth: 80 });
+
+            expect(line).toMatch(extendedColorCode);
+        }
     });
 });

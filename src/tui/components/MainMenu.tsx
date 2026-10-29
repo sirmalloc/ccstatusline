@@ -21,6 +21,8 @@ export type MainMenuOption = 'lines'
     | 'manageInstallation'
     | 'checkUpdates'
     | 'configureStatusLine'
+    | 'exportConfig'
+    | 'importConfig'
     | 'starGithub'
     | 'save'
     | 'exit';
@@ -30,6 +32,7 @@ export interface MainMenuProps {
     isClaudeInstalled: boolean;
     hasChanges: boolean;
     initialSelection?: number;
+    onSelectionChange?: (index: number) => void;
     powerlineFontStatus: PowerlineFontStatus;
     settings: Settings | null;
     installation?: InstallationMetadata;
@@ -121,6 +124,17 @@ export function buildMainMenuItems(
             description: 'Configure Claude Code status line settings like refresh interval'
         },
         '-',
+        {
+            label: '📤 Export Config',
+            value: 'exportConfig',
+            description: 'Save your current configuration to a JSON file for backup or sharing'
+        },
+        {
+            label: '📥 Import Config',
+            value: 'importConfig',
+            description: 'Load configuration from a previously exported JSON file'
+        },
+        '-',
         getInstallationMenuItem(isClaudeInstalled, installation)
     ];
 
@@ -200,6 +214,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     isClaudeInstalled,
     hasChanges,
     initialSelection = 0,
+    onSelectionChange,
     powerlineFontStatus,
     settings,
     installation,
@@ -235,6 +250,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                     onSelect(value, index);
                 }}
                 initialSelection={initialSelection}
+                onSelectionChange={(_, index) => onSelectionChange?.(index)}
             />
         </Box>
     );

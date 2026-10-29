@@ -1,5 +1,6 @@
-import * as fs from 'fs';
-import path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import path from 'node:path';
 import {
     afterAll,
     afterEach,
@@ -18,12 +19,23 @@ import {
     type InstallationMetadata,
     type Settings
 } from '../../types/Settings';
+import type { ImportValidationResult } from '../config';
+import type { SkippedWidgetHooks } from '../hooks';
 
-const MOCK_HOME_DIR = '/tmp/ccstatusline-config-test-home';
+// Unique per run, so test runs going at once don't delete each other's files
+const MOCK_HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-config-test-home-'));
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;
-let saveSettings: (settings: Settings) => Promise<void>;
+let saveSettings: (settings: Settings) => Promise<SkippedWidgetHooks | null>;
+let exportConfig: (settings: Settings, filePath: string) => Promise<void>;
+let validateImportFile: (filePath: string) => Promise<ImportValidationResult>;
+let applyImport: (
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys?: readonly (keyof Settings)[]
+) => Settings;
 let initConfigPath: (filePath?: string) => void;
 let getConfigLoadError: () => string | null;
 let saveInstallationMetadata: (metadata: InstallationMetadata | undefined) => Promise<void>;
@@ -47,6 +59,9 @@ describe('config utilities', () => {
         const configModule = await import('../config');
         loadSettings = configModule.loadSettings;
         saveSettings = configModule.saveSettings;
+        exportConfig = configModule.exportConfig;
+        validateImportFile = configModule.validateImportFile;
+        applyImport = configModule.applyImport;
         initConfigPath = configModule.initConfigPath;
         getConfigLoadError = configModule.getConfigLoadError;
         saveInstallationMetadata = configModule.saveInstallationMetadata;
@@ -90,9 +105,123 @@ describe('config utilities', () => {
         expect(Array.isArray(onDisk.lines)).toBe(true);
         expect(settings.gitCacheTtlSeconds).toBe(5);
         expect((onDisk as { gitCacheTtlSeconds?: number }).gitCacheTtlSeconds).toBe(5);
+        // Custom command caching is opt-in, so an untouched install keeps running
+        // the command on every repaint.
+        expect(settings.customCommandCacheTtlSeconds).toBe(0);
         expect(consoleErrorSpy).toHaveBeenCalledWith(
             expect.stringContaining('Default settings written to')
         );
+    });
+
+    it('exports the provided in-memory settings instead of reloading stale settings from disk', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        const exportPath = path.join(configDir, 'export.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            settingsPath,
+            JSON.stringify({ ...DEFAULT_SETTINGS, globalBold: false }),
+            'utf-8'
+        );
+
+        await exportConfig({ ...DEFAULT_SETTINGS, globalBold: true }, exportPath);
+
+        const exported = JSON.parse(fs.readFileSync(exportPath, 'utf-8')) as {
+            globalBold?: boolean;
+            exportedBy?: string;
+        };
+        expect(exported.globalBold).toBe(true);
+        expect(exported.exportedBy).toBeTruthy();
+    });
+
+    it('preserves current settings omitted from a merge import', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'partial-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({ version: CURRENT_VERSION, globalBold: true }),
+            'utf-8'
+        );
+        const current: Settings = {
+            ...DEFAULT_SETTINGS,
+            flexMode: 'full',
+            compactThreshold: 75,
+            lines: [[{ id: 'custom', type: 'model' }]]
+        };
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
+        expect(merged.globalBold).toBe(true);
+        expect(merged.flexMode).toBe('full');
+        expect(merged.compactThreshold).toBe(75);
+        expect(merged.lines).toEqual(current.lines);
+    });
+
+    it('rejects imports created by a newer schema version', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'future-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                version: CURRENT_VERSION + 1,
+                lines: [[], [], []],
+                futureSetting: 'unsupported'
+            }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation).toEqual({
+            status: 'invalid',
+            reason: `Config version ${CURRENT_VERSION + 1} is newer than supported version ${CURRENT_VERSION}`
+        });
+    });
+
+    it('rejects imports whose version is not a number', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'string-version-import.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({
+                version: String(CURRENT_VERSION),
+                lines: [[{ id: 'widget-1', type: 'model' }]],
+                minimalistMode: true
+            }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('invalid');
+    });
+
+    it('preserves local installation metadata during a replace import', () => {
+        const installation: InstallationMetadata = {
+            method: 'pinned',
+            installedVersion: '2.2.26'
+        };
+        const current = { ...DEFAULT_SETTINGS, installation };
+        const imported: Settings = {
+            ...DEFAULT_SETTINGS,
+            globalBold: true,
+            installation: {
+                method: 'auto-update',
+                packageManager: 'npm'
+            }
+        };
+
+        const replaced = applyImport(current, imported, 'replace');
+
+        expect(replaced.globalBold).toBe(true);
+        expect(replaced.installation).toEqual(installation);
     });
 
     it('uses defaults in memory and preserves invalid JSON without overwriting', async () => {
@@ -151,6 +280,30 @@ describe('config utilities', () => {
             expect.stringContaining('Failed to parse settings, using defaults'),
             expect.anything()
         );
+    });
+
+    it.each([
+        { name: 'a string', version: '4' },
+        { name: 'null', version: null }
+    ])('uses defaults in memory and preserves a file whose version is $name', async ({ version }) => {
+        const { settingsPath, backupPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        // A version that isn't a number must not be read as a v1 config: the v1 migration
+        // rebuilds the file from lines and v1 fields, dropping powerline and the rest.
+        const original = JSON.stringify({
+            version,
+            lines: [[{ id: 'widget-1', type: 'model' }]],
+            powerline: { enabled: true },
+            minimalistMode: true
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(settings.version).toBe(CURRENT_VERSION);
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+        expect(fs.existsSync(backupPath)).toBe(false);
+        expect(getConfigLoadError()).toBe('settings.json is not in a valid format');
     });
 
     it('uses defaults in memory when the settings file cannot be read', async () => {
@@ -257,6 +410,20 @@ describe('config utilities', () => {
         expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 
+    it('returns the widget hooks a save couldn\'t add', async () => {
+        const command = 'bash ~/.claude/statusline.sh';
+        fs.mkdirSync(getClaudeConfigDir(), { recursive: true });
+        fs.writeFileSync(
+            path.join(getClaudeConfigDir(), 'settings.json'),
+            JSON.stringify({ statusLine: { type: 'command', command } }),
+            'utf-8'
+        );
+
+        const skipped = await saveSettings({ ...DEFAULT_SETTINGS, lines: [[{ id: 'skills-1', type: 'skills' }]] });
+
+        expect(skipped).toEqual({ statusCommand: command, widgetNames: ['Skills'] });
+    });
+
     it('saves settings without leaving a temp file behind', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
 
@@ -269,6 +436,19 @@ describe('config utilities', () => {
         // No temporary write-file is left in the config directory.
         const leftovers = fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'));
         expect(leftovers).toEqual([]);
+    });
+
+    // Custom commands can carry credentials, so a save must not open up a
+    // settings file the user made private
+    it.skipIf(process.platform === 'win32')('keeps a private settings file private when saving', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []] }), 'utf-8');
+        fs.chmodSync(settingsPath, 0o600);
+
+        await saveSettings({ ...DEFAULT_SETTINGS });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
     });
 
     it('saves through a symlinked settings file without replacing the link', async () => {

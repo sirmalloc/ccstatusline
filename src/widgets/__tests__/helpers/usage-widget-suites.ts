@@ -31,12 +31,13 @@ interface UsagePercentWidgetSuiteConfig<TWidget extends UsageWidgetLike> {
     expectedRawTime: string;
     expectedInvertedTime: string;
     expectedTime: string;
+    expectedWholePercentTime: string;
     modifierItem: WidgetItem;
     progressItem: WidgetItem;
     rawProgressItem: WidgetItem;
     rawTimeItem: WidgetItem;
     render: (widget: TWidget, item: WidgetItem, context?: RenderContext) => string | null;
-    usageField: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage';
+    usageField: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage' | 'fableUsage';
     usageValue: number;
 }
 
@@ -62,7 +63,7 @@ const EXPECTED_TIMER_PROGRESS_KEYBINDS: CustomKeybind[] = [
     { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' }
 ];
 
-function getUsageContext(field: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage', value: number): RenderContext {
+function getUsageContext(field: 'sessionUsage' | 'weeklyUsage' | 'weeklySonnetUsage' | 'weeklyOpusUsage' | 'fableUsage', value: number): RenderContext {
     return { usageData: { [field]: value } };
 }
 
@@ -138,6 +139,16 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         expect(config.render(widget, config.baseItem, { usageData: { error: 'timeout' } })).toBe('[Timeout]');
     });
 
+    it('hides usage error text when the no-data state is enabled', () => {
+        const widget = config.createWidget();
+
+        config.errorMessageMock.mockReturnValue('[Timeout]');
+        expect(config.render(widget, {
+            ...config.baseItem,
+            metadata: { hide: 'no-data' }
+        }, { usageData: { error: 'timeout' } })).toBeNull();
+    });
+
     it('renders available usage data before unrelated usage errors', () => {
         const widget = config.createWidget();
         const context: RenderContext = {
@@ -148,6 +159,21 @@ export function runUsagePercentWidgetSuite<TWidget extends UsageWidgetLike>(conf
         };
 
         expect(config.render(widget, config.baseItem, context)).toBe(config.expectedTime);
+    });
+
+    // formatPercent's format argument is optional and its default reproduces the
+    // baseline output, so a render path that stops passing the resolved format
+    // stays invisible against default settings. Pinning a non-default style is
+    // what makes that reachable.
+    it('applies the resolved number format to the percentage', () => {
+        const widget = config.createWidget();
+        const context = getUsageContext(config.usageField, config.usageValue);
+        const wholePercentItem: WidgetItem = {
+            ...config.baseItem,
+            numberFormat: { style: 'whole' }
+        };
+
+        expect(config.render(widget, wholePercentItem, context)).toBe(config.expectedWholePercentTime);
     });
 
     it('renders inverted percentage in time mode', () => {

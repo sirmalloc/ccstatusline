@@ -1,5 +1,5 @@
-import * as childProcess from 'child_process';
-import os from 'os';
+import * as childProcess from 'node:child_process';
+import os from 'node:os';
 import {
     afterEach,
     beforeEach,
@@ -78,6 +78,17 @@ describe('FreeMemoryWidget', () => {
             const result = widget.render(item, context, DEFAULT_SETTINGS);
 
             expect(result).toBe('12.4G/16.0G');
+        });
+
+        it('should format mock data with the selected memory style', () => {
+            const context: RenderContext = { isPreview: true };
+            const item: WidgetItem = {
+                id: 'mem',
+                type: 'free-memory',
+                numberFormat: { style: 'whole' }
+            };
+
+            expect(widget.render(item, context, DEFAULT_SETTINGS)).toBe('Mem: 12G/16G');
         });
     });
 

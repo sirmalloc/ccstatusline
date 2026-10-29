@@ -1,15 +1,28 @@
-import type * as childProcess from 'child_process';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import { createRequire } from 'module';
-import * as os from 'os';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import type * as childProcess from 'node:child_process';
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it
 } from 'vitest';
+
+import {
+    __testing,
+    parseUsageApiResponse
+} from '../usage-fetch';
+import { WEEKLY_MODEL_USAGE_BUCKETS } from '../usage-types';
+
+import {
+    startStalledProxy,
+    type StalledProxy
+} from './proxy-test-helpers';
 
 const require = createRequire(import.meta.url);
 const { execFileSync: realExecFileSync } = require('node:child_process') as { execFileSync: typeof childProcess.execFileSync };
@@ -17,6 +30,7 @@ const { execFileSync: realExecFileSync } = require('node:child_process') as { ex
 interface UsageProbeResult {
     first: Record<string, unknown>;
     second: Record<string, unknown>;
+    staleFallback: [boolean, boolean];
     lockExists: boolean;
     cacheExists: boolean;
     requestCount: number;
@@ -24,6 +38,7 @@ interface UsageProbeResult {
     requestHost: string | null;
     homedir: string;
     lockContents: string | null;
+    fetchedAtMs: number | null;
 }
 
 interface TokenHome {
@@ -36,7 +51,9 @@ interface ProbeOptions {
     claudeConfigDir?: string;
     home: string;
     httpsProxy?: string;
+    lockWrittenDuringRequest?: string;
     lowercaseHttpsProxy?: string;
+    noProxy?: string;
     mode?: 'error' | 'status' | 'success' | 'unexpected';
     nowMs: number;
     pathDir?: string;
@@ -52,13 +69,13 @@ function createProbeHarness() {
     const usageModulePath = fileURLToPath(new URL('../usage.ts', import.meta.url));
 
     const probeScript = `
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { createRequire } from 'module';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const https = require('https');
+const https = require('node:https');
 const mode = process.env.TEST_REQUEST_MODE || 'success';
 const responseBody = process.env.TEST_RESPONSE_BODY || '';
 const responseHeaders = JSON.parse(process.env.TEST_RESPONSE_HEADERS_JSON || '{}');
@@ -97,6 +114,12 @@ https.request = (...args) => {
         },
         destroy() {},
         end() {
+            // Simulates a concurrent render replacing the lock while this
+            // request is in flight.
+            if (process.env.TEST_LOCK_DURING_REQUEST) {
+                fs.writeFileSync(lockFile, process.env.TEST_LOCK_DURING_REQUEST);
+            }
+
             if (mode === 'error') {
                 const handlers = requestHandlers.get('error') || [];
                 for (const handler of handlers) {
@@ -134,7 +157,7 @@ https.request = (...args) => {
     return request;
 };
 
-const { fetchUsageData } = await import(${JSON.stringify(usageModulePath)});
+const { fetchUsageData, getUsageFetchedAtMs, isStaleUsageFallback } = await import(${JSON.stringify(usageModulePath)});
 
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
@@ -147,13 +170,15 @@ const second = await fetchUsageData({ requiredFields });
 process.stdout.write(JSON.stringify({
     first,
     second,
+    staleFallback: [isStaleUsageFallback(first), isStaleUsageFallback(second)],
     lockExists: fs.existsSync(lockFile),
     cacheExists: fs.existsSync(cacheFile),
     requestCount,
     proxyAgentConfigured,
     requestHost,
     homedir: os.homedir(),
-    lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null
+    lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null,
+    fetchedAtMs: getUsageFetchedAtMs() ?? null
 }));
 `;
 
@@ -176,7 +201,9 @@ process.stdout.write(JSON.stringify({
         fs.mkdirSync(bin, { recursive: true });
         fs.mkdirSync(claudeConfig, { recursive: true });
 
-        fs.writeFileSync(securityScript, '#!/bin/sh\necho \'{"claudeAiOauth":{"accessToken":"test-token"}}\'\n');
+        // Keep the macOS Keychain stub in sync with credential changes made by
+        // the tests, so every platform exercises the same login and tokens.
+        fs.writeFileSync(securityScript, '#!/bin/sh\n/bin/cat "$CLAUDE_CONFIG_DIR/.credentials.json"\n');
         fs.chmodSync(securityScript, 0o755);
         fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
 
@@ -190,7 +217,10 @@ process.stdout.write(JSON.stringify({
     function runProbe(options: ProbeOptions): UsageProbeResult {
         const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => {
             const normalizedKey = key.toUpperCase();
-            return normalizedKey !== 'CLAUDE_CONFIG_DIR' && normalizedKey !== 'HTTPS_PROXY';
+            return normalizedKey !== 'CLAUDE_CONFIG_DIR'
+                && normalizedKey !== 'CLAUDE_SECURESTORAGE_CONFIG_DIR'
+                && normalizedKey !== 'HTTPS_PROXY'
+                && normalizedKey !== 'NO_PROXY';
         }));
 
         Object.assign(env, {
@@ -216,8 +246,16 @@ process.stdout.write(JSON.stringify({
             env.HTTPS_PROXY = options.httpsProxy;
         }
 
+        if (options.lockWrittenDuringRequest !== undefined) {
+            env.TEST_LOCK_DURING_REQUEST = options.lockWrittenDuringRequest;
+        }
+
         if (options.lowercaseHttpsProxy !== undefined) {
             env.https_proxy = options.lowercaseHttpsProxy;
+        }
+
+        if (options.noProxy !== undefined) {
+            env.NO_PROXY = options.noProxy;
         }
 
         const output = realExecFileSync(process.execPath, [probeScriptPath], {
@@ -250,6 +288,20 @@ function parseLockContents(lockContents: string | null): { blockedUntil: number;
     return lockContents ? JSON.parse(lockContents) as { blockedUntil: number; error?: string } : null;
 }
 
+// createTokenHome writes an access-token-only credentials file; these tests
+// need a refresh token alongside it to exercise the account fingerprint.
+function writeUsageCredentials(claudeConfig: string, claudeAiOauth: { accessToken: string; refreshToken?: string }): void {
+    fs.writeFileSync(path.join(claudeConfig, '.credentials.json'), JSON.stringify({ claudeAiOauth }));
+}
+
+function seedUsageCache(home: string, contents: Record<string, unknown>): { cacheFile: string; mtimeMs: number } {
+    const cacheDir = path.join(home, '.cache', 'ccstatusline');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const cacheFile = path.join(cacheDir, 'usage.json');
+    fs.writeFileSync(cacheFile, JSON.stringify(contents));
+    return { cacheFile, mtimeMs: fs.statSync(cacheFile).mtimeMs };
+}
+
 describe('fetchUsageData error handling', () => {
     const nowMs = 2200000000000;
     const successResponseBody = JSON.stringify({
@@ -261,6 +313,19 @@ describe('fetchUsageData error handling', () => {
             utilization: 17,
             resets_at: '2030-01-07T00:00:00.000Z'
         }
+    });
+    const unusedFableQuotaResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        },
+        limits: [
+            { kind: 'weekly_scoped', percent: 0, resets_at: null, scope: { model: { display_name: 'Claude 3.5 Fable' } } }
+        ]
     });
     const updatedSuccessResponseBody = JSON.stringify({
         five_hour: {
@@ -379,6 +444,34 @@ describe('fetchUsageData error handling', () => {
         error: {
             message: 'Rate limited. Please try again later.',
             type: 'rate_limit_error'
+        }
+    });
+
+    // The request carries the account's bearer token, so a host the user kept
+    // off the proxy must stay off it
+    it('connects directly when NO_PROXY lists api.anthropic.com', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const noProxyHome = harness.createTokenHome('no-proxy');
+
+            const result = harness.runProbe({
+                claudeConfigDir: noProxyHome.claudeConfig,
+                home: noProxyHome.home,
+                httpsProxy: 'http://proxy.local:8080',
+                noProxy: 'localhost,.anthropic.com',
+                mode: 'success',
+                nowMs,
+                pathDir: noProxyHome.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toMatchObject({ sessionUsage: 42, weeklyUsage: 17 });
+            expect(result.requestCount).toBe(1);
+            expect(result.proxyAgentConfigured).toBe(false);
+            expect(result.requestHost).toBe('api.anthropic.com');
+        } finally {
+            harness.cleanup();
         }
     });
 
@@ -697,6 +790,136 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    it('treats a missing fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('missing-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('parses an unused fable quota (0%, no resets_at) as real zero usage and serves it from cache', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('unused-fable-quota');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: unusedFableQuotaResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z',
+                fableUsage: 0
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('treats a missing fable window as conclusive when core usage fields are present', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('missing-fable-conclusive');
+            const requiredFields = ['fableUsage'];
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                requiredFields,
+                responseBody: successResponseBody
+            });
+
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(1);
+
+            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cachedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: cacheMtimeMs + 10000,
+                pathDir: home.bin,
+                requiredFields
+            });
+
+            expect(cachedResult.first).toEqual(result.first);
+            expect(cachedResult.second).toEqual(result.first);
+            expect(cachedResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('clears the in-flight lock after a successful fetch', () => {
         const harness = createProbeHarness();
 
@@ -719,6 +942,141 @@ describe('fetchUsageData error handling', () => {
             expect(result.cacheExists).toBe(true);
             expect(result.lockExists).toBe(false);
             expect(result.lockContents).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('keeps a rate-limit lock that a concurrent render wrote during the fetch', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('success-keeps-foreign-lock');
+            // Another render got a 429 while this request was in flight. Deleting
+            // its lock would let the next render fetch inside the Retry-After window.
+            const rateLimitedLock = JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + 300,
+                error: 'rate-limited'
+            });
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                lockWrittenDuringRequest: rateLimitedLock,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(1);
+            expect(result.cacheExists).toBe(true);
+            expect(result.lockContents).toBe(rateLimitedLock);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('ignores a lock whose deadline is implausibly far in the future', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('lock-beyond-horizon');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(path.join(cacheDir, 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + (10 * 365 * 24 * 60 * 60),
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            // The JSON lock stores an absolute deadline and so cannot age out.
+            // Honoring a bogus one strands every usage widget on [Timeout] with
+            // no way back; the fetch must run and overwrite the poisoned file.
+            expect(result.requestCount).toBe(1);
+            expect(result.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: '2030-01-01T00:00:00.000Z',
+                weeklyUsage: 17,
+                weeklyResetAt: '2030-01-07T00:00:00.000Z'
+            });
+            expect(result.lockExists).toBe(false);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('honors a long but plausible rate-limit lock', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('lock-within-horizon');
+            const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.writeFileSync(path.join(cacheDir, 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(nowMs / 1000) + (12 * 60 * 60),
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs,
+                pathDir: home.bin
+            });
+
+            // The horizon must not undercut a genuine Retry-After backoff.
+            expect(result.requestCount).toBe(0);
+            expect(result.first).toEqual({ error: 'rate-limited' });
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('backs off credential lookups across renders after finding none, per profile', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('no-credentials-backoff');
+            const otherProfile = harness.createTokenHome('no-credentials-backoff-other');
+            const credentialsFile = path.join(home.claudeConfig, '.credentials.json');
+            fs.rmSync(credentialsFile);
+            const renderAt = (probeNowMs: number, claudeConfig = home.claudeConfig) => harness.runProbe({
+                claudeConfigDir: claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(renderAt(nowMs).first).toEqual({ error: 'no-credentials' });
+
+            // An API-key user has no OAuth login to find, and on macOS each
+            // lookup spawns `security` twice, a full keychain dump included.
+            // Later renders inside the window skip the lookup entirely, so a
+            // login made meanwhile is only picked up once it ends.
+            fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+            const backedOff = renderAt(nowMs + 10000);
+            expect(backedOff.first).toEqual({ error: 'no-credentials' });
+            expect(backedOff.requestCount).toBe(0);
+
+            // Another profile's lookup is not suppressed by this one's miss.
+            const other = renderAt(nowMs + 10000, otherProfile.claudeConfig);
+            expect(other.first.sessionUsage).toBe(42);
+            expect(other.requestCount).toBe(1);
+
+            const retried = renderAt(nowMs + 31000);
+            expect(retried.first.sessionUsage).toBe(42);
+            expect(retried.requestCount).toBe(1);
         } finally {
             harness.cleanup();
         }
@@ -883,6 +1241,359 @@ describe('fetchUsageData error handling', () => {
             // Fingerprint matches and the cache is fresh, so it is served with no API call.
             expect(result.requestCount).toBe(0);
             expect(result.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['a day', 24 * 60 * 60 * 1000, 1, 42],
+        ['a few seconds', 2000, 0, 5]
+    ])('refetches a cache dated %s in the future only when the date cannot be right', (_label, aheadMs, expectedRequests, expectedSessionUsage) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('future-dated-cache');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: matchingHash });
+            // A day ahead: written while the system clock ran fast, since
+            // corrected. A few seconds ahead: a concurrent render wrote it
+            // after this one read the clock.
+            const futureSeconds = (mtimeMs + aheadMs) / 1000;
+            fs.utimesSync(cacheFile, futureSeconds, futureSeconds);
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.requestCount).toBe(expectedRequests);
+            expect(result.first.sessionUsage).toBe(expectedSessionUsage);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['fresh', 5000],
+        ['stale', 200000]
+    ])('serves a %s legacy cache during backoff without rewriting the cache or lock', (_state, cacheAgeMs) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('legacy-cache-backoff');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'current-access-token',
+                refreshToken: 'current-refresh-token'
+            });
+            const legacyHash = createHash('sha256').update('current-access-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: legacyHash });
+            const cacheContents = fs.readFileSync(cacheFile, 'utf8');
+            const probeNowMs = mtimeMs + cacheAgeMs;
+            const lockFile = path.join(home.home, '.cache', 'ccstatusline', 'usage.lock');
+            const lockContents = JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            });
+            fs.writeFileSync(lockFile, lockContents);
+            const lockMtimeMs = fs.statSync(lockFile).mtimeMs;
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 5 });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+            expect(result.lockContents).toBe(lockContents);
+            expect(fs.statSync(lockFile).mtimeMs).toBe(lockMtimeMs);
+            expect(fs.readFileSync(cacheFile, 'utf8')).toBe(cacheContents);
+            expect(fs.statSync(cacheFile).mtimeMs).toBe(mtimeMs);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['other-access-token', 'other-refresh-token', undefined])('rejects a cache fingerprint from %s when both current tokens are available', (cachedToken) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('unrelated-cache-backoff');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'current-access-token',
+                refreshToken: 'current-refresh-token'
+            });
+            const tokenHash = cachedToken === undefined
+                ? undefined
+                : createHash('sha256').update(cachedToken).digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash });
+            const probeNowMs = mtimeMs + 5000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ error: 'rate-limited' });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['current-refresh-token', ''])('writes the preferred fingerprint after a successful fetch with refresh token %j', (refreshToken) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('legacy-cache-migration');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'current-access-token', refreshToken });
+            const legacyHash = createHash('sha256').update('current-access-token').digest('hex').slice(0, 16);
+            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: legacyHash });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs + 200000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.requestCount).toBe(1);
+            const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')) as Record<string, unknown>;
+            const expectedToken = refreshToken || 'current-access-token';
+            expect(cache.tokenHash).toBe(createHash('sha256').update(expectedToken).digest('hex').slice(0, 16));
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([
+        ['current-access-token', { sessionUsage: 5 }],
+        ['', { error: 'rate-limited' }]
+    ])('uses only the access-token fingerprint when the refresh token is empty (cached token %j)', (cachedToken, expected) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('empty-refresh-token');
+            writeUsageCredentials(home.claudeConfig, { accessToken: 'current-access-token', refreshToken: '' });
+            const tokenHash = createHash('sha256').update(cachedToken).digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash });
+            const probeNowMs = mtimeMs + 5000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: probeNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual(expected);
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves a fresh cache after the access token was refreshed (same login)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('access-token-refreshed');
+            // The access token was reissued since the cache was written; the
+            // refresh token, which identifies the login, is unchanged.
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'reissued-access-token',
+                refreshToken: 'stable-refresh-token'
+            });
+            const fingerprint = createHash('sha256').update('stable-refresh-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: fingerprint });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: mtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            // A refresh must not look like an account switch: the cache stands
+            // and no request is made.
+            expect(result.requestCount).toBe(0);
+            expect(result.first.sessionUsage).toBe(5);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('serves a stale cache through a rate-limit backoff after the access token was refreshed', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('access-token-refreshed-rate-limit');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'reissued-access-token',
+                refreshToken: 'stable-refresh-token'
+            });
+            const fingerprint = createHash('sha256').update('stable-refresh-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: fingerprint });
+
+            // Cache is past CACHE_MAX_AGE and a server-issued backoff is active,
+            // so the stale-cache fallback is the only thing standing between the
+            // widgets and error text for the rest of the window.
+            const backedOffNowMs = mtimeMs + 200000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(backedOffNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: backedOffNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 5 });
+            expect(result.second).toEqual(result.first);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('dates a fetched answer by when it came, and an error by nothing', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const successHome = harness.createTokenHome('fetched-at-success');
+            const errorHome = harness.createTokenHome('fetched-at-error');
+
+            const success = harness.runProbe({
+                claudeConfigDir: successHome.claudeConfig,
+                home: successHome.home,
+                mode: 'success',
+                nowMs,
+                pathDir: successHome.bin,
+                responseBody: successResponseBody
+            });
+            const error = harness.runProbe({
+                claudeConfigDir: errorHome.claudeConfig,
+                home: errorHome.home,
+                mode: 'error',
+                nowMs,
+                pathDir: errorHome.bin
+            });
+
+            expect(success.requestCount).toBe(1);
+            expect(success.fetchedAtMs).toBe(nowMs);
+            expect(error.first).toEqual({ error: 'api-error' });
+            expect(error.fetchedAtMs).toBeNull();
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // The forecast history goes by when a percent was seen, and a cached one
+    // isn't current: through a rate limit it can be hours old.
+    it('dates cached usage by when the cache was written, fresh or served through a rate limit', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const freshHome = harness.createTokenHome('fetched-at-fresh-cache');
+            const staleHome = harness.createTokenHome('fetched-at-stale-cache');
+            const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const fresh = seedUsageCache(freshHome.home, { sessionUsage: 5, tokenHash: matchingHash });
+            const stale = seedUsageCache(staleHome.home, { sessionUsage: 5, tokenHash: matchingHash });
+            const backedOffNowMs = stale.mtimeMs + 2 * 60 * 60 * 1000;
+            fs.writeFileSync(path.join(staleHome.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(backedOffNowMs / 1000) + 3600,
+                error: 'rate-limited'
+            }));
+
+            const freshResult = harness.runProbe({
+                claudeConfigDir: freshHome.claudeConfig,
+                home: freshHome.home,
+                mode: 'unexpected',
+                nowMs: fresh.mtimeMs + 60000,
+                pathDir: freshHome.bin,
+                requiredFields: ['sessionUsage']
+            });
+            const staleResult = harness.runProbe({
+                claudeConfigDir: staleHome.claudeConfig,
+                home: staleHome.home,
+                mode: 'unexpected',
+                nowMs: backedOffNowMs,
+                pathDir: staleHome.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(freshResult.first).toEqual({ sessionUsage: 5 });
+            expect(freshResult.fetchedAtMs).toBe(fresh.mtimeMs);
+            expect(staleResult.first).toEqual({ sessionUsage: 5 });
+            expect(staleResult.fetchedAtMs).toBe(stale.mtimeMs);
+            expect(freshResult.requestCount + staleResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('refetches when the refresh token changes (account switch)', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('refresh-token-switched');
+            writeUsageCredentials(home.claudeConfig, {
+                accessToken: 'other-account-access-token',
+                refreshToken: 'other-account-refresh-token'
+            });
+            const previousFingerprint = createHash('sha256').update('previous-refresh-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: previousFingerprint });
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs: mtimeMs + 5000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage'],
+                responseBody: successResponseBody
+            });
+
+            // A different login still invalidates the cache immediately.
+            expect(result.requestCount).toBe(1);
+            expect(result.first.sessionUsage).toBe(42);
         } finally {
             harness.cleanup();
         }
@@ -1142,6 +1853,118 @@ describe('fetchUsageData error handling', () => {
         }
     });
 
+    // The stale fallback carries no error, so a caller that must not take an
+    // old reading for the API's current answer needs it marked.
+    it.each([
+        ['a rate-limit backoff', true, 0],
+        ['a failed request', false, 1]
+    ])('marks the stale cache served through %s as a stale fallback', (_label, backedOff, requestCount) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`stale-fallback-${requestCount}`);
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 97, tokenHash });
+            // Long past CACHE_MAX_AGE, so only the fallback serves the cache,
+            // and it has outlived any refresh
+            const staleNowMs = mtimeMs + 40 * 60 * 1000;
+            if (backedOff) {
+                fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                    blockedUntil: Math.floor(staleNowMs / 1000) + 3600,
+                    error: 'rate-limited'
+                }));
+            }
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: backedOff ? 'unexpected' : 'error',
+                nowMs: staleNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 97 });
+            // The second call answers from memory, with the same stale cache
+            expect(result.second).toEqual(result.first);
+            expect(result.staleFallback).toEqual([true, true]);
+            expect(result.requestCount).toBe(requestCount);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // Another render's ordinary refresh holds its in-flight lock for up to
+    // LOCK_MAX_AGE once the cache expires. The cache served through that lock is
+    // as current as a cache hit unless it has outlived the lock too.
+    it.each([
+        ['doesn\'t mark a cache that has just expired', 185, false],
+        ['marks a cache older than the in-flight lock allows', 215, true]
+    ])('%s while another render\'s refresh is in flight', (_label, cacheAgeSeconds, staleFallback) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome(`refresh-in-flight-${cacheAgeSeconds}`);
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 97, tokenHash });
+            const refreshNowMs = mtimeMs + cacheAgeSeconds * 1000;
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                blockedUntil: Math.floor(refreshNowMs / 1000) + 28,
+                error: 'timeout'
+            }));
+
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: refreshNowMs,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(result.first).toEqual({ sessionUsage: 97 });
+            expect(result.second).toEqual(result.first);
+            expect(result.staleFallback).toEqual([staleFallback, staleFallback]);
+            expect(result.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('doesn\'t mark a fresh answer or a cache hit as a stale fallback', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('stale-fallback-unmarked');
+            const fetchedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(fetchedResult.requestCount).toBe(1);
+            expect(fetchedResult.staleFallback).toEqual([false, false]);
+
+            const cacheFile = path.join(home.home, '.cache', 'ccstatusline', 'usage.json');
+            const cacheHitResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: fs.statSync(cacheFile).mtimeMs + 5000,
+                pathDir: home.bin
+            });
+
+            expect(cacheHitResult.first).toEqual(fetchedResult.first);
+            expect(cacheHitResult.requestCount).toBe(0);
+            expect(cacheHitResult.staleFallback).toEqual([false, false]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('returns rate-limited without stale cache and falls back to the default backoff when Retry-After is invalid', () => {
         const harness = createProbeHarness();
 
@@ -1254,5 +2077,522 @@ describe('fetchUsageData error handling', () => {
         } finally {
             harness.cleanup();
         }
+    });
+});
+
+// Guards the exact failure mode described in the code review that motivated
+// WEEKLY_MODEL_USAGE_BUCKETS (usage-types.ts): CachedUsageDataSchema and
+// UsageApiResponseSchema are hand-declared (see the comments on them in
+// usage-fetch.ts for why they can't just be generated from the registry) and
+// therefore CAN drift from it silently -- a field present in one schema but
+// missing from the other would parse fine from a live API fetch, then vanish
+// the moment that response round-trips through the on-disk cache. This test
+// makes that drift fail loudly instead.
+describe('usage API request behind a proxy that never answers CONNECT', () => {
+    let originalProxy: string | undefined;
+    let proxy: StalledProxy | null = null;
+
+    beforeEach(() => {
+        originalProxy = process.env.HTTPS_PROXY;
+    });
+
+    afterEach(async () => {
+        await proxy?.stop();
+        proxy = null;
+        if (originalProxy === undefined) {
+            delete process.env.HTTPS_PROXY;
+        } else {
+            process.env.HTTPS_PROXY = originalProxy;
+        }
+    });
+
+    // The request's socket timeout can't fire before the proxy answers CONNECT,
+    // and the agent's own connection to the proxy would keep the process alive
+    it('gives up at the deadline and closes its connection to the proxy', async () => {
+        proxy = await startStalledProxy();
+        process.env.HTTPS_PROXY = proxy.url;
+
+        expect(await __testing.fetchFromUsageApi('test-token', 50)).toEqual({ kind: 'error' });
+        await proxy.connectionClosed;
+    });
+});
+
+describe('WEEKLY_MODEL_USAGE_BUCKETS schema parity', () => {
+    it('declares every registry bucket field in CachedUsageDataSchema', () => {
+        const cachedKeys = new Set(Object.keys(__testing.CachedUsageDataSchema.shape));
+
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            expect(cachedKeys.has(bucket.usageField), `CachedUsageDataSchema is missing "${bucket.usageField}"`).toBe(true);
+            expect(cachedKeys.has(bucket.resetField), `CachedUsageDataSchema is missing "${bucket.resetField}"`).toBe(true);
+        }
+    });
+
+    it('declares every registry legacy API key in UsageApiResponseSchema', () => {
+        const apiKeys = new Set(Object.keys(__testing.UsageApiResponseSchema.shape));
+
+        for (const bucket of WEEKLY_MODEL_USAGE_BUCKETS) {
+            if (!bucket.apiBucketKey) {
+                continue;
+            }
+
+            expect(apiKeys.has(bucket.apiBucketKey), `UsageApiResponseSchema is missing "${bucket.apiBucketKey}"`).toBe(true);
+        }
+    });
+
+    it('round-trips every registry bucket through an API fetch and a cache read', () => {
+        const apiResponse: Record<string, unknown> = {
+            five_hour: { utilization: 10, resets_at: '2026-01-01T00:00:00Z' },
+            seven_day: { utilization: 20, resets_at: '2026-01-08T00:00:00Z' },
+            limits: WEEKLY_MODEL_USAGE_BUCKETS.map((bucket, index) => ({
+                kind: 'weekly_scoped',
+                percent: 30 + index,
+                resets_at: `2026-01-0${index + 1}T00:00:00Z`,
+                scope: { model: { display_name: bucket.modelDisplayName } }
+            }))
+        };
+
+        const fromApi = __testing.parseUsageApiResponse(JSON.stringify(apiResponse));
+        expect(fromApi).not.toBeNull();
+        const fromCache = __testing.CachedUsageDataSchema.parse(fromApi);
+
+        for (const [index, bucket] of WEEKLY_MODEL_USAGE_BUCKETS.entries()) {
+            expect(fromCache[bucket.usageField], `"${bucket.usageField}" did not survive the cache round-trip`).toBe(30 + index);
+            expect(fromCache[bucket.resetField], `"${bucket.resetField}" did not survive the cache round-trip`).toBe(`2026-01-0${index + 1}T00:00:00Z`);
+        }
+    });
+
+    it('prefers a weekly_scoped limits[] entry over the legacy flat bucket for the same model', () => {
+        // Shape captured from a live /api/oauth/usage response (2026-07):
+        // the legacy seven_day_sonnet/seven_day_opus keys return null even
+        // when the model has real usage; the real number is in limits[].
+        const sonnetBucket = WEEKLY_MODEL_USAGE_BUCKETS.find(bucket => bucket.modelDisplayName === 'Sonnet');
+        if (!sonnetBucket) {
+            throw new Error('expected a Sonnet entry in WEEKLY_MODEL_USAGE_BUCKETS for this test');
+        }
+
+        const parsed = __testing.parseUsageApiResponse(JSON.stringify({
+            five_hour: { utilization: 48, resets_at: '2026-07-17T13:50:00Z' },
+            seven_day: { utilization: 18, resets_at: '2026-07-23T04:00:00Z' },
+            seven_day_sonnet: null,
+            seven_day_opus: null,
+            limits: [
+                { kind: 'session', percent: 48, resets_at: '2026-07-17T13:50:00Z', scope: null },
+                { kind: 'weekly_all', percent: 18, resets_at: '2026-07-23T04:00:00Z', scope: null },
+                { kind: 'weekly_scoped', percent: 3, resets_at: '2026-07-23T04:00:00Z', scope: { model: { display_name: 'Sonnet' } } }
+            ]
+        }));
+
+        expect(parsed?.[sonnetBucket.usageField]).toBe(3);
+        expect(parsed?.[sonnetBucket.resetField]).toBe('2026-07-23T04:00:00Z');
+    });
+
+    it('falls back to the legacy flat bucket when a model has no weekly_scoped limits[] entry', () => {
+        const opusBucket = WEEKLY_MODEL_USAGE_BUCKETS.find(bucket => bucket.modelDisplayName === 'Opus');
+        if (!opusBucket) {
+            throw new Error('expected an Opus entry in WEEKLY_MODEL_USAGE_BUCKETS for this test');
+        }
+
+        const parsed = __testing.parseUsageApiResponse(JSON.stringify({
+            five_hour: { utilization: 48, resets_at: '2026-07-17T13:50:00Z' },
+            seven_day: { utilization: 18, resets_at: '2026-07-23T04:00:00Z' },
+            seven_day_opus: { utilization: 42, resets_at: '2026-07-23T04:00:00Z' },
+            limits: [
+                { kind: 'weekly_scoped', percent: 3, resets_at: '2026-07-23T04:00:00Z', scope: { model: { display_name: 'Sonnet' } } }
+            ]
+        }));
+
+        expect(parsed?.[opusBucket.usageField]).toBe(42);
+        expect(parsed?.[opusBucket.resetField]).toBe('2026-07-23T04:00:00Z');
+    });
+
+    it('handles a real live-captured response (Fable-only limits[], no matching Sonnet/Opus entry) without erroring', () => {
+        // Exact shape of a live response where only Fable has a weekly_scoped
+        // entry. Sonnet/Opus have no limits[] entry, so they fall back to
+        // their (explicitly null) legacy bucket -- 0%, per the pre-existing
+        // #343 "null bucket -> 0 usage" convention preserved by that fallback.
+        const parsed = __testing.parseUsageApiResponse(JSON.stringify({
+            five_hour: { utilization: 48, resets_at: '2026-07-17T13:50:00.885205+00:00' },
+            seven_day: { utilization: 18, resets_at: '2026-07-23T04:00:00.885227+00:00' },
+            seven_day_opus: null,
+            seven_day_sonnet: null,
+            limits: [
+                { kind: 'session', group: 'session', percent: 48, resets_at: '2026-07-17T13:50:00.885205+00:00', scope: null, is_active: true },
+                { kind: 'weekly_all', group: 'weekly', percent: 18, resets_at: '2026-07-23T04:00:00.885227+00:00', scope: null, is_active: false },
+                {
+                    kind: 'weekly_scoped',
+                    group: 'weekly',
+                    percent: 3,
+                    resets_at: '2026-07-23T04:00:00.885562+00:00',
+                    scope: { model: { id: null, display_name: 'Fable' }, surface: null },
+                    is_active: false
+                }
+            ],
+            extra_usage: { is_enabled: false }
+        }));
+
+        expect(parsed?.sessionUsage).toBe(48);
+        expect(parsed?.weeklyUsage).toBe(18);
+        expect(parsed?.weeklySonnetUsage).toBe(0);
+        expect(parsed?.weeklyOpusUsage).toBe(0);
+        expect(parsed?.fableUsage).toBe(3);
+        expect(parsed?.fableResetAt).toBe('2026-07-23T04:00:00.885562+00:00');
+    });
+});
+
+describe('parseUsageApiResponse limits[] fallback (#503)', () => {
+    const limitsOnlyResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                group: 'session',
+                percent: 15,
+                is_active: false,
+                resets_at: '2030-02-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                group: 'weekly',
+                percent: 36,
+                is_active: false,
+                resets_at: '2030-02-07T00:00:00.000Z'
+            }
+        ]
+    });
+    const flatAndLimitsResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-03-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-03-07T00:00:00.000Z'
+        },
+        limits: [
+            {
+                kind: 'session',
+                percent: 99,
+                resets_at: '2030-09-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                percent: 88,
+                resets_at: '2030-09-07T00:00:00.000Z'
+            }
+        ]
+    });
+    const partialFallbackResponseBody = JSON.stringify({
+        seven_day: {
+            utilization: null,
+            resets_at: '2030-04-07T00:00:00.000Z'
+        },
+        limits: [
+            {
+                kind: 'weekly_all',
+                percent: 71,
+                resets_at: '2099-01-01T00:00:00.000Z'
+            }
+        ]
+    });
+    const placeholderLimitResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: 0,
+                resets_at: null
+            }
+        ]
+    });
+    const unknownKindsAndScopedResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 10,
+            resets_at: '2030-05-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 20,
+            resets_at: '2030-05-07T00:00:00.000Z'
+        },
+        limits: [
+            {
+                kind: 'session',
+                percent: 10,
+                resets_at: '2030-05-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                percent: 20,
+                resets_at: '2030-05-07T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_scoped',
+                group: 'weekly',
+                percent: 71,
+                severity: 'normal',
+                scope: {
+                    model: {
+                        id: null,
+                        display_name: 'Fable'
+                    },
+                    surface: null
+                },
+                is_active: true,
+                resets_at: '2030-05-07T00:00:00.000Z'
+            },
+            {
+                kind: 'some_future_kind',
+                percent: 55,
+                resets_at: '2030-05-09T00:00:00.000Z'
+            }
+        ]
+    });
+    const noLimitsResponseBody = JSON.stringify({
+        five_hour: {
+            utilization: 42,
+            resets_at: '2030-01-01T00:00:00.000Z'
+        },
+        seven_day: {
+            utilization: 17,
+            resets_at: '2030-01-07T00:00:00.000Z'
+        }
+    });
+    const zeroPercentWithResetsResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: 0,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            }
+        ]
+    });
+    const nullPercentWithResetsResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: null,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            }
+        ]
+    });
+    const weeklyOnlyLimitsResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'weekly_all',
+                percent: 44,
+                resets_at: '2030-06-07T00:00:00.000Z'
+            }
+        ]
+    });
+    const nullKindEntryResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: null,
+                percent: 50,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            },
+            {
+                kind: 'session',
+                percent: 12,
+                resets_at: '2030-06-02T00:00:00.000Z'
+            }
+        ]
+    });
+    const duplicateSessionKindResponseBody = JSON.stringify({
+        limits: [
+            {
+                kind: 'session',
+                percent: 12,
+                resets_at: '2030-06-01T00:00:00.000Z'
+            },
+            {
+                kind: 'session',
+                percent: 99,
+                resets_at: '2099-01-01T00:00:00.000Z'
+            }
+        ]
+    });
+    // Whole-bucket null (five_hour/seven_day explicitly null, not merely
+    // absent) is indistinguishable between an Enterprise account with no
+    // rate-limit window (#343, correctly pinned to 0%) and a migrated
+    // account whose flat buckets were hollowed out to null alongside a live
+    // limits[] (#503). getUsageApiBucketUtilization(null) intentionally
+    // returns 0 (the #343 rule) even though resets_at still falls back to
+    // limits[] here - this is a known, accepted limitation: the parser
+    // cannot tell the two cases apart from the payload alone, so the
+    // percent stays pinned to 0 while the reset timer still advances.
+    const nullBucketsWithLiveLimitsResponseBody = JSON.stringify({
+        five_hour: null,
+        seven_day: null,
+        limits: [
+            {
+                kind: 'session',
+                percent: 63,
+                resets_at: '2030-07-01T00:00:00.000Z'
+            },
+            {
+                kind: 'weekly_all',
+                percent: 81,
+                resets_at: '2030-07-07T00:00:00.000Z'
+            }
+        ]
+    });
+
+    it('derives session and weekly percentages and resets_at from limits[] when flat buckets are absent', () => {
+        expect(parseUsageApiResponse(limitsOnlyResponseBody)).toEqual({
+            sessionUsage: 15,
+            sessionResetAt: '2030-02-01T00:00:00.000Z',
+            weeklyUsage: 36,
+            weeklyResetAt: '2030-02-07T00:00:00.000Z'
+        });
+    });
+
+    it('prefers flat bucket values over limits[] when both are present', () => {
+        expect(parseUsageApiResponse(flatAndLimitsResponseBody)).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: '2030-03-01T00:00:00.000Z',
+            weeklyUsage: 17,
+            weeklyResetAt: '2030-03-07T00:00:00.000Z'
+        });
+    });
+
+    it('falls back to limits[] percent independently of a present flat resets_at', () => {
+        expect(parseUsageApiResponse(partialFallbackResponseBody)).toEqual({
+            weeklyUsage: 71,
+            weeklyResetAt: '2030-04-07T00:00:00.000Z'
+        });
+    });
+
+    it('treats a limits[] entry with percent 0 and no resets_at as a placeholder (#343 rationale)', () => {
+        expect(parseUsageApiResponse(placeholderLimitResponseBody)).toEqual({});
+    });
+
+    it('treats a model-scoped weekly limit at 0% with no resets_at as real zero usage, not a placeholder', () => {
+        // Live payloads show a weekly_scoped entry sitting at percent 0 /
+        // resets_at null until the scoped model is first used in the current
+        // window (resets_at then fills in while percent stays 0), so unlike
+        // the unscoped case above this is a real 0% reading. The reset field
+        // stays unset until the window actually starts.
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    group: 'weekly',
+                    percent: 0,
+                    resets_at: null,
+                    scope: { model: { id: null, display_name: 'Fable' }, surface: null },
+                    is_active: false
+                }
+            ]
+        }))).toEqual({ fableUsage: 0 });
+    });
+
+    it('ignores unknown limits[] kinds but consumes fable weekly_scoped entries', () => {
+        expect(parseUsageApiResponse(unknownKindsAndScopedResponseBody)).toEqual({
+            sessionUsage: 10,
+            sessionResetAt: '2030-05-01T00:00:00.000Z',
+            weeklyUsage: 20,
+            weeklyResetAt: '2030-05-07T00:00:00.000Z',
+            fableUsage: 71,
+            fableResetAt: '2030-05-07T00:00:00.000Z'
+        });
+    });
+
+    it('derives fable usage/reset from a weekly_scoped entry with Fable case variants', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 22,
+                    resets_at: '2030-05-08T00:00:00.000Z',
+                    scope: { model: { display_name: 'claude 3.5 fAbLe' } }
+                }
+            ]
+        }))).toEqual({
+            fableUsage: 22,
+            fableResetAt: '2030-05-08T00:00:00.000Z'
+        });
+    });
+
+    it('derives Sonnet usage/reset from its weekly_scoped entry', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 99,
+                    resets_at: '2030-05-08T00:00:00.000Z',
+                    scope: { model: { display_name: 'Sonnet' } }
+                }
+            ]
+        }))).toEqual({
+            weeklySonnetUsage: 99,
+            weeklySonnetResetAt: '2030-05-08T00:00:00.000Z'
+        });
+    });
+
+    it('ignores weekly_scoped when no scope -> no crash', () => {
+        expect(parseUsageApiResponse(JSON.stringify({
+            limits: [
+                {
+                    kind: 'weekly_scoped',
+                    percent: 10,
+                    resets_at: '2030-05-08T00:00:00.000Z'
+                }
+            ]
+        }))).toEqual({});
+    });
+
+    it('behaves identically to before when limits[] is absent', () => {
+        expect(parseUsageApiResponse(noLimitsResponseBody)).toEqual({
+            sessionUsage: 42,
+            sessionResetAt: '2030-01-01T00:00:00.000Z',
+            weeklyUsage: 17,
+            weeklyResetAt: '2030-01-07T00:00:00.000Z'
+        });
+    });
+
+    it('surfaces a limits[] entry reporting percent 0 with a resets_at as a real 0%, not a placeholder', () => {
+        expect(parseUsageApiResponse(zeroPercentWithResetsResponseBody)).toEqual({
+            sessionUsage: 0,
+            sessionResetAt: '2030-06-01T00:00:00.000Z'
+        });
+    });
+
+    it('treats a limits[] entry with percent null and a present resets_at as usage-undefined but keeps the reset time', () => {
+        expect(parseUsageApiResponse(nullPercentWithResetsResponseBody)).toEqual({ sessionResetAt: '2030-06-01T00:00:00.000Z' });
+    });
+
+    it('does not reject the whole response when a limits[] entry has kind: null (F7)', () => {
+        expect(parseUsageApiResponse(nullKindEntryResponseBody)).toEqual({
+            sessionUsage: 12,
+            sessionResetAt: '2030-06-02T00:00:00.000Z'
+        });
+    });
+
+    it('derives only weekly fields when limits[] contains just a weekly_all entry (no session entry)', () => {
+        expect(parseUsageApiResponse(weeklyOnlyLimitsResponseBody)).toEqual({
+            weeklyUsage: 44,
+            weeklyResetAt: '2030-06-07T00:00:00.000Z'
+        });
+    });
+
+    it('takes the first match when limits[] has duplicate kind: session entries (documents current find() behavior)', () => {
+        expect(parseUsageApiResponse(duplicateSessionKindResponseBody)).toEqual({
+            sessionUsage: 12,
+            sessionResetAt: '2030-06-01T00:00:00.000Z'
+        });
+    });
+
+    // Known limitation (#343 vs #503 ambiguity) - see the comment on
+    // nullBucketsWithLiveLimitsResponseBody above. This locks the current,
+    // deliberately-accepted behavior in place: whole-bucket null keeps the
+    // #343 zero-pin on percent even when a live limits[] could otherwise
+    // supply a real percentage, while resets_at still falls back to
+    // limits[] independently, which can recreate the "frozen percent, live
+    // timer" symptom from #503 for this specific payload shape.
+    it('keeps percent pinned to 0 for whole-bucket null buckets even with live limits[] data, while resets_at still falls back (known #343/#503 overlap)', () => {
+        expect(parseUsageApiResponse(nullBucketsWithLiveLimitsResponseBody)).toEqual({
+            sessionUsage: 0,
+            sessionResetAt: '2030-07-01T00:00:00.000Z',
+            weeklyUsage: 0,
+            weeklyResetAt: '2030-07-07T00:00:00.000Z'
+        });
     });
 });

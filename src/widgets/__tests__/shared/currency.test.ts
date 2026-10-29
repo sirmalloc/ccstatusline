@@ -20,4 +20,10 @@ describe('formatUsageCurrency', () => {
     it('falls back to USD for invalid currency codes', () => {
         expect(formatUsageCurrency(3894, 'not-a-currency')).toBe('$3,894.00');
     });
+
+    it('applies number styles without losing currency formatting', () => {
+        expect(formatUsageCurrency(3894, 'EUR', { style: 'compact' })).toBe('€3,894');
+        expect(formatUsageCurrency(5.42, 'GBP', { style: 'whole' })).toBe('£5');
+        expect(formatUsageCurrency(5.42, 'USD', { decimals: 3 })).toBe('$5.420');
+    });
 });

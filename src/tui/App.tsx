@@ -10,6 +10,8 @@ import Gradient from 'ink-gradient';
 import React, {
     useCallback,
     useEffect,
+    useMemo,
+    useRef,
     useState
 } from 'react';
 
@@ -34,13 +36,26 @@ import {
 } from '../utils/claude-settings';
 import { cloneSettings } from '../utils/clone-settings';
 import {
+    applyImport,
+    exportConfig,
     getConfigLoadError,
     getConfigPath,
     isCustomConfigPath,
     loadSettings,
     saveInstallationMetadata,
-    saveSettings
+    saveSettings,
+    validateImportFile,
+    type ImportValidationResult
 } from '../utils/config';
+import {
+    DEV_RELOAD_EXIT_CODE,
+    discardDevReloadSnapshot,
+    getDevReloadStateFile,
+    isDevReloadRequested,
+    readDevReloadSnapshot,
+    requestDevReload,
+    writeDevReloadSnapshot
+} from '../utils/dev-reload';
 import {
     inspectGlobalCommandResolution,
     isPathInsideDir
@@ -53,6 +68,7 @@ import {
     type GlobalPackageInstallation,
     type GlobalPackageManager
 } from '../utils/global-package-manager';
+import type { SkippedWidgetHooks } from '../utils/hooks';
 import { openExternalUrl } from '../utils/open-url';
 import {
     checkPowerlineFonts,
@@ -73,7 +89,10 @@ import { loadClaudeStatusLineState } from './claude-status';
 import {
     ColorMenu,
     ConfirmDialog,
+    ExportConfigDialog,
     GlobalOverridesMenu,
+    ImportConfigDialog,
+    ImportPreviewDialog,
     InstallMenu,
     ItemsEditor,
     LineSelector,
@@ -119,7 +138,10 @@ type AppScreen = 'main'
     | 'manageInstallation'
     | 'uninstallOptions'
     | 'updates'
-    | 'refreshInterval';
+    | 'refreshInterval'
+    | 'exportConfig'
+    | 'importConfig'
+    | 'importPreview';
 
 type PinnedVersionMismatchAction = 'update' | 'exit';
 
@@ -133,10 +155,13 @@ interface FlowNoticeState {
     title: string;
     message: string;
     color: 'green' | 'red' | 'yellow';
-    continueScreen: Exclude<AppScreen, 'confirm' | 'flowNotice'>;
+    // 'exit' closes the TUI, for a notice shown by Save & Exit
+    continueScreen: Exclude<AppScreen, 'confirm' | 'flowNotice'> | 'exit';
 }
 
-type FlowNoticeProps = FlowNoticeState & { onContinue: () => void };
+// Where Continue leads is App's to handle (onContinue), so the notice itself
+// takes only what it draws
+type FlowNoticeProps = Omit<FlowNoticeState, 'continueScreen'> & { onContinue: () => void };
 
 const NOTICE_ITEMS: ListEntry<string>[] = [
     {
@@ -156,6 +181,7 @@ interface PinnedVersionMismatch {
 interface PinnedVersionMismatchScreenProps {
     mismatch: PinnedVersionMismatch;
     canRunPackageManager: boolean;
+    updating: boolean;
     onUpdate: () => void;
     onExit: () => void;
 }
@@ -218,11 +244,12 @@ function getPinnedMismatchItems(
 const PinnedVersionMismatchScreen: React.FC<PinnedVersionMismatchScreenProps> = ({
     mismatch,
     canRunPackageManager,
+    updating,
     onUpdate,
     onExit
 }) => {
     useInput((_, key) => {
-        if (key.escape) {
+        if (key.escape && !updating) {
             onExit();
         }
     });
@@ -250,23 +277,31 @@ const PinnedVersionMismatchScreen: React.FC<PinnedVersionMismatchScreenProps> = 
                     {mismatch.relaunchCommand}
                 </Text>
             </Box>
-            <List
-                marginTop={1}
-                items={getPinnedMismatchItems(mismatch, canRunPackageManager)}
-                onSelect={(value) => {
-                    if (value === 'back') {
-                        return;
-                    }
+            {updating ? (
+                <Box marginTop={1}>
+                    <Text color='yellow'>
+                        {`Updating ${mismatch.packageManager} global install to v${mismatch.runningVersion}... This may take a moment.`}
+                    </Text>
+                </Box>
+            ) : (
+                <List
+                    marginTop={1}
+                    items={getPinnedMismatchItems(mismatch, canRunPackageManager)}
+                    onSelect={(value) => {
+                        if (value === 'back') {
+                            return;
+                        }
 
-                    if (value === 'update') {
-                        onUpdate();
-                        return;
-                    }
+                        if (value === 'update') {
+                            onUpdate();
+                            return;
+                        }
 
-                    onExit();
-                }}
-                color='cyan'
-            />
+                        onExit();
+                    }}
+                    color='cyan'
+                />
+            )}
         </Box>
     );
 };
@@ -289,24 +324,38 @@ function buildUninstallConfirmMessage(selection: UninstallSelection): string {
     return `This will remove ccstatusline from ${getClaudeSettingsPath()} and run:\n\n${commands}\n\nContinue?`;
 }
 
+// A save left out hooks that widgets need, because the status line command may
+// be another tool: say which widgets, and how a wrapper script gets the hooks
+function buildSkippedHooksNotice(
+    skipped: SkippedWidgetHooks,
+    continueScreen: FlowNoticeState['continueScreen']
+): FlowNoticeState {
+    return {
+        title: 'Configuration Saved',
+        message: `Claude Code hooks for ${skipped.widgetNames.join(', ')} weren't added: the status line command doesn't contain "ccstatusline", so it may be another tool.\n\n${skipped.statusCommand}\n\nIf it's a script that runs ccstatusline, put "ccstatusline" in its name (e.g. ~/.claude/ccstatusline-wrapper.sh), have it pass its arguments on (ccstatusline "$@"), and save again.`,
+        color: 'yellow',
+        continueScreen
+    };
+}
+
 function clearInstallationMetadata(settings: Settings | null): Settings | null {
     if (!settings) {
         return settings;
     }
 
     const { installation, ...next } = settings;
-    void installation;
     return next;
 }
 
-export function getCurrentInstallation(
-    isClaudeInstalled: boolean,
+// Claude Code runs ccstatusline, so until its status line command is read, the saved
+// metadata describes the install
+export function classifyInstalledStatusLine(
     existingStatusLine: string | null,
-    settings: Settings
+    savedInstallation: InstallationMetadata | undefined
 ): InstallationMetadata {
-    return isClaudeInstalled && !existingStatusLine && settings.installation
-        ? settings.installation
-        : classifyInstallation(existingStatusLine, settings.installation);
+    return !existingStatusLine && savedInstallation
+        ? savedInstallation
+        : classifyInstallation(existingStatusLine, savedInstallation);
 }
 
 function trimTrailingSeparators(filePath: string): string {
@@ -352,7 +401,8 @@ function getPinnedGlobalRelaunchCommand(packageManager: GlobalPackageManager): s
 export function getPinnedVersionMismatch(
     installation: ResolvedInstallationMetadata,
     runningVersion: string,
-    relaunchCommand: string
+    relaunchCommand: string,
+    versionInstalledThisSession: string | null = null
 ): PinnedVersionMismatch | null {
     if (
         installation.method !== 'pinned'
@@ -360,6 +410,9 @@ export function getPinnedVersionMismatch(
         || installation.packageManager === 'unknown'
         || !runningVersion
         || installation.installedVersion === runningVersion
+        // This session's own update installed it. The settings being edited were loaded
+        // before that update, so saving them now is the same as saving just before it.
+        || installation.installedVersion === versionInstalledThisSession
     ) {
         return null;
     }
@@ -403,6 +456,17 @@ export function getConfirmCancelScreen(confirmDialog: ConfirmDialogState | null)
     return confirmDialog?.cancelScreen ?? 'main';
 }
 
+export function applyTuiImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[]
+): Settings {
+    const nextSettings = applyImport(current, imported, mode, presentKeys);
+    chalk.level = nextSettings.colorLevel;
+    return nextSettings;
+}
+
 export function clearInstallMenuSelection(menuSelections: Record<string, number>): Record<string, number> {
     if (menuSelections.install === undefined && menuSelections.installPackage === undefined) {
         return menuSelections;
@@ -424,7 +488,8 @@ export function buildConfigLoadWarning(configLoadError: string | null): string |
 
 export function buildInvalidConfigSaveConfirm(
     configLoadError: string | null,
-    onConfirm: () => void
+    onConfirm: () => void,
+    returnScreen: Exclude<AppScreen, 'confirm'> = 'main'
 ): ConfirmDialogState | null {
     if (!configLoadError) {
         return null;
@@ -436,19 +501,28 @@ export function buildInvalidConfigSaveConfirm(
             onConfirm();
             return Promise.resolve();
         },
-        cancelScreen: 'main'
+        cancelScreen: returnScreen
     };
 }
 
 export const App: React.FC = () => {
     const { exit } = useApp();
+    // Only set when running under the CCSTATUSLINE_DEV_RELOAD supervisor; the
+    // snapshot (if any) is where ctrl+r left off before the restart
+    const [devReloadStateFile] = useState(() => getDevReloadStateFile(process.env));
+    const [restored] = useState(() => (devReloadStateFile ? readDevReloadSnapshot(devReloadStateFile) : null));
     const [settings, setSettings] = useState<Settings | null>(null);
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
     const [configLoadError, setConfigLoadError] = useState<string | null>(null);
-    const [screen, setScreen] = useState<AppScreen>('main');
-    const [selectedLine, setSelectedLine] = useState(0);
-    const [menuSelections, setMenuSelections] = useState<Record<string, number>>({});
+    const [screen, setScreen] = useState<AppScreen>(restored?.screen ?? 'main');
+    const [selectedLine, setSelectedLine] = useState(restored?.selectedLine ?? 0);
+    const [previewWidgets, setPreviewWidgets] = useState<WidgetItem[] | null>(null);
+    const [menuSelections, setMenuSelections] = useState<Record<string, number>>(restored?.menuSelections ?? {});
+    const handleLineSelectionChange = useCallback((index: number) => {
+        setMenuSelections(prev => ({ ...prev, lines: index }));
+    }, []);
+    const [itemsCursor, setItemsCursor] = useState(restored?.itemsCursor ?? 0);
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
     const [isClaudeInstalled, setIsClaudeInstalled] = useState(false);
     const [terminalWidth, setTerminalWidth] = useState(process.stdout.columns || 80);
@@ -465,8 +539,13 @@ export const App: React.FC = () => {
     const [flowNotice, setFlowNotice] = useState<FlowNoticeState | null>(null);
     const [globalPackageInstallations, setGlobalPackageInstallations] = useState<GlobalPackageInstallation[]>([]);
     const [updatesReturnScreen, setUpdatesReturnScreen] = useState<'main' | 'manageInstallation'>('main');
+    const [versionInstalledThisSession, setVersionInstalledThisSession] = useState<string | null>(null);
     const [hasLoadedClaudeStatus, setHasLoadedClaudeStatus] = useState(false);
     const [hasLoadedInstalledState, setHasLoadedInstalledState] = useState(false);
+    const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
+    const [actionInFlight, setActionInFlight] = useState(false);
+    // The ref blocks a second start synchronously, before the busy screen re-renders
+    const actionInFlightRef = useRef(false);
 
     useEffect(() => {
         void loadClaudeStatusLineState()
@@ -482,10 +561,12 @@ export const App: React.FC = () => {
                 setHasLoadedClaudeStatus(true);
             });
         void loadSettings().then((loadedSettings) => {
+            // A dev reload resumes the unsaved settings instead of the file's
+            const initialSettings = restored?.settings ?? loadedSettings;
             // Set global chalk level based on settings (default to 256 colors for compatibility)
-            chalk.level = loadedSettings.colorLevel;
-            setSettings(loadedSettings);
-            setOriginalSettings(cloneSettings(loadedSettings));
+            chalk.level = initialSettings.colorLevel;
+            setSettings(initialSettings);
+            setOriginalSettings(cloneSettings(restored?.originalSettings ?? loadedSettings));
             // Capture why settings.json was rejected (if at all) so the TUI can warn and
             // guard saves. Read it here, in the load callback: the module-scoped signal is
             // reset by any later loadSettings/saveInstallationMetadata call.
@@ -515,7 +596,7 @@ export const App: React.FC = () => {
         return () => {
             process.stdout.off('resize', handleResize);
         };
-    }, []);
+    }, [restored]);
 
     // Check for changes whenever settings update
     useEffect(() => {
@@ -524,6 +605,23 @@ export const App: React.FC = () => {
             setHasChanges(hasAnyChanges);
         }
     }, [settings, originalSettings]);
+
+    // After the first load, originalSettings only changes once the settings
+    // file has been written: a save, or an install or update recording
+    // itself. The dev reload snapshot this TUI resumed from is then older
+    // than the file; a retry after a crash would restore it, and the next
+    // save would write it back over the file. Dropped, the retry loads the file.
+    const loadedOriginalSettings = useRef<Settings | null>(null);
+    useEffect(() => {
+        if (!devReloadStateFile || !originalSettings) {
+            return;
+        }
+        if (!loadedOriginalSettings.current) {
+            loadedOriginalSettings.current = originalSettings;
+        } else if (originalSettings !== loadedOriginalSettings.current) {
+            discardDevReloadSnapshot(devReloadStateFile);
+        }
+    }, [devReloadStateFile, originalSettings]);
 
     // Clear header message after 2 seconds
     useEffect(() => {
@@ -539,14 +637,30 @@ export const App: React.FC = () => {
         if (key.ctrl && input === 'c') {
             exit();
         }
+        if (devReloadStateFile && key.ctrl && input === 'r' && settings && originalSettings) {
+            if (actionInFlightRef.current) {
+                return;
+            }
+            writeDevReloadSnapshot(devReloadStateFile, { settings, originalSettings, screen, selectedLine, menuSelections, itemsCursor });
+            requestDevReload();
+            exit();
+            return;
+        }
         // Global save shortcut
         if (key.ctrl && input === 's' && settings && screen !== 'confirm') {
-            const installation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings);
+            const installation = isClaudeInstalled
+                ? classifyInstalledStatusLine(existingStatusLine, settings.installation)
+                : classifyInstallation(existingStatusLine, settings.installation);
             const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
                 ? inspectActiveGlobalCommand({ commandAvailability })
                 : null;
             const effectiveInstallation = getPathInferredInstallation(installation, activeCommand);
-            const mismatch = getPinnedVersionMismatch(effectiveInstallation, getPackageVersion(), 'ccstatusline');
+            const mismatch = getPinnedVersionMismatch(
+                effectiveInstallation,
+                getPackageVersion(),
+                'ccstatusline',
+                versionInstalledThisSession
+            );
             if (mismatch) {
                 return;
             }
@@ -554,15 +668,21 @@ export const App: React.FC = () => {
             const performSave = () => {
                 void (async () => {
                     try {
-                        await saveSettings(settings);
+                        const skippedHooks = await saveSettings(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
                         // File is valid again after an explicit save → clear the banner + guard.
                         setConfigLoadError(null);
-                        setFlashMessage({
-                            text: '✓ Configuration saved',
-                            color: 'green'
-                        });
+                        if (skippedHooks) {
+                            setFlashMessage(null);
+                            setFlowNotice(buildSkippedHooksNotice(skippedHooks, screen === 'flowNotice' ? 'main' : screen));
+                            setScreen('flowNotice');
+                        } else {
+                            setFlashMessage({
+                                text: '✓ Configuration saved',
+                                color: 'green'
+                            });
+                        }
                     } catch {
                         setFlashMessage({
                             text: '✗ Could not save configuration',
@@ -572,14 +692,16 @@ export const App: React.FC = () => {
                 })();
             };
 
+            // Ctrl+S works on any screen, so both answers return to the one it was pressed on
+            const returnScreen = screen;
             const saveGuard = buildInvalidConfigSaveConfirm(configLoadError, () => {
                 // The confirm dialog doesn't self-dismiss; its action must navigate away
-                // (matching the other confirm flows in this file). Return to the main menu
-                // before saving so the success flash isn't hidden behind the dialog.
+                // (matching the other confirm flows in this file). Navigate back before
+                // saving so the success flash isn't hidden behind the dialog.
                 setConfirmDialog(null);
-                setScreen('main');
+                setScreen(returnScreen);
                 performSave();
-            });
+            }, returnScreen);
             if (saveGuard) {
                 setConfirmDialog(saveGuard);
                 setScreen('confirm');
@@ -669,12 +791,15 @@ export const App: React.FC = () => {
                                 color: 'green'
                             });
                         }
-                    } catch {
-                        setFlashMessage({
-                            text: '✗ Install failed',
-                            color: 'red'
+                    } catch (err) {
+                        setFlashMessage(null);
+                        setFlowNotice({
+                            title: 'Install Failed',
+                            message: err instanceof Error ? err.message : String(err),
+                            color: 'red',
+                            continueScreen: 'install'
                         });
-                        setScreen('install');
+                        setScreen('flowNotice');
                     }
                     setConfirmDialog(null);
                 }
@@ -690,9 +815,9 @@ export const App: React.FC = () => {
 
     const handleUpdateCheck = useCallback(() => {
         setUpdateCheckerState({ status: 'checking' });
-        const installation = settings
-            ? getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings)
-            : classifyInstallation(existingStatusLine, undefined);
+        const installation = isClaudeInstalled
+            ? classifyInstalledStatusLine(existingStatusLine, settings?.installation)
+            : classifyInstallation(existingStatusLine, settings?.installation);
         const activeCommand = installation.method === 'pinned' || installation.method === 'self-managed'
             ? inspectActiveGlobalCommand({ commandAvailability })
             : null;
@@ -716,6 +841,7 @@ export const App: React.FC = () => {
             action: async () => {
                 try {
                     await runGlobalUpdateAction(action);
+                    setVersionInstalledThisSession(action.version);
                     const installation = {
                         method: 'pinned' as const,
                         installedVersion: action.version
@@ -761,24 +887,116 @@ export const App: React.FC = () => {
         setScreen('confirm');
     }, [getGlobalResolutionWarning]);
 
-    if (!settings || !hasLoadedClaudeStatus || !hasLoadedInstalledState) {
+    const handleExportConfig = useCallback(async (filePath: string) => {
+        try {
+            if (!settings) {
+                return;
+            }
+            await exportConfig(settings, filePath);
+            setFlashMessage({ text: `Config exported to ${filePath}`, color: 'green' });
+        } catch (err) {
+            setFlowNotice({
+                title: 'Export Failed',
+                message: err instanceof Error ? err.message : String(err),
+                color: 'red',
+                continueScreen: 'main'
+            });
+            setScreen('flowNotice');
+            return;
+        }
+        setScreen('main');
+    }, [settings]);
+
+    const handleImportFileChosen = useCallback(async (filePath: string) => {
+        const result = await validateImportFile(filePath);
+        if (result.status === 'invalid') {
+            setFlowNotice({
+                title: 'Import Failed',
+                message: result.reason,
+                color: 'red',
+                continueScreen: 'main'
+            });
+            setScreen('flowNotice');
+        } else {
+            setImportValidation(result);
+            setScreen('importPreview');
+        }
+    }, []);
+
+    const handleImportApply = useCallback((mode: 'replace' | 'merge') => {
+        if (!settings || importValidation?.status !== 'valid') {
+            return;
+        }
+        const importedSettings = applyTuiImport(
+            settings,
+            importValidation.data,
+            mode,
+            importValidation.presentKeys
+        );
+        setSettings(importedSettings);
+        setHasChanges(true);
+        setImportValidation(null);
+        setFlashMessage({ text: 'Config imported — review and save', color: 'green' });
+        setScreen('main');
+    }, [importValidation, settings]);
+
+    const savedInstallation = settings?.installation;
+    const hasLoaded = settings !== null && hasLoadedClaudeStatus && hasLoadedInstalledState;
+    // Looking up the global ccstatusline command runs `which -a`, `npm prefix -g` and
+    // `bun pm bin -g`, which block for a few hundred ms. Editor keys redraw App (the live
+    // preview, each widget edit), so the lookups run only when the installation changes:
+    // once loading finishes, and after an install, update or uninstall here, since each
+    // changes the installation metadata or Claude's status line. Null while loading.
+    const installationState = useMemo(() => {
+        if (!hasLoaded) {
+            return null;
+        }
+
+        const currentInstallation = isClaudeInstalled
+            ? classifyInstalledStatusLine(existingStatusLine, savedInstallation)
+            : classifyInstallation(existingStatusLine, savedInstallation);
+        const activeGlobalCommand = currentInstallation.method === 'pinned' || currentInstallation.method === 'self-managed'
+            ? inspectActiveGlobalCommand({ commandAvailability })
+            : null;
+        const effectiveInstallation = getPathInferredInstallation(currentInstallation, activeGlobalCommand);
+        const pinnedRelaunchCommand = effectiveInstallation.method === 'pinned'
+            && effectiveInstallation.packageManager !== 'unknown'
+            ? getPinnedGlobalRelaunchCommand(effectiveInstallation.packageManager)
+            : null;
+
+        return { activeGlobalCommand, effectiveInstallation, pinnedRelaunchCommand };
+    }, [commandAvailability, existingStatusLine, hasLoaded, isClaudeInstalled, savedInstallation]);
+
+    if (!settings || !installationState) {
         return <Text>Loading settings...</Text>;
     }
 
     const runningVersion = getPackageVersion();
-    const currentInstallation = getCurrentInstallation(isClaudeInstalled, existingStatusLine, settings);
-    const activeGlobalCommand = currentInstallation.method === 'pinned' || currentInstallation.method === 'self-managed'
-        ? inspectActiveGlobalCommand({ commandAvailability })
-        : null;
-    const effectiveInstallation = getPathInferredInstallation(currentInstallation, activeGlobalCommand);
-    const pinnedVersionMismatch = effectiveInstallation.method === 'pinned'
-        && effectiveInstallation.packageManager !== 'unknown'
+    const { activeGlobalCommand, effectiveInstallation, pinnedRelaunchCommand } = installationState;
+    const pinnedVersionMismatch = pinnedRelaunchCommand
         ? getPinnedVersionMismatch(
             effectiveInstallation,
             runningVersion,
-            getPinnedGlobalRelaunchCommand(effectiveInstallation.packageManager)
+            pinnedRelaunchCommand,
+            versionInstalledThisSession
         )
         : null;
+
+    // Install, uninstall and update run a package manager and write settings files.
+    // Run one at a time and hold its screen until it settles, so a second Enter
+    // can't start it again and ESC can't leave it finishing behind another screen.
+    const runActionOnce = (action: () => Promise<void>) => {
+        if (actionInFlightRef.current) {
+            return;
+        }
+
+        actionInFlightRef.current = true;
+        setActionInFlight(true);
+        void action().finally(() => {
+            actionInFlightRef.current = false;
+            setActionInFlight(false);
+        });
+    };
 
     const handlePinnedVersionMismatchUpdate = async (mismatch: PinnedVersionMismatch) => {
         try {
@@ -936,6 +1154,12 @@ export const App: React.FC = () => {
             case 'configureStatusLine':
                 setScreen('refreshInterval');
                 break;
+            case 'exportConfig':
+                setScreen('exportConfig');
+                break;
+            case 'importConfig':
+                setScreen('importConfig');
+                break;
             case 'starGithub':
                 setConfirmDialog({
                     message: `Open the ccstatusline GitHub repository in your browser?\n\n${GITHUB_REPO_URL}`,
@@ -962,10 +1186,15 @@ export const App: React.FC = () => {
             case 'save': {
                 const saveAndExit = async () => {
                     try {
-                        await saveSettings(settings);
+                        const skippedHooks = await saveSettings(settings);
                         setOriginalSettings(cloneSettings(settings));
                         setHasChanges(false);
-                        exit();
+                        if (skippedHooks) {
+                            setFlowNotice(buildSkippedHooksNotice(skippedHooks, 'exit'));
+                            setScreen('flowNotice');
+                        } else {
+                            exit();
+                        }
                     } catch {
                         setFlashMessage({
                             text: '✗ Could not save configuration',
@@ -1016,8 +1245,9 @@ export const App: React.FC = () => {
                 <PinnedVersionMismatchScreen
                     mismatch={pinnedVersionMismatch}
                     canRunPackageManager={commandAvailability[pinnedVersionMismatch.packageManager]}
+                    updating={actionInFlight}
                     onUpdate={() => {
-                        void handlePinnedVersionMismatchUpdate(pinnedVersionMismatch);
+                        runActionOnce(() => handlePinnedVersionMismatchUpdate(pinnedVersionMismatch));
                     }}
                     onExit={exit}
                 />
@@ -1037,10 +1267,15 @@ export const App: React.FC = () => {
 
     const handleLineSelect = (lineIndex: number) => {
         setSelectedLine(lineIndex);
+        setItemsCursor(0);
         setScreen('items');
     };
 
     const configWarning = buildConfigLoadWarning(configLoadError);
+    // Label drafts and the picker's highlighted widget affect only the preview until Enter accepts them.
+    const previewLines = screen === 'items' && previewWidgets
+        ? settings.lines.map((line, index) => index === selectedLine ? previewWidgets : line)
+        : settings.lines;
 
     return (
         <Box flexDirection='column'>
@@ -1053,6 +1288,7 @@ export const App: React.FC = () => {
                 <Text bold>
                     {` | ${runningVersion && `v${runningVersion}`}`}
                 </Text>
+                {devReloadStateFile && <Text dimColor>  dev reload: ctrl+r</Text>}
                 {flashMessage && (
                     <Text color={flashMessage.color} bold>
                         {`  ${flashMessage.text}`}
@@ -1067,7 +1303,7 @@ export const App: React.FC = () => {
             )}
 
             <StatusLinePreview
-                lines={settings.lines}
+                lines={previewLines}
                 terminalWidth={terminalWidth}
                 settings={settings}
                 onTruncationChange={setPreviewIsTruncated}
@@ -1087,6 +1323,7 @@ export const App: React.FC = () => {
                         isClaudeInstalled={isClaudeInstalled}
                         hasChanges={hasChanges}
                         initialSelection={menuSelections.main}
+                        onSelectionChange={(index) => { setMenuSelections(prev => ({ ...prev, main: index })); }}
                         powerlineFontStatus={powerlineFontStatus}
                         settings={settings}
                         installation={effectiveInstallation}
@@ -1108,6 +1345,7 @@ export const App: React.FC = () => {
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
+                        onSelectionChange={handleLineSelectionChange}
                         title='Select Line to Edit Items'
                         allowEditing={true}
                     />
@@ -1116,6 +1354,9 @@ export const App: React.FC = () => {
                     <ItemsEditor
                         widgets={settings.lines[selectedLine] ?? []}
                         onUpdate={(widgets) => { updateLine(selectedLine, widgets); }}
+                        onPreviewChange={setPreviewWidgets}
+                        initialSelectedIndex={itemsCursor}
+                        onSelectedIndexChange={setItemsCursor}
                         onBack={() => {
                             // When going back to lines menu, preserve which line was selected
                             setMenuSelections(prev => ({ ...prev, lines: selectedLine }));
@@ -1140,6 +1381,7 @@ export const App: React.FC = () => {
                             setScreen('main');
                         }}
                         initialSelection={menuSelections.lines}
+                        onSelectionChange={handleLineSelectionChange}
                         title='Select Line to Edit Colors'
                         blockIfPowerlineActive={true}
                         settings={settings}
@@ -1207,7 +1449,10 @@ export const App: React.FC = () => {
                 {screen === 'confirm' && confirmDialog && (
                     <ConfirmDialog
                         message={confirmDialog.message}
-                        onConfirm={() => void confirmDialog.action()}
+                        busy={actionInFlight}
+                        onConfirm={() => {
+                            runActionOnce(confirmDialog.action);
+                        }}
                         onCancel={() => {
                             setScreen(getConfirmCancelScreen(confirmDialog));
                             setConfirmDialog(null);
@@ -1218,6 +1463,10 @@ export const App: React.FC = () => {
                     <FlowNotice
                         {...flowNotice}
                         onContinue={() => {
+                            if (flowNotice.continueScreen === 'exit') {
+                                exit();
+                                return;
+                            }
                             setScreen(flowNotice.continueScreen);
                             setFlowNotice(null);
                         }}
@@ -1279,6 +1528,8 @@ export const App: React.FC = () => {
                         currentInterval={currentRefreshInterval}
                         supportsRefreshInterval={supportsRefreshInterval}
                         gitCacheTtlSeconds={settings.gitCacheTtlSeconds}
+                        terminalWidthCacheTtlSeconds={settings.terminalWidthCacheTtlSeconds}
+                        customCommandCacheTtlSeconds={settings.customCommandCacheTtlSeconds}
                         onUpdate={(interval) => {
                             const previous = currentRefreshInterval;
                             setCurrentRefreshInterval(interval);
@@ -1305,6 +1556,28 @@ export const App: React.FC = () => {
                             });
                             setFlashMessage({
                                 text: '✓ Git cache TTL updated',
+                                color: 'green'
+                            });
+                            setScreen('main');
+                        }}
+                        onTerminalWidthCacheTtlUpdate={(ttlSeconds) => {
+                            setSettings({
+                                ...settings,
+                                terminalWidthCacheTtlSeconds: ttlSeconds
+                            });
+                            setFlashMessage({
+                                text: '✓ Terminal Width cache TTL updated',
+                                color: 'green'
+                            });
+                            setScreen('main');
+                        }}
+                        onCustomCommandCacheTtlUpdate={(ttlSeconds) => {
+                            setSettings({
+                                ...settings,
+                                customCommandCacheTtlSeconds: ttlSeconds
+                            });
+                            setFlashMessage({
+                                text: '✓ Custom command cache TTL updated',
                                 color: 'green'
                             });
                             setScreen('main');
@@ -1344,6 +1617,32 @@ export const App: React.FC = () => {
                         onClearMessage={() => { setFontInstallMessage(null); }}
                     />
                 )}
+
+                {screen === 'exportConfig' && (
+                    <ExportConfigDialog
+                        onExport={(filePath) => { void handleExportConfig(filePath); }}
+                        onCancel={() => { setScreen('main'); }}
+                    />
+                )}
+
+                {screen === 'importConfig' && (
+                    <ImportConfigDialog
+                        onFileChosen={(filePath) => { void handleImportFileChosen(filePath); }}
+                        onCancel={() => { setScreen('main'); }}
+                    />
+                )}
+
+                {screen === 'importPreview' && importValidation?.status === 'valid' && (
+                    <ImportPreviewDialog
+                        validation={importValidation}
+                        currentSettings={settings}
+                        onApply={(mode) => { handleImportApply(mode); }}
+                        onCancel={() => {
+                            setImportValidation(null);
+                            setScreen('main');
+                        }}
+                    />
+                )}
             </Box>
         </Box>
     );
@@ -1352,5 +1651,12 @@ export const App: React.FC = () => {
 export function runTUI() {
     // Clear the terminal before starting the TUI
     process.stdout.write('\x1b[2J\x1b[H');
-    render(<App />);
+    const instance = render(<App />);
+    // ctrl+r under the dev reload supervisor: exit with the code that tells
+    // it to start a fresh process, once Ink has restored the terminal
+    void instance.waitUntilExit().finally(() => {
+        if (isDevReloadRequested()) {
+            process.exit(DEV_RELOAD_EXIT_CODE);
+        }
+    });
 }

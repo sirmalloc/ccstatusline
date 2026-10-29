@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
     CURRENT_VERSION,
@@ -10,10 +10,12 @@ import {
     type Settings
 } from '../types/Settings';
 
+import type { SkippedWidgetHooks } from './hooks';
 import {
     migrateConfig,
     needsMigration
 } from './migrations';
+import { getPackageVersion } from './terminal';
 import { upgradeLegacyWidgetTypes } from './widgets';
 
 // Use fs.promises directly (always available in modern Node.js)
@@ -25,10 +27,16 @@ const unlink = fs.promises.unlink;
 const lstat = fs.promises.lstat;
 const readlink = fs.promises.readlink;
 const realpath = fs.promises.realpath;
+const stat = fs.promises.stat;
 
-const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+// Resolved on every call, not once at import time: tests replace os.homedir()
+// with a temp directory after this module has loaded, and the default path has
+// to follow so an install test can never touch the developer's real file.
+function getDefaultSettingsPath(): string {
+    return path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+}
 
-let settingsPath = DEFAULT_SETTINGS_PATH;
+let settingsPath = getDefaultSettingsPath();
 let lastLoadError: string | null = null;
 
 export function getConfigLoadError(): string | null {
@@ -36,7 +44,7 @@ export function getConfigLoadError(): string | null {
 }
 
 export function initConfigPath(filePath?: string): void {
-    settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+    settingsPath = filePath ? path.resolve(filePath) : getDefaultSettingsPath();
 }
 
 export function getConfigPath(): string {
@@ -44,7 +52,7 @@ export function getConfigPath(): string {
 }
 
 export function isCustomConfigPath(): boolean {
-    return settingsPath !== DEFAULT_SETTINGS_PATH;
+    return settingsPath !== getDefaultSettingsPath();
 }
 
 interface SettingsPaths {
@@ -110,6 +118,16 @@ async function resolveAtomicWriteTarget(paths: SettingsPaths): Promise<AtomicWri
     }
 }
 
+// The permissions of the file a save replaces, so a private settings file
+// stays private; a new file gets the usual default
+async function getReplacedFileMode(filePath: string): Promise<number> {
+    try {
+        return (await stat(filePath)).mode & 0o777;
+    } catch {
+        return 0o666;
+    }
+}
+
 async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
     await mkdir(paths.configDir, { recursive: true });
 
@@ -122,8 +140,9 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
         writeTarget.tempDir,
         `${path.basename(writeTarget.targetPath)}.${process.pid}.${Date.now()}.tmp`
     );
+    const mode = await getReplacedFileMode(writeTarget.targetPath);
     try {
-        await writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf-8');
+        await writeFile(tempPath, JSON.stringify(settings, null, 2), { encoding: 'utf-8', mode });
         await rename(tempPath, writeTarget.targetPath);
     } catch (error) {
         try {
@@ -228,7 +247,8 @@ export async function loadSettings(): Promise<Settings> {
     }
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
+/** Saves settings and syncs widget hooks; returns the hooks the sync couldn't add, if any. */
+export async function saveSettings(settings: Settings): Promise<SkippedWidgetHooks | null> {
     const paths = getSettingsPaths();
 
     // Always include version when saving
@@ -242,8 +262,98 @@ export async function saveSettings(settings: Settings): Promise<void> {
     // Sync widget hooks to Claude settings
     try {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(settings);
-    } catch { /* ignore hook sync failures */ }
+        return await syncWidgetHooks(settings);
+    } catch {
+        // Ignore hook sync failures
+        return null;
+    }
+}
+
+export type ImportValidationResult
+    = | { status: 'valid'; data: Settings; presentKeys: (keyof Settings)[] }
+        | { status: 'invalid'; reason: string };
+
+function expandPath(filePath: string): string {
+    if (filePath.startsWith('~/') || filePath === '~') {
+        return path.join(os.homedir(), filePath.slice(2));
+    }
+    return filePath;
+}
+
+export async function exportConfig(settings: Settings, filePath: string): Promise<void> {
+    const expanded = expandPath(filePath);
+    const exportData = { ...settings, exportedBy: getPackageVersion() };
+    await mkdir(path.dirname(expanded), { recursive: true });
+    await writeFile(expanded, JSON.stringify(exportData, null, 2), 'utf-8');
+}
+
+export async function validateImportFile(filePath: string): Promise<ImportValidationResult> {
+    const expanded = expandPath(filePath);
+    let raw: string;
+    try {
+        raw = await readFile(expanded, 'utf-8');
+    } catch {
+        return { status: 'invalid', reason: `Cannot read file: ${expanded}` };
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return { status: 'invalid', reason: 'File is not valid JSON' };
+    }
+
+    if (
+        typeof parsed === 'object'
+        && parsed !== null
+        && 'version' in parsed
+        && typeof parsed.version === 'number'
+        && parsed.version > CURRENT_VERSION
+    ) {
+        return {
+            status: 'invalid',
+            reason: `Config version ${parsed.version} is newer than supported version ${CURRENT_VERSION}`
+        };
+    }
+
+    if (needsMigration(parsed, CURRENT_VERSION)) {
+        parsed = migrateConfig(parsed, CURRENT_VERSION);
+    }
+
+    const result = SettingsSchema.safeParse(parsed);
+    if (!result.success) {
+        return { status: 'invalid', reason: `Invalid config format: ${result.error.issues[0]?.message ?? 'unknown error'}` };
+    }
+
+    const presentKeys = Object.keys(parsed as Record<string, unknown>)
+        .filter((key): key is keyof Settings => key in result.data);
+
+    return { status: 'valid', data: result.data, presentKeys };
+}
+
+const IMPORT_EXCLUDED_KEYS = ['installation', 'version', 'updatemessage', 'exportedBy'] as const;
+type ImportExcludedKey = typeof IMPORT_EXCLUDED_KEYS[number];
+
+export function applyImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[] = Object.keys(imported) as (keyof Settings)[]
+): Settings {
+    const mergeKeys = new Set(presentKeys);
+    const importedClean = Object.fromEntries(
+        Object.entries(imported).filter(([k]) => !IMPORT_EXCLUDED_KEYS.includes(k as ImportExcludedKey)
+            && (mode === 'replace' || mergeKeys.has(k as keyof Settings))
+        )
+    ) as Partial<Settings>;
+
+    if (mode === 'replace') {
+        return SettingsSchema.parse({
+            ...importedClean,
+            installation: current.installation
+        });
+    }
+    return { ...current, ...importedClean };
 }
 
 export async function saveInstallationMetadata(metadata: InstallationMetadata | undefined): Promise<void> {

@@ -1,40 +1,19 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    Widget,
-    WidgetEditorDisplay,
-    WidgetItem
-} from '../types/Widget';
 import { getContextWindowOutputTotalTokens } from '../utils/context-window';
-import { formatTokens } from '../utils/renderer';
 
-import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+import { TokenCountWidget } from './shared/token-count-widget';
 
-export class TokensOutputWidget implements Widget {
+export class TokensOutputWidget extends TokenCountWidget {
+    protected readonly label = 'Out: ';
+    protected readonly previewTokens = 3400;
+
     getDefaultColor(): string { return 'white'; }
     getDescription(): string { return 'Shows output token count for the current session'; }
     getDisplayName(): string { return 'Tokens Output'; }
-    getCategory(): string { return 'Tokens'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected getTokenCount(context: RenderContext): number | null {
+        return context.tokenMetrics?.outputTokens
+            ?? getContextWindowOutputTotalTokens(context.data)
+            ?? null;
     }
-
-    render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
-        if (context.isPreview) {
-            return formatRawOrLabeledValue(item, 'Out: ', '3.4k');
-        }
-
-        if (context.tokenMetrics) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(context.tokenMetrics.outputTokens));
-        }
-
-        const outputTotalTokens = getContextWindowOutputTotalTokens(context.data);
-        if (outputTotalTokens !== null) {
-            return formatRawOrLabeledValue(item, 'Out: ', formatTokens(outputTotalTokens));
-        }
-        return null;
-    }
-
-    supportsRawValue(): boolean { return true; }
-    supportsColors(item: WidgetItem): boolean { return true; }
 }

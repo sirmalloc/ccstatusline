@@ -1,4 +1,10 @@
+import chalk from 'chalk';
+import * as childProcess from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
+    afterEach,
+    beforeEach,
     describe,
     expect,
     it,
@@ -9,21 +15,40 @@ import {
     DEFAULT_SETTINGS,
     type InstallationMetadata
 } from '../../types/Settings';
+import * as claudeSettings from '../../utils/claude-settings';
+import * as globalCommandResolution from '../../utils/global-command-resolution';
+import * as globalPackageManager from '../../utils/global-package-manager';
+import { getPackageVersion } from '../../utils/terminal';
+import * as updateChecker from '../../utils/update-checker';
 import {
+    applyTuiImport,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
+    classifyInstalledStatusLine,
     clearInstallMenuSelection,
     getConfirmCancelScreen,
-    getCurrentInstallation,
     getPathInferredInstallation,
     getPinnedVersionMismatch
 } from '../App';
+import * as claudeStatus from '../claude-status';
 import {
     buildMainMenuItems,
     getMainMenuInstallSelectionIndex,
     getMainMenuSelectionIndex
 } from '../components/MainMenu';
 import { buildManageInstallationItems } from '../components/ManageInstallationMenu';
+
+import {
+    KEYS,
+    pressKey,
+    renderApp,
+    setUpAppSandbox,
+    type AppSandbox
+} from './helpers/render-app';
+import {
+    letReactCatchUp,
+    waitFor
+} from './helpers/wait-for-ink';
 
 function getMenuValues(
     isClaudeInstalled: boolean,
@@ -64,6 +89,26 @@ describe('App confirm navigation helpers', () => {
     });
 });
 
+describe('TUI config imports', () => {
+    it('synchronizes Chalk with the imported color level', () => {
+        const originalLevel = chalk.level;
+
+        try {
+            const imported = applyTuiImport(
+                { ...DEFAULT_SETTINGS, colorLevel: 2 },
+                { ...DEFAULT_SETTINGS, colorLevel: 0 },
+                'merge',
+                ['colorLevel']
+            );
+
+            expect(imported.colorLevel).toBe(0);
+            expect(chalk.level).toBe(0);
+        } finally {
+            chalk.level = originalLevel;
+        }
+    });
+});
+
 describe('Pinned version mismatch guard', () => {
     it('uses saved pinned metadata while Claude status line is still loading', () => {
         const installation: InstallationMetadata = {
@@ -71,10 +116,7 @@ describe('Pinned version mismatch guard', () => {
             installedVersion: '2.2.13'
         };
 
-        expect(getCurrentInstallation(true, null, {
-            ...DEFAULT_SETTINGS,
-            installation
-        })).toEqual(installation);
+        expect(classifyInstalledStatusLine(null, installation)).toEqual(installation);
     });
 
     it('does not block auto-update or matching pinned installs', () => {
@@ -116,6 +158,20 @@ describe('Pinned version mismatch guard', () => {
             relaunchCommand: '/usr/local/bin/ccstatusline',
             canUpdateToRunningVersion: false
         });
+    });
+
+    it('does not block for the version this session just installed', () => {
+        expect(getPinnedVersionMismatch({
+            method: 'pinned',
+            packageManager: 'npm',
+            installedVersion: '2.3.0'
+        }, '2.2.13', '/usr/local/bin/ccstatusline', '2.3.0')).toBeNull();
+
+        expect(getPinnedVersionMismatch({
+            method: 'pinned',
+            packageManager: 'npm',
+            installedVersion: '2.3.0'
+        }, '2.2.13', '/usr/local/bin/ccstatusline', '2.2.20')).not.toBeNull();
     });
 
     it('infers pinned package manager from the active PATH match', () => {
@@ -172,6 +228,9 @@ describe('Main menu structure', () => {
             'globalOverrides',
             'configureStatusLine',
             '-',
+            'exportConfig',
+            'importConfig',
+            '-',
             'install',
             '-',
             'exit',
@@ -189,6 +248,9 @@ describe('Main menu structure', () => {
             'terminalConfig',
             'globalOverrides',
             'configureStatusLine',
+            '-',
+            'exportConfig',
+            'importConfig',
             '-',
             'install',
             '-',
@@ -212,6 +274,9 @@ describe('Main menu structure', () => {
             'terminalConfig',
             'globalOverrides',
             'configureStatusLine',
+            '-',
+            'exportConfig',
+            'importConfig',
             '-',
             'manageInstallation',
             '-',
@@ -243,14 +308,14 @@ describe('Main menu structure', () => {
             sublabel: '(install first)'
         }));
         expect(buildManageInstallationItems()[0]).toEqual(expect.objectContaining({ label: '🔄 Check for Updates' }));
-        expect(getMainMenuInstallSelectionIndex(false)).toBe(5);
-        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(6);
-        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(6);
-        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(6);
+        expect(getMainMenuInstallSelectionIndex(false)).toBe(7);
+        expect(getMainMenuInstallSelectionIndex(true, autoInstallation)).toBe(8);
+        expect(getMainMenuInstallSelectionIndex(true, pinnedInstallation)).toBe(8);
+        expect(getMainMenuSelectionIndex(buildMainMenuItems(true, false, autoInstallation), 'install')).toBe(8);
         expect(getMainMenuSelectionIndex(
             buildMainMenuItems(true, false, pinnedInstallation),
             'manageInstallation'
-        )).toBe(6);
+        )).toBe(8);
     });
 });
 
@@ -274,6 +339,11 @@ describe('Invalid-config TUI guards', () => {
         expect(guard?.message).toContain('could not be read');
     });
 
+    it('builds a save-guard confirm dialog that returns to the given screen on cancel', () => {
+        expect(buildInvalidConfigSaveConfirm('settings.json could not be read', vi.fn(), 'items')?.cancelScreen)
+            .toBe('items');
+    });
+
     it('invokes the provided onConfirm when the guard action runs', async () => {
         const onConfirm = vi.fn();
         const guard = buildInvalidConfigSaveConfirm('settings.json is not valid JSON', onConfirm);
@@ -286,5 +356,535 @@ describe('Invalid-config TUI guards', () => {
             .toContain('settings.json is not valid JSON');
         expect(buildInvalidConfigSaveConfirm('settings.json is not in a valid format', vi.fn())?.message)
             .toContain('not in a valid format');
+    });
+});
+
+describe('App after a global update run from the TUI', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('keeps the TUI and its unsaved edits when the pinned install moves past this version', async () => {
+        const runningVersion = getPackageVersion();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: runningVersion }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: null,
+            warning: null
+        });
+        vi.spyOn(updateChecker, 'checkForUpdates').mockResolvedValue({
+            status: 'update-available',
+            currentVersion: runningVersion,
+            latestVersion: '99.0.0',
+            installation: { method: 'pinned', packageManager: 'npm', installedVersion: runningVersion },
+            actions: [{
+                id: 'npm-global',
+                packageManager: 'npm',
+                command: 'npm install -g ccstatusline@99.0.0',
+                version: '99.0.0',
+                available: true
+            }]
+        });
+        const runUpdate = vi.spyOn(updateChecker, 'runGlobalUpdateAction').mockResolvedValue(undefined);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+
+            // An unsaved edit: Color Level 256 → Truecolor
+            await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
+            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '(Truecolor)');
+            await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
+
+            await pressKey(rendered, KEYS.down, '▶  🌐 Global Overrides');
+            await pressKey(rendered, KEYS.down, '▶  🔧 Configure Status Line');
+            await pressKey(rendered, KEYS.down, '▶  📤 Export Config');
+            await pressKey(rendered, KEYS.down, '▶  📥 Import Config');
+            await pressKey(rendered, KEYS.down, '▶  🧰 Manage Installation');
+            await pressKey(rendered, KEYS.enter, '▶  🔄 Check for Updates');
+            await pressKey(rendered, KEYS.enter, 'An update is available.');
+            await pressKey(rendered, KEYS.enter, 'Run global update command?');
+            await pressKey(rendered, KEYS.enter, '✓ Global package updated');
+            expect(runUpdate).toHaveBeenCalledOnce();
+            expect(rendered.getFrame()).not.toContain('Pinned Install Version Mismatch');
+
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as {
+                colorLevel: number;
+                installation: InstallationMetadata;
+            };
+            expect(saved.colorLevel).toBe(3);
+            expect(saved.installation).toEqual({ method: 'pinned', installedVersion: '99.0.0' });
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App launched through npx', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it.skipIf(process.platform === 'win32')('still guards a pinned npm install older than the running TUI', async () => {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: '2.0.0' }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        // While npx runs the TUI, its cache's bin dir comes first on PATH
+        const responses: Record<string, string> = {
+            'which -a ccstatusline': '/home/alice/.npm/_npx/9f3c1e2a7b6d4c80/node_modules/.bin/ccstatusline\n/home/alice/.npm-global/bin/ccstatusline\n',
+            'npm prefix -g': '/home/alice/.npm-global\n'
+        };
+        vi.spyOn(childProcess, 'execFileSync').mockImplementation((command, args) => {
+            const key = `${command} ${(args as string[]).join(' ')}`;
+            const response = responses[key];
+
+            if (response === undefined) {
+                throw new Error(`Unexpected command: ${key}`);
+            }
+
+            return response;
+        });
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
+            });
+            expect(rendered.getFrame()).toContain(`Claude Code is pinned to ccstatusline v2.0.0, but this TUI is v${getPackageVersion()}.`);
+            expect(rendered.getFrame()).toContain(`Update npm global install to v${getPackageVersion()}`);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App live label preview', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it.each([false, true])('previews label spacing, cancels drafts, and commits or resets labels (Powerline: %s)', async (powerline) => {
+        const initial = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline, enabled: powerline },
+            lines: [
+                [{ id: 'anchor', type: 'custom-text', customText: 'Untouched line' }],
+                [{ id: 'model', type: 'model', metadata: { label: '7d' } }]
+            ]
+        };
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify(initial));
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+                expect(rendered.getFrame()).toContain('7dClaude');
+            });
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.down, 'Line 2');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 2');
+            await pressKey(rendered, 'e', '(default: "Model: ")');
+            await pressKey(rendered, ' ', '7d Claude');
+            await pressKey(rendered, '\x7f', '7dClaude');
+            await pressKey(rendered, 'XYZ', '7dXYZClaude');
+            expect(rendered.getFrame()).toContain('Untouched line');
+            expect(JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8'))).toEqual(initial);
+
+            await pressKey(rendered, KEYS.escape, 'Edit Line 2');
+            expect(rendered.getFrame()).toContain('7dClaude');
+            expect(rendered.getFrame()).not.toContain('7dXYZClaude');
+            await pressKey(rendered, 'e', '(default: "Model: ")');
+            await pressKey(rendered, ' ', '7d Claude');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 2');
+            expect(rendered.getFrame()).toContain('7d Claude');
+            await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
+            expect(JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8'))).toMatchObject({ lines: [initial.lines[0], [{ id: 'model', metadata: { label: '7d ' } }]] });
+
+            await pressKey(rendered, 'e', '(default: "Model: ")');
+            await pressKey(rendered, '!', '7d !Claude');
+            await pressKey(rendered, '\t', 'Edit Line 2');
+            expect(rendered.getFrame()).toContain('Model: Claude');
+            expect(rendered.getFrame()).not.toContain('7d !Claude');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App lookup of the global ccstatusline command', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: 'ccstatusline', refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    // The real lookups run `which -a`, `npm prefix -g` and `bun pm bin -g`
+    it.each(['pinned', 'self-managed'] as const)('looks up a %s install once, not again for each editor key', async (method) => {
+        const runningVersion = getPackageVersion();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'model', type: 'model', metadata: { label: '7d' } }]],
+            ...(method === 'pinned' && { installation: { method: 'pinned', installedVersion: runningVersion } })
+        }));
+        const inspectActiveCommand = vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: runningVersion,
+            warning: null
+        });
+        const inspectResolution = vi.spyOn(globalCommandResolution, 'inspectGlobalCommandResolution').mockReturnValue({
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            firstResolvedPath: '/usr/local/bin/ccstatusline',
+            expectedBinDir: '/usr/local/bin',
+            warning: null
+        });
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('🧰 Manage Installation');
+            });
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 1');
+            await pressKey(rendered, 'e', '(default: "Model: ")');
+            await pressKey(rendered, 'X', '7dXClaude');
+            await pressKey(rendered, 'Y', '7dXYClaude');
+            await pressKey(rendered, 'Z', '7dXYZClaude');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 1');
+            await pressKey(rendered, 'r', '(raw value)');
+            await pressKey(rendered, KEYS.escape, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.escape, '🧰 Manage Installation');
+
+            expect(inspectActiveCommand).toHaveBeenCalledOnce();
+            // Pinned installs also look up the relaunch path for the version-mismatch screen
+            expect(inspectResolution).toHaveBeenCalledTimes(method === 'pinned' ? 1 : 0);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it('looks again after the TUI updates the pinned global install', async () => {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: '2.0.0' }
+        }));
+        let versionOnDisk = '2.0.0';
+        const inspectActiveCommand = vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockImplementation(() => ({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: versionOnDisk,
+            warning: null
+        }));
+        vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation((packageManager, version) => {
+            versionOnDisk = version;
+            return Promise.resolve();
+        });
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
+            });
+            await pressKey(rendered, KEYS.enter, '✓ Global package updated');
+            expect(rendered.getFrame()).toContain('Main Menu');
+            expect(inspectActiveCommand).toHaveBeenCalledTimes(2);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App save guard for an invalid settings.json', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({ lines: 'not a list' }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('returns to the screen Ctrl+S was pressed on, whether the save is cancelled or confirmed', async () => {
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('not in a valid format');
+            });
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 1');
+
+            await pressKey(rendered, KEYS.ctrlS, 'is preserved on disk');
+            await pressKey(rendered, KEYS.escape, 'Edit Line 1');
+            expect(fs.readFileSync(sandbox.settingsPath, 'utf-8')).toContain('not a list');
+
+            await pressKey(rendered, KEYS.ctrlS, 'is preserved on disk');
+            await pressKey(rendered, KEYS.enter, '✓ Configuration saved');
+            expect(rendered.getFrame()).toContain('Edit Line 1');
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { lines: unknown };
+            expect(Array.isArray(saved.lines)).toBe(true);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App save with a widget whose hooks the status line command can\'t run', () => {
+    const statusCommand = 'bash ~/.claude/statusline.sh';
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'skills-1', type: 'skills' }], [], []]
+        }));
+        const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR ?? '';
+        fs.mkdirSync(claudeConfigDir, { recursive: true });
+        fs.writeFileSync(path.join(claudeConfigDir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: statusCommand } }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: statusCommand, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    it('explains after Ctrl+S that the hooks weren\'t added, then returns to the same screen', async () => {
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+
+            await pressKey(rendered, KEYS.ctrlS, 'Claude Code hooks for Skills weren\'t added');
+            expect(rendered.getFrame()).toContain('Configuration Saved');
+            expect(rendered.getFrame()).toContain(statusCommand);
+            expect(rendered.getFrame()).toContain('ccstatusline "$@"');
+
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+            expect(rendered.getFrame()).not.toContain('weren\'t added');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it('explains after Save & Exit that the hooks weren\'t added, then exits', async () => {
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+
+            // An unsaved edit, so the menu offers Save & Exit: Color Level 256 → Truecolor
+            await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
+            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
+            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '(Truecolor)');
+            await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
+
+            await pressKey(rendered, KEYS.up, '▶  ⚡ Powerline Setup');
+            await pressKey(rendered, KEYS.up, '▶  🎨 Edit Colors');
+            await pressKey(rendered, KEYS.up, '▶  📝 Edit Lines');
+            await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');
+            await pressKey(rendered, KEYS.up, '▶  ❌ Exit without saving');
+            await pressKey(rendered, KEYS.up, '▶  💾 Save & Exit');
+            await pressKey(rendered, KEYS.enter, 'Claude Code hooks for Skills weren\'t added');
+            const saved = JSON.parse(fs.readFileSync(sandbox.settingsPath, 'utf-8')) as { colorLevel: number };
+            expect(saved.colorLevel).toBe(3);
+
+            rendered.stdin.write(KEYS.enter);
+            await rendered.waitUntilExit();
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+function createPendingRun() {
+    let finish: () => void = () => undefined;
+    const run = vi.fn(() => new Promise<void>((resolve) => {
+        finish = resolve;
+    }));
+
+    return { run, finish: () => { finish(); } };
+}
+
+describe('App while an install or update runs', () => {
+    let sandbox: AppSandbox;
+    const savedEnv = { ...process.env };
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        process.env.CCSTATUSLINE_DEV_RELOAD = '1';
+        process.env.CCSTATUSLINE_DEV_RELOAD_STATE = `${sandbox.settingsPath}.reload`;
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+        process.env = { ...savedEnv };
+    });
+
+    it('runs a confirmed install once, ignoring Enter, ESC and Ctrl+R until it finishes', async () => {
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(false);
+        vi.spyOn(claudeSettings, 'getExistingStatusLine').mockResolvedValue(null);
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'unknown',
+            resolvedPath: null,
+            resolvedPaths: [],
+            binDir: null,
+            version: null,
+            warning: null
+        });
+        const globalInstall = createPendingRun();
+        vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation(globalInstall.run);
+        const writeClaudeSettings = vi.spyOn(claudeSettings, 'installStatusLine').mockResolvedValue(undefined);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Main Menu');
+            });
+            await pressKey(rendered, KEYS.up, '▶  ⭐ Like ccstatusline?');
+            await pressKey(rendered, KEYS.up, '▶  🚪 Exit');
+            await pressKey(rendered, KEYS.up, '▶  📦 Install to Claude Code');
+            await pressKey(rendered, KEYS.enter, 'Select update style');
+            await pressKey(rendered, KEYS.enter, 'Select package manager');
+            await pressKey(rendered, KEYS.enter, 'Continue?');
+
+            // Yes: the global install starts and doesn't finish yet
+            rendered.stdin.write(KEYS.enter);
+            await waitFor(() => {
+                expect(globalInstall.run).toHaveBeenCalledOnce();
+            });
+
+            rendered.stdin.write(KEYS.enter);
+            await letReactCatchUp();
+            rendered.stdin.write(KEYS.escape);
+            await letReactCatchUp();
+            rendered.stdin.write('\u0012');
+            await letReactCatchUp();
+            expect(fs.existsSync(`${sandbox.settingsPath}.reload`)).toBe(false);
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+            expect(rendered.getFrame()).toContain('Working...');
+            expect(rendered.getFrame()).not.toContain('Select update style');
+
+            globalInstall.finish();
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('✓ Installed to Claude Code');
+            });
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+            expect(writeClaudeSettings).toHaveBeenCalledOnce();
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it('runs the pinned version update once, ignoring Enter, ESC and Ctrl+R until it finishes', async () => {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: '2.0.0' }
+        }));
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: null, refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+        vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: null,
+            warning: null
+        });
+        const globalInstall = createPendingRun();
+        vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation(globalInstall.run);
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
+            });
+            rendered.stdin.write(KEYS.enter);
+            await waitFor(() => {
+                expect(globalInstall.run).toHaveBeenCalledOnce();
+            });
+
+            rendered.stdin.write(KEYS.enter);
+            await letReactCatchUp();
+            rendered.stdin.write(KEYS.escape);
+            await letReactCatchUp();
+            rendered.stdin.write('\u0012');
+            await letReactCatchUp();
+            expect(fs.existsSync(`${sandbox.settingsPath}.reload`)).toBe(false);
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+            expect(rendered.getFrame()).toContain('Updating npm global install to v');
+            expect(rendered.getFrame()).not.toContain('Exit');
+
+            globalInstall.finish();
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('✓ Global package updated');
+            });
+            expect(rendered.getFrame()).toContain('Main Menu');
+            expect(globalInstall.run).toHaveBeenCalledOnce();
+        } finally {
+            rendered.cleanup();
+        }
     });
 });

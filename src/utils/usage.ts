@@ -1,4 +1,9 @@
-export { fetchUsageData } from './usage-fetch';
+export {
+    fetchUsageData,
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint,
+    isStaleUsageFallback
+} from './usage-fetch';
 export {
     formatUsageDuration,
     formatUsageResetAt,
@@ -7,6 +12,7 @@ export {
     getUsageWindowFromResetAt,
     getWeeklyUsageWindowFromResetAt,
     makeUsageProgressBar,
+    resolveFableUsageWindow,
     resolveUsageWindowWithFallback,
     resolveWeeklyOpusUsageWindow,
     resolveWeeklySonnetUsageWindow,

@@ -3,6 +3,7 @@ import type {
     SkillsMetrics
 } from '../types';
 
+import type { SessionForecast } from './SessionForecast';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
@@ -16,12 +17,28 @@ export interface RenderUsageData {
     weeklySonnetResetAt?: string;
     weeklyOpusUsage?: number;
     weeklyOpusResetAt?: string;
+    fableUsage?: number;
+    fableResetAt?: string;
+    spendLimitUsage?: number;
+    spendLimitUsedUsd?: number;
+    spendLimitLimitUsd?: number;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;
     extraUsageUsed?: number;
     extraUsageUtilization?: number;
     extraUsageCurrency?: string;
+    apiSessionUsage?: number;
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
+}
+
+export interface ClaudeStatusRenderData {
+    indicator?: string;
+    incidents?: {
+        impact: 'minor' | 'major' | 'critical';
+        startMs: number;
+        endMs: number | null;
+    }[];
+    error?: boolean;
 }
 
 export interface CompactionData {
@@ -36,7 +53,11 @@ export interface RenderContext {
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
+    sessionForecast?: SessionForecast | null;
+    claudeStatusData?: ClaudeStatusRenderData | null;
     sessionDuration?: string | null;
+    transcriptSessionName?: string | null;
+    transcriptThinkingEffort?: { value: string; known: boolean } | null;
     blockMetrics?: BlockMetrics | null;
     skillsMetrics?: SkillsMetrics | null;
     compactionData?: CompactionData | null;
@@ -44,6 +65,7 @@ export interface RenderContext {
     isPreview?: boolean;
     minimalist?: boolean;
     gitCacheTtlSeconds?: number;
+    customCommandCacheTtlSeconds?: number;
     gitReviewNeedsChecks?: boolean;
     lineIndex?: number;  // Index of the current line being rendered (for theme cycling)
     globalSeparatorIndex?: number;  // Global separator index that continues across lines
