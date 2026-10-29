@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { clearGitCache } from '../../utils/git';
+import { GIT_HARDENING_ARGS } from '../../utils/git-hardening';
 import { GitConflictsWidget } from '../GitConflicts';
 
 vi.mock('node:child_process', () => ({
@@ -145,7 +146,7 @@ describe('GitConflictsWidget', () => {
         );
 
         expect(render()).toBe('⚠2');
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['ls-files', '--unmerged', '-z']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'ls-files', '--unmerged', '-z']);
     });
 
     it('renders raw conflicts as a numeric count', () => {

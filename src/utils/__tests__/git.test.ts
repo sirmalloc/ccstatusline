@@ -126,7 +126,7 @@ describe('git utils', () => {
             mockExecFileSync.mockReturnValueOnce(filenames.flatMap(filename => [1, 2, 3].map(stage => `100644 hash ${stage}\t${filename}\0`)).join(''));
 
             expect(getGitConflictCount({})).toBe(filenames.length);
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['ls-files', '--unmerged', '-z']);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'ls-files', '--unmerged', '-z']);
             expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2]);
         });
 
