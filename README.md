@@ -28,23 +28,267 @@
 ![Demo](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/demo.gif)
 
 </div>
+<br />
 
 ## 📚 Table of Contents
 
 - [Recent Updates](#-recent-updates)
 - [Features](#-features)
+- [Localizations](#-localizations)
 - [Quick Start](#-quick-start)
-- [Windows Support](#-windows-support)
-- [Usage](#-usage)
-- [API Documentation](#-api-documentation)
-- [Development](#️-development)
+- [Windows Support](docs/WINDOWS.md)
+- [Usage](docs/USAGE.md)
+- [Development](docs/DEVELOPMENT.md)
 - [Contributing](#-contributing)
 - [License](#-license)
 - [Related Projects](#-related-projects)
 
----
+<br />
+
+## 🚀 Quick Start
+
+### No installation needed! Use directly with npx or bunx:
+
+```bash
+# Run the configuration TUI with npm
+npx -y ccstatusline@latest
+
+# Or use bunx, Bun's alternative to npx
+bunx -y ccstatusline@latest
+```
+
+Startup time can vary with the package runner (`npx` or `bunx`), its cache, and your platform. If repeated status line launches are slow, consider the **Pinned global install** option described below to run `ccstatusline` directly.
+
+Both commands launch the same TUI. During the initial setup flow, choose **Pinned global install** if you want Claude Code to stay on the ccstatusline version you are running instead of following `@latest`; the TUI will install that version globally with npm or Bun and write the pinned `ccstatusline` command to Claude Code settings. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
+
+<br />
+<details>
+<summary><b>Configure ccstatusline</b></summary>
+
+The interactive configuration tool provides a terminal UI where you can:
+- Configure multiple separate status lines
+- Add/remove/reorder status line widgets
+- Customize colors for each widget
+- Configure flex separator behavior
+- Configure Claude Code status line refresh interval when supported
+- Edit custom text widgets
+- Export JSON backups and preview imported configs before replacing or merging settings
+- Install/uninstall to Claude Code settings
+- Preview your status line in real-time
+
+> 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
+
+> 🔧 **Custom Claude Config:** If your Claude Code configuration is in a non-standard location, set the `CLAUDE_CONFIG_DIR` environment variable:
+> ```bash
+> # Linux/macOS
+> export CLAUDE_CONFIG_DIR=/custom/path/to/.claude
+> ```
+
+> 🌐 **HTTPS proxy:** Usage and Claude Status requests honor uppercase `HTTPS_PROXY`, with exclusions from both `NO_PROXY` and `no_proxy`. See [proxy settings](docs/USAGE.md#proxy-settings) for host, domain, and port matching.
+
+> 🪟 **Windows Support:** PowerShell examples, installation notes, fonts, troubleshooting, WSL, and Windows Terminal configuration are in [docs/WINDOWS.md](docs/WINDOWS.md).
+
+> 🫥 **Status line empty in one folder?** Claude Code only runs the status line command in trusted workspaces, and nested git repositories stopped inheriting trust in Claude Code 2.1.232. See [Status line empty in one folder](docs/USAGE.md#status-line-empty-in-one-folder-but-fine-elsewhere).
+
+> 🧩 **Skills always `none` with a wrapper script?** Skills needs Claude Code hooks, which are only added when the status line command contains `ccstatusline`. See [Skills always shows none](docs/USAGE.md#skills-always-shows-none).
+
+</details>
+
+<details>
+<summary><b>Claude Code settings.json format</b></summary>
+
+When you install from the TUI, ccstatusline writes a `statusLine` command object to your Claude Code settings:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y ccstatusline@latest",
+    "padding": 0,
+    "refreshInterval": 10
+  }
+}
+```
+
+`refreshInterval` is written only when your Claude Code version supports it (>=2.1.97). The TUI can set it to `1-60` seconds, or remove it by leaving the input empty.
+
+Other supported command values are:
+- `bunx -y ccstatusline@latest`
+- `ccstatusline` (for self-managed/global installs)
+
+The status line command runs once per repaint, so what it costs to invoke is paid over and over. Under
+Bun that cost depends on the specifier: `bunx` re-resolves the `latest` dist-tag against the registry
+on every run, because a dist-tag is not cacheable. Measured on Windows with a warm cache, median of
+five runs of `--version`, which exits before rendering:
+
+| command | median |
+| --- | --- |
+| `bunx -y ccstatusline@latest` | 633 ms |
+| `bunx -y ccstatusline@2.2.27` | 202 ms |
+| `bunx -y ccstatusline` | 207 ms |
+
+Dropping `@latest` is worth about 430 ms per repaint there. npm does not behave this way: `npx -y
+ccstatusline@latest` and `npx -y ccstatusline@2.2.27` measured 1082 ms and 1135 ms, so pinning buys
+nothing under `npx`. A **Pinned global install**, which writes `"command": "ccstatusline"`, avoids the
+resolution entirely on both.
+
+For pinned installs, launch the TUI with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI pins the active version by installing it globally and writing `"command": "ccstatusline"` to `settings.json`; afterward, you can run `ccstatusline` directly to open the TUI.
+
+</details>
 
 ## 🆕 Recent Updates
+
+### v2.2.32 - Safer imports, proxy handling, and rendering fixes
+
+- **📥 Review imported commands** - Config imports show new shell commands in full and require confirmation with Cancel selected by default; control characters are displayed as escaped text.
+- **🔒 Private settings stay private** - Saves preserve restrictive settings-file permissions, Claude settings backups inherit the source permissions, and installation stops rather than overwriting unreadable Claude settings.
+- **🌐 Proxy exclusions and deadlines** - Usage and Claude Status requests honor `NO_PROXY` and `no_proxy` and have total five-second deadlines; JJ commands also time out after five seconds.
+- **⏳ Accurate cache timer state** - Interrupts and local slash commands such as `/cost` no longer leave Cache Timer reporting `HOT`.
+- **⚡ Faster Git and text rendering** - Git widgets skip unnecessary calls outside repositories and keep separate caches per working directory; text-width calculations reuse Unicode measurements, and Git file/URL parsing avoids quadratic slowdowns.
+- **📏 Reliable styled-text truncation** - Width limits remain correct when ANSI styling or hyperlinks split an emoji or another display cluster.
+- **🛡️ Command and file handling** - Update versions are validated before installation, fonts download into private temporary folders, branch/host names stay literal CLI arguments, and Skills logs reject unsafe session IDs.
+- **🔄 Reliable usage backoff** - Successful usage requests preserve rate-limit backoff written by concurrent renders.
+
+### v2.2.31 - Cost tracking, customization, and broad reliability improvements
+
+Across the updates since the September 3 release, 64 PRs have been incorporated, plus additional security fixes and test isolation.
+
+- **🩹 Miscellaneous bug fixes** - 29 dedicated bug-fix PRs since September 3 cover usage/account caching, transcript reading, Git/JJ and directory displays, Unicode truncation, Powerline colors and layout, keyboard controls, settings recovery, hooks, and installation/update flows.
+- **🔒 Security fixes** - Three additional fixes restrict repository-controlled Git commands, resolve Windows helper executables from PATH, and filter terminal control sequences while preserving colors and hyperlinks.
+- **💰 Session Cost Rate** - Track session cost per hour of active API time or total session time, with a one-minute minimum before showing a rate.
+- **📅 Extra Usage Daily Budget** - Spread the remaining monthly spending limit over the remaining UTC days, with an option to skip future weekend days.
+- **🏷️ Editable labels** - Press `e` to customize text labels.
+- **⚡ Faster rendering** - Piped status lines skip loading the interactive TUI, reducing startup work on every repaint.
+- **🧰 Maintenance** - Shared widget and editor implementations, broader regression coverage, more reliable tests, dependency updates, and CI actions pinned to commit SHAs.
+
+### v2.2.29 - v2.2.30 - Faster rendering, command caching, and reliable usage
+
+- **⚡ Faster terminal width detection** - Linux can probe the terminal directly without subprocesses, portable fallbacks skip shell wrappers, and configurable caching reuses failed width probes across renders while detected widths refresh on the next render.
+- **🔧 Custom command caching and timeouts** - Opt into output caching for up to 60 seconds from Configure Status Line, and enforce command timeouts even when descendants retain output pipes.
+- **🔣 More customizable Git/JJ symbols** - Press `g` to edit insertion/deletion signs, Git clean/dirty markers, and the JJ Revision prefix, including empty glyphs for compact layouts.
+- **🙈 Hide reset-timer placeholders** - Block Reset Timer and Weekly Reset Timer can hide loading and error output through `h`; use `f` for 12/24-hour format and `o` for weekly hours-only display.
+- **👤 Reliable usage account selection** - macOS usage lookup respects the active config profile's Keychain credentials, and access-token refreshes preserve cached usage when the refresh token is unchanged.
+- **📊 Unused model quotas show zero** - Weekly model usage widgets recognize an explicit 0% quota even before the API supplies a reset timestamp.
+- **↔️ Full-width layouts by default** - New configurations and settings without an explicit flex mode now use Full width always.
+- **⏱️ Bounded Git commands** - Cached Git commands have a five-second timeout so a stalled Git invocation cannot block the status line indefinitely.
+
+### v2.2.28 - v2.2.29 - Service health, flexible formatting, and resilient rendering
+
+- **🩺 Claude service health** - Added a `Claude Status` widget with live severity, a cached 48-hour incident-history strip, stale-data fallback, and graceful `?` output when status data is unavailable.
+- **🙈 Unified conditional hiding** - Numeric, Git, JJ, usage, cache, and other widgets now share an `h` checklist for supported hide conditions, with automatic migration of existing settings and optional merge-target hiding for decorative text or symbols.
+- **🔢 Configurable number formatting** - Numeric widgets can use precise, compact, or whole-number styles per widget or globally by token, speed, percent, memory, and cost type, while advanced configs can set decimal precision explicitly.
+- **📜 Faster, reliable large-session rendering** - Transcript-backed token, duration, speed, compaction, effort, and session-name metrics now stream JSONL records through one shared scan instead of loading an entire transcript into a single string, while no-active-block results are briefly cached to avoid repeated full-history scans.
+- **⚠️ Git conflict display controls** - Git Conflicts can hide when the count is zero or show either `⚠0` or a customizable clean glyph when the tree is conflict-free.
+- **🩹 Self-healing usage locks** - Usage widgets ignore impossible fetch-lock deadlines more than 24 hours ahead, allowing poisoned locks caused by clock jumps or old test artifacts to recover on the next render.
+- **🧹 Bounded Git cache cleanup** - Failed persistent Git-cache writes clean up their temporary file and reuse one stable fallback name, preventing Windows file locks from leaking thousands of orphaned temp files.
+- **📊 Consistent timer bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now round progress-bar fill to the nearest cell, matching the other progress widgets.
+
+### v2.2.27 - Portable configuration import and export
+
+- **📦 Config import/export** - Export the current TUI configuration to JSON, validate and preview imports, then replace all settings or merge only supplied fields while preserving local installation metadata and leaving the result unsaved for review.
+
+### v2.2.25 - v2.2.26 - Fable usage, migrated usage API support, compaction accuracy, and rendering reliability
+
+- **🪄 Weekly Fable usage** - Added a `Weekly Fable Usage` widget with percentage, progress-bar, remaining-mode, and time-cursor controls.
+- **📊 Reshaped usage API support** - Session and all-model weekly usage can fall back to the newer `limits[]` response, while Sonnet, Opus, and Fable weekly widgets read authoritative `weekly_scoped` entries so migrated accounts do not show stale or frozen values.
+- **🧠 Correct post-compaction context** - Context length and percentage widgets reset immediately from `compact_boundary.postTokens` after `/compact`, then switch to the first new turn instead of retaining the pre-compaction size.
+- **🧹 Reliable hidden-widget separators** - Manual separators now look past widgets that render empty, preserve the intended visible boundary, and inherit colors from the actual preceding visible widget.
+- **⚡ Non-blocking Git PR/CI refreshes** - Git PR and CI widgets render from a versioned disk cache while stale data refreshes in the background, preventing slow `gh` calls from blocking the status line.
+
+### v2.2.22 - v2.2.24 - Powerline flex mode, cache/CI/sandbox visibility, layout controls, composable metrics, and safer config
+
+![Powerline Flex Mode](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/powerline-flex.png)
+
+- **⏳ Prompt cache timer** - Added a `Cache Timer` widget with live `HOT` state, TTL countdown, configurable 5-minute/1-hour windows, and customizable state glyphs.
+- **✅ GitHub CI status** - Added a `Git CI Status` widget that summarizes failing, pending, and successful checks for the current branch's pull request.
+- **🔒 Sandbox status** - Added a `Sandbox Status` widget with glyph, text, and Nerd Font formats that follows Claude Code's layered sandbox setting on each refresh.
+- **↔️ One-sided default padding** - Default widget padding can now apply to both sides, the left only, or the right only in standard and Powerline layouts.
+- **⚡ Powerline flex mode** - Flex separators now work in Powerline mode, letting Powerline status lines right-align content or absorb available width.
+- **🌗 Per-widget dim styling** - The color editor can dim an entire widget or only parenthesized text, with reset and clear-all actions covering dim state.
+- **🧯 Safer settings recovery** - Invalid `settings.json` files are left untouched, defaults render in memory, and the status line shows an invalid-config warning.
+- **🧭 Selective Powerline alignment** - Press `x` in the line editor to let a widget and the rest of its line keep their natural widths while earlier Powerline columns stay auto-aligned.
+- **📏 Git widget width limits** - `Git Branch` and `Git Root Dir` can cap their visible width with ellipsis-safe truncation while preserving hyperlink targets.
+- **🔣 Current directory glyphs** - `Current Working Dir` can prepend an optional custom glyph, including in raw-value mode.
+- **🧠 Configurable context fallback** - `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` overrides the default 200k last-resort context window when Claude Code and the model name do not report one.
+- **🧩 Composable compaction metrics** - `Compaction Counter` can render count, auto, manual, unknown, or reclaimed-token values independently for custom layouts.
+- **🏷️ CLI version flag** - `ccstatusline --version` now prints the installed package version and exits.
+- **🛡️ Guarded invalid-config saves** - The TUI warns when it loaded defaults for an invalid settings file and requires confirmation before replacing that file.
+- **🔄 Usage display and cache fixes** - Used/remaining direction now works in every percentage mode, account switches invalidate cached usage, and fetch locks no longer cause repeated requests or stale timeout output.
+- **⏱️ Calmer reset timer startup** - Reset timers show labeled loading placeholders instead of transient rate-limit errors while Claude Code's embedded usage-window data is still arriving.
+- **🔇 Quieter install detection** - Best-effort npm and Bun probes no longer leak expected package-manager errors into the TUI.
+
+### v2.2.21 - Cache widgets, compaction details, extra usage currency, and package fixes
+
+- **🔣 Custom widget glyphs** - Git and JJ symbol widgets can override or suppress their built-in glyphs from the TUI.
+- **🔁 Compaction counter details** - `Compaction Counter` now counts explicit `compact_boundary` markers and can optionally show trigger splits plus tokens reclaimed.
+- **💸 Extra usage improvements** - Added `Extra Usage Used` and formats extra usage amounts with the billing currency reported by the usage API.
+- **📏 Custom command width context** - `Custom Command` widgets receive `terminal_width` in stdin JSON when ccstatusline can detect the terminal width.
+- **🧠 Prompt cache widgets** - Added `Cache Hit Rate`, `Cache Read`, and `Cache Write` widgets with turn/session scopes and hide-when-empty behavior.
+- **🔢 Token rounding fix** - Token counts from `999950` through `999999` now render as `1.0M` instead of `1000.0k`.
+
+### v2.2.20 - Gradients, token accuracy, usage reliability, and Git PR/MR fixes
+
+- **🌈 Gradient colors** - Added per-widget and whole-line foreground gradients with named presets, custom hex stops, TUI picker support, and Powerline-aware rendering. Press `g` on the Edit Colors screen for widget gradients, or press `g` for Override FG Color in Global Overrides for a line-wide gradient.
+- **🎯 More accurate token counts** - `Tokens Input` and `Tokens Output` now prefer cumulative transcript metrics before falling back to context-window totals.
+- **💸 Extra usage no-limit fix** - Extra usage widgets no longer get stuck on `[Timeout]` for accounts with overage enabled but no monthly limit configured.
+- **🔁 Compaction glitch filtering** - `Compaction Counter` ignores transient below-1% context readings so incomplete status frames do not create false compaction counts.
+- **🔀 SSH alias Git PR/MR detection** - Git PR/MR detection resolves SSH host aliases while preserving canonical GitHub and GitLab hosts for CLI selection and fallback repo links.
+- **🧪 Usage test cache isolation** - Usage-fetch test probes now isolate `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables so local tests cannot touch the real ccstatusline cache.
+- **📦 Dependency refresh** - Refreshed React/React DOM and Bun lockfile development-tooling resolutions for the release.
+
+### v2.2.14 - v2.2.19 - Version pinning, npm provenance, usage overage widgets, and Git lock avoidance
+
+- **📌 Version pinning support** - Added support for pinned global installs so Claude Code can keep running a specific ccstatusline version.
+- **🔐 npm provenance attestations** - Published packages now use trusted publishing provenance so users can verify where releases were built while avoiding long-lived npm publish tokens.
+- **🔄 Moving from auto-update installs** - If you currently use an auto-updating install, use the TUI uninstall option first, then reinstall to go through the version pinning flow. Your ccstatusline settings are preserved when uninstalling.
+- **💸 Extra usage widgets** - Added Extra Usage Utilization and Extra Usage Remaining widgets for monthly pay-as-you-go overage limits, with null rate-limit buckets handled as zero usage.
+- **🔒 Git lock avoidance** - Git helpers now pass `--no-optional-locks` so background status checks avoid creating `index.lock` races.
+- **🧱 Older Git compatibility** - Git widgets avoid newer command forms so repository status works on older Git installations.
+- **⚡ Persistent Git cache** - Git command output is cached under `~/.cache/ccstatusline/git-cache` with configurable TTL and `.git/HEAD`/`.git/index` mtime checks to reduce repeated subprocess work.
+- **🧭 Install flow polish** - Pinned global install is now the default install option, with clearer wording for install and migration flows.
+- **🪟 Hidden helper processes** - Runtime child processes set `windowsHide` so helper commands do not open extra windows on Windows.
+- **📏 Terminal width override** - `CCSTATUSLINE_WIDTH` can provide an explicit terminal width when automatic probing is unavailable.
+
+### v2.2.13 - Weekly model usage, voice status, hooks, and docs
+
+- **📊 Weekly Sonnet/Opus usage widgets** - Added separate weekly usage widgets for Sonnet and Opus API buckets, matching Claude Code's `/usage` model split.
+- **🎤 Voice Status widget** - Added a widget that shows whether Claude Code voice input is enabled, with icon, text, word, and optional Nerd Font display modes.
+- **📉 Timer short bars** - Block Timer, Block Reset Timer, and Weekly Reset Timer now support compact short-bar progress displays.
+- **🔕 Quieter hook output** - Hook handling now suppresses no-op JSON output so non-status updates stay silent.
+
+<br />
+<details>
+<summary><b>Older updates (v2.2.12 and earlier)</b></summary>
+
+### v2.2.9 - v2.2.12 - GitLab support, reset timers, context, compaction, and git widgets
+
+- **🦊 GitLab PR/MR support** - `Git Branch` and `Git PR/MR` now support GitHub, GitLab, and compatible self-hosted remotes, using `gh` or `glab` as appropriate.
+- **🔄 Status line refresh interval** - Installed configs can set Claude Code's `statusLine.refreshInterval` from the TUI when Claude Code >=2.1.97 supports it.
+- **🧭 Wrap-around TUI navigation** - Menu/list navigation and move/reorder modes now wrap at the first and last items.
+- **📋 Clone widget shortcut** - Press `k` in the item editor to duplicate the selected widget, with fresh Powerline background color for cloned Powerline items.
+- **📊 Short bar display modes** - Context percentage, Context Bar, Session Usage, Weekly Usage, Block Timer, and reset timer widgets can use compact bar variants.
+- **⏱️ Usage time cursor** - Session Usage and Weekly Usage progress bars can show the elapsed time position within the current usage window.
+- **🕒 Reset timer timestamps** - Block and Weekly Reset Timer widgets can show exact reset timestamps with compact formatting, 12/24-hour display, IANA time zones, and locale selection.
+- **🪟 Context Window widget** - Added a `Context Window` widget for total model window size, keeping `Context Length` focused on current context usage.
+- **🔁 Compaction Counter widget** - Added a `Compaction Counter` widget that tracks session context compactions, with icon/text/number formats, optional Nerd Font icon, and hide-when-zero behavior.
+- **🧮 Git file status widgets** - Added `Git Staged Files`, `Git Unstaged Files`, `Git Untracked Files`, and `Git Clean Status` for file counts and clean/dirty state.
+- **🏷️ Clear context percentage labels** - `Context %` and `Context % (usable)` now label rendered values as used or left when toggling used/remaining mode.
+- **⚡ More Powerline caps** - The Powerline separator editor now supports more than three start/end caps.
+- **🧠 Thinking Effort updates** - Added `xhigh`, show `default` when no effort is set, mark unknown future effort levels with `?`, and track live status JSON plus `/effort` command changes. Claude Code reports Ultracode as `xhigh` in status line data.
+- **🧮 More accurate token counts** - Streaming duplicate JSONL entries are deduped so token widgets do not overcount live Claude Code output.
+- **🏷️ Cleaner model display** - The Model widget strips trailing context suffixes like `(1M context)`; use `Context Window` when you want the total window size shown.
+- **🧹 Cleaner empty-widget separators** - Manual separators now collapse around widgets that render empty, avoiding dangling separators when hide-when-empty widgets disappear.
+- **🧱 More resilient Git helpers** - Git widgets handle missing or unusual git command output more defensively.
+
+### v2.2.8 - Git widgets, smarter picker search, and minimalist mode
+
+- **🔀 New Git PR widget** - Added a `Git PR` widget with clickable PR links plus optional status and title display for the current branch.
+- **🧰 Major Git widget expansion** - Added `Git Status`, `Git Staged`, `Git Unstaged`, `Git Untracked`, `Git Ahead/Behind`, `Git Conflicts`, `Git SHA`, `Git Origin Owner`, `Git Origin Repo`, `Git Origin Owner/Repo`, `Git Upstream Owner`, `Git Upstream Repo`, `Git Upstream Owner/Repo`, `Git Is Fork`, `Git Worktree Mode`, `Git Worktree Name`, `Git Worktree Branch`, `Git Worktree Original Branch`, and `Custom Symbol`.
+- **👤 Claude Account Email widget** - Added a session widget that reads the signed-in Claude account email from `~/.claude.json` while respecting `CLAUDE_CONFIG_DIR`.
+- **🧼 Global Minimalist Mode** - Added a global toggle in `Global Overrides` that forces widgets into raw-value mode for a cleaner, label-free status line.
+- **🔎 Smarter widget picker search** - The add/change widget picker now supports substring, initialism, and fuzzy matching, with ranked results and live match highlighting.
+- **📏 Better terminal width detection** - Flex separators and right-alignment now work more reliably when ccstatusline is launched through wrapper processes or nested PTYs.
+- **🎨 Powerline theme continuity** - Built-in Powerline themes can now continue colors cleanly across multiple status lines instead of restarting each line.
 
 ### v2.2.0 - v2.2.6 - Speed, widgets, links, and reliability updates
 
@@ -150,604 +394,46 @@
 ### v2.0.0 - Powerline Support & Enhanced Themes
 - **⚡ Powerline Mode** - Beautiful Powerline-style status lines with arrow separators and customizable caps
 - **🎨 Built-in Themes** - Multiple pre-configured themes that you can copy and customize
-- **🌈 Advanced Color Support** - Basic (16), 256-color (with custom ANSI codes), and truecolor (with hex codes) modes
+- **🌈 Advanced Color Support** - Basic (16), 256-color (with custom ANSI codes), and truecolor (with hex codes) modes, plus multi-stop **gradients** (per-widget or spanning the whole line)
 - **🔗 Widget Merging** - Merge multiple widgets together with or without padding for seamless designs
 - **📦 Easy Installation** - Install directly with `npx` or `bunx` - no global package needed
 - **🔤 Custom Separators** - Add multiple Powerline separators with custom hex codes for font support
 - **🚀 Auto Font Install** - Automatic Powerline font installation with user consent
 
----
+</details>
+
+<br />
 
 ## ✨ Features
 
-- **📊 Real-time Metrics** - Display model name, git branch, token usage, session duration, block timer, and more
+- **📊 Real-time Metrics** - Display model name, git branch, token usage, Sonnet/Opus/Fable weekly usage, extra usage limits, voice input state, session duration, compaction count, block timer, and more
 - **🎨 Fully Customizable** - Choose what to display and customize colors for each element
 - **⚡ Powerline Support** - Beautiful Powerline-style rendering with arrow separators, caps, and custom fonts
 - **📐 Multi-line Support** - Configure multiple independent status lines
 - **🖥️ Interactive TUI** - Built-in configuration interface using React/Ink
 - **🔎 Fast Widget Picker** - Add/change widgets by category with search and ranked matching
-- **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, background)
+- **⚙️ Global Options** - Apply consistent formatting across all widgets (padding, separators, bold, minimalist mode, and color overrides)
+- **📦 Portable Configurations** - Export settings to JSON and preview replace-or-merge imports for backups and sharing
 - **🚀 Cross-platform** - Works seamlessly with both Bun and Node.js
 - **🔧 Flexible Configuration** - Supports custom Claude Code config directory via `CLAUDE_CONFIG_DIR` environment variable
 - **📏 Smart Width Detection** - Automatically adapts to terminal width with flex separators
 - **⚡ Zero Config** - Sensible defaults that work out of the box
 
----
+<br />
 
-## 🚀 Quick Start
+## 🌐 Localizations
 
-### No installation needed! Use directly with npx or bunx:
+The localizations in this section are third-party forks maintained outside this repository. They are not maintained, reviewed, or endorsed by this repository, so review their code and releases before using them.
 
-```bash
-# Run the configuration TUI with npm
-npx -y ccstatusline@latest
+- 🌏 **中文版 (Chinese):** [ccstatusline-zh](https://github.com/huangguang1999/ccstatusline-zh)
 
-# Or with Bun (faster)
-bunx -y ccstatusline@latest
-```
+<br />
 
-### Configure ccstatusline
-
-The interactive configuration tool provides a terminal UI where you can:
-- Configure multiple separate status lines
-- Add/remove/reorder status line widgets
-- Customize colors for each widget
-- Configure flex separator behavior
-- Edit custom text widgets
-- Install/uninstall to Claude Code settings
-- Preview your status line in real-time
-
-> 💡 **Tip:** Your settings are automatically saved to `~/.config/ccstatusline/settings.json`
-
-> 🔧 **Custom Claude Config:** If your Claude Code configuration is in a non-standard location, set the `CLAUDE_CONFIG_DIR` environment variable:
-> ```bash
-> # Linux/macOS
-> export CLAUDE_CONFIG_DIR=/custom/path/to/.claude
-> 
-> # Windows PowerShell
-> $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
-> ```
-
-> 🌐 **Usage API proxy:** Usage widgets honor the uppercase `HTTPS_PROXY` environment variable for their direct API call to Anthropic.
-
-### Claude Code settings.json format
-
-When you install from the TUI, ccstatusline writes a `statusLine` command object to your Claude Code settings:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "npx -y ccstatusline@latest",
-    "padding": 0
-  }
-}
-```
-
-Other supported command values are:
-- `bunx -y ccstatusline@latest`
-- `ccstatusline` (for self-managed/global installs)
-
----
-
-## 🪟 Windows Support
-
-ccstatusline works seamlessly on Windows with full feature compatibility across PowerShell (5.1+ and 7+), Command Prompt, and Windows Subsystem for Linux (WSL).
-
-### Installation on Windows
-
-#### Option 1: Using Bun (Recommended)
-```powershell
-# Install Bun for Windows
-irm bun.sh/install.ps1 | iex
-
-# Run ccstatusline
-bunx -y ccstatusline@latest
-```
-
-#### Option 2: Using Node.js
-```powershell
-# Using npm
-npx -y ccstatusline@latest
-
-# Or with Yarn
-yarn dlx ccstatusline@latest
-
-# Or with pnpm
-pnpm dlx ccstatusline@latest
-```
-
-### Windows-Specific Features
-
-#### Powerline Font Support
-For optimal Powerline rendering on Windows:
-
-**Windows Terminal** (Recommended):
-- Supports Powerline fonts natively
-- Download from [Microsoft Store](https://aka.ms/terminal)
-- Auto-detects compatible fonts
-
-**PowerShell/Command Prompt**:
-```powershell
-# Install JetBrains Mono Nerd Font via winget
-winget install DEVCOM.JetBrainsMonoNerdFont
-
-# Alternative: Install base JetBrains Mono font
-winget install "JetBrains.JetBrainsMono"
-
-# Or download manually from: https://www.nerdfonts.com/font-downloads
-```
-
-#### Path Handling
-ccstatusline automatically handles Windows-specific paths:
-- Git repositories work with both `/` and `\` path separators
-- Current Working Directory widget displays Windows-style paths correctly
-- Full support for mapped network drives and UNC paths
-- Handles Windows drive letters (C:, D:, etc.)
-
-### Windows Troubleshooting
-
-#### Common Issues & Solutions
-
-**Issue**: Powerline symbols showing as question marks or boxes
-```powershell
-# Solution: Install a compatible Nerd Font
-winget install JetBrainsMono.NerdFont
-# Then set the font in your terminal settings
-```
-
-**Issue**: Git commands not recognized
-```powershell
-# Check if Git is installed and in PATH
-git --version
-
-# If not found, install Git:
-winget install Git.Git
-# Or download from: https://git-scm.com/download/win
-```
-
-**Issue**: Permission errors during installation
-```powershell
-# Use non-global installation (recommended)
-npx -y ccstatusline@latest
-
-# Or run PowerShell as Administrator for global install
-```
-
-**Issue**: "Execution Policy" errors in PowerShell
-```powershell
-# Temporarily allow script execution
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-**Issue**: Windows Defender blocking execution
-```powershell
-# If Windows Defender flags the binary:
-# 1. Open Windows Security
-# 2. Go to "Virus & threat protection"
-# 3. Add exclusion for the ccstatusline binary location
-# Or use temporary bypass (not recommended for production):
-Add-MpPreference -ExclusionPath "$env:USERPROFILE\.bun\bin"
-```
-
-#### Windows Subsystem for Linux (WSL)
-ccstatusline works perfectly in WSL environments:
-
-```bash
-# Install in WSL Ubuntu/Debian
-curl -fsSL https://bun.sh/install | bash
-source ~/.bashrc
-bunx -y ccstatusline@latest
-```
-
-**WSL Benefits**:
-- Native Unix-style path handling
-- Better font rendering in WSL terminals
-- Seamless integration with Linux development workflows
-
-### Windows Terminal Configuration
-
-For the best experience, configure Windows Terminal with these recommended settings:
-
-#### Terminal Settings (settings.json)
-```json
-{
-  "profiles": {
-    "defaults": {
-      "font": {
-        "face": "JetBrainsMono Nerd Font",
-        "size": 12
-      },
-      "colorScheme": "One Half Dark"
-    }
-  }
-}
-```
-
-#### Claude Code Integration
-Configure ccstatusline in your Claude Code settings:
-
-**Settings Location:**
-- Default: `~/.claude/settings.json` (Windows: `%USERPROFILE%\.claude\settings.json`)
-- Custom: Set `CLAUDE_CONFIG_DIR` environment variable to use a different directory
-
-**For Bun users**:
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bunx -y ccstatusline@latest",
-    "padding": 0
-  }
-}
-```
-
-**For npm users**:
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "npx -y ccstatusline@latest",
-    "padding": 0
-  }
-}
-```
-
-> 💡 **Custom Config Directory:** If you use a non-standard Claude Code configuration directory, set the `CLAUDE_CONFIG_DIR` environment variable before running ccstatusline. The tool will automatically detect and use your custom location.
-
-### Performance on Windows
-
-ccstatusline includes Windows-specific runtime behavior:
-- **UTF-8 piped output fix**: In piped mode, it attempts to set code page `65001` for reliable symbol rendering
-- **Path compatibility**: Git and CWD widgets handle both `/` and `\` separators
-- **Block timer cache**: Cached block metrics reduce repeated JSONL scanning
-
-### Windows-Specific Widget Behavior
-
-Some widgets have Windows-specific optimizations:
-
-- **Current Working Directory**: Displays Windows drive letters and UNC paths
-- **Git Widgets**: Handle Windows line endings (CRLF) automatically  
-- **Custom Commands**: Support both PowerShell and cmd.exe commands
-- **Block Timer**: Accounts for Windows timezone handling
-
----
-
-## 📖 Usage
-
-Once configured, ccstatusline automatically formats your Claude Code status line. The status line appears at the bottom of your terminal during Claude Code sessions.
-
-### Runtime Modes
-
-- **Interactive mode (TUI)**: Launches when there is no stdin input
-- **Piped mode (renderer)**: Parses Claude Code status JSON from stdin and prints one or more formatted lines
-
-```bash
-# Interactive TUI
-bun run start
-
-# Piped mode with example payload
-bun run example
-```
-
-### 📊 Available Widgets
-
-- **Model** - Displays the Claude model name (e.g., "Claude 3.5 Sonnet")
-- **Output Style** - Shows the current Claude Code output style
-- **Git Branch** - Shows the current git branch name
-- **Git Changes** - Shows git changes count (`+insertions`, `-deletions`)
-- **Git Insertions** - Shows git insertions count
-- **Git Deletions** - Shows git deletions count
-- **Git Root Dir** - Shows the git repository root directory name
-- **Git Worktree** - Shows the current git worktree name
-- **Current Working Dir** - Shows current working directory with segment limit, fish-style abbreviation, and optional `~` home abbreviation
-- **Tokens Input** - Shows input token count for the current session
-- **Tokens Output** - Shows output token count for the current session
-- **Tokens Cached** - Shows cached token count for the current session
-- **Tokens Total** - Shows total token count (`input + output + cache`) for the current session
-- **Input Speed** - Shows session-average input token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
-- **Output Speed** - Shows session-average output token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
-- **Total Speed** - Shows session-average total token speed (`tokens/sec`) with optional per-widget window (`0-120` seconds; `0` = full-session average)
-- **Context Length** - Shows the current context window size in tokens
-- **Context %** - Shows percentage of context window used or remaining
-- **Context % (usable)** - Shows percentage of usable context used or remaining (80% of max before auto-compact)
-- **Session Clock** - Shows elapsed time since current session started
-- **Session Cost** - Shows the total session cost in USD
-- **Block Timer** - Shows current 5-hour block elapsed time or progress
-- **Terminal Width** - Shows current terminal width in columns
-- **Version** - Shows Claude Code CLI version number
-- **Custom Text** - Displays user-defined custom text
-- **Custom Command** - Executes a custom shell command and displays output (refreshes whenever Claude Code updates the status line)
-- **Link** - Displays a clickable terminal hyperlink using OSC 8
-- **Claude Session ID** - Shows the current Claude Code session ID from status JSON
-- **Session Name** - Shows the session name set via `/rename` in Claude Code
-- **Memory Usage** - Shows system memory usage (used/total)
-- **Session Usage** - Shows daily/session API usage percentage
-- **Weekly Usage** - Shows weekly API usage percentage
-- **Block Reset Timer** - Shows time remaining until current 5-hour block reset window
-- **Weekly Reset Timer** - Shows time remaining until weekly usage reset
-- **Context Bar** - Shows context usage as a progress bar with short/full display modes
-- **Skills** - Shows skill activity as last used, total count, or unique list (with optional list limit and hide-when-empty toggle)
-- **Vim Mode** - Displays current vim editor mode
-- **Separator** - Visual divider between widgets (available when Powerline mode is off and no default separator is configured)
-- **Flex Separator** - Expands to fill available space (available when Powerline mode is off)
-
----
-
-### Terminal Width Options
-These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators:
-- **Full width always** - Uses full terminal width (may wrap if auto-compact message appears or IDE integration adds text)
-- **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping (default)
-- **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
-
----
-
-### ⚙️ Global Options
-
-Configure global formatting preferences that apply to all widgets:
-
-![Global Options](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/global.png)
-
-#### Default Padding & Separators
-- **Default Padding** - Add consistent padding to the left and right of each widget
-- **Default Separator** - Automatically insert a separator between all widgets
-  - Press **(p)** to edit padding
-  - Press **(s)** to edit separator
-
-<details>
-<summary><b>Global Formatting Options</b></summary>
-
-- **Inherit Colors** - Default separators inherit foreground and background colors from the preceding widget
-  - Press **(i)** to toggle
-- **Global Bold** - Apply bold formatting to all text regardless of individual widget settings
-  - Press **(o)** to toggle
-- **Override Foreground Color** - Force all widgets to use the same text color
-  - Press **(f)** to cycle through colors
-  - Press **(g)** to clear override
-- **Override Background Color** - Force all widgets to use the same background color
-  - Press **(b)** to cycle through colors
-  - Press **(c)** to clear override
-
-</details>
-
-> 💡 **Note:** These settings are applied during rendering and don't add widgets to your widget list. They provide a consistent look across your entire status line without modifying individual widget configurations.
-
-> ⚠️ **VSCode Users:** If colors appear incorrect in the VSCode integrated terminal, the "Terminal › Integrated: Minimum Contrast Ratio" (`terminal.integrated.minimumContrastRatio`) setting is forcing a minimum contrast between foreground and background colors. You can adjust this setting to 1 to disable the contrast enforcement, or use a standalone terminal for accurate colors.
-
-### ⏱️ Block Timer Widget
-
-The Block Timer widget helps you track your progress through Claude Code's 5-hour conversation blocks:
-
-![Block Timer](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/blockTimer.png)
-
-**Display Modes:**
-- **Time Display** - Shows elapsed time as "3hr 45m" (default)
-- **Progress Bar** - Full width 32-character progress bar with percentage
-- **Progress Bar (Short)** - Compact 16-character progress bar with percentage
-
-**Features:**
-- Automatically detects block boundaries from transcript timestamps
-- Floors block start time to the hour for consistent tracking
-- Shows "Block: 3hr 45m" in normal mode or just "3hr 45m" in raw value mode
-- Progress bars show completion percentage (e.g., "[████████████████████████░░░░░░░░] 73.9%")
-- Toggle between modes with the **(p)** key in the widgets editor
-
-### 🔤 Raw Value Mode
-
-Some widgets support "raw value" mode which displays just the value without a label:
-- Normal: `Model: Claude 3.5 Sonnet` → Raw: `Claude 3.5 Sonnet`
-- Normal: `Session: 2hr 15m` → Raw: `2hr 15m`
-- Normal: `Block: 3hr 45m` → Raw: `3hr 45m`
-- Normal: `Ctx: 18.6k` → Raw: `18.6k`
-
-### ⌨️ Widget Editor Keybinds
-
-Common controls in the line editor:
-- `a` add widget
-- `i` insert widget
-- `Enter` enter/exit move mode
-- `d` delete selected widget
-- `r` toggle raw value (supported widgets)
-- `m` cycle merge mode (`off` → `merge` → `merge no padding`)
-
-Widget-specific shortcuts:
-- **Git widgets**: `h` toggle hide `no git` output
-- **Context % widgets**: `u` toggle used vs remaining display
-- **Block Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Block Reset Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Weekly Reset Timer**: `p` cycle display mode (time/full bar/short bar)
-- **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path
-- **Custom Command**: `e` command, `w` max width, `t` timeout, `p` preserve ANSI colors
-- **Link**: `u` URL, `e` link text
-
----
-
-### 🔧 Custom Widgets
-
-#### Custom Text Widget
-Add static text to your status line. Perfect for:
-- Project identifiers
-- Environment indicators (dev/prod)
-- Personal labels or reminders
-
-#### Custom Command Widget
-Execute shell commands and display their output dynamically:
-- Refreshes whenever the statusline is updated by Claude Code
-- Receives the full Claude Code JSON data via stdin (model info, session ID, transcript path, etc.)
-- Displays command output inline in your status line
-- Configurable timeout (default: 1000ms)
-- Optional max-width truncation
-- Optional ANSI color preservation (`preserve colors`)
-- Examples:
-  - `pwd | xargs basename` - Show current directory name
-  - `node -v` - Display Node.js version
-  - `git rev-parse --short HEAD` - Show current commit hash
-  - `date +%H:%M` - Display current time
-  - `curl -s wttr.in?format="%t"` - Show current temperature
-  - `npx -y ccusage@latest statusline` - Display Claude usage metrics (set timeout: 5000ms)
-
-> ⚠️ **Important:** Commands should complete quickly to avoid delays. Long-running commands will be killed after the configured timeout. If you're not seeing output from your custom command, try increasing the timeout value (press 't' in the editor).
-
-> 💡 **Tip:** Custom commands can be other Claude Code compatible status line formatters! They receive the same JSON via stdin that ccstatusline receives from Claude Code, allowing you to chain or combine multiple status line tools.
-
-#### Link Widget
-Create clickable links in terminals that support OSC 8 hyperlinks:
-- `metadata.url` - target URL (http/https)
-- `metadata.text` - optional display text (defaults to URL)
-- Falls back to plain text when URL is missing or unsupported
-
----
-
-### 🔗 Integration Example: ccusage
-
-[ccusage](https://github.com/ryoppippi/ccusage) is a tool that tracks and displays Claude Code usage metrics. You can integrate it directly into your status line:
-
-1. Add a Custom Command widget
-2. Set command: `npx -y ccusage@latest statusline`
-3. Set timeout: `5000` (5 seconds for initial download)
-4. Enable "preserve colors" to keep ccusage's color formatting
-
-![ccusage integration](https://raw.githubusercontent.com/sirmalloc/ccstatusline/main/screenshots/ccusage.png)
-
-> 📄 **How it works:** The command receives Claude Code's JSON data via stdin, allowing ccusage to access session information, model details, and transcript data for accurate usage tracking.
-
-### ✂️ Smart Truncation
-
-When terminal width is detected, status lines automatically truncate with ellipsis (...) if they exceed the available width, preventing line wrapping.
-Truncation is ANSI/OSC-aware, so preserved color output and OSC 8 hyperlinks remain well-formed.
-
----
-
-## 📖 API Documentation
-
-Complete API documentation is generated using TypeDoc and includes detailed information about:
-
-- **Core Types**: Configuration interfaces, widget definitions, and render contexts
-- **Widget System**: All available widgets and their customization options  
-- **Utility Functions**: Helper functions for rendering, configuration, and terminal handling
-- **Status Line Rendering**: Core rendering engine and formatting options
-
-### Generating Documentation
-
-To generate the API documentation locally:
-
-```bash
-# Generate documentation
-bun run docs
-
-# Clean generated documentation
-bun run docs:clean
-```
-
-The documentation will be generated in the `docs/` directory and can be viewed by opening `docs/index.html` in your web browser.
-
-### Documentation Structure
-
-- **Types**: Core TypeScript interfaces and type definitions
-- **Widgets**: Individual widget implementations and their APIs
-- **Utils**: Utility functions for configuration, rendering, and terminal operations
-- **Main Module**: Primary entry point and orchestration functions
-
----
-
-## 🛠️ Development
-
-### Prerequisites
-
-- [Bun](https://bun.sh) (v1.0+)
-- Git
-- Node.js 14+ (optional, for running the built `dist/ccstatusline.js` binary or npm publishing)
-
-### Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/sirmalloc/ccstatusline.git
-cd ccstatusline
-
-# Install dependencies
-bun install
-```
-
-### Development Commands
-
-```bash
-# Run in TUI mode
-bun run start
-
-# Test piped mode with example payload
-bun run example
-
-# Run tests
-bun test
-
-# Run typecheck + eslint checks without modifying files
-bun run lint
-
-# Apply ESLint auto-fixes intentionally
-bun run lint:fix
-
-# Build for distribution
-bun run build
-
-# Generate TypeDoc documentation
-bun run docs
-```
-
-### Configuration Files
-
-- `~/.config/ccstatusline/settings.json` - ccstatusline UI/render settings
-- `~/.claude/settings.json` - Claude Code settings (`statusLine` command object)
-- `~/.cache/ccstatusline/block-cache-*.json` - block timer cache (keyed by Claude config directory hash)
-
-If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
-
-### Build Notes
-
-- Build target is Node.js 14+ (`dist/ccstatusline.js`)
-- During install, `ink@6.2.0` is patched to fix backspace handling on macOS terminals
-
-### 📁 Project Structure
-
-```
-ccstatusline/
-├── src/
-│   ├── ccstatusline.ts         # Main entry point
-│   ├── tui/                    # React/Ink configuration UI
-│   │   ├── App.tsx             # Root TUI component
-│   │   ├── index.tsx           # TUI entry point
-│   │   └── components/         # UI components
-│   │       ├── MainMenu.tsx
-│   │       ├── LineSelector.tsx
-│   │       ├── ItemsEditor.tsx
-│   │       ├── ColorMenu.tsx
-│   │       ├── PowerlineSetup.tsx
-│   │       └── ...
-│   ├── widgets/                # Status line widget implementations
-│   │   ├── Model.ts
-│   │   ├── GitBranch.ts
-│   │   ├── TokensTotal.ts
-│   │   ├── OutputStyle.ts
-│   │   └── ...
-│   ├── utils/                  # Utility functions
-│   │   ├── config.ts           # Settings management
-│   │   ├── renderer.ts         # Core rendering logic
-│   │   ├── powerline.ts        # Powerline font utilities
-│   │   ├── colors.ts           # Color definitions
-│   │   └── claude-settings.ts  # Claude Code integration (supports CLAUDE_CONFIG_DIR)
-│   └── types/                  # TypeScript type definitions
-│       ├── Settings.ts
-│       ├── Widget.ts
-│       ├── PowerlineConfig.ts
-│       └── ...
-├── dist/                       # Built files (generated)
-├── package.json
-├── tsconfig.json
-└── README.md
-```
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+See the [contributor guide](CONTRIBUTING.md) for setup, checks, and compatibility requirements.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -755,7 +441,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
----
 
 ## Support
 
@@ -763,13 +448,11 @@ If ccstatusline is useful to you, consider buying me a coffee:
 
 <a href="https://www.buymeacoffee.com/sirmalloc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
----
 
 ## 📄 License
 
 [MIT](LICENSE) © Matthew Breedlove
 
----
 
 ## 👤 Author
 
@@ -777,14 +460,20 @@ If ccstatusline is useful to you, consider buying me a coffee:
 
 - GitHub: [@sirmalloc](https://github.com/sirmalloc)
 
----
 
 ## 🔗 Related Projects
 
+- [ccstatusline-editor](https://github.com/refinist/ccstatusline-editor) - A visual editor for building ccstatusline configurations — drag, drop, preview, ship.
 - [tweakcc](https://github.com/Piebald-AI/tweakcc) - Customize Claude Code themes, thinking verbs, and more.
 - [ccusage](https://github.com/ryoppippi/ccusage) - Track and display Claude Code usage metrics.
-
----
+- [ccsidekick](https://ccsidekick.krayong.com/) - A Claude Code status-line with a reactive character plus cost, git, and usage widgets.
+- [codachi](https://github.com/vincent-k2026/codachi) - A tamagotchi-style statusline pet that grows with your context window.
+- [AIWatch](https://ai-watch.dev) - Live status monitor for 30+ AI APIs and apps; pairs with a Custom Command widget to surface provider outages in your status line.
+- [ccsessions](https://github.com/treebird7/ccsessions) - CLI session manager for Claude Code; includes `cc-session-num`, a Custom Command widget that shows the current session's rank (`#1`, `#2`, …).
+- [crispy-recall](https://github.com/TheSylvester/crispy-recall) - Searchable memory for your Claude Code and Codex sessions. Local, fast, no daemon.
+- [statuslin.es](https://statuslin.es) - Community gallery of Claude Code status lines with live, sandbox-rendered previews.
+- [claude-carbon](https://github.com/gwittebolle/claude-carbon) - Live CO2 estimate for your Claude Code sessions, next to the cost. Ships a `--segment` mode built to embed as a Custom Command widget.
+- [claudenews](https://github.com/bhpark1013/claudenews) - Developer news in your status line while the agent works: Hacker News, GitHub Trending, and per-language sources, with optional translation and short summaries. Ships a `--segment` mode built to embed as a Custom Command widget.
 
 ## 🙏 Acknowledgments
 
@@ -792,15 +481,15 @@ If ccstatusline is useful to you, consider buying me a coffee:
 - Powered by [Ink](https://github.com/vadimdemedes/ink) for the terminal UI
 - Made with ❤️ for the Claude Code community
 
----
+<br />
 
 ## Star History
 
-<a href="https://www.star-history.com/#sirmalloc/ccstatusline&Timeline">
+<a href="https://star-history.dera.page/#sirmalloc/ccstatusline&Timeline">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=sirmalloc/ccstatusline&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=sirmalloc/ccstatusline&type=Timeline" />
  </picture>
 </a>
 

@@ -39,27 +39,35 @@ describe('CurrentWorkingDirWidget', () => {
         compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
+        defaultPaddingSide: 'both',
         inheritSeparatorColors: false,
         globalBold: false,
+        gitCacheTtlSeconds: 5,
+        terminalWidthCacheTtlSeconds: 5,
+        customCommandCacheTtlSeconds: 5,
+        minimalistMode: false,
         powerline: {
             enabled: false,
             separators: [],
             separatorInvertBackground: [],
             startCaps: [],
             endCaps: [],
-            autoAlign: false
+            autoAlign: false,
+            continueThemeAcrossLines: false
         }
     };
 
     const createItem = (
         metadata?: Record<string, string>,
-        rawValue = false
+        rawValue = false,
+        character?: string
     ): WidgetItem => ({
         id: 'test',
         type: 'current-working-dir',
         backgroundColor: 'bgBlue',
         rawValue,
-        metadata
+        metadata,
+        character
     });
 
     describe('abbreviateHome', () => {
@@ -118,6 +126,19 @@ describe('CurrentWorkingDirWidget', () => {
             expect(result).toBe('~/.../Projects/my-project');
         });
 
+        it.each([
+            { path: 'Projects/my-project', segments: '2', expected: '~/Projects/my-project' },
+            { path: 'Projects', segments: '1', expected: '~/Projects' }
+        ])('should not count ~ as a segment ($segments of ~/$path)', ({ path, segments, expected }) => {
+            const item = createItem({ abbreviateHome: 'true', segments }, true);
+            const result = widget.render(
+                item,
+                createContext(`${defaultHomeDir}/${path}`),
+                defaultSettings
+            );
+            expect(result).toBe(expected);
+        });
+
         it('should show correct preview when abbreviateHome is enabled', () => {
             const item = createItem({ abbreviateHome: 'true' }, true);
             const result = widget.render(
@@ -159,6 +180,53 @@ describe('CurrentWorkingDirWidget', () => {
             );
 
             expect(result).toBe('~\\...\\Projects\\app');
+        });
+    });
+
+    describe('segments preview', () => {
+        it.each([
+            { segments: '1', expected: '.../my-project' },
+            { segments: '2', expected: '.../Projects/my-project' },
+            { segments: '3', expected: '.../Documents/Projects/my-project' },
+            { segments: '4', expected: '.../example/Documents/Projects/my-project' },
+            { segments: '5', expected: '/Users/example/Documents/Projects/my-project' }
+        ])('should preview segments=$segments on the sample path', ({ segments, expected }) => {
+            const item = createItem({ segments }, true);
+            expect(widget.render(item, createContext(undefined, true), defaultSettings)).toBe(expected);
+        });
+
+        it.each([
+            { segments: '3', expected: '~/Documents/Projects/my-project' },
+            { segments: '4', expected: '~/Documents/Projects/my-project' }
+        ])('should preview segments=$segments on the sample path after ~', ({ segments, expected }) => {
+            const item = createItem({ abbreviateHome: 'true', segments }, true);
+            expect(widget.render(item, createContext(undefined, true), defaultSettings)).toBe(expected);
+        });
+    });
+
+    describe('fishStyle', () => {
+        it('should replace home directory with ~ and abbreviate middle segments', () => {
+            const item = createItem({ fishStyle: 'true' }, true);
+            const result = widget.render(
+                item,
+                createContext(`${defaultHomeDir}/Documents/Projects/app`),
+                defaultSettings
+            );
+
+            expect(result).toBe('~/D/P/app');
+        });
+
+        it('should not abbreviate non-home sibling paths with shared prefix', () => {
+            mockHomedir.mockReturnValue('/Users/al');
+
+            const item = createItem({ fishStyle: 'true' }, true);
+            const result = widget.render(
+                item,
+                createContext('/Users/alex/project'),
+                defaultSettings
+            );
+
+            expect(result).toBe('/Users/a/project');
         });
     });
 
@@ -211,6 +279,45 @@ describe('CurrentWorkingDirWidget', () => {
             expect(homeKeybind).toBeDefined();
             expect(homeKeybind?.label).toBe('(h)ome ~');
             expect(homeKeybind?.action).toBe('toggle-abbreviate-home');
+        });
+
+        it('should expose a (g)lyph symbol-override keybind', () => {
+            const keybinds = widget.getCustomKeybinds();
+            const glyphKeybind = keybinds.find(k => k.key === 'g');
+            expect(glyphKeybind).toBeDefined();
+            expect(glyphKeybind?.action).toBe('edit-symbol-override');
+        });
+    });
+
+    describe('glyph symbol override', () => {
+        it('renders no glyph prefix by default, leaving the cwd: label intact', () => {
+            const item = createItem(undefined, false);
+            const result = widget.render(item, createContext('/var/www/site'), defaultSettings);
+            expect(result).toBe('cwd: /var/www/site');
+        });
+
+        it('prefixes the labeled output with the configured glyph', () => {
+            const item = createItem(undefined, false, '📁');
+            const result = widget.render(item, createContext('/var/www/site'), defaultSettings);
+            expect(result).toBe('📁 cwd: /var/www/site');
+        });
+
+        it('keeps the glyph in raw value mode while dropping the cwd: label', () => {
+            const item = createItem(undefined, true, '📁');
+            const result = widget.render(item, createContext('/var/www/site'), defaultSettings);
+            expect(result).toBe('📁 /var/www/site');
+        });
+
+        it('composes the glyph with raw value and segment truncation', () => {
+            const item = createItem({ segments: '2' }, true, '📁');
+            const result = widget.render(item, createContext('/var/www/html/my-project'), defaultSettings);
+            expect(result).toBe('📁 .../html/my-project');
+        });
+
+        it('shows the glyph in preview mode', () => {
+            const item = createItem(undefined, true, '📁');
+            const result = widget.render(item, createContext(undefined, true), defaultSettings);
+            expect(result).toBe('📁 /Users/example/Documents/Projects/my-project');
         });
     });
 });

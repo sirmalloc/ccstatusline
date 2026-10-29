@@ -8,7 +8,8 @@ export const PowerlineConfigSchema = z.object({
     startCaps: z.array(z.string()).default([]),
     endCaps: z.array(z.string()).default([]),
     theme: z.string().optional(),
-    autoAlign: z.boolean().default(false)
+    autoAlign: z.boolean().default(false),
+    continueThemeAcrossLines: z.boolean().default(false)
 });
 
 // Inferred type from schema

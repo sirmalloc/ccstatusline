@@ -3,11 +3,12 @@ import {
     Text,
     useInput
 } from 'ink';
-import * as os from 'os';
+import * as os from 'node:os';
 import React, { useState } from 'react';
 
 import type { PowerlineConfig } from '../../types/PowerlineConfig';
 import type { Settings } from '../../types/Settings';
+import { getPlainInput } from '../../utils/input-guards';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 import { buildEnabledPowerlineSettings } from '../../utils/powerline-settings';
 
@@ -166,11 +167,14 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     const [confirmingEnable, setConfirmingEnable] = useState(false);
     const [confirmingFontInstall, setConfirmingFontInstall] = useState(false);
 
-    const hasSeparatorItems = settings.lines.some(line => line.some(
-        item => item.type === 'separator' || item.type === 'flex-separator'
+    const hasManualSeparatorItems = settings.lines.some(line => line.some(
+        item => item.type === 'separator'
     ));
+    const hasGlobalFgOverride = Boolean(settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
+    const globalOverrideMessage = hasGlobalFgOverride ? '⚠ Global override for FG active' : null;
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (fontInstallMessage || installingFonts) {
             if (fontInstallMessage && !key.escape) {
                 onClearMessage();
@@ -185,12 +189,12 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         if (screen === 'menu') {
             if (key.escape) {
                 onBack();
-            } else if (input === 't' || input === 'T') {
+            } else if (shortcut === 't' || shortcut === 'T') {
                 if (!powerlineConfig.enabled) {
-                    if (hasSeparatorItems) {
+                    if (hasManualSeparatorItems) {
                         setConfirmingEnable(true);
                     } else {
-                        onUpdate(buildEnabledPowerlineSettings(settings, false));
+                        onUpdate(buildEnabledPowerlineSettings(settings));
                     }
                 } else {
                     onUpdate({
@@ -201,14 +205,22 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         }
                     });
                 }
-            } else if (input === 'i' || input === 'I') {
+            } else if (shortcut === 'i' || shortcut === 'I') {
                 setConfirmingFontInstall(true);
-            } else if ((input === 'a' || input === 'A') && powerlineConfig.enabled) {
+            } else if ((shortcut === 'a' || shortcut === 'A') && powerlineConfig.enabled) {
                 onUpdate({
                     ...settings,
                     powerline: {
                         ...powerlineConfig,
                         autoAlign: !powerlineConfig.autoAlign
+                    }
+                });
+            } else if ((shortcut === 'c' || shortcut === 'C') && powerlineConfig.enabled) {
+                onUpdate({
+                    ...settings,
+                    powerline: {
+                        ...powerlineConfig,
+                        continueThemeAcrossLines: !powerlineConfig.continueThemeAcrossLines
                     }
                 });
             }
@@ -261,7 +273,15 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     return (
         <Box flexDirection='column'>
             {!confirmingFontInstall && !installingFonts && !fontInstallMessage && (
-                <Text bold>Powerline Setup</Text>
+                <Box>
+                    <Text bold>Powerline Setup</Text>
+                    {globalOverrideMessage && (
+                        <Text color='yellow' dimColor>
+                            {'.  '}
+                            {globalOverrideMessage}
+                        </Text>
+                    )}
+                </Box>
             )}
 
             {confirmingFontInstall ? (
@@ -329,24 +349,24 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                 </Box>
             ) : confirmingEnable ? (
                 <Box flexDirection='column' marginTop={1}>
-                    {hasSeparatorItems && (
+                    {hasManualSeparatorItems && (
                         <>
                             <Box>
-                                <Text color='yellow'>⚠ Warning: Enabling Powerline mode will remove all existing separators and flex-separators from your status lines.</Text>
+                                <Text color='yellow'>⚠ Powerline mode uses its own separator system.</Text>
                             </Box>
                             <Box marginBottom={1}>
-                                <Text dimColor>Powerline mode uses its own separator system and is incompatible with manual separators.</Text>
+                                <Text dimColor>Your existing manual separators will stay in this configuration but won't be shown while Powerline is enabled.</Text>
                             </Box>
                         </>
                     )}
-                    <Box marginTop={hasSeparatorItems ? 1 : 0}>
+                    <Box marginTop={hasManualSeparatorItems ? 1 : 0}>
                         <Text>Do you want to continue? </Text>
                     </Box>
                     <Box marginTop={1}>
                         <ConfirmDialog
                             inline={true}
                             onConfirm={() => {
-                                onUpdate(buildEnabledPowerlineSettings(settings, true));
+                                onUpdate(buildEnabledPowerlineSettings(settings));
                                 setConfirmingEnable(false);
                             }}
                             onCancel={() => {
@@ -405,9 +425,20 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                                 <Text dimColor> - Press (a) to toggle</Text>
                             </Box>
 
+                            <Box>
+                                <Text> Continue Theme: </Text>
+                                <Text color={powerlineConfig.continueThemeAcrossLines ? 'green' : 'red'}>
+                                    {powerlineConfig.continueThemeAcrossLines ? '✓ Enabled  ' : '✗ Disabled '}
+                                </Text>
+                                <Text dimColor> - Press (c) to toggle</Text>
+                            </Box>
+
                             <Box flexDirection='column' marginTop={1}>
                                 <Text dimColor>
-                                    When enabled, global overrides are disabled and powerline separators are used
+                                    Powerline mode uses its own separator system
+                                </Text>
+                                <Text dimColor>
+                                    Continue Theme keeps the Powerline color sequence running across lines
                                 </Text>
                             </Box>
                         </>

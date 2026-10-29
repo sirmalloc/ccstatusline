@@ -6,7 +6,11 @@ import {
 import React, { useState } from 'react';
 
 import type { Settings } from '../../types/Settings';
-import { shouldInsertInput } from '../../utils/input-guards';
+import {
+    getPlainInput,
+    shouldInsertInput
+} from '../../utils/input-guards';
+import { BlinkingCursor } from '../../widgets/shared/BlinkingCursor';
 
 export type EditorMode = 'separator' | 'startCap' | 'endCap';
 
@@ -38,8 +42,10 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     };
 
     const separators = getItems();
+    // One entry per separator: the saved list can be shorter (its default is [false]),
+    // and writing past its end would leave holes that save as null and fail to load
     const invertBgs = mode === 'separator'
-        ? powerlineConfig.separatorInvertBackground
+        ? separators.map((_, i) => powerlineConfig.separatorInvertBackground[i] ?? false)
         : [];
 
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -111,6 +117,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
     };
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (hexInputMode) {
             // Hex input mode
             if (key.escape) {
@@ -119,7 +126,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 setCursorPos(0);
             } else if (key.return) {
                 if (hexInput.length >= 4 && hexInput.length <= 6) {
-                    const codePoint = parseInt(hexInput, 16);
+                    const codePoint = Number.parseInt(hexInput, 16);
                     if (codePoint >= 0 && codePoint <= 0x10FFFF) {
                         const char = String.fromCodePoint(codePoint);
                         const newSeparators = [...separators];
@@ -146,10 +153,10 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
             // Normal mode
             if (key.escape) {
                 onBack();
-            } else if (key.upArrow) {
-                setSelectedIndex(Math.max(0, selectedIndex - 1));
+            } else if (key.upArrow && separators.length > 0) {
+                setSelectedIndex(selectedIndex - 1 < 0 ? separators.length - 1 : selectedIndex - 1);
             } else if (key.downArrow && separators.length > 0) {
-                setSelectedIndex(Math.min(separators.length - 1, selectedIndex + 1));
+                setSelectedIndex(selectedIndex + 1 > separators.length - 1 ? 0 : selectedIndex + 1);
             } else if ((key.leftArrow || key.rightArrow) && separators.length > 0) {
                 // Cycle through preset separators
                 const currentChar = separators[selectedIndex] ?? '\uE0B0';
@@ -184,8 +191,8 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 }
 
                 updateSeparators(newSeparators, mode === 'separator' ? newInvertBgs : undefined);
-            } else if ((input === 'a' || input === 'A') && (mode === 'separator' || separators.length < 3)) {
-                // Add after current (max 3 for caps)
+            } else if (shortcut === 'a' || shortcut === 'A') {
+                // Add after current
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
                 const defaultChar = presetSeparators[0]?.char ?? '\uE0B0';
@@ -207,8 +214,8 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, newInvertBgs);
                     setSelectedIndex(selectedIndex + 1);
                 }
-            } else if ((input === 'i' || input === 'I') && (mode === 'separator' || separators.length < 3)) {
-                // Insert before current (max 3 for caps)
+            } else if (shortcut === 'i' || shortcut === 'I') {
+                // Insert before current
                 const newSeparators = [...separators];
                 const newInvertBgs = mode === 'separator' ? [...invertBgs] : [];
                 const defaultChar = presetSeparators[0]?.char ?? '\uE0B0';
@@ -230,13 +237,13 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators(newSeparators, newInvertBgs);
                     // Keep selection on the newly inserted item (which is now at selectedIndex)
                 }
-            } else if ((input === 'd' || input === 'D') && (mode !== 'separator' || separators.length > 1)) {
+            } else if ((shortcut === 'd' || shortcut === 'D') && (mode !== 'separator' || separators.length > 1)) {
                 // Delete current (min 1 for separator, no min for caps)
                 const newSeparators = separators.filter((_, i) => i !== selectedIndex);
                 const newInvertBgs = mode === 'separator' ? invertBgs.filter((_, i) => i !== selectedIndex) : [];
                 updateSeparators(newSeparators, newInvertBgs);
                 setSelectedIndex(Math.min(selectedIndex, Math.max(0, newSeparators.length - 1)));
-            } else if (input === 'c' || input === 'C') {
+            } else if (shortcut === 'c' || shortcut === 'C') {
                 // Clear all
                 if (mode === 'separator') {
                     // Reset to default right-facing separator with no inversion
@@ -245,12 +252,12 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     updateSeparators([]);
                 }
                 setSelectedIndex(0);
-            } else if (input === 'h' || input === 'H') {
+            } else if (shortcut === 'h' || shortcut === 'H') {
                 // Enter hex input mode
                 setHexInputMode(true);
                 setHexInput('');
                 setCursorPos(0);
-            } else if ((input === 't' || input === 'T') && mode === 'separator') {
+            } else if ((shortcut === 't' || shortcut === 'T') && mode === 'separator') {
                 // Toggle background inversion (for all separators in separator mode)
                 const newInvertBgs = [...invertBgs];
                 newInvertBgs[selectedIndex] = !(newInvertBgs[selectedIndex] ?? false);
@@ -270,7 +277,6 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
         }
     };
 
-    const canAdd = mode === 'separator' || separators.length < 3;
     const canDelete = mode !== 'separator' || separators.length > 1;
 
     return (
@@ -289,7 +295,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                     <Text>
                         U+
                         {hexInput.slice(0, cursorPos)}
-                        <Text backgroundColor='gray' color='black'>{hexInput[cursorPos] ?? '_'}</Text>
+                        <BlinkingCursor>{hexInput[cursorPos] ?? '_'}</BlinkingCursor>
                         {hexInput.slice(cursorPos + 1)}
                         {hexInput.length < 6 && hexInput.length === cursorPos && <Text dimColor>{'_'.repeat(6 - hexInput.length - 1)}</Text>}
                     </Text>
@@ -300,7 +306,7 @@ export const PowerlineSeparatorEditor: React.FC<PowerlineSeparatorEditorProps> =
                 <>
                     <Box>
                         <Text dimColor>
-                            {`↑↓ select, ← → cycle${canAdd ? ', (a)dd, (i)nsert' : ''}${canDelete ? ', (d)elete' : ''}, (c)lear, (h)ex${mode === 'separator' ? ', (t)oggle invert' : ''}, ESC back`}
+                            {`↑↓ select, ← → cycle, (a)dd, (i)nsert${canDelete ? ', (d)elete' : ''}, (c)lear, (h)ex${mode === 'separator' ? ', (t)oggle invert' : ''}, ESC back`}
                         </Text>
                     </Box>
 

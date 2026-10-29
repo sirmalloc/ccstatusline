@@ -89,7 +89,7 @@ All widgets must implement:
 - `render()`: Core rendering logic that produces the widget output
 - `supportsRawValue()`: Whether widget supports raw value mode
 - `supportsColors()`: Whether widget supports color customization
-- Optional: `renderEditor()`, `getCustomKeybinds()`, `handleEditorAction()`
+- Optional: `renderEditor()`, `getCustomKeybinds()`, `getHideableStates()`, `supportsNumberFormat()`, `handleEditorAction()`
 
 **Widget Registry Pattern:**
 - Located in src/utils/widgets.ts
@@ -98,8 +98,8 @@ All widgets must implement:
 - `getAllWidgetTypes()`: Returns all available widget types
 - `isKnownWidgetType()`: Validates if a type is registered
 
-**Available Widgets:**
-- Model, Version, OutputStyle - Claude Code metadata display
+**Available Widgets** (highlights — the full, current list lives in `src/utils/widget-manifest.ts`):
+- Model, Version, OutputStyle, VoiceStatus, ClaudeStatus - Claude Code metadata and service-health display
 - GitBranch, GitChanges, GitInsertions, GitDeletions, GitWorktree - Git repository status
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
 - ContextLength, ContextPercentage, ContextPercentageUsable - Context window metrics (uses dynamic model-based context windows: 1M for Sonnet 4.5 with [1m] suffix, 200k for all other models)
@@ -141,7 +141,7 @@ Default to using Bun instead of Node.js:
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
 - **Type checking and linting**: Run checks via `bun run lint` and use `bun run lint:fix` only when you intentionally want ESLint auto-fixes. Never use `npx eslint`, `eslint`, `tsx`, `bun tsc`, or any other variation directly
 - **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
-- **Testing**: Uses Vitest (via Bun) with 6 test files and ~40 test cases covering:
+- **Testing**: Uses Vitest (via Bun); tests live in `__tests__/` directories alongside the code they cover, including:
   - Model context detection and token calculation (src/utils/__tests__/model-context.test.ts)
   - Context percentage calculations (src/utils/__tests__/context-percentage.test.ts)
   - JSONL transcript parsing (src/utils/__tests__/jsonl.test.ts)

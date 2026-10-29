@@ -4,31 +4,87 @@ import type {
     RenderContext,
     WidgetItem
 } from '../types';
-import { getColorLevelString } from '../types/ColorLevel';
-import type { Settings } from '../types/Settings';
+import {
+    getColorLevelString,
+    type ColorLevel
+} from '../types/ColorLevel';
+import type {
+    DefaultPaddingSide,
+    Settings
+} from '../types/Settings';
+import {
+    MERGE_TARGET_HIDDEN_HIDEABLE_STATE,
+    isHidden
+} from '../widgets/shared/hideable';
 
 import {
+    applyLineGradient,
+    applyLineGradientSegment,
+    getVisibleText,
     getVisibleWidth,
+    restoreBackgroundAfterResets,
     stripSgrCodes,
     truncateStyledText
 } from './ansi';
 import {
     applyColors,
+    applyParensDim,
     bgToFg,
     getColorAnsiCode,
     getPowerlineTheme
 } from './colors';
 import { calculateContextPercentage } from './context-percentage';
+import {
+    isGradientSpec,
+    parseGradientSpec
+} from './gradient';
 import { getTerminalWidth } from './terminal';
-import { getWidget } from './widgets';
+import { sanitizeTerminalText } from './terminal-sanitize';
+import {
+    getWidget,
+    widgetPreservesColors
+} from './widgets';
 
-// Helper function to format token counts
-export function formatTokens(count: number): string {
-    if (count >= 1000000)
-        return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000)
-        return `${(count / 1000).toFixed(1)}k`;
-    return count.toString();
+export { formatTokens } from './format-tokens';
+
+// Build a red warning badge indicating that settings.json could not be loaded.
+// Passes colorLevel through so color is suppressed when the terminal has no color support.
+export function buildConfigWarningBadge(colorLevel: ColorLevel): string {
+    return applyColors('⚠ invalid config', 'red', undefined, false, getColorLevelString(colorLevel));
+}
+
+// Paint a foreground gradient across a finished line when overrideForegroundColor
+// is a gradient spec (e.g. "gradient:hex:FF0000,hex:0000FF"); a no-op otherwise.
+// Applied as the final step, after truncation, so the trailing reset is not sliced
+// off (see the call site for why ordering matters).
+function maybeApplyForegroundGradient(
+    line: string,
+    settings: Settings,
+    colorLevel: 'ansi16' | 'ansi256' | 'truecolor'
+): string {
+    const stops = parseGradientSpec(settings.overrideForegroundColor);
+    return stops ? applyLineGradient(line, stops, colorLevel) : line;
+}
+
+function hasForegroundOverride(settings: Settings): boolean {
+    return Boolean(settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none');
+}
+
+// A global foreground override owns the foreground even for widgets that
+// normally carry intrinsic ANSI colors. Other styling (bold, dim, background)
+// remains independent of foreground preservation.
+function preservesIntrinsicForeground(item: WidgetItem, settings: Settings): boolean {
+    return widgetPreservesColors(item) && !hasForegroundOverride(settings);
+}
+
+// Split the default padding string into the leading/trailing pieces that
+// actually get applied, based on which side(s) padding is configured for.
+function resolvePaddingSides(padding: string, side: DefaultPaddingSide | undefined): { leading: string; trailing: string } {
+    if (side === 'left')
+        return { leading: padding, trailing: '' };
+    if (side === 'right')
+        return { leading: '', trailing: padding };
+    return { leading: padding, trailing: padding };
 }
 
 function resolveEffectiveTerminalWidth(
@@ -40,33 +96,36 @@ function resolveEffectiveTerminalWidth(
         return null;
     }
 
+    // A reserve that takes the whole terminal leaves 0 columns, which still
+    // truncates; a negative width would read as "unknown" and skip truncation.
+    const remaining = (reserved: number): number => Math.max(0, detectedWidth - reserved);
     const flexMode = settings.flexMode as string;
 
     if (context.isPreview) {
         if (flexMode === 'full') {
-            return detectedWidth - 6;
+            return remaining(6);
         }
         if (flexMode === 'full-minus-40') {
-            return detectedWidth - 40;
+            return remaining(40);
         }
         if (flexMode === 'full-until-compact') {
-            return detectedWidth - 6;
+            return remaining(6);
         }
         return null;
     }
 
     if (flexMode === 'full') {
-        return detectedWidth - 6;
+        return remaining(6);
     }
     if (flexMode === 'full-minus-40') {
-        return detectedWidth - 40;
+        return remaining(40);
     }
     if (flexMode === 'full-until-compact') {
         const threshold = settings.compactThreshold;
         const contextPercentage = calculateContextPercentage(context);
         return contextPercentage >= threshold
-            ? detectedWidth - 40
-            : detectedWidth - 6;
+            ? remaining(40)
+            : remaining(6);
     }
 
     return null;
@@ -78,11 +137,13 @@ function renderPowerlineStatusLine(
     context: RenderContext,
     lineIndex = 0,  // Which line we're rendering (for theme color cycling)
     globalSeparatorOffset = 0,  // Starting separator index for this line
+    globalThemeColorOffset = 0,  // Starting theme color index for this line
     preRenderedWidgets: PreRenderedWidget[],  // Pre-rendered widgets for this line
     preCalculatedMaxWidths: number[]  // Pre-calculated max widths for alignment
 ): string {
     const powerlineConfig = settings.powerline as Record<string, unknown> | undefined;
     const config = powerlineConfig ?? {};
+    const continueThemeAcrossLines = Boolean(config.continueThemeAcrossLines);
 
     // Get separator configuration
     const separators = (config.separators as string[] | undefined) ?? ['\uE0B0'];
@@ -94,8 +155,13 @@ function renderPowerlineStatusLine(
 
     // Get the cap for this line (cycle through if more lines than caps)
     const capLineIndex = context.lineIndex ?? lineIndex;
-    const startCap = startCaps.length > 0 ? startCaps[capLineIndex % startCaps.length] : '';
-    const endCap = endCaps.length > 0 ? endCaps[capLineIndex % endCaps.length] : '';
+    const startCapIndex = context.globalPowerlineStartCapIndex ?? capLineIndex;
+    const getStartCap = (segmentOffset: number): string => (
+        startCaps.length > 0 ? (startCaps[(startCapIndex + segmentOffset) % startCaps.length] ?? '') : ''
+    );
+    const getEndCap = (segmentOffset: number): string => (
+        endCaps.length > 0 ? (endCaps[(startCapIndex + segmentOffset) % endCaps.length] ?? '') : ''
+    );
 
     // Get theme colors if a theme is set and not 'custom'
     const themeName = config.theme as string | undefined;
@@ -104,18 +170,27 @@ function renderPowerlineStatusLine(
     if (themeName && themeName !== 'custom') {
         const theme = getPowerlineTheme(themeName);
         if (theme) {
-            const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+            const colorLevel = getColorLevelString(settings.colorLevel);
             const colorLevelKey = colorLevel === 'ansi16' ? '1' : colorLevel === 'ansi256' ? '2' : '3';
             themeColors = theme[colorLevelKey];
         }
     }
 
     // Get color level from settings
-    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+    const colorLevel = getColorLevelString(settings.colorLevel);
+    const overrideForegroundGradientStops = parseGradientSpec(settings.overrideForegroundColor);
+    const isSeparatorBoundary = (widget: WidgetItem | undefined): boolean => (
+        widget?.type === 'separator' || widget?.type === 'flex-separator'
+    );
 
     // Filter out separator and flex-separator widgets in powerline mode
     const filteredWidgets = widgets.filter(widget => widget.type !== 'separator' && widget.type !== 'flex-separator'
     );
+
+    // Sentinel inserted into the rendered string at each flex position. The
+    // SOH control char is essentially never present in real widget
+    // content, so a plain split works for the post-render pass.
+    const FLEX_SENTINEL = '\x01FLEX_SEP\x01';
 
     if (filteredWidgets.length === 0)
         return '';
@@ -126,8 +201,56 @@ function renderPowerlineStatusLine(
     const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
     // Build widget elements (similar to regular mode but without separators)
-    const widgetElements: { content: string; bgColor?: string; fgColor?: string; widget: WidgetItem }[] = [];
-    let widgetColorIndex = 0;  // Track widget index for theme colors
+    const widgetElements: {
+        content: string;
+        bgColor?: string;
+        fgColor?: string;
+        mergesWithNext: boolean;
+        originalIndex: number;
+        widget: WidgetItem;
+    }[] = [];
+    let widgetColorIndex = continueThemeAcrossLines ? globalThemeColorOffset : 0;
+
+    // A merge reaches the next widget that renders something. It carries past an
+    // empty widget only if that widget is merged onward too; otherwise the merge
+    // ends with it, as if the empty widget were the one it joined.
+    const mergeReachesNextRenderedWidget = (originalIndex: number): boolean => {
+        for (let j = originalIndex + 1; j < widgets.length; j++) {
+            const nextWidget = widgets[j];
+            if (!nextWidget)
+                continue;
+            if (isSeparatorBoundary(nextWidget))
+                return false;
+            if (preRenderedWidgets[j]?.content)
+                return true;
+            if (!nextWidget.merge)
+                return false;
+        }
+
+        return false;
+    };
+
+    const canMergeWithNextRenderedWidget = (originalIndex: number | undefined): boolean => {
+        if (originalIndex === undefined)
+            return false;
+
+        const widget = widgets[originalIndex];
+        return Boolean(widget?.merge && mergeReachesNextRenderedWidget(originalIndex));
+    };
+
+    const findPreviousRenderedWidgetIndexBeforeSeparator = (originalIndex: number): number | null => {
+        for (let j = originalIndex - 1; j >= 0; j--) {
+            const previousWidget = widgets[j];
+            if (!previousWidget)
+                continue;
+            if (isSeparatorBoundary(previousWidget))
+                return null;
+            if (preRenderedWidgets[j]?.content)
+                return j;
+        }
+
+        return null;
+    };
 
     // Create a mapping from filteredWidgets to preRenderedWidgets indices
     // This is needed because filteredWidgets excludes separators but preRenderedWidgets includes all widgets
@@ -167,23 +290,29 @@ function renderPowerlineStatusLine(
         if (widgetText) {
             // Apply default padding from settings
             const padding = settings.defaultPadding ?? '';
+            const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
 
-            // If override FG color is set and this is a custom command with preserveColors,
+            // If override FG color is set and this widget preserves its own colors,
             // we need to strip the ANSI codes from the widget text
-            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
-                && widget.type === 'custom-command' && widget.preserveColors) {
+            if (hasForegroundOverride(settings) && widgetPreservesColors(widget)) {
                 // Strip ANSI color codes when override is active
                 widgetText = stripSgrCodes(widgetText);
             }
 
             // Check if padding should be omitted due to no-padding merge
-            const prevItem = i > 0 ? filteredWidgets[i - 1] : null;
-            const nextItem = i < filteredWidgets.length - 1 ? filteredWidgets[i + 1] : null;
-            const omitLeadingPadding = prevItem?.merge === 'no-padding';
-            const omitTrailingPadding = widget.merge === 'no-padding' && nextItem;
+            const previousRenderedIndex = actualPreRenderedIndex !== undefined
+                ? findPreviousRenderedWidgetIndexBeforeSeparator(actualPreRenderedIndex)
+                : null;
+            const previousRenderedWidget = previousRenderedIndex !== null
+                ? widgets[previousRenderedIndex]
+                : undefined;
+            const mergesWithNext = canMergeWithNextRenderedWidget(actualPreRenderedIndex);
+            const omitLeadingPadding = previousRenderedWidget?.merge === 'no-padding'
+                && canMergeWithNextRenderedWidget(previousRenderedIndex ?? undefined);
+            const omitTrailingPadding = widget.merge === 'no-padding' && mergesWithNext;
 
-            const leadingPadding = omitLeadingPadding ? '' : padding;
-            const trailingPadding = omitTrailingPadding ? '' : padding;
+            const leadingPadding = omitLeadingPadding ? '' : sideLeadingPadding;
+            const trailingPadding = omitTrailingPadding ? '' : sideTrailingPadding;
             const paddedText = `${leadingPadding}${widgetText}${trailingPadding}`;
 
             // Determine colors
@@ -191,8 +320,8 @@ function renderPowerlineStatusLine(
             let bgColor = widget.backgroundColor;
 
             // Apply theme colors if a theme is set (and not 'custom')
-            // For custom commands with preserveColors, only skip foreground theme colors
-            const skipFgTheme = widget.type === 'custom-command' && widget.preserveColors;
+            // For widgets that preserve their own colors, only skip foreground theme colors
+            const skipFgTheme = preservesIntrinsicForeground(widget, settings);
 
             if (themeColors) {
                 if (!skipFgTheme) {
@@ -202,13 +331,16 @@ function renderPowerlineStatusLine(
 
                 // Only increment color index if this widget is not merged with the next one
                 // This ensures merged widgets share the same color
-                if (!widget.merge) {
+                if (!mergesWithNext) {
                     widgetColorIndex++;
                 }
             }
 
-            // Apply override FG color if set (overrides theme)
-            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
+            // Apply solid override FG color if set (overrides theme). Gradient
+            // overrides are applied to widget text during rendering below so
+            // powerline separators keep their foreground/background contrast.
+            if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none'
+                && !isGradientSpec(settings.overrideForegroundColor)) {
                 fgColor = settings.overrideForegroundColor;
             }
 
@@ -216,6 +348,8 @@ function renderPowerlineStatusLine(
                 content: paddedText,
                 bgColor: bgColor ?? undefined,  // Make sure undefined, not empty string
                 fgColor: fgColor,
+                mergesWithNext,
+                originalIndex: actualPreRenderedIndex ?? -1,
                 widget: widget
             });
         }
@@ -223,6 +357,55 @@ function renderPowerlineStatusLine(
 
     if (widgetElements.length === 0)
         return '';
+
+    const renderedElementIndexByOriginalIndex = new Map<number, number>();
+    widgetElements.forEach((element, index) => {
+        renderedElementIndexByOriginalIndex.set(element.originalIndex, index);
+    });
+
+    // Track flex-separators against rendered widget positions. Some widgets
+    // intentionally render empty and are omitted from widgetElements, so using
+    // filtered config indices would move flex slots to the wrong visible side.
+    const flexAfterIndex = new Map<number, number>();
+    const startCapBeforeIndex = new Map<number, number>();
+    const segmentOffsetByRenderedIndex = new Map<number, number>();
+    let leadingFlexCount = 0;
+    let totalFlexCount = 0;
+    let lastRenderedIndex: number | null = null;
+    let pendingFlexCount = 0;
+    let segmentOffset = 0;
+    let hasRenderedSegment = false;
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget || widget.type === 'separator')
+            continue;
+
+        if (widget.type === 'flex-separator') {
+            totalFlexCount++;
+            if (lastRenderedIndex === null) {
+                leadingFlexCount++;
+            } else {
+                pendingFlexCount++;
+                flexAfterIndex.set(lastRenderedIndex, (flexAfterIndex.get(lastRenderedIndex) ?? 0) + 1);
+            }
+            continue;
+        }
+
+        const renderedIndex = renderedElementIndexByOriginalIndex.get(i);
+        if (renderedIndex !== undefined) {
+            if (!hasRenderedSegment) {
+                startCapBeforeIndex.set(renderedIndex, segmentOffset);
+                pendingFlexCount = 0;
+                hasRenderedSegment = true;
+            } else if (pendingFlexCount > 0) {
+                segmentOffset++;
+                startCapBeforeIndex.set(renderedIndex, segmentOffset);
+                pendingFlexCount = 0;
+            }
+            segmentOffsetByRenderedIndex.set(renderedIndex, segmentOffset);
+            lastRenderedIndex = renderedIndex;
+        }
+    }
 
     // Apply auto-alignment if enabled
     const autoAlign = config.autoAlign as boolean | undefined;
@@ -234,9 +417,14 @@ function renderPowerlineStatusLine(
             if (!element)
                 continue;
 
+            // An excluded widget, and everything after it on this line, keeps its
+            // natural width (mirrors the skip in calculateMaxWidthsFromPreRendered).
+            if (element.widget.excludeFromAutoAlign)
+                break;
+
             // Check if previous widget was merged with this one
             const prevWidget = i > 0 ? widgetElements[i - 1] : null;
-            const isPreviousMerged = prevWidget?.widget.merge;
+            const isPreviousMerged = prevWidget?.mergesWithNext;
 
             // Only apply alignment to non-merged widgets (widgets that follow a merge are excluded)
             if (!isPreviousMerged) {
@@ -245,7 +433,7 @@ function renderPowerlineStatusLine(
                     // Calculate combined width if this widget merges with following ones
                     let combinedLength = getVisibleWidth(element.content);
                     let j = i;
-                    while (j < widgetElements.length - 1 && widgetElements[j]?.widget.merge) {
+                    while (j < widgetElements.length - 1 && widgetElements[j]?.mergesWithNext) {
                         j++;
                         const nextElement = widgetElements[j];
                         if (nextElement) {
@@ -270,23 +458,23 @@ function renderPowerlineStatusLine(
         }
     }
 
+    const powerlineGradientWidth = overrideForegroundGradientStops && colorLevel !== 'ansi16'
+        ? widgetElements.reduce((sum, element) => {
+            const isPreserveColors = preservesIntrinsicForeground(element.widget, settings);
+            return isPreserveColors ? sum : sum + getVisibleWidth(element.content);
+        }, 0)
+        : 0;
+    let powerlineGradientColumn = 0;
+
     // Build the final powerline string
     let result = '';
 
-    // Add start cap if specified
-    if (startCap && widgetElements.length > 0) {
-        const firstWidget = widgetElements[0];
-        if (firstWidget?.bgColor) {
-            // Start cap uses first widget's background as foreground (converted)
-            const capFg = bgToFg(firstWidget.bgColor);
-            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-            result += fgCode + startCap + '\x1b[39m';
-        } else {
-            result += startCap;
-        }
+    if (leadingFlexCount > 0) {
+        result += FLEX_SENTINEL.repeat(leadingFlexCount);
     }
 
     // Render widgets with powerline separators
+    let localSeparatorIndex = 0;
     for (let i = 0; i < widgetElements.length; i++) {
         const widget = widgetElements[i];
         const nextWidget = widgetElements[i + 1];
@@ -297,26 +485,74 @@ function renderPowerlineStatusLine(
         // Apply colors to widget content using raw ANSI codes for powerline mode
         // This avoids reset codes that interfere with separator rendering
         const shouldBold = (settings.globalBold) || widget.widget.bold;
+        const shouldDim = widget.widget.dim === true;
 
         // Check if we need a separator after this widget
-        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget && !widget.widget.merge;
+        const needsSeparator = i < widgetElements.length - 1 && separators.length > 0 && nextWidget !== undefined && !widget.mergesWithNext;
+        const flexCountAfter = flexAfterIndex.get(i) ?? 0;
+        const currentSegmentOffset = segmentOffsetByRenderedIndex.get(i) ?? 0;
+        const isLastWidget = i === widgetElements.length - 1;
+        const hasEndCapAfterWidget = Boolean(getEndCap(currentSegmentOffset)) && (flexCountAfter > 0 || isLastWidget);
+
+        const startCapSegmentOffset = startCapBeforeIndex.get(i);
+        if (startCapSegmentOffset !== undefined) {
+            const segmentStartCap = getStartCap(startCapSegmentOffset);
+            if (segmentStartCap) {
+                if (widget.bgColor) {
+                    // Start cap uses this segment's first widget background as foreground.
+                    const capFg = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+                    result += fgCode + segmentStartCap + '\x1b[39m';
+                } else {
+                    result += segmentStartCap;
+                }
+            }
+        }
 
         let widgetContent = '';
 
-        // For custom commands with preserveColors, only skip foreground color/bold
-        const isPreserveColors = widget.widget.type === 'custom-command' && widget.widget.preserveColors;
+        // Intrinsic colors replace only the renderer's foreground. Global/item
+        // intensity and Powerline backgrounds still apply around that content.
+        const isPreserveColors = preservesIntrinsicForeground(widget.widget, settings);
 
-        if (shouldBold && !isPreserveColors) {
+        if (shouldBold) {
             widgetContent += '\x1b[1m';
         }
-        if (widget.fgColor && !isPreserveColors) {
+        if (shouldDim) {
+            widgetContent += '\x1b[2m';
+        }
+        const textGradientStops = !isPreserveColors && powerlineGradientWidth > 1
+            ? overrideForegroundGradientStops
+            : null;
+        // Resets in preserved content would clear the segment background up
+        // to the separator, so it is re-applied after each one.
+        const segmentContent = isPreserveColors && widget.bgColor
+            ? restoreBackgroundAfterResets(widget.content, getColorAnsiCode(widget.bgColor, colorLevel, true))
+            : widget.content;
+        const styledContent = widget.widget.dim === 'parens'
+            ? applyParensDim(segmentContent, shouldBold)
+            : segmentContent;
+
+        if (widget.fgColor && !isPreserveColors && !textGradientStops) {
             widgetContent += getColorAnsiCode(widget.fgColor, colorLevel, false);
         }
         // Always apply background for consistency in powerline mode
         if (widget.bgColor) {
             widgetContent += getColorAnsiCode(widget.bgColor, colorLevel, true);
         }
-        widgetContent += widget.content;
+        if (textGradientStops) {
+            const gradientResult = applyLineGradientSegment(
+                styledContent,
+                textGradientStops,
+                colorLevel,
+                powerlineGradientColumn,
+                powerlineGradientWidth
+            );
+            widgetContent += gradientResult.text;
+            powerlineGradientColumn = gradientResult.nextColumn;
+        } else {
+            widgetContent += styledContent;
+        }
         // Reset colors after content
         // For custom commands with preserveColors, also reset text attributes like dim
         if (isPreserveColors) {
@@ -324,22 +560,48 @@ function renderPowerlineStatusLine(
             widgetContent += '\x1b[0m';
         } else {
             widgetContent += '\x1b[49m\x1b[39m';
-            // Only reset bold if there's no separator following AND no end cap
-            const isLastWidget = i === widgetElements.length - 1;
-            const hasEndCap = endCaps.length > 0 && endCaps[capLineIndex % endCaps.length];
-            if (shouldBold && !needsSeparator && !(isLastWidget && hasEndCap)) {
+            // Dim should be scoped to the widget text only. Reset before
+            // separators/end caps so faint intensity cannot leak forward.
+            const shouldRestoreBoldForBoundary = shouldDim && shouldBold && (needsSeparator || hasEndCapAfterWidget);
+            if (shouldRestoreBoldForBoundary) {
+                widgetContent += '\x1b[22;1m';
+            } else if (shouldDim || (shouldBold && !needsSeparator && !hasEndCapAfterWidget)) {
                 widgetContent += '\x1b[22m';
             }
         }
 
         result += widgetContent;
 
+        // If a flex-separator originally sat between widget i and i+1, emit
+        // the current segment's end cap followed by a FLEX_SENTINEL. The
+        // post-render pass replaces the sentinel with the correct number of
+        // spaces. The regular between-widgets separator is suppressed since
+        // the flex space separates powerline segments rather than adjacent
+        // widgets inside a segment.
+        if (flexCountAfter > 0) {
+            const segmentEndCap = getEndCap(currentSegmentOffset);
+            if (segmentEndCap) {
+                if (widget.bgColor) {
+                    const capFg = bgToFg(widget.bgColor);
+                    const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+                    result += fgCode + segmentEndCap + '\x1b[39m';
+                } else {
+                    result += segmentEndCap;
+                }
+            }
+            if (shouldBold) {
+                result += '\x1b[22m';
+            }
+            result += FLEX_SENTINEL.repeat(flexCountAfter);
+            continue;
+        }
+
         // Add separator between widgets (not after last one, and not if current widget is merged with next)
         if (needsSeparator) {
             // Determine which separator to use based on global position
-            // Use separators in order, using the last one for all remaining positions
-            const globalIndex = globalSeparatorOffset + i;
-            const separatorIndex = Math.min(globalIndex, separators.length - 1);
+            // Use separators in order, cycling across rendered separator slots.
+            const globalIndex = globalSeparatorOffset + localSeparatorIndex;
+            const separatorIndex = globalIndex % separators.length;
             const separator = separators[separatorIndex] ?? '\uE0B0';
             const shouldInvert = invertBgs[separatorIndex] ?? false;
 
@@ -418,30 +680,62 @@ function renderPowerlineStatusLine(
 
             result += separatorOutput;
 
-            // Reset bold after separator if it was set
-            if (shouldBold) {
+            // Reset bold/dim after separator if either was set
+            if (shouldBold || shouldDim) {
+                result += '\x1b[22m';
+            }
+            localSeparatorIndex++;
+        }
+    }
+
+    // Add end cap if specified
+    if (widgetElements.length > 0) {
+        const lastWidgetIndex = widgetElements.length - 1;
+        const lastWidget = widgetElements[lastWidgetIndex];
+        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
+        const lastWidgetDim = lastWidget?.widget.dim === true;
+        const lastSegmentOffset = segmentOffsetByRenderedIndex.get(lastWidgetIndex) ?? 0;
+        const lastWidgetHasFlexAfter = (flexAfterIndex.get(lastWidgetIndex) ?? 0) > 0;
+        const segmentEndCap = getEndCap(lastSegmentOffset);
+
+        if (segmentEndCap && !lastWidgetHasFlexAfter) {
+            if (lastWidget?.bgColor) {
+                // End cap uses last widget's background as foreground (converted)
+                const capFg = bgToFg(lastWidget.bgColor);
+                const fgCode = getColorAnsiCode(capFg, colorLevel, false);
+                result += fgCode + segmentEndCap + '\x1b[39m';
+            } else {
+                result += segmentEndCap;
+            }
+
+            // Reset bold/dim after end cap if needed
+            if (lastWidgetBold || lastWidgetDim) {
                 result += '\x1b[22m';
             }
         }
     }
 
-    // Add end cap if specified
-    if (endCap && widgetElements.length > 0) {
-        const lastWidget = widgetElements[widgetElements.length - 1];
-
-        if (lastWidget?.bgColor) {
-            // End cap uses last widget's background as foreground (converted)
-            const capFg = bgToFg(lastWidget.bgColor);
-            const fgCode = getColorAnsiCode(capFg, colorLevel, false);
-            result += fgCode + endCap + '\x1b[39m';
+    // If any flex-separators were configured, replace each FLEX_SENTINEL with
+    // the appropriate number of spaces so the rendered line expands to fill
+    // the terminal width. End caps are already present here so their width is
+    // reserved before flex space is distributed.
+    if (totalFlexCount > 0) {
+        if (terminalWidth !== null) {
+            const parts = result.split(FLEX_SENTINEL);
+            const totalContentWidth = parts.reduce((sum, p) => sum + getVisibleWidth(p), 0);
+            const flexCount = parts.length - 1;
+            const totalSpace = Math.max(0, terminalWidth - totalContentWidth);
+            const spacePerFlex = flexCount > 0 ? Math.floor(totalSpace / flexCount) : 0;
+            const extraSpace = flexCount > 0 ? totalSpace % flexCount : 0;
+            let newResult = parts[0] ?? '';
+            for (let i = 1; i < parts.length; i++) {
+                const flexSize = spacePerFlex + (i - 1 < extraSpace ? 1 : 0);
+                newResult += ' '.repeat(flexSize) + (parts[i] ?? '');
+            }
+            result = newResult;
         } else {
-            result += endCap;
-        }
-
-        // Reset bold after end cap if needed
-        const lastWidgetBold = (settings.globalBold) || lastWidget?.widget.bold;
-        if (lastWidgetBold) {
-            result += '\x1b[22m';
+            // No terminal width detected - keep a visible break between segments.
+            result = result.split(FLEX_SENTINEL).join(' ');
         }
     }
 
@@ -449,7 +743,7 @@ function renderPowerlineStatusLine(
     result += chalk.reset('');
 
     // Handle truncation if terminal width is known
-    if (terminalWidth && terminalWidth > 0) {
+    if (terminalWidth !== null) {
         const plainLength = getVisibleWidth(result);
         if (plainLength > terminalWidth) {
             result = truncateStyledText(result, terminalWidth, { ellipsis: true });
@@ -473,6 +767,11 @@ function formatSeparator(sep: string): string {
     return sep;
 }
 
+function isSpacingSeparator(widget: WidgetItem | undefined, defaultSeparator: string | undefined): boolean {
+    return widget?.type === 'separator'
+        && (widget.character ?? defaultSeparator ?? '|').trim().length === 0;
+}
+
 export interface RenderResult {
     line: string;
     wasTruncated: boolean;
@@ -482,6 +781,100 @@ export interface PreRenderedWidget {
     content: string;      // The rendered widget text (without padding)
     plainLength: number;  // Length without ANSI codes
     widget: WidgetItem;   // Original widget config
+}
+
+export function countPowerlineStartCapSlots(
+    widgets: WidgetItem[],
+    preRenderedWidgets: PreRenderedWidget[]
+): number {
+    let pendingFlexAfterRenderedSegment = false;
+    let hasRenderedSegment = false;
+    let renderedSegmentCount = 0;
+
+    for (let i = 0; i < widgets.length; i++) {
+        const widget = widgets[i];
+        if (!widget || widget.type === 'separator')
+            continue;
+
+        if (widget.type === 'flex-separator') {
+            if (hasRenderedSegment) {
+                pendingFlexAfterRenderedSegment = true;
+            }
+            continue;
+        }
+
+        if (!preRenderedWidgets[i]?.content)
+            continue;
+
+        if (!hasRenderedSegment) {
+            hasRenderedSegment = true;
+            renderedSegmentCount = 1;
+        } else if (pendingFlexAfterRenderedSegment) {
+            renderedSegmentCount++;
+            pendingFlexAfterRenderedSegment = false;
+        }
+    }
+
+    return renderedSegmentCount;
+}
+
+// Decorative widget types that can opt into hiding alongside their merge target
+const DECORATIVE_WIDGET_TYPES = new Set(['custom-text', 'custom-symbol']);
+
+function isSeparatorType(type: string): boolean {
+    return type === 'separator' || type === 'flex-separator';
+}
+
+// Collapses decorative items (custom-text/custom-symbol) that opted into the
+// merge-target-hidden state when the widget they are merged with rendered
+// nothing, so merged chains hide as a unit instead of leaving orphaned icons.
+export function applyMergeTargetHiding(preRenderedLine: PreRenderedWidget[]): void {
+    let chainStart = 0;
+    for (let i = 0; i <= preRenderedLine.length; i++) {
+        const element = preRenderedLine[i];
+        if (element && !isSeparatorType(element.widget.type)) {
+            continue;
+        }
+
+        applyMergeTargetHidingToSegment(preRenderedLine.slice(chainStart, i));
+        chainStart = i + 1;
+    }
+}
+
+function applyMergeTargetHidingToSegment(segment: PreRenderedWidget[]): void {
+    let chainStart = 0;
+    for (let i = 0; i < segment.length; i++) {
+        const linksToNext = Boolean(segment[i]?.widget.merge) && i < segment.length - 1;
+        if (linksToNext) {
+            continue;
+        }
+
+        const chain = segment.slice(chainStart, i + 1);
+        chainStart = i + 1;
+        if (chain.length < 2) {
+            continue;
+        }
+
+        for (let position = 0; position < chain.length; position++) {
+            const element = chain[position];
+            if (!element
+                || !DECORATIVE_WIDGET_TYPES.has(element.widget.type)
+                || !isHidden(element.widget, MERGE_TARGET_HIDDEN_HIDEABLE_STATE.key)) {
+                continue;
+            }
+
+            // The target is the nearest non-decorative widget in the chain,
+            // preferring the merge direction (forward), falling back to the
+            // widget merging into this one (backward)
+            const target = chain.slice(position + 1).find(candidate => !DECORATIVE_WIDGET_TYPES.has(candidate.widget.type))
+                ?? chain.slice(0, position).reverse().find(candidate => !DECORATIVE_WIDGET_TYPES.has(candidate.widget.type));
+
+            if (target?.content === '') {
+                element.content = '';
+                element.plainLength = 0;
+            }
+        }
+    }
 }
 
 // Pre-render all widgets once and cache the results
@@ -509,11 +902,19 @@ export function preRenderAllWidgets(
 
             const widgetImpl = getWidget(widget.type);
             if (!widgetImpl) {
-                // Unknown widget type - skip it entirely
+                // Preserve index alignment with the configured widgets while skipping unknown output.
+                preRenderedLine.push({
+                    content: '',
+                    plainLength: 0,
+                    widget
+                });
                 continue;
             }
 
-            const widgetText = widgetImpl.render(widget, context, settings) ?? '';
+            const effectiveWidget = context.minimalist ? { ...widget, rawValue: true } : widget;
+            // Widget text can come from the repository, the session or imported
+            // settings: only colors and safe links may reach the terminal
+            const widgetText = sanitizeTerminalText(widgetImpl.render(effectiveWidget, context, settings) ?? '');
 
             // Store the rendered content without padding (padding is applied later)
             // Use stringWidth to properly calculate Unicode character display width
@@ -525,6 +926,7 @@ export function preRenderAllWidgets(
             });
         }
 
+        applyMergeTargetHiding(preRenderedLine);
         preRenderedLines.push(preRenderedLine);
     }
 
@@ -538,35 +940,66 @@ export function calculateMaxWidthsFromPreRendered(
 ): number[] {
     const maxWidths: number[] = [];
     const defaultPadding = settings.defaultPadding ?? '';
-    const paddingLength = defaultPadding.length;
+    const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(defaultPadding, settings.defaultPaddingSide);
+    const paddingPairLength = sideLeadingPadding.length + sideTrailingPadding.length;
 
     for (const preRenderedLine of preRenderedLines) {
-        const filteredWidgets = preRenderedLine.filter(
-            w => w.widget.type !== 'separator' && w.widget.type !== 'flex-separator' && w.content
+        const isSeparatorBoundary = (entry: PreRenderedWidget | undefined): boolean => (
+            entry?.widget.type === 'separator' || entry?.widget.type === 'flex-separator'
         );
+        // Same rule as the Powerline renderer: a merge carries past an empty
+        // widget only if that widget is merged onward too.
+        const mergeReachesNextRenderedWidget = (originalIndex: number): boolean => {
+            for (let j = originalIndex + 1; j < preRenderedLine.length; j++) {
+                const nextEntry = preRenderedLine[j];
+                if (!nextEntry)
+                    continue;
+                if (isSeparatorBoundary(nextEntry))
+                    return false;
+                if (nextEntry.content)
+                    return true;
+                if (!nextEntry.widget.merge)
+                    return false;
+            }
+
+            return false;
+        };
+
+        const renderedWidgets = preRenderedLine
+            .map((entry, originalIndex) => ({
+                ...entry,
+                mergesWithNext: Boolean(entry.widget.merge && mergeReachesNextRenderedWidget(originalIndex))
+            }))
+            .filter(entry => !isSeparatorBoundary(entry) && entry.content);
 
         let alignmentPos = 0;
-        for (let i = 0; i < filteredWidgets.length; i++) {
-            const widget = filteredWidgets[i];
+        for (let i = 0; i < renderedWidgets.length; i++) {
+            const widget = renderedWidgets[i];
             if (!widget)
                 continue;
 
+            // An excluded widget opts itself and the rest of the line out of the
+            // shared column widths. This only applies to merge-group heads;
+            // widgets merged into a previous widget keep the group's width.
+            if (widget.widget.excludeFromAutoAlign)
+                break;
+
             // Calculate the total width for this alignment position
             // If this widget is merged with the next, accumulate their widths
-            let totalWidth = widget.plainLength + (paddingLength * 2);
+            let totalWidth = widget.plainLength + paddingPairLength;
 
             // Check if this widget merges with the next one(s)
             let j = i;
-            while (j < filteredWidgets.length - 1 && filteredWidgets[j]?.widget.merge) {
+            while (j < renderedWidgets.length - 1 && renderedWidgets[j]?.mergesWithNext) {
                 j++;
-                const nextWidget = filteredWidgets[j];
+                const nextWidget = renderedWidgets[j];
                 if (nextWidget) {
                     // For merged widgets, add width but account for padding adjustments
                     // When merging with 'no-padding', don't count padding between widgets
-                    if (filteredWidgets[j - 1]?.widget.merge === 'no-padding') {
+                    if (renderedWidgets[j - 1]?.widget.merge === 'no-padding') {
                         totalWidth += nextWidget.plainLength;
                     } else {
-                        totalWidth += nextWidget.plainLength + (paddingLength * 2);
+                        totalWidth += nextWidget.plainLength + paddingPairLength;
                     }
                 }
             }
@@ -596,7 +1029,7 @@ export function renderStatusLineWithInfo(
 ): RenderResult {
     const line = renderStatusLine(widgets, settings, context, preRenderedWidgets, preCalculatedMaxWidths);
     // Check if line contains the truncation ellipsis
-    const wasTruncated = line.includes('...');
+    const wasTruncated = getVisibleText(line).includes('...');
     return { line, wasTruncated };
 }
 
@@ -612,7 +1045,7 @@ export function renderStatusLine(
     // No need to override here
 
     // Get color level from settings
-    const colorLevel = getColorLevelString((settings.colorLevel as number) as (0 | 1 | 2 | 3));
+    const colorLevel = getColorLevelString(settings.colorLevel);
 
     // Check if powerline mode is enabled
     const powerlineSettings = settings.powerline as Record<string, unknown> | undefined;
@@ -620,14 +1053,32 @@ export function renderStatusLine(
 
     // If powerline mode is enabled, use powerline renderer
     if (isPowerlineMode)
-        return renderPowerlineStatusLine(widgets, settings, context, context.lineIndex ?? 0, context.globalSeparatorIndex ?? 0, preRenderedWidgets, preCalculatedMaxWidths);
+        return renderPowerlineStatusLine(
+            widgets,
+            settings,
+            context,
+            context.lineIndex ?? 0,
+            context.globalSeparatorIndex ?? 0,
+            context.globalPowerlineThemeIndex ?? 0,
+            preRenderedWidgets,
+            preCalculatedMaxWidths
+        );
 
-    // Helper to apply colors with optional background and bold override
-    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean): string => {
-        // Override foreground color takes precedence over EVERYTHING, including passed foreground color
+    // Helper to apply colors with optional background, bold, and dim
+    const applyColorsWithOverride = (text: string, foregroundColor?: string, backgroundColor?: string, bold?: boolean, dim?: boolean | 'parens'): string => {
+        // Override foreground color takes precedence over EVERYTHING, including passed foreground
+        // color — except a gradient: spec, which is not a solid color. The gradient is applied as a
+        // whole-line pass after assembly, so when it will render (color levels above ansi16) we emit
+        // no per-widget foreground and let the gradient own it; at ansi16 the gradient is a no-op, so
+        // the widget's own foreground is kept.
         let fgColor = foregroundColor;
-        if (settings.overrideForegroundColor && settings.overrideForegroundColor !== 'none') {
-            fgColor = settings.overrideForegroundColor;
+        const fgOverride = settings.overrideForegroundColor;
+        if (fgOverride && fgOverride !== 'none') {
+            if (!isGradientSpec(fgOverride)) {
+                fgColor = fgOverride;
+            } else if (colorLevel !== 'ansi16') {
+                fgColor = undefined;
+            }
         }
 
         // Override background color takes precedence over EVERYTHING, including passed background color
@@ -637,7 +1088,7 @@ export function renderStatusLine(
         }
 
         const shouldBold = (settings.globalBold) || bold;
-        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel);
+        return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
     };
 
     const detectedWidth = context.terminalWidth ?? getTerminalWidth();
@@ -645,8 +1096,24 @@ export function renderStatusLine(
     // Calculate terminal width based on flex mode settings
     const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
 
-    const elements: { content: string; type: string; widget?: WidgetItem }[] = [];
+    const elements: { content: string; type: string; widget?: WidgetItem; mergesWithNext?: boolean }[] = [];
     let hasFlexSeparator = false;
+
+    // A merge carries past a widget that renders nothing only if that widget is
+    // merged onward too; otherwise the merge ends with it.
+    const mergeEndsAtEmptyWidget = (index: number): boolean => {
+        for (let j = index + 1; j < widgets.length; j++) {
+            const next = widgets[j];
+            if (!next)
+                continue;
+            if (next.type === 'separator' || next.type === 'flex-separator' || preRenderedWidgets[j]?.content)
+                return false;
+            if (!next.merge)
+                return true;
+        }
+
+        return false;
+    };
 
     // Build elements based on configured widgets
     for (let i = 0; i < widgets.length; i++) {
@@ -656,21 +1123,45 @@ export function renderStatusLine(
 
         // Handle separators specially (they're not widgets)
         if (widget.type === 'separator') {
-            // Check if there's any widget before this separator that actually rendered content
-            // Look backwards to find ANY widget that produced content
-            let hasContentBefore = false;
+            // Empty widgets do not break the relationship between a separator
+            // and the preceding visible content. A visible separator owns that
+            // boundary, while spacing-only separators can be replaced by a
+            // more meaningful separator that follows the empty widget.
+            let contentBeforeIndex: number | null = null;
+            let replacesSpacingSeparator = false;
+            let crossedEmptyWidget = false;
+            let crossedUnmergedEmptyWidget = false;
             for (let j = i - 1; j >= 0; j--) {
                 const prevWidget = widgets[j];
-                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
-                    if (preRenderedWidgets[j]?.content) {
-                        hasContentBefore = true;
+                if (!prevWidget)
+                    continue;
+                if (prevWidget.type === 'separator') {
+                    if (!isSpacingSeparator(prevWidget, settings.defaultSeparator))
                         break;
-                    }
-                    // Continue looking backwards even if this widget didn't render content
+                    replacesSpacingSeparator = true;
+                    continue;
+                }
+                if (prevWidget.type === 'flex-separator')
+                    break;
+                if (preRenderedWidgets[j]?.content) {
+                    // A merge owns the boundary across widgets that render empty,
+                    // but only while each of them is merged onward too.
+                    if (!prevWidget.merge || !crossedEmptyWidget || crossedUnmergedEmptyWidget)
+                        contentBeforeIndex = j;
+                    break;
+                }
+                crossedEmptyWidget = true;
+                if (!prevWidget.merge)
+                    crossedUnmergedEmptyWidget = true;
+            }
+            if (contentBeforeIndex === null)
+                continue;
+
+            if (replacesSpacingSeparator) {
+                while (isSpacingSeparator(elements[elements.length - 1]?.widget, settings.defaultSeparator)) {
+                    elements.pop();
                 }
             }
-            if (!hasContentBefore)
-                continue;
 
             const sepChar = widget.character ?? (settings.defaultSeparator ?? '|');
             const formattedSep = formatSeparator(sepChar);
@@ -679,11 +1170,12 @@ export function renderStatusLine(
             let separatorColor = widget.color ?? 'gray';
             let separatorBg = widget.backgroundColor;
             let separatorBold = widget.bold;
+            let separatorDim = widget.dim;
 
-            if (settings.inheritSeparatorColors && i > 0 && !widget.color && !widget.backgroundColor) {
+            if (settings.inheritSeparatorColors && !widget.color && !widget.backgroundColor) {
                 // Only inherit if the separator doesn't have explicit colors set
-                const prevWidget = widgets[i - 1];
-                if (prevWidget && prevWidget.type !== 'separator' && prevWidget.type !== 'flex-separator') {
+                const prevWidget = widgets[contentBeforeIndex];
+                if (prevWidget) {
                     // Get the previous widget's colors
                     let widgetColor = prevWidget.color;
                     if (!widgetColor) {
@@ -693,15 +1185,16 @@ export function renderStatusLine(
                     separatorColor = widgetColor;
                     separatorBg = prevWidget.backgroundColor;
                     separatorBold = prevWidget.bold;
+                    separatorDim = prevWidget.dim;
                 }
             }
 
-            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold), type: 'separator', widget });
+            elements.push({ content: applyColorsWithOverride(formattedSep, separatorColor, separatorBg, separatorBold, separatorDim), type: 'separator', widget });
             continue;
         }
 
         if (widget.type === 'flex-separator') {
-            elements.push({ content: 'FLEX', type: 'flex-separator', widget });
+            elements.push({ content: '', type: 'flex-separator', widget });
             hasFlexSeparator = true;
             continue;
         }
@@ -723,8 +1216,8 @@ export function renderStatusLine(
             }
 
             if (widgetText) {
-                // Special handling for custom-command with preserveColors
-                if (widget.type === 'custom-command' && widget.preserveColors) {
+                // Special handling for widgets that preserve their own colors
+                if (widgetPreservesColors(widget)) {
                     // Handle max width truncation for commands with ANSI codes
                     let finalOutput = widgetText;
                     if (widget.maxWidth && widget.maxWidth > 0) {
@@ -733,14 +1226,25 @@ export function renderStatusLine(
                             finalOutput = truncateStyledText(widgetText, widget.maxWidth, { ellipsis: false });
                         }
                     }
-                    // Preserve original colors from command output
-                    elements.push({ content: finalOutput, type: widget.type, widget });
+                    if (hasForegroundOverride(settings)) {
+                        finalOutput = stripSgrCodes(finalOutput);
+                    }
+                    // Preserve intrinsic foregrounds only when no global
+                    // foreground override is active. Bold, dim, backgrounds,
+                    // and global overrides still wrap the widget normally.
+                    elements.push({
+                        content: applyColorsWithOverride(finalOutput, undefined, widget.backgroundColor, widget.bold, widget.dim),
+                        type: widget.type,
+                        widget,
+                        mergesWithNext: Boolean(widget.merge) && !mergeEndsAtEmptyWidget(i)
+                    });
                 } else {
                     // Normal widget rendering with colors
                     elements.push({
-                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold),
+                        content: applyColorsWithOverride(widgetText, widget.color ?? defaultColor, widget.backgroundColor, widget.bold, widget.dim),
                         type: widget.type,
-                        widget
+                        widget,
+                        mergesWithNext: Boolean(widget.merge) && !mergeEndsAtEmptyWidget(i)
                     });
                 }
             }
@@ -758,9 +1262,28 @@ export function renderStatusLine(
         elements.pop();
     }
 
-    // Apply default padding and separators
-    const finalElements: string[] = [];
+    // When width detection fails, flex separators fall back to their own ' | '
+    // boundary. Drop any spacing-only separator stranded directly beside one so
+    // that fallback does not render a duplicate space. With a known width, keep
+    // the separator: a fully occupied line can leave the flex gap at zero columns,
+    // making this space the only boundary between the surrounding content.
+    if (terminalWidth === null) {
+        for (let i = elements.length - 1; i >= 0; i--) {
+            if (elements[i]?.type !== 'separator'
+                || !isSpacingSeparator(elements[i]?.widget, settings.defaultSeparator)) {
+                continue;
+            }
+            if (elements[i - 1]?.type === 'flex-separator' || elements[i + 1]?.type === 'flex-separator') {
+                elements.splice(i, 1);
+            }
+        }
+    }
+
+    // Apply default padding and separators. A flex separator is pushed as null,
+    // so no widget text can be mistaken for one.
+    const finalElements: (string | null)[] = [];
     const padding = settings.defaultPadding ?? '';
+    const { leading: sideLeadingPadding, trailing: sideTrailingPadding } = resolvePaddingSides(padding, settings.defaultPaddingSide);
     const defaultSep = settings.defaultSeparator ? formatSeparator(settings.defaultSeparator) : '';
 
     elements.forEach((elem, index) => {
@@ -769,7 +1292,7 @@ export function renderStatusLine(
         const shouldAddSeparator = defaultSep && index > 0
             && elem.type !== 'flex-separator'
             && prevElem?.type !== 'flex-separator'
-            && !prevElem?.widget?.merge; // Don't add separator if previous widget is merged with this one
+            && !prevElem?.mergesWithNext; // Don't add separator if previous widget is merged with this one
 
         if (shouldAddSeparator) {
             // Check if we should inherit colors from the previous element
@@ -783,7 +1306,7 @@ export function renderStatusLine(
                         const widgetImpl = getWidget(prevElem.widget.type);
                         widgetColor = widgetImpl ? widgetImpl.getDefaultColor() : 'white';
                     }
-                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold);
+                    const coloredSep = applyColorsWithOverride(defaultSep, widgetColor, prevElem.widget.backgroundColor, prevElem.widget.bold, prevElem.widget.dim);
                     finalElements.push(coloredSep);
                 } else {
                     finalElements.push(defaultSep);
@@ -799,13 +1322,19 @@ export function renderStatusLine(
         }
 
         // Add element with padding (separators don't get padding)
-        if (elem.type === 'separator' || elem.type === 'flex-separator') {
+        if (elem.type === 'flex-separator') {
+            finalElements.push(null);
+        } else if (elem.type === 'separator') {
             finalElements.push(elem.content);
         } else {
             // Check if padding should be omitted due to no-padding merge
             const nextElem = index < elements.length - 1 ? elements[index + 1] : null;
-            const omitLeadingPadding = prevElem?.widget?.merge === 'no-padding';
-            const omitTrailingPadding = elem.widget?.merge === 'no-padding' && nextElem;
+            const omitLeadingPadding = prevElem?.widget?.merge === 'no-padding' && Boolean(prevElem.mergesWithNext);
+            const omitTrailingPadding = elem.widget?.merge === 'no-padding'
+                && Boolean(elem.mergesWithNext)
+                && nextElem
+                && nextElem.type !== 'separator'
+                && nextElem.type !== 'flex-separator';
 
             // Apply padding with colors (using overrides if set)
             const hasColorOverride = Boolean(settings.overrideBackgroundColor && settings.overrideBackgroundColor !== 'none')
@@ -813,16 +1342,15 @@ export function renderStatusLine(
 
             if (padding && (elem.widget?.backgroundColor || hasColorOverride)) {
                 // Apply colors to padding - applyColorsWithOverride will handle the overrides
-                const leadingPadding = omitLeadingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
-                const trailingPadding = omitTrailingPadding ? '' : applyColorsWithOverride(padding, undefined, elem.widget?.backgroundColor);
+                const leadingPadding = omitLeadingPadding || !sideLeadingPadding ? '' : applyColorsWithOverride(sideLeadingPadding, undefined, elem.widget?.backgroundColor);
+                const trailingPadding = omitTrailingPadding || !sideTrailingPadding ? '' : applyColorsWithOverride(sideTrailingPadding, undefined, elem.widget?.backgroundColor);
                 const paddedContent = leadingPadding + elem.content + trailingPadding;
                 finalElements.push(paddedContent);
             } else if (padding) {
                 // Wrap padding in ANSI reset codes to prevent trimming
                 // This ensures leading spaces aren't trimmed by terminals
-                const protectedPadding = chalk.reset(padding);
-                const leadingPadding = omitLeadingPadding ? '' : protectedPadding;
-                const trailingPadding = omitTrailingPadding ? '' : protectedPadding;
+                const leadingPadding = omitLeadingPadding || !sideLeadingPadding ? '' : chalk.reset(sideLeadingPadding);
+                const trailingPadding = omitTrailingPadding || !sideTrailingPadding ? '' : chalk.reset(sideTrailingPadding);
                 finalElements.push(leadingPadding + elem.content + trailingPadding);
             } else {
                 // No padding
@@ -834,13 +1362,13 @@ export function renderStatusLine(
     // Build the final status line
     let statusLine: string;
 
-    if (hasFlexSeparator && terminalWidth) {
+    if (hasFlexSeparator && terminalWidth !== null) {
         // Split elements by flex separators
         const parts: string[][] = [[]];
         let currentPart = 0;
 
         for (const elem of finalElements) {
-            if (elem === 'FLEX') {
+            if (elem === null) {
                 currentPart++;
                 parts[currentPart] = [];
             } else {
@@ -874,21 +1402,19 @@ export function renderStatusLine(
                 statusLine += ' '.repeat(spaces);
             }
         }
+    } else if (hasFlexSeparator) {
+        // No width detected: treat flex separators as normal separators
+        statusLine = finalElements.map(e => e ?? chalk.gray(' | ')).join('');
     } else {
-        // No flex separator OR no width detected
-        if (hasFlexSeparator && !terminalWidth) {
-            // Treat flex separators as normal separators when width detection fails
-            statusLine = finalElements.map(e => e === 'FLEX' ? chalk.gray(' | ') : e).join('');
-        } else {
-            // Just join all elements normally
-            statusLine = finalElements.join('');
-        }
+        // No flex separator: just join all elements normally
+        statusLine = finalElements.join('');
     }
 
     // Truncate if the line exceeds the terminal width
-    // Use terminalWidth if available (already accounts for flex mode adjustments), otherwise use detectedWidth
+    // Use terminalWidth if available (already accounts for flex mode adjustments, and
+    // may be 0 when the reserve takes the whole terminal), otherwise use detectedWidth
     const maxWidth = terminalWidth ?? detectedWidth;
-    if (maxWidth && maxWidth > 0) {
+    if (maxWidth !== null && (terminalWidth !== null || maxWidth > 0)) {
         // Remove ANSI escape codes to get actual length
         const plainLength = getVisibleWidth(statusLine);
 
@@ -896,6 +1422,16 @@ export function renderStatusLine(
             statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
         }
     }
+
+    // Apply a foreground gradient across the whole line if configured. This runs
+    // AFTER truncation, not before: truncateStyledText cuts from the right and
+    // appends a raw "..." with no trailing reset, so a gradient applied earlier
+    // would have its closing \x1b[39m sliced off — leaking the last color past the
+    // line. Gradient codes are zero-width (getVisibleWidth strips them), so the
+    // truncation measurement above is unaffected by deferring the gradient, and
+    // coloring the already-truncated line sweeps the ellipsis too and keeps the
+    // reset at the true end.
+    statusLine = maybeApplyForegroundGradient(statusLine, settings, colorLevel);
 
     return statusLine;
 }

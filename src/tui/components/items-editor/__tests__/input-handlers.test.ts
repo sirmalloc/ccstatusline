@@ -5,8 +5,17 @@ import {
     vi
 } from 'vitest';
 
-import type { WidgetItem } from '../../../../types/Widget';
+import type {
+    CustomKeybind,
+    Widget,
+    WidgetItem
+} from '../../../../types/Widget';
+import { getNumberFormatKeybind } from '../../../../utils/number-format';
 import type { WidgetCatalogEntry } from '../../../../utils/widgets';
+import {
+    EDIT_HIDE_STATES_ACTION,
+    getHideKeybind
+} from '../../../../widgets/shared/hideable';
 import {
     handleMoveInputMode,
     handleNormalInputMode,
@@ -95,6 +104,62 @@ describe('items-editor input handlers', () => {
         expect(applySelection).toHaveBeenCalledWith('git-branch');
     });
 
+    it('resets selection to best match when typing in category search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'vim-mode', displayName: 'Vim Mode', category: 'Core' },
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Core' }
+        ]);
+        const widgetCategories = ['All', 'Core'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: 'v',
+            key: {},
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('vim-mode');
+    });
+
+    it('resets selection to best match when typing in widget search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'vim-mode', displayName: 'Vim Mode', category: 'Core' },
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Core' }
+        ]);
+        const widgetCategories = ['All', 'Core'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'widget',
+            selectedCategory: 'Core',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: 'v',
+            key: {},
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('vim-mode');
+    });
+
     it('returns to category level from widget picker on escape when widget query is empty', () => {
         const widgetCatalog = createCatalog([
             { type: 'git-branch', displayName: 'Git Branch', category: 'Git' }
@@ -122,6 +187,176 @@ describe('items-editor input handlers', () => {
         expect(pickerState.get()?.level).toBe('category');
     });
 
+    it('wraps to last category when pressing up at first category', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'tokens-input', displayName: 'Tokens Input', category: 'Tokens' }
+        ]);
+        const widgetCategories = ['All', 'Git', 'Tokens'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: null
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedCategory).toBe('Tokens');
+    });
+
+    it('wraps to first category when pressing down at last category', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'tokens-input', displayName: 'Tokens Input', category: 'Tokens' }
+        ]);
+        const widgetCategories = ['All', 'Git', 'Tokens'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'Tokens',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: null
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedCategory).toBe('All');
+    });
+
+    it('wraps to last widget when pressing up at first widget in picker', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' },
+            { type: 'git-insertions', displayName: 'Git Insertions', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'widget',
+            selectedCategory: 'Git',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-insertions');
+    });
+
+    it('wraps to first widget when pressing down at last widget in picker', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' },
+            { type: 'git-insertions', displayName: 'Git Insertions', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'widget',
+            selectedCategory: 'Git',
+            categoryQuery: '',
+            widgetQuery: '',
+            selectedType: 'git-insertions'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-branch');
+    });
+
+    it('wraps to last search result when pressing up at first in top-level search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: 'git',
+            widgetQuery: '',
+            selectedType: 'git-branch'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-changes');
+    });
+
+    it('wraps to first search result when pressing down at last in top-level search', () => {
+        const widgetCatalog = createCatalog([
+            { type: 'git-branch', displayName: 'Git Branch', category: 'Git' },
+            { type: 'git-changes', displayName: 'Git Changes', category: 'Git' }
+        ]);
+        const widgetCategories = ['All', 'Git'];
+        const pickerState = createStateSetter<WidgetPickerState | null>({
+            action: 'change',
+            level: 'category',
+            selectedCategory: 'All',
+            categoryQuery: 'git',
+            widgetQuery: '',
+            selectedType: 'git-changes'
+        });
+
+        handlePickerInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgetPicker: requireState(pickerState.get()),
+            widgetCatalog,
+            widgetCategories,
+            setWidgetPicker: pickerState.set,
+            applyWidgetPickerSelection: vi.fn()
+        });
+
+        expect(pickerState.get()?.selectedType).toBe('git-branch');
+    });
+
     it('moves selected widget up in move mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'tokens-input' },
@@ -146,6 +381,112 @@ describe('items-editor input handlers', () => {
         ]);
         expect(setSelectedIndex).toHaveBeenCalledWith(0);
         expect(setMoveMode).not.toHaveBeenCalled();
+    });
+
+    it('wraps to last widget when pressing up at first position in normal mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const setSelectedIndex = vi.fn();
+
+        handleNormalInputMode({
+            input: '',
+            key: { upArrow: true },
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex,
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(setSelectedIndex).toHaveBeenCalledWith(2);
+    });
+
+    it('wraps to first widget when pressing down at last position in normal mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const setSelectedIndex = vi.fn();
+
+        handleNormalInputMode({
+            input: '',
+            key: { downArrow: true },
+            widgets,
+            selectedIndex: 2,
+            separatorChars: ['|'],
+            onBack: vi.fn(),
+            onUpdate: vi.fn(),
+            setSelectedIndex,
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(setSelectedIndex).toHaveBeenCalledWith(0);
+    });
+
+    it('wraps to last position when moving widget up from first position, keeping the others in order', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setSelectedIndex = vi.fn();
+
+        handleMoveInputMode({
+            key: { upArrow: true },
+            widgets,
+            selectedIndex: 0,
+            onUpdate,
+            setSelectedIndex,
+            setMoveMode: vi.fn()
+        });
+
+        expect(onUpdate).toHaveBeenCalledWith([
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' },
+            { id: '1', type: 'tokens-input' }
+        ]);
+        expect(setSelectedIndex).toHaveBeenCalledWith(2);
+    });
+
+    it('wraps to first position when moving widget down from last position, keeping the others in order', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setSelectedIndex = vi.fn();
+
+        handleMoveInputMode({
+            key: { downArrow: true },
+            widgets,
+            selectedIndex: 2,
+            onUpdate,
+            setSelectedIndex,
+            setMoveMode: vi.fn()
+        });
+
+        expect(onUpdate).toHaveBeenCalledWith([
+            { id: '3', type: 'git-branch' },
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' }
+        ]);
+        expect(setSelectedIndex).toHaveBeenCalledWith(0);
     });
 
     it('toggles raw value in normal mode for supported widgets', () => {
@@ -200,6 +541,59 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.character).toBe('-');
     });
 
+    it('toggles auto-align exclusion when the editor marks it available', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'x',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            canExcludeAlign: true,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.excludeFromAutoAlign).toBe(true);
+    });
+
+    it('ignores the auto-align exclusion shortcut when the editor marks it unavailable', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'tokens-input' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'x',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            canExcludeAlign: false,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+    });
+
     it('applies custom widget keybind actions in normal mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'session-usage' }
@@ -226,6 +620,120 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.metadata?.display).toBe('progress');
     });
 
+    it('uses t to toggle reset timer date mode in normal mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'reset-timer' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 't',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.metadata?.absolute).toBe('true');
+    });
+
+    it('uses f to toggle reset timer hour format in timestamp mode', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'reset-timer', metadata: { absolute: 'true' } }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'f',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.metadata?.hour12).toBe('true');
+    });
+
+    it('opens custom editor for reset timer timezone action', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'reset-timer', metadata: { absolute: 'true' } }
+        ];
+        const onUpdate = vi.fn();
+        const setCustomEditorWidget = vi.fn();
+
+        handleNormalInputMode({
+            input: 'z',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+        const customEditorState = setCustomEditorWidget.mock.calls[0]?.[0] as
+            | { action?: string; widget?: WidgetItem }
+            | undefined;
+        expect(customEditorState?.action).toBe('edit-timezone');
+        expect(customEditorState?.widget?.type).toBe('reset-timer');
+    });
+
+    it('opens custom editor for reset timer locale action', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'reset-timer', metadata: { absolute: 'true' } }
+        ];
+        const onUpdate = vi.fn();
+        const setCustomEditorWidget = vi.fn();
+
+        handleNormalInputMode({
+            input: 'l',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+        const customEditorState = setCustomEditorWidget.mock.calls[0]?.[0] as
+            | { action?: string; widget?: WidgetItem }
+            | undefined;
+        expect(customEditorState?.action).toBe('edit-locale');
+        expect(customEditorState?.widget?.type).toBe('reset-timer');
+    });
+
     it('uses v to cycle skills widget mode', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'skills' }
@@ -250,6 +758,66 @@ describe('items-editor input handlers', () => {
 
         const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
         expect(updated?.[0]?.metadata?.mode).toBe('count');
+    });
+
+    it('uses v to cycle compaction counter metric', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'compaction-counter' }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'v',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]?.metadata?.metric).toBe('auto');
+    });
+
+    it('opens the shared hide-states editor for the injected hide keybind', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'git-branch' }
+        ];
+        const onUpdate = vi.fn();
+        const setCustomEditorWidget = vi.fn();
+
+        handleNormalInputMode({
+            input: 'h',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => [
+                ...(widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : []),
+                getHideKeybind()
+            ],
+            setCustomEditorWidget
+        });
+
+        expect(onUpdate).not.toHaveBeenCalled();
+        const customEditorState = setCustomEditorWidget.mock.calls[0]?.[0] as
+            | { action?: string; widget?: WidgetItem }
+            | undefined;
+        expect(customEditorState?.action).toBe(EDIT_HIDE_STATES_ACTION);
+        expect(customEditorState?.widget?.type).toBe('git-branch');
     });
 
     it('opens custom editor for skills list limit action', () => {
@@ -281,5 +849,348 @@ describe('items-editor input handlers', () => {
             | undefined;
         expect(customEditorState?.action).toBe('edit-list-limit');
         expect(customEditorState?.widget?.type).toBe('skills');
+    });
+
+    describe('k shortcut - clone widget', () => {
+        it('inserts clone after source and moves selection to clone', () => {
+            const widgets: WidgetItem[] = [
+                { id: 'a', type: 'tokens-input' },
+                { id: 'b', type: 'tokens-output' }
+            ];
+            const onUpdate = vi.fn();
+            const setSelectedIndex = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated).toHaveLength(3);
+            expect(updated[0]?.id).toBe('a');
+            expect(updated[1]?.type).toBe('tokens-input');
+            expect(updated[2]?.id).toBe('b');
+            expect(setSelectedIndex).toHaveBeenCalledWith(1);
+        });
+
+        it('copies all primitive properties of source to clone', () => {
+            const widgets: WidgetItem[] = [
+                { id: 'src', type: 'tokens-input', color: 'green', bold: true, rawValue: true, backgroundColor: 'blue' }
+            ];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            const clone = updated[1];
+            expect(clone?.color).toBe('green');
+            expect(clone?.bold).toBe(true);
+            expect(clone?.rawValue).toBe(true);
+        });
+
+        it('generates a different id for the clone', () => {
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'tokens-input' }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated[1]?.id).not.toBe('src');
+            expect(typeof updated[1]?.id).toBe('string');
+            expect(updated[1]?.id.length).toBeGreaterThan(0);
+        });
+
+        it('shallow-clones metadata so mutating clone does not affect source', () => {
+            const sourceMeta = { display: 'progress' };
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'session-usage', metadata: sourceMeta }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            const cloneMeta = updated[1]?.metadata as Record<string, unknown> | undefined;
+            expect(cloneMeta).toBeDefined();
+            expect(cloneMeta).not.toBe(sourceMeta);
+            expect(cloneMeta?.display).toBe('progress');
+
+            if (cloneMeta) {
+                cloneMeta.display = 'changed';
+            }
+            expect(sourceMeta.display).toBe('progress');
+        });
+
+        it('uses getUniqueBackgroundColor result as backgroundColor in powerline mode', () => {
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'tokens-input', backgroundColor: 'red' }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn(),
+                getUniqueBackgroundColor: () => 'cyan'
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated[1]?.backgroundColor).toBe('cyan');
+        });
+
+        it('preserves source backgroundColor when getUniqueBackgroundColor returns undefined', () => {
+            const widgets: WidgetItem[] = [{ id: 'src', type: 'tokens-input', backgroundColor: 'red' }];
+            const onUpdate = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn(),
+                getUniqueBackgroundColor: () => undefined
+            });
+
+            const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[];
+            expect(updated[1]?.backgroundColor).toBe('red');
+        });
+
+        it('does nothing when widget list is empty', () => {
+            const onUpdate = vi.fn();
+            const setSelectedIndex = vi.fn();
+
+            handleNormalInputMode({
+                input: 'k',
+                key: {},
+                widgets: [],
+                selectedIndex: 0,
+                separatorChars: ['|', '-'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex,
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+
+            expect(onUpdate).not.toHaveBeenCalled();
+            expect(setSelectedIndex).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('m shortcut - merge', () => {
+        const pressMerge = (widgets: WidgetItem[], selectedIndex: number, onUpdate: (widgets: WidgetItem[]) => void) => {
+            handleNormalInputMode({
+                input: 'm',
+                key: {},
+                widgets,
+                selectedIndex,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+        };
+
+        it('cycles merged, merged without padding and off when a widget follows', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+            pressMerge([{ id: '1', type: 'model', merge: true }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+            pressMerge([{ id: '1', type: 'model', merge: 'no-padding' }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+
+            expect(onUpdate.mock.calls.map(call => (call[0] as WidgetItem[])[0])).toEqual([
+                { id: '1', type: 'model', merge: true },
+                { id: '1', type: 'model', merge: 'no-padding' },
+                { id: '1', type: 'model' }
+            ]);
+        });
+
+        it('clears a merge left on the last widget', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch', merge: true }], 1, onUpdate);
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch', merge: 'no-padding' }], 1, onUpdate);
+
+            expect(onUpdate.mock.calls.map(call => (call[0] as WidgetItem[])[1])).toEqual([
+                { id: '2', type: 'git-branch' },
+                { id: '2', type: 'git-branch' }
+            ]);
+        });
+
+        it('does not set a merge on the last widget', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch' }], 1, onUpdate);
+
+            expect(onUpdate).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('precision keybind', () => {
+        // The items editor injects this bind for numeric widgets, so the handler
+        // applies it itself rather than delegating to handleEditorAction.
+        const injectPrecisionKeybind = (widgetImpl: Widget, widget: WidgetItem): CustomKeybind[] => {
+            const keybinds = widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [];
+            return widgetImpl.supportsNumberFormat?.() ? [...keybinds, getNumberFormatKeybind()] : keybinds;
+        };
+
+        const pressPrecision = (widgets: WidgetItem[], onUpdate: (widgets: WidgetItem[]) => void) => {
+            handleNormalInputMode({
+                input: '.',
+                key: {},
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: injectPrecisionKeybind,
+                setCustomEditorWidget: vi.fn()
+            });
+        };
+
+        it('cycles the number style of a numeric widget that has no keybinds of its own', () => {
+            const onUpdate = vi.fn();
+            pressPrecision([{ id: '1', type: 'tokens-input' }], onUpdate);
+
+            expect(onUpdate).toHaveBeenCalledWith([
+                { id: '1', type: 'tokens-input', numberFormat: { style: 'compact' } }
+            ]);
+        });
+
+        it('leaves a non-numeric widget untouched', () => {
+            const onUpdate = vi.fn();
+            pressPrecision([{ id: '1', type: 'custom-text' }], onUpdate);
+
+            expect(onUpdate).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('modifier combos', () => {
+        function pressInNormalMode(input: string, key: Record<string, boolean>, widgets: WidgetItem[]) {
+            const onUpdate = vi.fn();
+            const openWidgetPicker = vi.fn();
+            const setShowClearConfirm = vi.fn();
+
+            handleNormalInputMode({
+                input,
+                key,
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm,
+                openWidgetPicker,
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn()
+            });
+
+            return { onUpdate, openWidgetPicker, setShowClearConfirm };
+        }
+
+        const commandWidget: WidgetItem = { id: '2', type: 'custom-command', commandPath: 'date' };
+        const widgets: WidgetItem[] = [{ id: '1', type: 'model' }, commandWidget];
+
+        it.each([
+            ['ctrl', { ctrl: true }],
+            ['alt', { meta: true }]
+        ])('ignores letter shortcuts while %s is held', (_name, key) => {
+            for (const letter of ['a', 'i', 'd', 'k', 'c', 'r', 'm']) {
+                const { onUpdate, openWidgetPicker, setShowClearConfirm } = pressInNormalMode(letter, key, widgets);
+                expect(onUpdate).not.toHaveBeenCalled();
+                expect(openWidgetPicker).not.toHaveBeenCalled();
+                expect(setShowClearConfirm).not.toHaveBeenCalled();
+            }
+        });
+
+        it('still runs the shortcut for the bare letter', () => {
+            expect(pressInNormalMode('d', {}, widgets).onUpdate).toHaveBeenCalledWith([{ id: '2', type: 'custom-command', commandPath: 'date' }]);
+        });
+
+        it('ignores widget keybinds while alt is held, not just ctrl', () => {
+            const commandFirst = [commandWidget];
+
+            expect(pressInNormalMode('p', { meta: true }, commandFirst).onUpdate).not.toHaveBeenCalled();
+            expect(pressInNormalMode('p', {}, commandFirst).onUpdate)
+                .toHaveBeenCalledWith([{ id: '2', type: 'custom-command', commandPath: 'date', preserveColors: true }]);
+        });
     });
 });

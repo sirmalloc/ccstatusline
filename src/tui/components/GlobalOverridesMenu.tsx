@@ -5,15 +5,57 @@ import {
 } from 'ink';
 import React, { useState } from 'react';
 
-import type { Settings } from '../../types/Settings';
+import { getColorLevelString } from '../../types/ColorLevel';
+import {
+    NUMBER_KINDS,
+    type GlobalNumberFormat,
+    type NumberFormat,
+    type NumberKind
+} from '../../types/NumberFormat';
+import {
+    DefaultPaddingSideSchema,
+    type Settings
+} from '../../types/Settings';
 import {
     COLOR_MAP,
+    applyColors,
     getChalkColor,
     getColorDisplayName
 } from '../../utils/colors';
-import { shouldInsertInput } from '../../utils/input-guards';
+import { GRADIENT_PRESET_NAMES } from '../../utils/gradient';
+import {
+    getPlainInput,
+    shouldInsertInput
+} from '../../utils/input-guards';
+import { getNextNumberStyle } from '../../utils/number-format';
 
 import { ConfirmDialog } from './ConfirmDialog';
+
+const NUMBER_FORMAT_KIND_WIDTH = Math.max(...NUMBER_KINDS.map(kind => kind.length));
+
+// Cycle a number kind's global style: default (precise) -> compact -> whole -> default.
+// A global style forces that kind across all widgets (see resolveNumberFormat).
+function cycleGlobalNumberStyle(settings: Settings, kind: NumberKind): Settings {
+    const current = settings.numberFormat?.[kind]?.style;
+    const nextStyle = getNextNumberStyle(current);
+
+    const kindFormat: NumberFormat = { ...settings.numberFormat?.[kind] };
+    if (nextStyle === undefined) {
+        delete kindFormat.style;
+    } else {
+        kindFormat.style = nextStyle;
+    }
+
+    const { [kind]: removedKind, ...restGlobal } = settings.numberFormat ?? {};
+    const nextGlobal: GlobalNumberFormat = Object.keys(kindFormat).length > 0
+        ? { ...restGlobal, [kind]: kindFormat }
+        : restGlobal;
+
+    return {
+        ...settings,
+        numberFormat: Object.keys(nextGlobal).length > 0 ? nextGlobal : undefined
+    };
+}
 
 export interface GlobalOverridesMenuProps {
     settings: Settings;
@@ -29,6 +71,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const [separatorInput, setSeparatorInput] = useState(settings.defaultSeparator ?? '');
     const [inheritColors, setInheritColors] = useState(settings.inheritSeparatorColors);
     const [globalBold, setGlobalBold] = useState(settings.globalBold);
+    const [minimalistMode, setMinimalistMode] = useState(settings.minimalistMode);
+    const [numberFormatMode, setNumberFormatMode] = useState(false);
+    const [numberFormatKindIndex, setNumberFormatKindIndex] = useState(0);
+    const [gradientMode, setGradientMode] = useState(false);
+    const [gradientIndex, setGradientIndex] = useState(0);
+    const [gradientCustomStep, setGradientCustomStep] = useState<'start' | 'end' | null>(null);
+    const [gradientStartHex, setGradientStartHex] = useState('');
+    const [gradientHexInput, setGradientHexInput] = useState('');
     const isPowerlineEnabled = settings.powerline.enabled;
 
     // Check if there are any manual separators in the current configuration
@@ -43,6 +93,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
     const currentFgIndex = fgColors.indexOf(settings.overrideForegroundColor ?? 'none');
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (editingPadding) {
             if (key.return) {
                 const updatedSettings = {
@@ -93,14 +144,84 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
         } else if (confirmingSeparator) {
             // Skip input handling when confirmation is active - let ConfirmDialog handle it
             return;
+        } else if (gradientMode) {
+            const exitGradient = () => {
+                setGradientMode(false);
+                setGradientCustomStep(null);
+                setGradientStartHex('');
+                setGradientHexInput('');
+            };
+
+            const applyGradientValue = (value: string) => {
+                onUpdate({
+                    ...settings,
+                    overrideForegroundColor: value
+                });
+                exitGradient();
+            };
+
+            if (gradientCustomStep) {
+                if (key.escape) {
+                    setGradientCustomStep(null);
+                    setGradientHexInput('');
+                } else if (key.return) {
+                    if (gradientHexInput.length === 6) {
+                        if (gradientCustomStep === 'start') {
+                            setGradientStartHex(gradientHexInput);
+                            setGradientHexInput('');
+                            setGradientCustomStep('end');
+                        } else {
+                            applyGradientValue(`gradient:${gradientStartHex}-${gradientHexInput}`);
+                        }
+                    }
+                } else if (key.backspace || key.delete) {
+                    setGradientHexInput(gradientHexInput.slice(0, -1));
+                } else if (shouldInsertInput(input, key) && gradientHexInput.length < 6) {
+                    const upperInput = input.toUpperCase();
+                    if (/^[0-9A-F]$/.test(upperInput)) {
+                        setGradientHexInput(gradientHexInput + upperInput);
+                    }
+                }
+                return;
+            }
+
+            const total = GRADIENT_PRESET_NAMES.length + 1;
+            if (key.escape) {
+                exitGradient();
+            } else if (key.upArrow) {
+                setGradientIndex((gradientIndex - 1 + total) % total);
+            } else if (key.downArrow) {
+                setGradientIndex((gradientIndex + 1) % total);
+            } else if (key.return) {
+                if (gradientIndex < GRADIENT_PRESET_NAMES.length) {
+                    applyGradientValue(`gradient:${GRADIENT_PRESET_NAMES[gradientIndex]}`);
+                } else {
+                    setGradientStartHex('');
+                    setGradientHexInput('');
+                    setGradientCustomStep('start');
+                }
+            }
+        } else if (numberFormatMode) {
+            if (key.escape) {
+                setNumberFormatMode(false);
+            } else if (key.upArrow) {
+                setNumberFormatKindIndex((numberFormatKindIndex - 1 + NUMBER_KINDS.length) % NUMBER_KINDS.length);
+            } else if (key.downArrow) {
+                setNumberFormatKindIndex((numberFormatKindIndex + 1) % NUMBER_KINDS.length);
+            } else if (key.leftArrow || key.rightArrow) {
+                const kind = NUMBER_KINDS[numberFormatKindIndex];
+                if (kind) {
+                    onUpdate(cycleGlobalNumberStyle(settings, kind));
+                }
+            }
         } else {
             if (key.escape) {
                 onBack();
-            } else if (input === 'p' || input === 'P') {
+            } else if (shortcut === 'p' || shortcut === 'P') {
                 setEditingPadding(true);
-            } else if ((input === 's' || input === 'S') && !isPowerlineEnabled && !key.ctrl) {
+            } else if ((shortcut === 's' || shortcut === 'S') && !isPowerlineEnabled) {
                 setEditingSeparator(true);
-            } else if ((input === 'i' || input === 'I') && !isPowerlineEnabled) {
+            } else if ((shortcut === 'i' || shortcut === 'I') && !isPowerlineEnabled) {
                 const newInheritColors = !inheritColors;
                 setInheritColors(newInheritColors);
                 const updatedSettings = {
@@ -108,7 +229,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     inheritSeparatorColors: newInheritColors
                 };
                 onUpdate(updatedSettings);
-            } else if ((input === 'b' || input === 'B') && !isPowerlineEnabled) {
+            } else if ((shortcut === 'b' || shortcut === 'B') && !isPowerlineEnabled) {
                 // Cycle through background colors
                 const nextIndex = (currentBgIndex + 1) % bgColors.length;
                 const nextBgColor = bgColors[nextIndex];
@@ -117,14 +238,14 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideBackgroundColor: nextBgColor === 'none' ? undefined : nextBgColor
                 };
                 onUpdate(updatedSettings);
-            } else if ((input === 'c' || input === 'C') && !isPowerlineEnabled) {
+            } else if ((shortcut === 'c' || shortcut === 'C') && !isPowerlineEnabled) {
                 // Clear override background color
                 const updatedSettings = {
                     ...settings,
                     overrideBackgroundColor: undefined
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'o' || input === 'O') {
+            } else if (shortcut === 'o' || shortcut === 'O') {
                 // Toggle global bold
                 const newGlobalBold = !globalBold;
                 setGlobalBold(newGlobalBold);
@@ -133,7 +254,19 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     globalBold: newGlobalBold
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'f' || input === 'F') {
+            } else if (shortcut === 'm' || shortcut === 'M') {
+                // Toggle minimalist mode
+                const newMinimalistMode = !minimalistMode;
+                setMinimalistMode(newMinimalistMode);
+                const updatedSettings = {
+                    ...settings,
+                    minimalistMode: newMinimalistMode
+                };
+                onUpdate(updatedSettings);
+            } else if (shortcut === 'n' || shortcut === 'N') {
+                setNumberFormatMode(true);
+                setNumberFormatKindIndex(0);
+            } else if (shortcut === 'f' || shortcut === 'F') {
                 // Cycle through foreground colors
                 const nextIndex = (currentFgIndex + 1) % fgColors.length;
                 const nextFgColor = fgColors[nextIndex];
@@ -142,16 +275,110 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     overrideForegroundColor: nextFgColor === 'none' ? undefined : nextFgColor
                 };
                 onUpdate(updatedSettings);
-            } else if (input === 'g' || input === 'G') {
+            } else if (shortcut === 'g' || shortcut === 'G') {
+                // Enter gradient selection mode
+                setGradientMode(true);
+                setGradientIndex(0);
+                setGradientCustomStep(null);
+                setGradientStartHex('');
+                setGradientHexInput('');
+            } else if (shortcut === 'x' || shortcut === 'X') {
                 // Clear override foreground color
                 const updatedSettings = {
                     ...settings,
                     overrideForegroundColor: undefined
                 };
                 onUpdate(updatedSettings);
+            } else if (shortcut === 'd' || shortcut === 'D') {
+                // Cycle through padding sides: both -> left -> right -> both
+                const paddingSides = DefaultPaddingSideSchema.options;
+                const currentIndex = paddingSides.indexOf(settings.defaultPaddingSide);
+                const nextSide = paddingSides[(currentIndex + 1) % paddingSides.length] ?? 'both';
+                const updatedSettings = {
+                    ...settings,
+                    defaultPaddingSide: nextSide
+                };
+                onUpdate(updatedSettings);
             }
         }
     });
+
+    if (numberFormatMode) {
+        return (
+            <Box flexDirection='column'>
+                <Text bold>Global Number Formatting</Text>
+                <Box marginTop={1}>
+                    <Text dimColor>↑↓ to select a number type, ←→ to cycle its style, ESC to go back</Text>
+                </Box>
+                <Box marginTop={1} flexDirection='column'>
+                    {NUMBER_KINDS.map((kind, idx) => {
+                        const style = settings.numberFormat?.[kind]?.style ?? 'precise (default)';
+                        return (
+                            <Text key={kind} color={idx === numberFormatKindIndex ? 'cyan' : undefined}>
+                                {idx === numberFormatKindIndex ? '▶ ' : '  '}
+                                {kind.padStart(NUMBER_FORMAT_KIND_WIDTH)}
+                                {': '}
+                                {style}
+                            </Text>
+                        );
+                    })}
+                </Box>
+                <Box marginTop={1} flexDirection='column'>
+                    <Text dimColor>precise = keep trailing zeros (1.0M), compact = trim them (1M / 1.1M), whole = no decimals (1M).</Text>
+                    <Text dimColor>A global style forces that type across every widget. Decimal places are set per-widget or in settings.json.</Text>
+                </Box>
+            </Box>
+        );
+    }
+
+    if (gradientMode) {
+        const level = getColorLevelString(settings.colorLevel);
+
+        if (gradientCustomStep) {
+            return (
+                <Box flexDirection='column'>
+                    <Text bold>Custom Gradient - Override FG Color</Text>
+                    <Box marginTop={1} flexDirection='column'>
+                        <Text>{gradientCustomStep === 'start' ? 'Enter START hex color (without #):' : 'Enter END hex color (without #):'}</Text>
+                        {gradientCustomStep === 'end' && (
+                            <Text dimColor>
+                                Start: #
+                                {gradientStartHex}
+                            </Text>
+                        )}
+                        <Text>
+                            #
+                            {gradientHexInput}
+                            <Text dimColor>{gradientHexInput.length < 6 ? '_'.repeat(6 - gradientHexInput.length) : ''}</Text>
+                        </Text>
+                        <Text> </Text>
+                        <Text dimColor>Press Enter when done, ESC to go back</Text>
+                    </Box>
+                </Box>
+            );
+        }
+
+        return (
+            <Box flexDirection='column'>
+                <Text bold>Select Gradient - Override FG Color</Text>
+                <Box marginTop={1}>
+                    <Text dimColor>↑↓ to select, Enter to apply, ESC to cancel</Text>
+                </Box>
+                <Box marginTop={1} flexDirection='column'>
+                    {GRADIENT_PRESET_NAMES.map((name, idx) => (
+                        <Text key={name}>
+                            {idx === gradientIndex ? '▶ ' : '  '}
+                            {applyColors(name, `gradient:${name}`, undefined, idx === gradientIndex, level)}
+                        </Text>
+                    ))}
+                    <Text key='custom'>
+                        {gradientIndex === GRADIENT_PRESET_NAMES.length ? '▶ ' : '  '}
+                        Custom (enter two hex stops)
+                    </Text>
+                </Box>
+            </Box>
+        );
+    }
 
     return (
         <Box flexDirection='column'>
@@ -167,7 +394,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
             {editingPadding ? (
                 <Box flexDirection='column'>
                     <Box>
-                        <Text>Enter default padding (applied to left and right of each widget): </Text>
+                        <Text>Enter default padding (applied per the Padding Side setting): </Text>
                         <Text color='cyan'>{paddingInput ? `"${paddingInput}"` : '(empty)'}</Text>
                     </Box>
                     <Text dimColor>Press Enter to save, ESC to cancel</Text>
@@ -223,9 +450,27 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                     </Box>
 
                     <Box>
+                        <Text>  Minimalist Mode: </Text>
+                        <Text color={minimalistMode ? 'green' : 'red'}>{minimalistMode ? '✓ Enabled' : '✗ Disabled'}</Text>
+                        <Text dimColor> - Press (m) to toggle</Text>
+                    </Box>
+
+                    <Box>
+                        <Text>Number Formatting: </Text>
+                        <Text color='cyan'>{settings.numberFormat ? 'customized' : '(defaults)'}</Text>
+                        <Text dimColor> - Press (n) to configure per-type</Text>
+                    </Box>
+
+                    <Box>
                         <Text>  Default Padding: </Text>
                         <Text color='cyan'>{settings.defaultPadding ? `"${settings.defaultPadding}"` : '(none)'}</Text>
                         <Text dimColor> - Press (p) to edit</Text>
+                    </Box>
+
+                    <Box>
+                        <Text>     Padding Side: </Text>
+                        <Text color='cyan'>{settings.defaultPaddingSide === 'left' ? 'Left only' : settings.defaultPaddingSide === 'right' ? 'Right only' : 'Both'}</Text>
+                        <Text dimColor> - Press (d) to cycle</Text>
                     </Box>
 
                     <Box>
@@ -234,6 +479,13 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                             const fgColor = settings.overrideForegroundColor ?? 'none';
                             if (fgColor === 'none') {
                                 return <Text color='gray'>(none)</Text>;
+                            } else if (fgColor.startsWith('gradient:')) {
+                                const body = fgColor.substring(9);
+                                const displayName = GRADIENT_PRESET_NAMES.includes(body.toLowerCase())
+                                    ? `Gradient: ${body.toLowerCase()}`
+                                    : `Gradient: ${body}`;
+                                const level = getColorLevelString(settings.colorLevel);
+                                return <Text>{applyColors(displayName, fgColor, undefined, false, level)}</Text>;
                             } else {
                                 const displayName = getColorDisplayName(fgColor);
                                 const fgChalk = getChalkColor(fgColor, 'ansi16', false);
@@ -241,7 +493,7 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                                 return <Text>{display}</Text>;
                             }
                         })()}
-                        <Text dimColor> - (f) cycle, (g) clear</Text>
+                        <Text dimColor> - (f) cycle, (g) gradient, (x) clear</Text>
                     </Box>
 
                     <Box>
@@ -299,10 +551,16 @@ export const GlobalOverridesMenu: React.FC<GlobalOverridesMenuProps> = ({ settin
                             Note: These settings are applied during rendering and don't add widgets to your widget list.
                         </Text>
                         <Text dimColor wrap='wrap'>
+                            • Padding Side: Choose whether default padding applies to both sides, left only, or right only
+                        </Text>
+                        <Text dimColor wrap='wrap'>
                             • Inherit colors: Separators will use colors from the preceding widget
                         </Text>
                         <Text dimColor wrap='wrap'>
                             • Global Bold: Makes all text bold regardless of individual settings
+                        </Text>
+                        <Text dimColor wrap='wrap'>
+                            • Minimalist Mode: Strips decorative prefixes and labels from widgets
                         </Text>
                         <Text dimColor wrap='wrap'>
                             • Override colors: All widgets will use these colors instead of their configured colors

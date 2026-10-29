@@ -39,7 +39,7 @@ export function List<V = string | number>({
     initialSelection = 0,
     showBackButton,
     color,
-    wrapNavigation = false,
+    wrapNavigation = true,
     ...boxProps
 }: ListProps<V>) {
     const [selectedIndex, setSelectedIndex] = useState(initialSelection);

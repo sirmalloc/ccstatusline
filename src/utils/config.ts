@@ -1,30 +1,50 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
     CURRENT_VERSION,
     SettingsSchema,
     SettingsSchema_v1,
+    type InstallationMetadata,
     type Settings
 } from '../types/Settings';
 
+import type { SkippedWidgetHooks } from './hooks';
 import {
     migrateConfig,
     needsMigration
 } from './migrations';
+import { getPackageVersion } from './terminal';
+import { upgradeLegacyWidgetTypes } from './widgets';
 
 // Use fs.promises directly (always available in modern Node.js)
 const readFile = fs.promises.readFile;
 const writeFile = fs.promises.writeFile;
 const mkdir = fs.promises.mkdir;
+const rename = fs.promises.rename;
+const unlink = fs.promises.unlink;
+const lstat = fs.promises.lstat;
+const readlink = fs.promises.readlink;
+const realpath = fs.promises.realpath;
+const stat = fs.promises.stat;
 
-const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+// Resolved on every call, not once at import time: tests replace os.homedir()
+// with a temp directory after this module has loaded, and the default path has
+// to follow so an install test can never touch the developer's real file.
+function getDefaultSettingsPath(): string {
+    return path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+}
 
-let settingsPath = DEFAULT_SETTINGS_PATH;
+let settingsPath = getDefaultSettingsPath();
+let lastLoadError: string | null = null;
+
+export function getConfigLoadError(): string | null {
+    return lastLoadError;
+}
 
 export function initConfigPath(filePath?: string): void {
-    settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+    settingsPath = filePath ? path.resolve(filePath) : getDefaultSettingsPath();
 }
 
 export function getConfigPath(): string {
@@ -32,55 +52,116 @@ export function getConfigPath(): string {
 }
 
 export function isCustomConfigPath(): boolean {
-    return settingsPath !== DEFAULT_SETTINGS_PATH;
+    return settingsPath !== getDefaultSettingsPath();
 }
 
 interface SettingsPaths {
     configDir: string;
     settingsPath: string;
-    settingsBackupPath: string;
+}
+
+interface AtomicWriteTarget {
+    targetPath: string;
+    tempDir: string;
 }
 
 function getSettingsPaths(): SettingsPaths {
-    const configDir = path.dirname(settingsPath);
-    const parsedPath = path.parse(settingsPath);
-    const backupBaseName = parsedPath.ext
-        ? `${parsedPath.name}.bak`
-        : `${parsedPath.base}.bak`;
-
     return {
-        configDir,
-        settingsPath,
-        settingsBackupPath: path.join(configDir, backupBaseName)
+        configDir: path.dirname(settingsPath),
+        settingsPath
     };
+}
+
+function getErrorCode(error: unknown): string | undefined {
+    return typeof error === 'object' && error !== null && 'code' in error
+        ? String(error.code)
+        : undefined;
+}
+
+async function resolveSymlinkTarget(linkPath: string): Promise<string> {
+    try {
+        return await realpath(linkPath);
+    } catch (error) {
+        if (getErrorCode(error) !== 'ENOENT') {
+            throw error;
+        }
+
+        const linkTarget = await readlink(linkPath);
+        return path.resolve(path.dirname(linkPath), linkTarget);
+    }
+}
+
+async function resolveAtomicWriteTarget(paths: SettingsPaths): Promise<AtomicWriteTarget> {
+    try {
+        const stats = await lstat(paths.settingsPath);
+        if (!stats.isSymbolicLink()) {
+            return {
+                targetPath: paths.settingsPath,
+                tempDir: paths.configDir
+            };
+        }
+
+        const targetPath = await resolveSymlinkTarget(paths.settingsPath);
+        return {
+            targetPath,
+            tempDir: path.dirname(targetPath)
+        };
+    } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') {
+            return {
+                targetPath: paths.settingsPath,
+                tempDir: paths.configDir
+            };
+        }
+
+        throw error;
+    }
+}
+
+// The permissions of the file a save replaces, so a private settings file
+// stays private; a new file gets the usual default
+async function getReplacedFileMode(filePath: string): Promise<number> {
+    try {
+        return (await stat(filePath)).mode & 0o777;
+    } catch {
+        return 0o666;
+    }
 }
 
 async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
     await mkdir(paths.configDir, { recursive: true });
-    await writeFile(paths.settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-}
 
-async function backupBadSettings(paths: SettingsPaths): Promise<void> {
+    // Write to a unique temp file in the same directory, then atomically rename
+    // over the target. A concurrent reader (e.g. the statusline render path firing
+    // mid-save) sees either the complete old file or the complete new file, never a
+    // torn write. Same idiom as git.ts:writePersistentCache.
+    const writeTarget = await resolveAtomicWriteTarget(paths);
+    const tempPath = path.join(
+        writeTarget.tempDir,
+        `${path.basename(writeTarget.targetPath)}.${process.pid}.${Date.now()}.tmp`
+    );
+    const mode = await getReplacedFileMode(writeTarget.targetPath);
     try {
-        if (fs.existsSync(paths.settingsPath)) {
-            const content = await readFile(paths.settingsPath, 'utf-8');
-            await writeFile(paths.settingsBackupPath, content, 'utf-8');
-            console.error(`Bad settings backed up to ${paths.settingsBackupPath}`);
-        }
+        await writeFile(tempPath, JSON.stringify(settings, null, 2), { encoding: 'utf-8', mode });
+        await rename(tempPath, writeTarget.targetPath);
     } catch (error) {
-        console.error('Failed to backup bad settings:', error);
+        try {
+            await unlink(tempPath);
+        } catch { /* best-effort cleanup; ignore */ }
+        throw error;
     }
 }
 
-async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
-    const defaults = SettingsSchema.parse({});
-    const settingsWithVersion = {
-        ...defaults,
-        version: CURRENT_VERSION
-    };
+function inMemoryDefaults(): Settings {
+    // Defaults held in memory only (version included via the schema default).
+    // Returned on recovery without writing, so a malformed file is preserved.
+    return SettingsSchema.parse({});
+}
 
+async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
+    const defaults = inMemoryDefaults();
     try {
-        await writeSettingsJson(settingsWithVersion, paths);
+        await writeSettingsJson(defaults, paths);
         console.error(`Default settings written to ${paths.settingsPath}`);
     } catch (error) {
         console.error('Failed to write default settings:', error);
@@ -89,12 +170,18 @@ async function writeDefaultSettings(paths: SettingsPaths): Promise<Settings> {
     return defaults;
 }
 
-async function recoverWithDefaults(paths: SettingsPaths): Promise<Settings> {
-    await backupBadSettings(paths);
-    return await writeDefaultSettings(paths);
-}
-
+/**
+ * Load ccstatusline settings from disk.
+ *
+ * Recovery contract: if the file cannot be read or fails validation, loadSettings
+ * NEVER overwrites it — it returns built-in defaults in memory, records the reason
+ * (see getConfigLoadError), and leaves the file untouched for the user to fix. The
+ * file is written only when it is missing (first run), or when a readable config is
+ * migrated to the current version AND the migrated result validates first. All writes
+ * go through writeSettingsJson, which is atomic (temp file + rename).
+ */
 export async function loadSettings(): Promise<Settings> {
+    lastLoadError = null;
     const paths = getSettingsPaths();
 
     try {
@@ -108,47 +195,60 @@ export async function loadSettings(): Promise<Settings> {
         try {
             rawData = JSON.parse(content);
         } catch {
-            // If we can't parse the JSON, backup and write defaults
-            console.error('Failed to parse settings.json, backing up and using defaults');
-            return await recoverWithDefaults(paths);
+            console.error('Failed to parse settings.json, using defaults (file left unchanged)');
+            lastLoadError = 'settings.json is not valid JSON';
+            return inMemoryDefaults();
         }
 
         // Check if this is a v1 config (no version field)
         const hasVersion = typeof rawData === 'object' && rawData !== null && 'version' in rawData;
+        let migrated = false;
         if (!hasVersion) {
             // Parse as v1 to validate before migration
             const v1Result = SettingsSchema_v1.safeParse(rawData);
             if (!v1Result.success) {
-                console.error('Invalid v1 settings format:', v1Result.error);
-                return await recoverWithDefaults(paths);
+                console.error('Invalid v1 settings format, using defaults (file left unchanged):', v1Result.error);
+                lastLoadError = 'settings.json is not in a valid format';
+                return inMemoryDefaults();
             }
 
-            // Migrate v1 to current version and save the migrated settings back to disk
+            // Migrate v1 to the current version (persisted below, only once it validates)
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            await writeSettingsJson(rawData, paths);
+            migrated = true;
         } else if (needsMigration(rawData, CURRENT_VERSION)) {
-            // Handle migrations for versioned configs (v2+) and save the migrated settings back to disk
+            // Migrate versioned configs (v2+) to current (persisted below, only once it validates)
             rawData = migrateConfig(rawData, CURRENT_VERSION);
-            await writeSettingsJson(rawData, paths);
+            migrated = true;
         }
 
         // At this point, data should be in current format with version field
         // Parse with main schema which will apply all defaults
         const result = SettingsSchema.safeParse(rawData);
         if (!result.success) {
-            console.error('Failed to parse settings:', result.error);
-            return await recoverWithDefaults(paths);
+            console.error('Failed to parse settings, using defaults (file left unchanged):', result.error);
+            lastLoadError = 'settings.json is not in a valid format';
+            return inMemoryDefaults();
         }
 
-        return result.data;
+        // Persist a migration only after the migrated result validates, so a faulty
+        // migration can never overwrite the user's original file.
+        if (migrated) {
+            await writeSettingsJson(rawData, paths);
+        }
+
+        return {
+            ...result.data,
+            lines: upgradeLegacyWidgetTypes(result.data.lines)
+        };
     } catch (error) {
-        // Any other error, backup and write defaults
-        console.error('Error loading settings:', error);
-        return await recoverWithDefaults(paths);
+        console.error('Error loading settings, using defaults:', error);
+        lastLoadError = 'settings.json could not be read';
+        return inMemoryDefaults();
     }
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
+/** Saves settings and syncs widget hooks; returns the hooks the sync couldn't add, if any. */
+export async function saveSettings(settings: Settings): Promise<SkippedWidgetHooks | null> {
     const paths = getSettingsPaths();
 
     // Always include version when saving
@@ -162,6 +262,126 @@ export async function saveSettings(settings: Settings): Promise<void> {
     // Sync widget hooks to Claude settings
     try {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(settings);
-    } catch { /* ignore hook sync failures */ }
+        return await syncWidgetHooks(settings);
+    } catch {
+        // Ignore hook sync failures
+        return null;
+    }
+}
+
+export type ImportValidationResult
+    = | { status: 'valid'; data: Settings; presentKeys: (keyof Settings)[] }
+        | { status: 'invalid'; reason: string };
+
+function expandPath(filePath: string): string {
+    if (filePath.startsWith('~/') || filePath === '~') {
+        return path.join(os.homedir(), filePath.slice(2));
+    }
+    return filePath;
+}
+
+export async function exportConfig(settings: Settings, filePath: string): Promise<void> {
+    const expanded = expandPath(filePath);
+    const exportData = { ...settings, exportedBy: getPackageVersion() };
+    await mkdir(path.dirname(expanded), { recursive: true });
+    await writeFile(expanded, JSON.stringify(exportData, null, 2), 'utf-8');
+}
+
+export async function validateImportFile(filePath: string): Promise<ImportValidationResult> {
+    const expanded = expandPath(filePath);
+    let raw: string;
+    try {
+        raw = await readFile(expanded, 'utf-8');
+    } catch {
+        return { status: 'invalid', reason: `Cannot read file: ${expanded}` };
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return { status: 'invalid', reason: 'File is not valid JSON' };
+    }
+
+    if (
+        typeof parsed === 'object'
+        && parsed !== null
+        && 'version' in parsed
+        && typeof parsed.version === 'number'
+        && parsed.version > CURRENT_VERSION
+    ) {
+        return {
+            status: 'invalid',
+            reason: `Config version ${parsed.version} is newer than supported version ${CURRENT_VERSION}`
+        };
+    }
+
+    if (needsMigration(parsed, CURRENT_VERSION)) {
+        parsed = migrateConfig(parsed, CURRENT_VERSION);
+    }
+
+    const result = SettingsSchema.safeParse(parsed);
+    if (!result.success) {
+        return { status: 'invalid', reason: `Invalid config format: ${result.error.issues[0]?.message ?? 'unknown error'}` };
+    }
+
+    const presentKeys = Object.keys(parsed as Record<string, unknown>)
+        .filter((key): key is keyof Settings => key in result.data);
+
+    return { status: 'valid', data: result.data, presentKeys };
+}
+
+const IMPORT_EXCLUDED_KEYS = ['installation', 'version', 'updatemessage', 'exportedBy'] as const;
+type ImportExcludedKey = typeof IMPORT_EXCLUDED_KEYS[number];
+
+export function applyImport(
+    current: Settings,
+    imported: Settings,
+    mode: 'replace' | 'merge',
+    presentKeys: readonly (keyof Settings)[] = Object.keys(imported) as (keyof Settings)[]
+): Settings {
+    const mergeKeys = new Set(presentKeys);
+    const importedClean = Object.fromEntries(
+        Object.entries(imported).filter(([k]) => !IMPORT_EXCLUDED_KEYS.includes(k as ImportExcludedKey)
+            && (mode === 'replace' || mergeKeys.has(k as keyof Settings))
+        )
+    ) as Partial<Settings>;
+
+    if (mode === 'replace') {
+        return SettingsSchema.parse({
+            ...importedClean,
+            installation: current.installation
+        });
+    }
+    return { ...current, ...importedClean };
+}
+
+export async function saveInstallationMetadata(metadata: InstallationMetadata | undefined): Promise<void> {
+    const paths = getSettingsPaths();
+    if (!metadata && !fs.existsSync(paths.settingsPath)) {
+        return;
+    }
+
+    const settings = await loadSettings();
+
+    // If the existing settings.json couldn't be read, don't overwrite it just to
+    // record installation metadata — that would discard the user's (recoverable)
+    // file. Metadata is non-critical and is persisted on the next clean save.
+    if (getConfigLoadError() !== null) {
+        console.error('Skipping installation-metadata write: settings.json is unreadable (left unchanged).');
+        return;
+    }
+
+    const settingsWithVersion: Settings & { version: number } = {
+        ...settings,
+        version: CURRENT_VERSION
+    };
+
+    if (metadata) {
+        settingsWithVersion.installation = metadata;
+    } else {
+        delete settingsWithVersion.installation;
+    }
+
+    await writeSettingsJson(settingsWithVersion, paths);
 }

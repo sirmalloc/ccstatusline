@@ -1,7 +1,7 @@
 {
   "entryPoints": ["src"],
   "entryPointStrategy": "expand",
-  "out": "docs",
+  "out": "typedoc",
   "name": "ccstatusline",
   "readme": "README.md",
   "excludePrivate": true,

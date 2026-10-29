@@ -1,4 +1,5 @@
 import {
+    afterEach,
     describe,
     expect,
     it
@@ -124,6 +125,58 @@ describe('getContextConfig', () => {
 
             expect(config.maxTokens).toBe(200000);
             expect(config.usableTokens).toBe(160000);
+        });
+    });
+
+    describe('CCSTATUSLINE_CONTEXT_SIZE_FALLBACK override', () => {
+        afterEach(() => {
+            delete process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK;
+        });
+
+        it('uses the env value as the fallback when no window size is otherwise known', () => {
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = '1000000';
+            const config = getContextConfig('claude-sonnet-4-5-20250929');
+
+            expect(config.maxTokens).toBe(1000000);
+            expect(config.usableTokens).toBe(800000);
+        });
+
+        it('uses the env value as the fallback when the model is unknown', () => {
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = '500000';
+            const config = getContextConfig(undefined);
+
+            expect(config.maxTokens).toBe(500000);
+            expect(config.usableTokens).toBe(400000);
+        });
+
+        it('falls back to 200k when the env value is non-numeric', () => {
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = 'not-a-number';
+            const config = getContextConfig('claude-3-5-sonnet-20241022');
+
+            expect(config.maxTokens).toBe(200000);
+            expect(config.usableTokens).toBe(160000);
+        });
+
+        it('falls back to 200k when the env value is zero or negative', () => {
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = '0';
+            expect(getContextConfig(undefined).maxTokens).toBe(200000);
+
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = '-5';
+            expect(getContextConfig(undefined).maxTokens).toBe(200000);
+        });
+
+        it('does not override the live context_window_size from the status JSON', () => {
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = '500000';
+            const config = getContextConfig('claude-3-5-sonnet-20241022', 1000000);
+
+            expect(config.maxTokens).toBe(1000000);
+        });
+
+        it('does not override a [1m] model-name hint', () => {
+            process.env.CCSTATUSLINE_CONTEXT_SIZE_FALLBACK = '500000';
+            const config = getContextConfig('claude-sonnet-4-5-20250929[1m]');
+
+            expect(config.maxTokens).toBe(1000000);
         });
     });
 });

@@ -6,18 +6,23 @@ import type {
     WidgetItem
 } from '../types/Widget';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const LABEL = 'Model: ';
+
 export class ModelWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
     getDescription(): string { return 'Displays the Claude model name (e.g., Claude 3.5 Sonnet)'; }
     getDisplayName(): string { return 'Model'; }
     getCategory(): string { return 'Core'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         if (context.isPreview) {
-            return item.rawValue ? 'Claude' : 'Model: Claude';
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), 'Claude');
         }
 
         const model = context.data?.model;
@@ -26,7 +31,8 @@ export class ModelWidget implements Widget {
             : (model?.display_name ?? model?.id);
 
         if (modelDisplayName) {
-            return item.rawValue ? modelDisplayName : `Model: ${modelDisplayName}`;
+            const shortName = modelDisplayName.replace(/\s*\(.*\)$/, '');
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), shortName);
         }
         return null;
     }

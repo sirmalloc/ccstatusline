@@ -9,8 +9,11 @@ import {
 
 import type { RenderContext } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
 import { ContextBarWidget } from '../ContextBar';
+import { ContextLengthWidget } from '../ContextLength';
+import { ContextWindowWidget } from '../ContextWindow';
 
 describe('ContextBarWidget', () => {
     beforeEach(() => {
@@ -70,7 +73,7 @@ describe('ContextBarWidget', () => {
         };
         const widget = new ContextBarWidget();
 
-        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:5.0:16] 50k/1000k (5%)');
+        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:5.0:16] 50k/1.0M (5%)');
     });
 
     it('uses 1M in parentheses model IDs in fallback mode', () => {
@@ -86,7 +89,7 @@ describe('ContextBarWidget', () => {
         };
         const widget = new ContextBarWidget();
 
-        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:5.0:16] 50k/1000k (5%)');
+        expect(widget.render({ id: 'ctx', type: 'context-bar' }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:5.0:16] 50k/1.0M (5%)');
     });
 
     it('clamps usage percentage to 100 when context length exceeds total', () => {
@@ -150,16 +153,38 @@ describe('ContextBarWidget', () => {
         }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:15.0:32] 30k/200k (15%)');
     });
 
-    it('toggles progress mode between short and long', () => {
+    it('cycles display modes in the expected order', () => {
         const widget = new ContextBarWidget();
-        const toLong = widget.handleEditorAction('toggle-progress', { id: 'ctx', type: 'context-bar' });
-        const toShort = widget.handleEditorAction('toggle-progress', {
-            id: 'ctx',
-            type: 'context-bar',
-            metadata: { display: 'progress' }
-        });
+        const base: WidgetItem = { id: 'ctx', type: 'context-bar' };
 
-        expect(toLong?.metadata?.display).toBe('progress');
-        expect(toShort?.metadata?.display).toBe('progress-short');
+        const first = widget.handleEditorAction('toggle-progress', base);
+        const second = widget.handleEditorAction('toggle-progress', first ?? base);
+        const third = widget.handleEditorAction('toggle-progress', second ?? base);
+        const fourth = widget.handleEditorAction('toggle-progress', third ?? base);
+
+        expect(first?.metadata?.display).toBe('progress');
+        expect(second?.metadata?.display).toBe('slider');
+        expect(third?.metadata?.display).toBe('slider-only');
+        expect(fourth?.metadata?.display).toBe('progress-short');
+    });
+
+    it('formats context preview samples with the selected styles', () => {
+        const context: RenderContext = { isPreview: true };
+
+        expect(new ContextLengthWidget().render({
+            id: 'length',
+            type: 'context-length',
+            numberFormat: { style: 'whole' }
+        }, context, DEFAULT_SETTINGS)).toBe('Ctx: 19k');
+        expect(new ContextWindowWidget().render({
+            id: 'window',
+            type: 'context-window',
+            numberFormat: { decimals: 2 }
+        }, context, DEFAULT_SETTINGS)).toBe('Win: 200.00k');
+        expect(new ContextBarWidget().render({
+            id: 'bar',
+            type: 'context-bar',
+            numberFormat: { decimals: 2 }
+        }, context, DEFAULT_SETTINGS)).toBe('Context: [bar:25.0:16] 50.00k/200.00k (25.00%)');
     });
 });

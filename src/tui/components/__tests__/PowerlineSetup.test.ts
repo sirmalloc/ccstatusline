@@ -1,18 +1,76 @@
+import { render } from 'ink';
+import { PassThrough } from 'node:stream';
+import React from 'react';
 import {
+    afterEach,
     describe,
     expect,
-    it
+    it,
+    vi
 } from 'vitest';
 
-import { DEFAULT_SETTINGS } from '../../../types/Settings';
 import {
+    DEFAULT_SETTINGS,
+    SettingsSchema
+} from '../../../types/Settings';
+import { waitFor } from '../../__tests__/helpers/wait-for-ink';
+import {
+    PowerlineSeparatorEditor,
+    type PowerlineSeparatorEditorProps
+} from '../PowerlineSeparatorEditor';
+import {
+    PowerlineSetup,
     buildPowerlineSetupMenuItems,
     getCapDisplay,
     getSeparatorDisplay,
-    getThemeDisplay
+    getThemeDisplay,
+    type PowerlineSetupProps
 } from '../PowerlineSetup';
 
+class MockTtyStream extends PassThrough {
+    isTTY = true;
+    columns = 120;
+    rows = 40;
+
+    setRawMode() {
+        return this;
+    }
+
+    ref() {
+        return this;
+    }
+
+    unref() {
+        return this;
+    }
+}
+
+interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+
+function createMockStdin(): NodeJS.ReadStream {
+    return new MockTtyStream() as unknown as NodeJS.ReadStream;
+}
+
+function createMockStdout(): CapturedWriteStream {
+    const stream = new MockTtyStream();
+    const chunks: string[] = [];
+
+    stream.on('data', (chunk: Buffer | string) => {
+        chunks.push(chunk.toString());
+    });
+
+    return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        getOutput() {
+            return chunks.join('');
+        }
+    });
+}
+
 describe('PowerlineSetup helpers', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('formats separator, cap, and theme display values', () => {
         const config = {
             ...DEFAULT_SETTINGS.powerline,
@@ -63,5 +121,245 @@ describe('PowerlineSetup helpers', () => {
             label: 'Themes     ',
             sublabel: '(Custom)'
         });
+    });
+
+    it('toggles continue theme across lines when (c) is pressed', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>();
+        const onBack = vi.fn();
+        const onInstallFonts = vi.fn();
+        const onClearMessage = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineSetup, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        continueThemeAcrossLines: false
+                    }
+                },
+                powerlineFontStatus: { installed: true },
+                onUpdate,
+                onBack,
+                onInstallFonts,
+                installingFonts: false,
+                fontInstallMessage: null,
+                onClearMessage
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Continue Theme:');
+            });
+
+            stdin.write('c');
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
+
+            const updatedSettings = onUpdate.mock.calls[0]?.[0];
+            expect(updatedSettings).toBeDefined();
+            expect(updatedSettings?.powerline.continueThemeAcrossLines).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it('warns when a global foreground override is active', async () => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSetupProps['onUpdate']>();
+        const onBack = vi.fn();
+        const onInstallFonts = vi.fn();
+        const onClearMessage = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineSetup, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    overrideForegroundColor: 'gradient:atlas',
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true
+                    }
+                },
+                powerlineFontStatus: { installed: true },
+                onUpdate,
+                onBack,
+                onInstallFonts,
+                installingFonts: false,
+                fontInstallMessage: null,
+                onClearMessage
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('Powerline Setup');
+                expect(stdout.getOutput()).toContain('⚠ Global override for FG active');
+            });
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+});
+
+describe('PowerlineSeparatorEditor', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it.each([
+        ['startCap', 'startCaps', '\uE0B2'],
+        ['endCap', 'endCaps', '\uE0B0']
+    ] as const)('allows adding more than 3 %s entries', async (mode, capKey, expectedDefaultCap) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSeparatorEditorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const existingCaps = [expectedDefaultCap, expectedDefaultCap, expectedDefaultCap];
+        const instance = render(
+            React.createElement(PowerlineSeparatorEditor, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        [capKey]: existingCaps
+                    }
+                },
+                mode,
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('(a)dd');
+            });
+
+            stdin.write('a');
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
+
+            const updatedSettings = onUpdate.mock.calls[0]?.[0];
+            expect(updatedSettings).toBeDefined();
+            expect(updatedSettings?.powerline[capKey]).toHaveLength(4);
+            expect(updatedSettings?.powerline[capKey][1]).toBe(expectedDefaultCap);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
+    });
+
+    it.each([
+        ['t', 't'],
+        ['→', '\x1b[C']
+    ])('keeps separator inversion saveable when %s edits a separator past a short inversion list', async (_key, input) => {
+        const stdin = createMockStdin();
+        const stdout = createMockStdout();
+        const stderr = createMockStdout();
+        const onUpdate = vi.fn<PowerlineSeparatorEditorProps['onUpdate']>();
+        const onBack = vi.fn();
+        const instance = render(
+            React.createElement(PowerlineSeparatorEditor, {
+                settings: {
+                    ...DEFAULT_SETTINGS,
+                    powerline: {
+                        ...DEFAULT_SETTINGS.powerline,
+                        enabled: true,
+                        separators: ['\uE0B0', '\uE0B0', '\uE0B0'],
+                        // The schema default, left as is when separators are added by hand
+                        separatorInvertBackground: [false]
+                    }
+                },
+                mode: 'separator',
+                onUpdate,
+                onBack
+            }),
+            {
+                stdin,
+                stdout,
+                stderr,
+                debug: true,
+                exitOnCtrlC: false,
+                patchConsole: false
+            }
+        );
+
+        try {
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  1:');
+            });
+
+            stdin.write('\x1b[B');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  2:');
+            });
+
+            stdin.write('\x1b[B');
+            await waitFor(() => {
+                expect(stdout.getOutput()).toContain('▶  3:');
+            });
+
+            stdin.write(input);
+            await waitFor(() => {
+                expect(onUpdate).toHaveBeenCalled();
+            });
+
+            const updatedSettings = onUpdate.mock.calls[0]?.[0];
+            expect(updatedSettings?.powerline.separatorInvertBackground).toEqual([false, false, true]);
+            // What ctrl+s writes must load back
+            const saved: unknown = JSON.parse(JSON.stringify(updatedSettings));
+            expect(SettingsSchema.safeParse(saved).success).toBe(true);
+        } finally {
+            instance.unmount();
+            instance.cleanup();
+            stdin.destroy();
+            stdout.destroy();
+            stderr.destroy();
+        }
     });
 });

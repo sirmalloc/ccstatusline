@@ -1,14 +1,14 @@
 import js from '@eslint/js';
 import ts from 'typescript-eslint';
 import stylistic from '@stylistic/eslint-plugin';
-import importPlugin from 'eslint-plugin-import';
+import { importX } from 'eslint-plugin-import-x';
 import importNewlinesPlugin from 'eslint-plugin-import-newlines';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 const importResolverSettings = {
-    'import/resolver': {
+    'import-x/resolver': {
         typescript: {
             project: ['./tsconfig.json'],
             alwaysTryTypes: true,
@@ -18,10 +18,10 @@ const importResolverSettings = {
             extensions: ['.js', '.jsx', '.ts', '.tsx', '.json']
         }
     },
-    'import/parsers': {
+    'import-x/parsers': {
         '@typescript-eslint/parser': ['.ts', '.tsx']
     },
-    'import/external-module-folders': ['node_modules', 'node_modules/@types']
+    'import-x/external-module-folders': ['node_modules', 'node_modules/@types']
 };
 
 export default ts.config([
@@ -29,14 +29,14 @@ export default ts.config([
         files: ['**/*.ts', '**/*.tsx'],
         plugins: {
             stylistic,
-            importPlugin,
+            'import-x': importX,
             'import-newlines': importNewlinesPlugin
         },
         extends: [
             js.configs.recommended,
             ts.configs.strictTypeChecked,
             ts.configs.stylisticTypeChecked,
-            importPlugin.flatConfigs.recommended,
+            importX.flatConfigs.recommended,
             stylistic.configs.customize({
                 quotes: 'single',
                 semi: true,
@@ -60,7 +60,15 @@ export default ts.config([
         rules: {
             'no-control-regex': 'off', // We intentionally match ANSI escape sequences
             'eqeqeq': 'error',
-            'import/order': ['error', {
+            // One spelling for the number helpers. Number.isNaN/isFinite also skip
+            // the string coercion the globals do (isNaN('abc') is true).
+            'no-restricted-globals': ['error',
+                { name: 'parseInt', message: 'Use Number.parseInt instead.' },
+                { name: 'parseFloat', message: 'Use Number.parseFloat instead.' },
+                { name: 'isNaN', message: 'Use Number.isNaN instead; it does not coerce its argument.' },
+                { name: 'isFinite', message: 'Use Number.isFinite instead; it does not coerce its argument.' }
+            ],
+            'import-x/order': ['error', {
                 alphabetize: {
                     'order': 'asc',
                     'orderImportKind': 'asc',
@@ -85,7 +93,7 @@ export default ts.config([
                 items: 1,
                 semi: true
             }],
-            '@typescript-eslint/no-unused-vars': ['error', { 'args': 'none' }],
+            '@typescript-eslint/no-unused-vars': ['error', { 'args': 'none', 'ignoreRestSiblings': true }],
             '@typescript-eslint/no-empty-function': ['error', { 'allow': ['private-constructors'] }],
             '@typescript-eslint/array-type': 'error',
             '@typescript-eslint/consistent-type-imports': 'error',
@@ -106,13 +114,13 @@ export default ts.config([
             '@stylistic/nonblock-statement-body-position': ['error', 'below'],
             '@stylistic/object-curly-newline': ['error', { 'multiline': true }],
             '@stylistic/switch-colon-spacing': 'error',
-            '@stylistic/eol-last': ['error', 'never'],
+            '@stylistic/eol-last': ['error', 'always'],
             '@stylistic/jsx-quotes': ['error', 'prefer-single'],
             '@stylistic/multiline-ternary': 'off',
-            'import/no-unresolved': ['error'],
-            'import/no-named-as-default': 'off',
-            'import/no-named-as-default-member': 'off',
-            'import/default': 'off'
+            'import-x/no-unresolved': ['error'],
+            'import-x/no-named-as-default': 'off',
+            'import-x/no-named-as-default-member': 'off',
+            'import-x/default': 'off'
         }
     },
     {

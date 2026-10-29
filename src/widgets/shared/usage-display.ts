@@ -1,7 +1,13 @@
+import type { RenderContext } from '../../types/RenderContext';
 import type {
     CustomKeybind,
+    HideableState,
     WidgetItem
 } from '../../types/Widget';
+import {
+    DEFAULT_RESET_LOCALE,
+    canonicalizeLocale
+} from '../../utils/locales';
 
 import { makeModifierText } from './editor-display';
 import {
@@ -10,15 +16,47 @@ import {
     toggleMetadataFlag
 } from './metadata';
 
-export type UsageDisplayMode = 'time' | 'progress' | 'progress-short';
+export type UsageDisplayMode = 'time' | 'progress' | 'progress-short' | 'slider' | 'slider-only';
+
+// Shared by the usage percentage widgets and the reset timers, which render the
+// same error placeholders
+export const USAGE_NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', label: 'when usage data is unavailable' };
+// Block Reset Timer's: show the reset countdown only once the 5-hour limit is
+// hit. Here rather than in the widget so the usage prefetch can read it.
+export const SESSION_UNDER_LIMIT_HIDEABLE_STATE: HideableState = { key: 'under-limit', label: 'when the 5-hour block is under 100%' };
+// Block Usage's: hide the percent once the limit is hit, so with both states on
+// the reset countdown takes its place. Here for the same reason.
+export const SESSION_AT_LIMIT_HIDEABLE_STATE: HideableState = { key: 'at-limit', label: 'when the 5-hour block is at 100%' };
+
+// Whether the 5-hour block is at its limit, for both states above, so Block
+// Usage and Block Reset Timer always swap at the same render. The usage API's
+// percent decides when prefetch accepted one (see usage-prefetch.ts), then the
+// payload's own: merged usage data can still hold an API percent prefetch
+// rejected as stale or from a block that has since reset. The raw percent, not
+// the rounded one: 99.7% isn't the limit yet.
+export function isAtSessionLimit(context: RenderContext): boolean {
+    const sessionUsage = context.usageData?.apiSessionUsage ?? context.data?.rate_limits?.five_hour?.used_percentage;
+    return typeof sessionUsage === 'number' && sessionUsage >= 100;
+}
+
+const SLIDER_WIDTH = 10;
 
 const PROGRESS_TOGGLE_KEYBIND: CustomKeybind = { key: 'p', label: '(p)rogress toggle', action: 'toggle-progress' };
 const INVERT_TOGGLE_KEYBIND: CustomKeybind = { key: 'v', label: 'in(v)ert fill', action: 'toggle-invert' };
 const COMPACT_TOGGLE_KEYBIND: CustomKeybind = { key: 's', label: '(s)hort time', action: 'toggle-compact' };
+const CURSOR_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)ime cursor', action: 'toggle-cursor' };
+const DATE_TOGGLE_KEYBIND: CustomKeybind = { key: 't', label: '(t)imestamp', action: 'toggle-date' };
+// 'h' opens the shared hide checklist, and the items editor appends that bind
+// last while matching takes the first hit, so a widget-level 'h' would make the
+// checklist unreachable in the modes that offer this toggle.
+const HOUR_FORMAT_TOGGLE_KEYBIND: CustomKeybind = { key: 'f', label: '12/24 (f)ormat', action: 'toggle-hour-format' };
+const WEEKDAY_TOGGLE_KEYBIND: CustomKeybind = { key: 'w', label: '(w)eekday', action: 'toggle-weekday' };
+const TIMEZONE_KEYBIND: CustomKeybind = { key: 'z', label: 'time(z)one', action: 'edit-timezone' };
+const LOCALE_KEYBIND: CustomKeybind = { key: 'l', label: '(l)ocale', action: 'edit-locale' };
 
 export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
     const mode = item.metadata?.display;
-    if (mode === 'progress' || mode === 'progress-short') {
+    if (mode === 'progress' || mode === 'progress-short' || mode === 'slider' || mode === 'slider-only') {
         return mode;
     }
     return 'time';
@@ -26,6 +64,33 @@ export function getUsageDisplayMode(item: WidgetItem): UsageDisplayMode {
 
 export function isUsageProgressMode(mode: UsageDisplayMode): boolean {
     return mode === 'progress' || mode === 'progress-short';
+}
+
+export function isUsageSliderMode(mode: UsageDisplayMode): boolean {
+    return mode === 'slider' || mode === 'slider-only';
+}
+
+interface SliderBarOptions { cursorPercent?: number }
+
+export function makeSliderBar(percent: number, width: number = SLIDER_WIDTH, options?: SliderBarOptions): string {
+    const clamped = Math.max(0, Math.min(100, percent));
+    const filled = Math.round((clamped / 100) * width);
+    const cursorPos = options?.cursorPercent !== undefined
+        ? Math.min(Math.floor((Math.max(0, Math.min(100, options.cursorPercent)) / 100) * width), width - 1)
+        : -1;
+
+    let bar = '';
+    for (let i = 0; i < width; i++) {
+        if (i === cursorPos) {
+            bar += '│';
+        } else if (i < filled) {
+            bar += '▓';
+        } else {
+            bar += '░';
+        }
+    }
+
+    return bar;
 }
 
 export function getUsageProgressBarWidth(mode: UsageDisplayMode): number {
@@ -40,11 +105,110 @@ export function isUsageCompact(item: WidgetItem): boolean {
     return isMetadataFlagEnabled(item, 'compact');
 }
 
+export function isUsageCursorEnabled(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'cursor');
+}
+
+export function toggleUsageCursor(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'cursor');
+}
+
+export function isUsageDateMode(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'absolute');
+}
+
+export function isUsage12HourClock(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'hour12');
+}
+
+export function getUsageTimezone(item: WidgetItem): string | undefined {
+    const tz = item.metadata?.timezone;
+    return typeof tz === 'string' && tz.length > 0 ? tz : undefined;
+}
+
+export function getUsageLocale(item: WidgetItem): string | undefined {
+    const locale = item.metadata?.locale;
+    return typeof locale === 'string' && locale.length > 0 ? locale : undefined;
+}
+
+export function getUsageLocaleModifier(item: WidgetItem): string | undefined {
+    const locale = getUsageLocale(item);
+    return locale ? `locale: ${locale}` : undefined;
+}
+
+export function getUsageTimezoneModifier(item: WidgetItem): string | undefined {
+    const timezone = getUsageTimezone(item);
+    return timezone ? `tz: ${timezone}` : undefined;
+}
+
+export function setUsageTimezone(item: WidgetItem, timezone: string): WidgetItem {
+    if (timezone === 'UTC') {
+        return removeMetadataKeys(item, ['timezone']);
+    }
+
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            timezone
+        }
+    };
+}
+
+export function setUsageLocale(item: WidgetItem, locale: string): WidgetItem {
+    const canonicalLocale = canonicalizeLocale(locale);
+    if (!canonicalLocale || canonicalLocale === DEFAULT_RESET_LOCALE) {
+        return removeMetadataKeys(item, ['locale']);
+    }
+
+    return {
+        ...item,
+        metadata: {
+            ...item.metadata,
+            locale: canonicalLocale
+        }
+    };
+}
+
 export function toggleUsageCompact(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'compact');
 }
 
-interface UsageDisplayModifierOptions { includeCompact?: boolean }
+export function toggleUsageDateMode(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'absolute');
+}
+
+export function toggleUsageHourFormat(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'hour12');
+}
+
+export function isUsageWeekdayEnabled(item: WidgetItem): boolean {
+    return isMetadataFlagEnabled(item, 'weekday');
+}
+
+export function toggleUsageWeekday(item: WidgetItem): WidgetItem {
+    return toggleMetadataFlag(item, 'weekday');
+}
+
+// For the usage widgets that only ever render text. A type change in the widget
+// picker keeps the old widget's metadata, but its bar mode doesn't apply, nor
+// does inverting that bar's fill unless the widget shows used or remaining.
+export function getUsageTextModifierText(
+    item: WidgetItem,
+    options: UsageDisplayModifierOptions = {}
+): string | undefined {
+    const barKeys = options.showUsageDirection ? ['display'] : ['display', 'invert'];
+    return getUsageDisplayModifierText(removeMetadataKeys(item, barKeys), options);
+}
+
+interface UsageDisplayModifierOptions {
+    includeCompact?: boolean;
+    // Only for widgets that draw a time cursor: the cursor metadata outlives a
+    // type change in the widget picker
+    includeCursor?: boolean;
+    includeDate?: boolean;
+    showUsageDirection?: boolean;
+}
 
 export function getUsageDisplayModifierText(
     item: WidgetItem,
@@ -54,33 +218,73 @@ export function getUsageDisplayModifierText(
     const modifiers: string[] = [];
 
     if (mode === 'progress') {
-        modifiers.push('progress bar');
+        modifiers.push('long bar');
     } else if (mode === 'progress-short') {
+        modifiers.push('medium bar');
+    } else if (mode === 'slider') {
         modifiers.push('short bar');
+    } else if (mode === 'slider-only') {
+        modifiers.push('short bar only');
     }
 
-    if (isUsageInverted(item)) {
+    if (options.showUsageDirection) {
+        modifiers.push(isUsageInverted(item) ? 'remaining' : 'used');
+    } else if (isUsageInverted(item)) {
         modifiers.push('inverted');
+    }
+
+    if (options.includeCursor && isUsageCursorEnabled(item) && (isUsageProgressMode(mode) || isUsageSliderMode(mode))) {
+        modifiers.push('time cursor');
     }
 
     if (options.includeCompact && !isUsageProgressMode(mode) && isUsageCompact(item)) {
         modifiers.push('compact');
     }
 
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item)) {
+        modifiers.push('date');
+    }
+
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && isUsage12HourClock(item)) {
+        modifiers.push('12hr');
+    }
+
+    const timezoneModifier = getUsageTimezoneModifier(item);
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && timezoneModifier) {
+        modifiers.push(timezoneModifier);
+    }
+
+    const localeModifier = getUsageLocaleModifier(item);
+    if (options.includeDate && !isUsageProgressMode(mode) && isUsageDateMode(item) && localeModifier) {
+        modifiers.push(localeModifier);
+    }
+
     return makeModifierText(modifiers);
 }
 
-export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: string[] = []): WidgetItem {
+export function cycleUsageDisplayMode(item: WidgetItem, disabledInProgressKeys: string[] = [], includeSlider = false, preserveInvertInTime = false): WidgetItem {
     const currentMode = getUsageDisplayMode(item);
-    const nextMode: UsageDisplayMode = currentMode === 'time'
-        ? 'progress'
-        : currentMode === 'progress'
-            ? 'progress-short'
-            : 'time';
+    let nextMode: UsageDisplayMode;
+    if (includeSlider) {
+        nextMode = currentMode === 'time'
+            ? 'progress'
+            : currentMode === 'progress'
+                ? 'progress-short'
+                : currentMode === 'progress-short'
+                    ? 'slider'
+                    : currentMode === 'slider'
+                        ? 'slider-only'
+                        : 'time';
+    } else {
+        nextMode = currentMode === 'time'
+            ? 'progress'
+            : currentMode === 'progress'
+                ? 'progress-short'
+                : 'time';
+    }
 
-    const nextItem = removeMetadataKeys(item, nextMode === 'time'
-        ? ['invert']
-        : disabledInProgressKeys);
+    const keysToRemove = nextMode === 'time' ? (preserveInvertInTime ? ['cursor'] : ['invert', 'cursor']) : disabledInProgressKeys;
+    const nextItem = removeMetadataKeys(item, keysToRemove);
     const nextMetadata: Record<string, string> = {
         ...(nextItem.metadata ?? {}),
         display: nextMode
@@ -96,23 +300,74 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
-export function getUsagePercentCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
-    const keybinds = [PROGRESS_TOGGLE_KEYBIND];
+export function getUsageDirectionKeybind(item?: WidgetItem): CustomKeybind {
+    const nextDirection = item && isUsageInverted(item) ? 'used' : 'remaining';
+    return { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' };
+}
 
-    if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
-        keybinds.push(INVERT_TOGGLE_KEYBIND);
+export function getUsageCompactKeybind(): CustomKeybind {
+    return COMPACT_TOGGLE_KEYBIND;
+}
+
+export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
+    const keybinds: CustomKeybind[] = [
+        PROGRESS_TOGGLE_KEYBIND,
+        getUsageDirectionKeybind(item)
+    ];
+
+    if (item && includeCursor) {
+        const mode = getUsageDisplayMode(item);
+        if (isUsageProgressMode(mode) || isUsageSliderMode(mode)) {
+            keybinds.push(CURSOR_TOGGLE_KEYBIND);
+        }
     }
 
     return keybinds;
 }
 
-export function getUsageTimerCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
+interface UsageTimerCustomKeybindOptions {
+    includeDate?: boolean;
+    includeHourFormat?: boolean;
+    includeLocale?: boolean;
+    includeTimezone?: boolean;
+    includeWeekday?: boolean;
+}
+
+export function getUsageTimerCustomKeybinds(
+    item?: WidgetItem,
+    options: UsageTimerCustomKeybindOptions = {}
+): CustomKeybind[] {
     const keybinds = [PROGRESS_TOGGLE_KEYBIND];
 
-    if (item && isUsageProgressMode(getUsageDisplayMode(item))) {
+    const mode = item ? getUsageDisplayMode(item) : 'time';
+    const isBarMode = isUsageProgressMode(mode) || isUsageSliderMode(mode);
+
+    if (item && isBarMode) {
         keybinds.push(INVERT_TOGGLE_KEYBIND);
     } else {
         keybinds.push(COMPACT_TOGGLE_KEYBIND);
+
+        if (options.includeDate) {
+            keybinds.push(DATE_TOGGLE_KEYBIND);
+        }
+    }
+
+    if (item && isUsageDateMode(item) && !isBarMode) {
+        if (options.includeHourFormat) {
+            keybinds.push(HOUR_FORMAT_TOGGLE_KEYBIND);
+        }
+
+        if (options.includeWeekday) {
+            keybinds.push(WEEKDAY_TOGGLE_KEYBIND);
+        }
+
+        if (options.includeTimezone) {
+            keybinds.push(TIMEZONE_KEYBIND);
+        }
+
+        if (options.includeLocale) {
+            keybinds.push(LOCALE_KEYBIND);
+        }
     }
 
     return keybinds;

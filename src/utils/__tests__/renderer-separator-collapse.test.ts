@@ -1,0 +1,288 @@
+import {
+    describe,
+    expect,
+    it
+} from 'vitest';
+
+import type { RenderContext } from '../../types/RenderContext';
+import {
+    DEFAULT_SETTINGS,
+    type Settings
+} from '../../types/Settings';
+import type { WidgetItem } from '../../types/Widget';
+import { stripSgrCodes } from '../ansi';
+import {
+    preRenderAllWidgets,
+    renderStatusLine
+} from '../renderer';
+
+interface PreRenderedWidget {
+    content: string;
+    plainLength: number;
+    widget: WidgetItem;
+}
+
+function createSettings(overrides: Partial<Settings> = {}): Settings {
+    return {
+        ...DEFAULT_SETTINGS,
+        ...overrides,
+        powerline: {
+            ...DEFAULT_SETTINGS.powerline,
+            ...(overrides.powerline ?? {})
+        }
+    };
+}
+
+function makePreRendered(widgets: WidgetItem[], contentByIndex: Record<number, string>): PreRenderedWidget[] {
+    return widgets.map((widget, i) => {
+        const content = contentByIndex[i] ?? '';
+        return { content, plainLength: content.length, widget };
+    });
+}
+
+function render(
+    widgets: WidgetItem[],
+    contentByIndex: Record<number, string>,
+    settingsOverrides: Partial<Settings> = {}
+): string {
+    const settings = createSettings({ colorLevel: 0, ...settingsOverrides });
+    const context: RenderContext = { isPreview: false, terminalWidth: 200 };
+    const preRenderedWidgets = makePreRendered(widgets, contentByIndex);
+    return renderStatusLine(widgets, settings, context, preRenderedWidgets, []);
+}
+
+const T = (id: string): WidgetItem => ({ id, type: 'custom-text' });
+const SEP: WidgetItem = { id: 'sep', type: 'separator' };
+
+describe('renderer separator collapse around empty widgets', () => {
+    it('emits exactly one separator between content widgets (regression baseline)', () => {
+        const widgets = [T('a'), SEP, T('b')];
+        const out = render(widgets, { 0: 'A', 2: 'B' });
+        expect((out.match(/\|/g) ?? []).length).toBe(1);
+    });
+
+    it('drops the trailing separator when the widget after it renders empty', () => {
+        const widgets = [T('a'), SEP, T('b'), SEP, T('c')];
+        // 'b' renders empty; the separator after 'b' (before 'c') must be dropped
+        const out = render(widgets, { 0: 'A', 2: '', 4: 'C' });
+        expect((out.match(/\|/g) ?? []).length).toBe(1);
+        expect(out).toContain('A');
+        expect(out).toContain('C');
+    });
+
+    it('looks past an empty widget when no separator already owns the boundary', () => {
+        const widgets = [T('a'), T('b'), SEP, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 1: '', 3: 'C' }));
+        expect(out).toBe('A | C');
+    });
+
+    it('replaces spacing before an empty widget with its following separator', () => {
+        const space: WidgetItem = { id: 'space', type: 'separator', character: ' ' };
+        const pipe: WidgetItem = { id: 'pipe', type: 'separator', character: '|' };
+        const widgets = [T('a'), space, T('b'), pipe, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: '', 4: 'C' }));
+        expect(out).toBe('A | C');
+    });
+
+    it('keeps a visible separator as the boundary around an empty widget', () => {
+        const colon: WidgetItem = { id: 'colon', type: 'separator', character: ':' };
+        const pipe: WidgetItem = { id: 'pipe', type: 'separator', character: '|' };
+        const widgets = [T('a'), colon, T('b'), pipe, T('c')];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: '', 4: 'C' }));
+        expect(out).toBe('A:C');
+    });
+
+    it('collapses multiple consecutive empty widgets into a single separator', () => {
+        const widgets = [T('a'), SEP, T('b'), SEP, T('c'), SEP, T('d')];
+        // both 'b' and 'c' render empty
+        const out = render(widgets, { 0: 'A', 2: '', 4: '', 6: 'D' });
+        expect((out.match(/\|/g) ?? []).length).toBe(1);
+    });
+
+    it('treats a widget type this version does not know as empty, keeping later widgets aligned', () => {
+        // e.g. a settings file written by a newer ccstatusline
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', customText: 'A' },
+            SEP,
+            { id: 'future', type: 'widget-from-a-newer-version' },
+            SEP,
+            { id: 'c', type: 'custom-text', customText: 'C' }
+        ];
+        const settings = createSettings({ colorLevel: 0 });
+        const context: RenderContext = { isPreview: false, terminalWidth: 200 };
+
+        const preRendered = preRenderAllWidgets([widgets], settings, context)[0] ?? [];
+
+        expect(preRendered.map(entry => entry.content)).toEqual(['A', '', '', '', 'C']);
+        expect(stripSgrCodes(renderStatusLine(widgets, settings, context, preRendered, []))).toBe('A | C');
+    });
+
+    it('suppresses a leading separator when no prior widget has rendered (existing behavior)', () => {
+        const widgets = [T('a'), SEP, T('b')];
+        // 'a' renders empty; the separator after it should not emit
+        const out = render(widgets, { 0: '', 2: 'B' });
+        expect(out).not.toMatch(/\|/);
+    });
+
+    it('drops separators that follow a sequence of leading empty widgets', () => {
+        const widgets = [T('a'), SEP, T('b'), SEP, T('c')];
+        // both 'a' and 'b' render empty; only 'c' has content
+        const out = render(widgets, { 0: '', 2: '', 4: 'C' });
+        expect(out).not.toMatch(/\|/);
+        expect(out).toContain('C');
+    });
+
+    it('removes trailing separator when the last widget renders empty', () => {
+        const widgets = [T('a'), SEP, T('b')];
+        // 'b' renders empty
+        const out = render(widgets, { 0: 'A', 2: '' });
+        expect(out).not.toMatch(/\|/);
+        expect(out).toContain('A');
+    });
+
+    it('keeps separators between widgets that all rendered content', () => {
+        const widgets = [T('a'), SEP, T('b'), SEP, T('c')];
+        const out = render(widgets, { 0: 'A', 2: 'B', 4: 'C' });
+        expect((out.match(/\|/g) ?? []).length).toBe(2);
+    });
+
+    it('does not affect the auto-separator (defaultSeparator) path', () => {
+        // The auto-separator path operates on the already-filtered `elements`
+        // array (line ~778) — empty widgets never reach it. This test locks in
+        // that the fix doesn't accidentally couple to the auto-separator logic.
+        const widgets = [T('a'), T('b'), T('c')];
+        const out = render(widgets, { 0: 'A', 1: '', 2: 'C' }, { defaultSeparator: '·' });
+
+        // With B empty, exactly one auto-added '·' should appear between A and C.
+        expect((out.match(/·/g) ?? []).length).toBe(1);
+        expect(out).toContain('A');
+        expect(out).toContain('C');
+    });
+
+    it.each([
+        { label: 'true', merge: true },
+        { label: 'no-padding', merge: 'no-padding' }
+    ] as const)('keeps an explicit separator directly after a merge:$label widget', ({ merge }) => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            SEP,
+            { id: 'b', type: 'custom-text' }
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'A', 2: 'B' }));
+
+        expect(out).toBe('A | B');
+    });
+
+    // A merge joins a widget to the next one. When that next widget renders
+    // nothing, the merge carries on past it only if it was merged onward too;
+    // otherwise the merge ends with it and the boundary after it stays.
+    it.each([
+        { label: 'true', merge: true },
+        { label: 'no-padding', merge: 'no-padding' }
+    ] as const)('ends a merge:$label at an empty middle widget that is not merged', ({ merge }) => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            { id: 'b', type: 'custom-text' },
+            SEP,
+            { id: 'c', type: 'custom-text' }
+        ];
+
+        expect(stripSgrCodes(render(widgets, { 0: 'A', 1: '', 3: 'C' }))).toBe('A | C');
+    });
+
+    it.each([
+        { label: 'true', merge: true },
+        { label: 'no-padding', merge: 'no-padding' }
+    ] as const)('carries a merge:$label across an empty middle widget that is merged too', ({ merge }) => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            { id: 'b', type: 'custom-text', merge },
+            SEP,
+            { id: 'c', type: 'custom-text' }
+        ];
+        const withoutEmpty: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            { id: 'c', type: 'custom-text' }
+        ];
+
+        expect(render(widgets, { 0: 'A', 1: '', 3: 'C' })).toBe(render(withoutEmpty, { 0: 'A', 1: 'C' }));
+    });
+
+    it.each([
+        { label: 'true', merge: true },
+        { label: 'no-padding', merge: 'no-padding' }
+    ] as const)('ends a merge:$label at an empty widget that is not merged, keeping the default separator and padding', ({ merge }) => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge },
+            { id: 'b', type: 'custom-text' },
+            { id: 'c', type: 'custom-text' }
+        ];
+        const unmerged: WidgetItem[] = [
+            { id: 'a', type: 'custom-text' },
+            { id: 'b', type: 'custom-text' },
+            { id: 'c', type: 'custom-text' }
+        ];
+
+        expect(render(widgets, { 0: 'A', 2: 'C' }, { defaultSeparator: '|' })).toBe(render(unmerged, { 0: 'A', 2: 'C' }, { defaultSeparator: '|' }));
+    });
+
+    it('carries a merge across an empty widget that is merged too, without the default separator', () => {
+        const widgets: WidgetItem[] = [
+            { id: 'a', type: 'custom-text', merge: true },
+            { id: 'b', type: 'custom-text', merge: true },
+            { id: 'c', type: 'custom-text' }
+        ];
+
+        expect(stripSgrCodes(render(widgets, { 0: 'A', 2: 'C' }, { defaultSeparator: '|' }))).not.toContain('|');
+    });
+
+    it('drops a spacing separator stranded against a flex separator when the widget between renders empty', () => {
+        const space: WidgetItem = { id: 'space', type: 'separator', character: ' ' };
+        const widgets: WidgetItem[] = [
+            T('a'),
+            space,
+            T('b'),
+            { id: 'flex', type: 'flex-separator' },
+            T('c')
+        ];
+        const settings = createSettings({ colorLevel: 0 });
+        const context: RenderContext = { isPreview: false, terminalWidth: 0 };
+        const preRenderedWidgets = makePreRendered(widgets, { 0: 'A', 2: '', 4: 'C' });
+        const out = stripSgrCodes(renderStatusLine(widgets, settings, context, preRenderedWidgets, []));
+
+        expect(out).toBe('A | C');
+    });
+
+    it('keeps a stranded spacing separator when a known-width flex separator allocates no space', () => {
+        const space: WidgetItem = { id: 'space', type: 'separator', character: ' ' };
+        const widgets: WidgetItem[] = [
+            T('a'),
+            space,
+            T('hidden'),
+            { id: 'flex', type: 'flex-separator' },
+            T('c')
+        ];
+        const settings = createSettings({ colorLevel: 0, flexMode: 'full' });
+        // Full mode reserves six columns, leaving a ten-column render width.
+        const context: RenderContext = { isPreview: false, terminalWidth: 16 };
+        const preRenderedWidgets = makePreRendered(widgets, { 0: 'AAAAA', 2: '', 4: 'CCCCC' });
+        const out = stripSgrCodes(renderStatusLine(widgets, settings, context, preRenderedWidgets, []));
+
+        expect(out).toBe('AAAAA C...');
+    });
+
+    it('does not borrow visible content across a flex separator', () => {
+        const widgets: WidgetItem[] = [
+            T('left'),
+            { id: 'flex', type: 'flex-separator' },
+            T('hidden'),
+            SEP,
+            T('right')
+        ];
+        const out = stripSgrCodes(render(widgets, { 0: 'L', 2: '', 4: 'R' }));
+
+        expect(out).not.toContain('|');
+        expect(out).toContain('L');
+        expect(out).toContain('R');
+    });
+});

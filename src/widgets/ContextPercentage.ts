@@ -6,17 +6,24 @@ import type {
     WidgetEditorDisplay,
     WidgetItem
 } from '../types/Widget';
-import { getContextWindowMetrics } from '../utils/context-window';
+import { calculateContextPercentageMetrics } from '../utils/context-percentage';
 import {
-    getContextConfig,
-    getModelContextIdentifier
-} from '../utils/model-context';
+    formatPercent,
+    resolveNumberFormat
+} from '../utils/number-format';
 
 import {
     getContextInverseModifierText,
     handleContextInverseAction,
     isContextInverse
 } from './shared/context-inverse';
+import {
+    cycleContextSliderMode,
+    getContextSliderKeybinds,
+    getContextSliderMode,
+    getContextSliderModifierText,
+    renderContextSlider
+} from './shared/context-slider';
 import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 
 export class ContextPercentageWidget implements Widget {
@@ -24,48 +31,56 @@ export class ContextPercentageWidget implements Widget {
     getDescription(): string { return 'Shows percentage of context window used or remaining'; }
     getDisplayName(): string { return 'Context %'; }
     getCategory(): string { return 'Context'; }
+    getLabelPrefix(item: WidgetItem): string { return isContextInverse(item) ? 'Ctx Left: ' : 'Ctx Used: '; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
+        const modifiers = [
+            getContextInverseModifierText(item),
+            getContextSliderModifierText(item)
+        ].filter((m): m is string => m !== undefined);
         return {
             displayText: this.getDisplayName(),
-            modifierText: getContextInverseModifierText(item)
+            modifierText: modifiers.length > 0 ? `(${modifiers.map(m => m.replace(/^\(|\)$/g, '')).join(', ')})` : undefined
         };
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
+        if (action === 'toggle-slider') {
+            return cycleContextSliderMode(item);
+        }
         return handleContextInverseAction(action, item);
     }
 
     render(item: WidgetItem, context: RenderContext, settings: Settings): string | null {
         const isInverse = isContextInverse(item);
-        const contextWindowMetrics = getContextWindowMetrics(context.data);
+        const sliderMode = getContextSliderMode(item);
+        const contextPercentageMetrics = calculateContextPercentageMetrics(context);
+        const format = resolveNumberFormat('percent', item, settings);
+
+        const formatContextPercentage = (displayPercentage: number): string => {
+            const sliderResult = renderContextSlider(sliderMode, displayPercentage, format);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(item), sliderResult ?? formatPercent(displayPercentage, format));
+        };
 
         if (context.isPreview) {
-            const previewValue = isInverse ? '90.7%' : '9.3%';
-            return formatRawOrLabeledValue(item, 'Ctx: ', previewValue);
+            return formatContextPercentage(isInverse ? 90.7 : 9.3);
         }
 
-        if (contextWindowMetrics.usedPercentage !== null) {
-            const displayPercentage = isInverse ? (100 - contextWindowMetrics.usedPercentage) : contextWindowMetrics.usedPercentage;
-            return formatRawOrLabeledValue(item, 'Ctx: ', `${displayPercentage.toFixed(1)}%`);
-        }
-
-        if (context.tokenMetrics) {
-            const modelIdentifier = getModelContextIdentifier(context.data?.model);
-            const contextConfig = getContextConfig(modelIdentifier, contextWindowMetrics.windowSize);
-            const usedPercentage = Math.min(100, (context.tokenMetrics.contextLength / contextConfig.maxTokens) * 100);
-            const displayPercentage = isInverse ? (100 - usedPercentage) : usedPercentage;
-            return formatRawOrLabeledValue(item, 'Ctx: ', `${displayPercentage.toFixed(1)}%`);
+        if (contextPercentageMetrics !== null) {
+            const displayPercentage = isInverse ? (100 - contextPercentageMetrics.usedPercentage) : contextPercentageMetrics.usedPercentage;
+            return formatContextPercentage(displayPercentage);
         }
 
         return null;
     }
 
-    getCustomKeybinds(): CustomKeybind[] {
+    getCustomKeybinds(item?: WidgetItem): CustomKeybind[] {
         return [
-            { key: 'u', label: '(u)sed/remaining', action: 'toggle-inverse' }
+            { key: 'u', label: '(u)sed/remaining', action: 'toggle-inverse' },
+            ...getContextSliderKeybinds()
         ];
     }
 
     supportsRawValue(): boolean { return true; }
     supportsColors(item: WidgetItem): boolean { return true; }
+    supportsNumberFormat(): boolean { return true; }
 }

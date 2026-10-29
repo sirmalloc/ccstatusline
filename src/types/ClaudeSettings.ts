@@ -1,5 +1,7 @@
+import type { TranscriptThinkingEffort } from '../utils/jsonl-metadata';
+
 export interface ClaudeSettings {
-    effortLevel?: 'low' | 'medium' | 'high' | 'max';
+    effortLevel?: TranscriptThinkingEffort;
     permissions?: {
         allow?: string[];
         deny?: string[];
@@ -8,6 +10,7 @@ export interface ClaudeSettings {
         type: string;
         command: string;
         padding?: number;
+        refreshInterval?: number;
     };
     [key: string]: unknown;
 }
