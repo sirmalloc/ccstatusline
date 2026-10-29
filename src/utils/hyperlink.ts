@@ -107,7 +107,10 @@ export function buildFileUrl(filePath: string): string | null {
 }
 
 export function buildIdeFileUrl(filePath: string, ideLinkMode: IdeLinkMode): string {
-    const normalizedPath = normalizeFilePath(filePath);
+    const isUncPath = /^\\\\[^\\]/.test(filePath) || /^\/\/[^/]/.test(filePath);
+    const isWindowsDrivePath = /^[A-Za-z]:[\\/]/.test(filePath);
+    // Backslashes are separators only in Windows paths; POSIX filenames need %5C.
+    const normalizedPath = isUncPath || isWindowsDrivePath ? normalizeFilePath(filePath) : filePath;
     const uncMatch = /^\/\/([^/]+)(\/.*)?$/.exec(normalizedPath);
     if (uncMatch?.[1]) {
         const encodedPath = encodeFilePathForUri(uncMatch[2] ?? '/');

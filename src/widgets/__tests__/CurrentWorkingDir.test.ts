@@ -325,12 +325,16 @@ describe('CurrentWorkingDirWidget', () => {
             );
         });
 
-        it('treats literal backslashes in a POSIX cwd as part of the filename', () => {
+        it.each([
+            { mode: 'file', target: 'file:///tmp/a%5Cb' },
+            { mode: 'vscode', target: 'vscode://file/tmp/a%5Cb' },
+            { mode: 'cursor', target: 'cursor://file/tmp/a%5Cb' }
+        ])('treats literal backslashes in a POSIX cwd as part of the filename in $mode mode', ({ mode, target }) => {
             const path = '/tmp/a\\b';
-            const item = createItem({ linkTo: 'file' }, true);
+            const item = createItem({ linkTo: mode }, true);
 
             expect(widget.render(item, createContext(path), defaultSettings)).toBe(
-                renderOsc8Link('file:///tmp/a%5Cb', path)
+                renderOsc8Link(target, path)
             );
         });
 

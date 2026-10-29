@@ -30,6 +30,12 @@ describe('buildIdeFileUrl', () => {
         expect(buildIdeFileUrl('\\\\server\\share\\my repo', 'cursor')).toBe('cursor://file//server/share/my%20repo');
     });
 
+    it.each(['vscode', 'cursor'] as const)('preserves POSIX backslashes and normalizes Windows separators for %s', (mode) => {
+        expect(buildIdeFileUrl('/tmp/a\\b\\c', mode)).toBe(`${mode}://file/tmp/a%5Cb%5Cc`);
+        expect(buildIdeFileUrl('C:\\Work\\my repo', mode)).toBe(`${mode}://file/C:/Work/my%20repo`);
+        expect(buildIdeFileUrl('\\\\server\\share\\my repo', mode)).toBe(`${mode}://file//server/share/my%20repo`);
+    });
+
     it.each([
         { label: 'spaces', path: '/Users/example/my project', expected: 'cursor://file/Users/example/my%20project' },
         { label: 'non-ASCII', path: '/Users/example/中文项目', expected: 'cursor://file/Users/example/%E4%B8%AD%E6%96%87%E9%A1%B9%E7%9B%AE' },
