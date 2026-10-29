@@ -12,6 +12,8 @@ import type { StatusJSON } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
 import { BlockResetTimerWidget } from '../../widgets/BlockResetTimer';
+import { SessionUsageWidget } from '../../widgets/SessionUsage';
+import { WeeklyUsageWidget } from '../../widgets/WeeklyUsage';
 import {
     extractUsageDataFromRateLimits,
     hasUsageDependentWidgets,
@@ -305,6 +307,34 @@ describe('usage prefetch', () => {
 
         expect(usageData).toEqual({ sessionResetAt: epochToIso(1774020000) });
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('renders valid weekly usage when the shared response reports an expired session window', async () => {
+        const partial: UsageData = { weeklyUsage: 40, weeklyResetAt: '2030-01-07T00:00:00.000Z', error: 'rate-limited' };
+        mockFetchUsageData.mockResolvedValue(partial);
+        const session: WidgetItem = { id: 'session', type: 'session-usage' };
+        const weekly: WidgetItem = { id: 'weekly', type: 'weekly-usage', rawValue: true };
+
+        const usageData = await prefetchUsageDataIfNeeded([[session, weekly]]);
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{ requiredFields: ['sessionUsage', 'weeklyUsage'] }]]);
+        expect(usageData).toEqual(partial);
+        const context = { isPreview: false, usageData: usageData ?? undefined };
+        expect(new WeeklyUsageWidget().render(weekly, context, DEFAULT_SETTINGS)).toBe('40.0%');
+        expect(new SessionUsageWidget().render(session, context, DEFAULT_SETTINGS)).toBe('[Rate limited]');
+    });
+
+    it('keeps valid reset data when suppressing an error for another expired window', async () => {
+        const weeklyResetAt = '2030-01-07T00:00:00.000Z';
+        mockFetchUsageData.mockResolvedValue({ weeklyUsage: 40, weeklyResetAt, error: 'rate-limited' });
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([
+            { id: 'session', type: 'reset-timer' },
+            { id: 'weekly', type: 'weekly-reset-timer' }
+        ]));
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{ requiredFields: ['sessionResetAt', 'weeklyResetAt'] }]]);
+        expect(usageData).toEqual({ weeklyUsage: 40, weeklyResetAt });
     });
 
     it('suppresses API errors when reset timer widgets are only missing reset data', async () => {

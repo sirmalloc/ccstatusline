@@ -423,7 +423,7 @@ function cacheUsageData(data: UsageData, now: number, fetchedAtMs: number): Usag
 
 /**
  * When the usage API sent the values fetchUsageData last returned, in ms, or
- * undefined after an error. Served from the cache, during a rate limit say,
+ * undefined when no usage data is available. Served from the cache during a rate limit,
  * they can be hours old.
  */
 export function getUsageFetchedAtMs(): number | undefined {
@@ -464,12 +464,18 @@ function getStaleUsageOrError(
     errorCacheMaxAge = LOCK_MAX_AGE,
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
-    const stale = readStaleUsageCache(cacheIdentity);
-    if (stale && !stale.data.error && hasRequiredUsageFields(stale.data, requiredFields)) {
-        if (hasUsageCacheOutlivedRefresh(now)) {
-            staleUsageFallbacks.add(stale.data);
+    const stale = readStaleUsageCache(cacheIdentity, now);
+    if (stale && !stale.data.error) {
+        const complete = hasRequiredUsageFields(stale.data, requiredFields);
+        if (complete || requiredFields.some(field => hasRequiredUsageField(stale.data, field))) {
+            // Widgets share this response: an expired window must not discard
+            // another widget's valid fields. Only missing fields use the error.
+            const data = complete ? stale.data : { ...stale.data, error };
+            if (hasUsageCacheOutlivedRefresh(now)) {
+                staleUsageFallbacks.add(data);
+            }
+            return cacheUsageData(data, now, stale.fetchedAtMs);
         }
-        return cacheUsageData(stale.data, now, stale.fetchedAtMs);
     }
 
     return setCachedUsageError(error, now, errorCacheMaxAge);
@@ -762,6 +768,22 @@ function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
     return credentials;
 }
 
+// A stale cache can outlive its windows (overnight, while the API keeps
+// failing). A window whose reset has passed no longer has that usage, so its
+// usage and reset are left out rather than shown, as Claude Code drops a
+// window from rate_limits once its resets_at passes.
+function dropResetWindows(data: UsageData, now: number): UsageData {
+    const result: UsageData = { ...data };
+    for (const [resetField, usageField] of Object.entries(WINDOW_RESET_FIELD_SENTINELS)) {
+        const resetAt = result[resetField as UsageDataField];
+        if (typeof resetAt === 'string' && Date.parse(resetAt) <= now * 1000) {
+            setUsageField(result, resetField as UsageDataField, undefined);
+            setUsageField(result, usageField, undefined);
+        }
+    }
+    return result;
+}
+
 /**
  * The login whose usage the status line shows: the usage cache's fingerprint
  * of it (see getUsageCacheIdentity), or null with no OAuth login found. It
@@ -772,7 +794,7 @@ export function getUsageLoginFingerprint(): string | null {
     return credentials ? getUsageCacheIdentity(credentials).preferredHash : null;
 }
 
-function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): { data: UsageData; fetchedAtMs: number } | null {
+function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null, now: number): { data: UsageData; fetchedAtMs: number } | null {
     try {
         const fetchedAtMs = fs.statSync(getUsageFilePath('json')).mtimeMs;
         const rawCache = fs.readFileSync(getUsageFilePath('json'), 'utf8');
@@ -780,7 +802,7 @@ function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): { data: 
             return null;
         }
         const data = parseCachedUsageData(rawCache);
-        return data ? { data, fetchedAtMs } : null;
+        return data ? { data: dropResetWindows(data, now), fetchedAtMs } : null;
     } catch {
         return null;
     }

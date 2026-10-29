@@ -373,7 +373,8 @@ function seedUsageCache(profile: TokenHome, contents: Record<string, unknown>): 
 }
 
 describe('fetchUsageData error handling', () => {
-    const nowMs = 2200000000000;
+    // Before the fixtures' 2030 resets, so their cached windows are still open
+    const nowMs = 1800000000000;
     const successResponseBody = JSON.stringify({
         five_hour: {
             utilization: 42,
@@ -2204,6 +2205,86 @@ describe('fetchUsageData error handling', () => {
             expect(cacheHitResult.first).toEqual(fetchedResult.first);
             expect(cacheHitResult.requestCount).toBe(0);
             expect(cacheHitResult.staleFallback).toEqual([false, false]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    // Overnight, last night's 95% would otherwise stay on screen after its
+    // window reset, for as long as the API keeps refusing
+    it.each([
+        { requiredFields: [] },
+        { requiredFields: ['sessionUsage', 'weeklyUsage'] }
+    ])('leaves out stale cached windows that have already reset with required fields $requiredFields', ({ requiredFields }) => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('rate-limited-expired-window');
+            const sessionResetAt = new Date(nowMs + 60 * 60 * 1000).toISOString();
+            const weeklyResetAt = new Date(nowMs + 3 * 24 * 60 * 60 * 1000).toISOString();
+            harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: JSON.stringify({
+                    five_hour: { utilization: 95, resets_at: sessionResetAt },
+                    seven_day: { utilization: 40, resets_at: weeklyResetAt }
+                })
+            });
+            const fetchedAtMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
+
+            // Two hours on, past the session reset
+            const rateLimitedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'status',
+                nowMs: nowMs + 2 * 60 * 60 * 1000,
+                pathDir: home.bin,
+                responseBody: rateLimitedResponseBody,
+                responseHeaders: { 'retry-after': '3600' },
+                requiredFields,
+                statusCode: 429
+            });
+
+            expect(rateLimitedResult.first).toEqual({
+                weeklyUsage: 40,
+                weeklyResetAt,
+                ...(requiredFields.length > 0 ? { error: 'rate-limited' } : {})
+            });
+            expect(rateLimitedResult.second).toEqual(rateLimitedResult.first);
+            expect(rateLimitedResult.requestCount).toBe(1);
+            expect(rateLimitedResult.fetchedAtMs).toBe(fetchedAtMs);
+            expect(rateLimitedResult.staleFallback).toEqual([true, true]);
+
+            const mixedResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 2 * 60 * 60 * 1000 + 1000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage', 'weeklyUsage']
+            });
+
+            expect(mixedResult.first).toEqual({ weeklyUsage: 40, weeklyResetAt, error: 'rate-limited' });
+            expect(mixedResult.second).toEqual(mixedResult.first);
+            expect(mixedResult.requestCount).toBe(0);
+            expect(mixedResult.fetchedAtMs).toBe(fetchedAtMs);
+            expect(mixedResult.staleFallback).toEqual([true, true]);
+
+            const sessionResult = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                home: home.home,
+                mode: 'unexpected',
+                nowMs: nowMs + 2 * 60 * 60 * 1000 + 1000,
+                pathDir: home.bin,
+                requiredFields: ['sessionUsage']
+            });
+
+            expect(sessionResult.first).toEqual({ error: 'rate-limited' });
+            expect(sessionResult.requestCount).toBe(0);
+            expect(sessionResult.fetchedAtMs).toBeNull();
         } finally {
             harness.cleanup();
         }

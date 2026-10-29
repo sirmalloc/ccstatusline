@@ -291,7 +291,9 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
 
     const apiData = await fetchUsageData({ requiredFields: missingFields });
     if (apiData.error && missingRequirements.suppressFetchError) {
-        return rateLimitsData;
+        return hasAnyUsageDataField(apiData)
+            ? mergeUsageData(rateLimitsData, { ...apiData, error: undefined })
+            : rateLimitsData;
     }
 
     const usageData = mergeUsageData(rateLimitsData, apiData);
