@@ -103,6 +103,53 @@ describe('global package manager inspection', () => {
         });
     });
 
+    it('warns about distinct POSIX bin directories that differ only in case', () => {
+        mockExecFileSync({
+            'which -a ccstatusline': '/home/alice/Bin/ccstatusline\n/home/alice/bin/ccstatusline\n',
+            'bun pm bin -g': '/home/alice/Bin\n'
+        });
+        vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+        const activeCommand = inspectActiveGlobalCommand({
+            commandAvailability: {
+                npm: false,
+                bun: true
+            },
+            platform: 'linux'
+        });
+
+        expect(activeCommand.packageManager).toBe('bun');
+        expect(activeCommand.resolvedPaths).toEqual([
+            '/home/alice/Bin/ccstatusline',
+            '/home/alice/bin/ccstatusline'
+        ]);
+        expect(activeCommand.warning).toBe(
+            '⚠ Multiple ccstatusline binaries are on PATH. Claude Code will run the first match: /home/alice/Bin/ccstatusline.\nOther matches: /home/alice/bin/ccstatusline'
+        );
+    });
+
+    it.each([
+        ['Windows', 'C:/Users/Alice/Bin', 'c:/users/alice/bin'],
+        ['WSL', '/mnt/c/Users/Alice/Bin', '/mnt/c/users/alice/bin']
+    ])('ignores case differences within the same %s bin directory', (_style, firstDir, secondDir) => {
+        mockExecFileSync({
+            'which -a ccstatusline': `${firstDir}/ccstatusline\n${secondDir}/ccstatusline\n`,
+            'bun pm bin -g': `${firstDir}\n`
+        });
+        vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+        const activeCommand = inspectActiveGlobalCommand({
+            commandAvailability: {
+                npm: false,
+                bun: true
+            },
+            platform: 'linux'
+        });
+
+        expect(activeCommand.packageManager).toBe('bun');
+        expect(activeCommand.warning).toBeNull();
+    });
+
     it('ignores transient bunx status line shims when identifying the active global command', () => {
         mockExecFileSync({
             'which -a ccstatusline': '/var/folders/demo/T/bunx-501-ccstatusline@latest/node_modules/.bin/ccstatusline\n/Users/alice/.bun/bin/ccstatusline\n',
