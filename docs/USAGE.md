@@ -69,7 +69,7 @@ An explicit per-model quota at 0% is shown even when its reset timestamp is stil
 
 ### Environment, Layout & Custom
 
-- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label. When combining home abbreviation with a segment limit, `~` is preserved without counting toward that limit.
+- **Current Working Dir** / **Terminal Width** / **Memory Usage** - Show the current working directory, detected terminal width, and system memory usage. Current Working Dir can prepend an optional custom glyph, including when raw-value mode replaces the `cwd:` label. When combining home abbreviation with a segment limit, `~` is preserved without counting toward that limit. Press `l` in its editor to cycle clickable links (`off` → file manager → VS Code → Cursor). The displayed path still honors home abbreviation, segment limits, and fish-style shortening, while the link always targets the original absolute directory. File-manager links use `file://` URLs on POSIX and Windows, including UNC shares; local terminals need OSC 8 hyperlink support.
 - **Custom Text** / **Custom Symbol** / **Custom Command** / **Link** - Add user-defined text, a single symbol or emoji, custom command output, or a clickable OSC 8 hyperlink.
 - **Separator** / **Flex Separator** - Add a manual divider or a width-filling flexible spacer. Manual separators are disabled in Powerline mode, but flex separators still work there as layout spacers.
 
@@ -323,7 +323,7 @@ Widget-specific shortcuts:
 - **Claude Status**: `h` toggle the 48-hour incident-history strip, `l` toggle the link to the status page
 - **Voice Status**: `f` cycle format, `n` toggle Nerd Font microphone icons
 - **Fast Mode**: `f` cycle format, `n` toggle Nerd Font lightning icons
-- **Current Working Dir**: `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)
+- **Current Working Dir**: `l` cycle links (`off` → file manager → VS Code → Cursor; off by default), `h` home abbreviation, `s` segment editor, `f` fish-style path, `g` optional leading glyph (off by default; pair with raw value to replace the `cwd:` label with the glyph)
 - **Skills**: `v` cycle view mode, `l` edit list limit in list mode
 - **Input Speed / Output Speed / Total Speed**: `w` edit the rolling window in seconds
 - **Custom Text / Custom Symbol**: `e` edit text or symbol

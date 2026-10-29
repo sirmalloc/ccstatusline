@@ -209,6 +209,7 @@ Across the updates since the September 3 release, 64 PRs have been incorporated,
 - **🧭 Selective Powerline alignment** - Press `x` in the line editor to let a widget and the rest of its line keep their natural widths while earlier Powerline columns stay auto-aligned.
 - **📏 Git widget width limits** - `Git Branch` and `Git Root Dir` can cap their visible width with ellipsis-safe truncation while preserving hyperlink targets.
 - **🔣 Current directory glyphs** - `Current Working Dir` can prepend an optional custom glyph, including in raw-value mode.
+- **📂 Clickable current directory** - `Current Working Dir` can link its displayed path to a file manager, VS Code, or Cursor while keeping the shortened label.
 - **🧠 Configurable context fallback** - `CCSTATUSLINE_CONTEXT_SIZE_FALLBACK` overrides the default 200k last-resort context window when Claude Code and the model name do not report one.
 - **🧩 Composable compaction metrics** - `Compaction Counter` can render count, auto, manual, unknown, or reclaimed-token values independently for custom layouts.
 - **🏷️ CLI version flag** - `ccstatusline --version` now prints the installed package version and exits.
