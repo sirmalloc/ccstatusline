@@ -117,7 +117,11 @@ describe('jsonl block metrics integration', () => {
         expect(metrics?.lastActivity.toISOString()).toBe(recentActivity.toISOString());
     });
 
-    it.each(['claude (work)', 'cfg[1]', 'brace{a}', 'star*x', 'q?mark'])('finds transcripts under a config directory named %j', (dirName) => {
+    // Windows forbids * and ? in directory names.
+    const globDirectoryNames = ['claude (work)', 'cfg[1]', 'brace{a}', 'star*x', 'q?mark']
+        .filter(dirName => process.platform !== 'win32' || !/[*?]/.test(dirName));
+
+    it.each(globDirectoryNames)('finds transcripts under a config directory named %j', (dirName) => {
         const configDir = path.join(tempClaudeDir, dirName);
         process.env.CLAUDE_CONFIG_DIR = configDir;
         const projectsDir = path.join(configDir, 'projects', 'project-a');
