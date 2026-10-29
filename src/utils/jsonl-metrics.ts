@@ -357,13 +357,19 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
+    lastUserTimestampMs: number | null;
+    // message.id of the newest request, so further entries of the same API
+    // call update it instead of adding another request
+    lastRequestMessageId: string | null;
+}
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
     return {
         requests: [],
         latestTimestampMs: null,
-        lastUserTimestampMs: null
+        lastUserTimestampMs: null,
+        lastRequestMessageId: null
     };
 }
 
@@ -396,6 +402,31 @@ function collectSpeedMetricRecord(
     }
 
     const usage = parseUsageTokens(data.message.usage);
+    const rawMessageId = data.message.id;
+    const messageId = typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null;
+
+    // One API call can be written as several entries sharing a message.id,
+    // each repeating the call's input tokens. Count the call once, keeping
+    // its largest output count and its latest end time.
+    const previous = state.requests[state.requests.length - 1];
+    if (previous && messageId !== null && messageId === state.lastRequestMessageId) {
+        previous.inputTokens = usage.input;
+        previous.outputTokens = Math.max(previous.outputTokens, usage.output);
+        if (timestampMs !== null) {
+            previous.assistantTimestampMs = timestampMs;
+        }
+        if (interval) {
+            previous.interval = previous.interval
+                ? {
+                    startMs: Math.min(previous.interval.startMs, interval.startMs),
+                    endMs: Math.max(previous.interval.endMs, interval.endMs)
+                }
+                : interval;
+        }
+        return;
+    }
+
+    state.lastRequestMessageId = messageId;
     state.requests.push({
         inputTokens: usage.input,
         outputTokens: usage.output,

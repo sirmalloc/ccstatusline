@@ -1007,6 +1007,51 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('counts the entries of one API call once in speed metrics', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-message-id.jsonl');
+        const assistantEntry = (timestamp: string, output: number, id: string): string => JSON.stringify({
+            timestamp,
+            type: 'assistant',
+            message: {
+                id,
+                usage: { input_tokens: 100, output_tokens: output }
+            }
+        });
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            // One API call written as one entry per content block
+            assistantEntry('2026-01-01T10:00:02.000Z', 10, 'msg_1'),
+            assistantEntry('2026-01-01T10:00:04.000Z', 40, 'msg_1'),
+            assistantEntry('2026-01-01T10:00:05.000Z', 50, 'msg_1'),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                type: 'user'
+            }),
+            assistantEntry('2026-01-01T10:01:05.000Z', 30, 'msg_2')
+        ].join('\n'));
+
+        const analysis = await getTranscriptAnalysis(transcriptPath, { includeSpeedMetrics: true });
+
+        expect(analysis.speedMetricsCollection?.sessionAverage).toEqual({
+            totalDurationMs: 10000,
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            requestCount: 2
+        });
+        expect(analysis.tokenMetrics).toMatchObject({
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280
+        });
+    });
+
     it('calculates windowed speed metrics from recent requests only', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);

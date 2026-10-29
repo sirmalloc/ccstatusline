@@ -131,6 +131,49 @@ describe('global command resolution', () => {
         expect(resolution.warning).toBeNull();
     });
 
+    it('ignores transient npx status line shims when resolving global commands', () => {
+        mockExecFileSync({
+            'which -a ccstatusline': '/Users/alice/.npm/_npx/9f3c1e2a7b6d4c80/node_modules/.bin/ccstatusline\n/Users/alice/.nvm/versions/node/v24.9.0/bin/ccstatusline\n',
+            'npm prefix -g': '/Users/alice/.nvm/versions/node/v24.9.0\n'
+        });
+
+        const resolution = inspectGlobalCommandResolution('npm', { platform: 'darwin' });
+
+        expect(resolution.firstResolvedPath).toBe('/Users/alice/.nvm/versions/node/v24.9.0/bin/ccstatusline');
+        expect(resolution.resolvedPaths).toEqual(['/Users/alice/.nvm/versions/node/v24.9.0/bin/ccstatusline']);
+        expect(resolution.warning).toBeNull();
+    });
+
+    it('ignores npx shims from a custom npm cache directory', () => {
+        mockExecFileSync({
+            'which -a ccstatusline': '/srv/cache/npm/_npx/0a1b2c3d4e5f6789/node_modules/.bin/ccstatusline\n/usr/local/bin/ccstatusline\n',
+            'npm prefix -g': '/usr/local\n'
+        });
+
+        const resolution = inspectGlobalCommandResolution('npm', { platform: 'linux' });
+
+        expect(resolution.resolvedPaths).toEqual(['/usr/local/bin/ccstatusline']);
+        expect(resolution.warning).toBeNull();
+    });
+
+    it('ignores transient npx shims in the Windows npm cache', () => {
+        mockExecFileSync({
+            'where ccstatusline': [
+                'C:\\Users\\Alice\\AppData\\Local\\npm-cache\\_npx\\9f3c1e2a7b6d4c80\\node_modules\\.bin\\ccstatusline',
+                'C:\\Users\\Alice\\AppData\\Local\\npm-cache\\_npx\\9f3c1e2a7b6d4c80\\node_modules\\.bin\\ccstatusline.cmd',
+                'C:\\Users\\Alice\\AppData\\Local\\npm-cache\\_npx\\9f3c1e2a7b6d4c80\\node_modules\\.bin\\ccstatusline.ps1',
+                'C:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.cmd',
+                ''
+            ].join('\r\n'),
+            'npm.cmd prefix -g': 'C:\\Users\\Alice\\AppData\\Roaming\\npm\r\n'
+        });
+
+        const resolution = inspectGlobalCommandResolution('npm', { platform: 'win32' });
+
+        expect(resolution.resolvedPaths).toEqual(['C:\\Users\\Alice\\AppData\\Roaming\\npm\\ccstatusline.cmd']);
+        expect(resolution.warning).toBeNull();
+    });
+
     it('compares Windows npm prefixes with WSL /mnt paths', () => {
         mockExecFileSync({
             'which -a ccstatusline': '/mnt/c/Users/Alice/AppData/Roaming/npm/ccstatusline\n',
