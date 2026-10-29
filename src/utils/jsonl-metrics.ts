@@ -368,7 +368,7 @@ function collectSpeedMetricRecord(
     // One API call can be written as several entries sharing a message.id,
     // each repeating the call's input tokens. Count the call once, keeping
     // its largest output count and its latest end time.
-    const previous = state.requests.at(-1);
+    const previous = state.requests[state.requests.length - 1];
     if (previous && messageId !== null && messageId === state.lastRequestMessageId) {
         previous.inputTokens = usage.input;
         previous.outputTokens = Math.max(previous.outputTokens, usage.output);
