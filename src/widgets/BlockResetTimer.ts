@@ -33,6 +33,7 @@ import {
     renderUsageTimezoneEditor
 } from './shared/timezone-editor';
 import {
+    SESSION_UNDER_LIMIT_HIDEABLE_STATE,
     USAGE_NO_DATA_HIDEABLE_STATE,
     cycleUsageDisplayMode,
     getUsageDisplayMode,
@@ -41,6 +42,7 @@ import {
     getUsageProgressBarWidth,
     getUsageTimerCustomKeybinds,
     getUsageTimezone,
+    isAtSessionLimit,
     isUsage12HourClock,
     isUsageCompact,
     isUsageDateMode,
@@ -78,7 +80,7 @@ export class BlockResetTimerWidget implements Widget {
     }
 
     getHideableStates(): HideableState[] {
-        return [USAGE_NO_DATA_HIDEABLE_STATE];
+        return [USAGE_NO_DATA_HIDEABLE_STATE, SESSION_UNDER_LIMIT_HIDEABLE_STATE];
     }
 
     handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
@@ -144,6 +146,9 @@ export class BlockResetTimerWidget implements Widget {
         }
 
         const usageData = context.usageData ?? {};
+        if (!isAtSessionLimit(context) && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
+            return null;
+        }
         const window = resolveUsageWindowWithFallback(usageData, context.blockMetrics);
 
         if (!window) {

@@ -16,6 +16,7 @@ import * as claudeSettings from '../claude-settings';
 import {
     getMacKeychainConfigDirService,
     getUsageCredentials,
+    getUsageLoginFingerprint,
     getUsageToken,
     parseMacKeychainCredentialCandidates
 } from '../usage-fetch';
@@ -242,6 +243,32 @@ describe('getUsageToken', () => {
         ]);
     });
 
+    it('bounds every macOS keychain read with a timeout', () => {
+        const dump = makeKeychainBlock('Claude Code-credentials-hashed', { quoted: '20240301010101Z' });
+
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile();
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command === 'security' && args?.[0] === 'dump-keychain') {
+                return dump;
+            }
+
+            throw new Error('security timed out');
+        });
+
+        expect(getUsageToken()).toBeNull();
+        expect(getSecurityCallLog()).toEqual([
+            'find-generic-password -s Claude Code-credentials -w',
+            'dump-keychain',
+            'find-generic-password -s Claude Code-credentials-hashed -w'
+        ]);
+        // A blocked `security` (e.g. waiting on a keychain unlock prompt)
+        // must not hold the status line until someone answers it.
+        for (const call of mockedExecFileSync.mock.calls) {
+            expect(call[2]).toEqual(expect.objectContaining({ timeout: 5000 }));
+        }
+    });
+
     it('uses the credentials file on non-macOS', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
         mockCredentialsFile(makeTokenPayload('linux-file-token'));
@@ -299,6 +326,33 @@ describe('getUsageToken', () => {
             `find-generic-password -s ${configDirService} -w`,
             `find-generic-password -s ${configDirService} -w`
         ]);
+    });
+});
+
+describe('getUsageLoginFingerprint', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.spyOn(claudeSettings, 'getClaudeConfigDir').mockReturnValue('/fake/claude');
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    // Claude Code reissues the access token every few hours; /login brings a
+    // new refresh token
+    it('stays the same across an access-token refresh, and changes with the login', () => {
+        mockCredentialsFile(makeTokenPayload('access-1', 'refresh-1'));
+        const login = getUsageLoginFingerprint();
+        mockCredentialsFile(makeTokenPayload('access-2', 'refresh-1'));
+        const refreshed = getUsageLoginFingerprint();
+        mockCredentialsFile(makeTokenPayload('access-3', 'refresh-2'));
+        const otherLogin = getUsageLoginFingerprint();
+
+        expect(login).toBe(createHash('sha256').update('refresh-1').digest('hex').slice(0, 16));
+        expect(refreshed).toBe(login);
+        expect(otherLogin).not.toBe(login);
     });
 });
 

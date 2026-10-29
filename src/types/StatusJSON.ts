@@ -19,6 +19,14 @@ const RateLimitPeriodSchema = z.object({
     resets_at: CoercedNumberSchema.nullable().optional() // Unix epoch seconds
 });
 
+// Claude apps gateway spend limit (Claude Code 2.1.251+). The dollar fields and
+// period arrive separately from the percentage, so they can be absent.
+const SpendLimitSchema = RateLimitPeriodSchema.extend({
+    used_usd: CoercedNumberSchema.nullable().optional(),
+    limit_usd: CoercedNumberSchema.nullable().optional(),
+    period: z.string().nullable().optional()
+});
+
 export type RateLimitPeriod = z.infer<typeof RateLimitPeriodSchema>;
 
 export const StatusJSONSchema = z.looseObject({
@@ -36,9 +44,9 @@ export const StatusJSONSchema = z.looseObject({
     workspace: z.object({
         current_dir: z.string().optional(),
         project_dir: z.string().optional()
-    }).optional(),
-    version: z.string().optional(),
-    output_style: z.object({ name: z.string().optional() }).optional(),
+    }).nullable().optional(),
+    version: z.string().nullable().optional(),
+    output_style: z.object({ name: z.string().optional() }).nullable().optional(),
     effort: z.object({ level: z.string().nullable().optional() }).nullable().optional(),
     cost: z.object({
         total_cost_usd: CoercedNumberSchema.optional(),
@@ -46,7 +54,7 @@ export const StatusJSONSchema = z.looseObject({
         total_api_duration_ms: CoercedNumberSchema.optional(),
         total_lines_added: CoercedNumberSchema.optional(),
         total_lines_removed: CoercedNumberSchema.optional()
-    }).optional(),
+    }).nullable().optional(),
     context_window: z.object({
         context_window_size: CoercedNumberSchema.nullable().optional(),
         total_input_tokens: CoercedNumberSchema.nullable().optional(),
@@ -64,6 +72,9 @@ export const StatusJSONSchema = z.looseObject({
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
     vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    // Only the Fast Mode widget reads it, so a malformed value is dropped
+    // rather than failing the whole payload
+    fast_mode: z.boolean().nullable().optional().catch(undefined),
     worktree: z.object({
         name: z.string().optional(),
         path: z.string().optional(),
@@ -75,7 +86,8 @@ export const StatusJSONSchema = z.looseObject({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional(),
         seven_day_sonnet: RateLimitPeriodSchema.nullable().optional(),
-        seven_day_opus: RateLimitPeriodSchema.nullable().optional()
+        seven_day_opus: RateLimitPeriodSchema.nullable().optional(),
+        spend_limit: SpendLimitSchema.nullable().optional()
     }).nullable().optional()
 });
 

@@ -16,6 +16,15 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
+import {
+    getVisibleWidth,
+    truncateStyledText
+} from './ansi';
+import { resolveExecutable } from './executable-path';
+import {
+    GIT_HARDENING_ARGS,
+    withGitHardeningEnv
+} from './git-hardening';
 import { parseRemoteUrl } from './git-remote';
 
 export type GitReviewProvider = 'gh' | 'glab';
@@ -163,7 +172,7 @@ function getGitReviewCacheDir(deps: GitReviewCacheDeps): string {
 
 function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): string {
     try {
-        return deps.execFileSync('git', args, {
+        return deps.execFileSync(resolveExecutable('git'), [...GIT_HARDENING_ARGS, ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
@@ -299,7 +308,8 @@ function isSshRemoteUrl(url: string): boolean {
 
 function resolveSshHostAlias(host: string, deps: GitReviewCacheDeps): string {
     try {
-        const output = deps.execFileSync('ssh', ['-G', host], {
+        // After `--`, a host named like an option (`-oProxyCommand=…`) stays a host
+        const output = deps.execFileSync(resolveExecutable('ssh'), ['-G', '--', host], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
@@ -394,7 +404,7 @@ function getRemainingTimeout(deadline: number, deps: GitReviewCacheDeps): number
 
 function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['--version'], {
+        deps.execFileSync(resolveExecutable(cli), ['--version'], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
@@ -407,7 +417,7 @@ function isCliAvailable(cli: GitReviewProvider, deadline: number, deps: GitRevie
 
 function isCliAuthedForHost(cli: GitReviewProvider, host: string, deps: GitReviewCacheDeps): boolean {
     try {
-        deps.execFileSync(cli, ['auth', 'status', '--hostname', host], {
+        deps.execFileSync(resolveExecutable(cli), ['auth', 'status', '--hostname', host], {
             stdio: ['pipe', 'pipe', 'ignore'],
             timeout: CLI_TIMEOUT,
             windowsHide: true
@@ -448,20 +458,25 @@ function isCiFieldUnavailableError(error: unknown): boolean {
         || text.includes('resource not accessible by integration');
 }
 
+// `branch` goes after `--`: a branch named like a flag (a planted HEAD can name
+// one `--web`) must stay an argument
 function queryGhPr(
     cwd: string,
     args: string[],
+    branch: string | null,
     fields: string,
     deadline: number,
     deps: GitReviewCacheDeps
 ): Record<string, unknown> | null {
     const output = deps.execFileSync(
-        'gh',
-        [...args, '--json', fields],
+        resolveExecutable('gh'),
+        [...args, '--json', fields, ...(branch ? ['--', branch] : [])],
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe'],
             cwd,
+            // gh runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -482,27 +497,28 @@ function fetchFromGh(
     deps: GitReviewCacheDeps
 ): GitReviewData | null {
     const args = ['pr', 'view'];
+    let branch: string | null = null;
     if (repoRef) {
         // `--repo` disables branch auto-resolution, so pass the branch explicitly.
-        const branch = getCurrentBranch(cwd, deps);
+        branch = getCurrentBranch(cwd, deps);
         if (!branch) {
             return null;
         }
-        args.push(branch, '--repo', repoRef);
+        args.push('--repo', repoRef);
     }
 
     let parsed: Record<string, unknown> | null;
     if (includeChecks) {
         try {
-            parsed = queryGhPr(cwd, args, GH_PR_WITH_CHECKS_FIELDS, deadline, deps);
+            parsed = queryGhPr(cwd, args, branch, GH_PR_WITH_CHECKS_FIELDS, deadline, deps);
         } catch (error) {
             if (!isCiFieldUnavailableError(error)) {
                 throw error;
             }
-            parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
+            parsed = queryGhPr(cwd, args, branch, GH_PR_METADATA_FIELDS, deadline, deps);
         }
     } else {
-        parsed = queryGhPr(cwd, args, GH_PR_METADATA_FIELDS, deadline, deps);
+        parsed = queryGhPr(cwd, args, branch, GH_PR_METADATA_FIELDS, deadline, deps);
     }
 
     if (!parsed) {
@@ -528,24 +544,26 @@ function fetchFromGlab(
     deadline: number,
     deps: GitReviewCacheDeps
 ): GitReviewData | null {
-    const args = ['mr', 'view'];
+    const args = ['mr', 'view', '--output', 'json'];
     if (repoRef) {
-        // `--repo` disables branch auto-resolution, so pass the branch explicitly.
+        // `--repo` disables branch auto-resolution, so pass the branch explicitly,
+        // after `--` so a branch named like a flag stays an argument.
         const branch = getCurrentBranch(cwd, deps);
         if (!branch) {
             return null;
         }
-        args.push(branch, '--repo', repoRef);
+        args.push('--repo', repoRef, '--', branch);
     }
-    args.push('--output', 'json');
 
     const output = deps.execFileSync(
-        'glab',
+        resolveExecutable('glab'),
         args,
         {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
             cwd,
+            // glab runs git in the repository too
+            env: withGitHardeningEnv(process.env),
             timeout: getRemainingTimeout(deadline, deps),
             windowsHide: true
         }
@@ -771,7 +789,9 @@ export function getGitReviewStatusLabel(state: string, reviewDecision: string): 
 
 export function truncateTitle(title: string, maxWidth?: number): string {
     const limit = maxWidth ?? DEFAULT_TITLE_MAX_WIDTH;
-    if (title.length <= limit)
+    if (getVisibleWidth(title) <= limit)
         return title;
-    return `${title.slice(0, limit - 1)}…`;
+    // Cut by terminal columns and whole characters, so wide (CJK) characters
+    // count twice and an emoji is never split in half
+    return `${truncateStyledText(title, limit - 1, { ellipsis: false })}…`;
 }

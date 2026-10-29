@@ -1,4 +1,7 @@
-import type { RenderContext } from '../types/RenderContext';
+import type {
+    RenderContext,
+    RenderUsageData
+} from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
@@ -31,11 +34,22 @@ import {
     toggleUsageInverted
 } from './shared/usage-display';
 
+// The usage API reports `utilization: null` until the first charge of the month,
+// while still reporting the amount spent and the monthly limit (both in cents).
+function getExtraUsageUtilization(data: RenderUsageData): number | undefined {
+    if (data.extraUsageUtilization !== undefined) {
+        return data.extraUsageUtilization;
+    }
+    if (data.extraUsageUsed === undefined || data.extraUsageLimit === undefined || data.extraUsageLimit <= 0) {
+        return undefined;
+    }
+    return data.extraUsageUsed / data.extraUsageLimit * 100;
+}
 const LABEL = 'Overage: ';
 
 export class ExtraUsageUtilizationWidget implements Widget {
     getDefaultColor(): string { return 'green'; }
-    getDescription(): string { return 'Shows extra usage (pay-as-you-go) utilization percentage'; }
+    getDescription(): string { return 'Shows extra usage as a percentage of your monthly limit (Pro/Max overage or Enterprise spend)'; }
     getDisplayName(): string { return 'Extra Usage Utilization'; }
     getCategory(): string { return 'Usage'; }
     getLabelPrefix(): string { return LABEL; }
@@ -93,7 +107,8 @@ export class ExtraUsageUtilizationWidget implements Widget {
                 ? null
                 : formatRawOrLabeledValue(item, this.getLabelPrefix(), 'n/a');
         }
-        if (data.extraUsageEnabled !== true || data.extraUsageUtilization === undefined) {
+        const utilization = getExtraUsageUtilization(data);
+        if (data.extraUsageEnabled !== true || utilization === undefined) {
             if (data.error) {
                 return isHidden(item, USAGE_NO_DATA_HIDEABLE_STATE.key)
                     ? null
@@ -102,8 +117,8 @@ export class ExtraUsageUtilizationWidget implements Widget {
             return null;
         }
 
-        // extraUsageUtilization is already a percentage (0-100), not a fraction
-        const percent = Math.max(0, Math.min(100, data.extraUsageUtilization));
+        // utilization is a percentage (0-100), not a fraction
+        const percent = Math.max(0, Math.min(100, utilization));
         const renderedPercent = inverted ? 100 - percent : percent;
 
         if (isUsageProgressMode(displayMode)) {

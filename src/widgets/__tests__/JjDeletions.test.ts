@@ -10,6 +10,7 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { JjDeletionsWidget } from '../JjDeletions';
 
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
@@ -38,6 +39,8 @@ function render(options: {
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
 
 describe('JjDeletionsWidget', () => {
     beforeEach(() => {

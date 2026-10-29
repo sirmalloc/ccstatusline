@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 
 import type { PowerlineConfig } from '../../types/PowerlineConfig';
 import type { Settings } from '../../types/Settings';
+import { getPlainInput } from '../../utils/input-guards';
 import { type PowerlineFontStatus } from '../../utils/powerline';
 import { buildEnabledPowerlineSettings } from '../../utils/powerline-settings';
 
@@ -173,6 +174,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
     const globalOverrideMessage = hasGlobalFgOverride ? '⚠ Global override for FG active' : null;
 
     useInput((input, key) => {
+        const shortcut = getPlainInput(input, key);
         if (fontInstallMessage || installingFonts) {
             if (fontInstallMessage && !key.escape) {
                 onClearMessage();
@@ -187,7 +189,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
         if (screen === 'menu') {
             if (key.escape) {
                 onBack();
-            } else if (input === 't' || input === 'T') {
+            } else if (shortcut === 't' || shortcut === 'T') {
                 if (!powerlineConfig.enabled) {
                     if (hasManualSeparatorItems) {
                         setConfirmingEnable(true);
@@ -203,9 +205,9 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         }
                     });
                 }
-            } else if (input === 'i' || input === 'I') {
+            } else if (shortcut === 'i' || shortcut === 'I') {
                 setConfirmingFontInstall(true);
-            } else if ((input === 'a' || input === 'A') && powerlineConfig.enabled) {
+            } else if ((shortcut === 'a' || shortcut === 'A') && powerlineConfig.enabled) {
                 onUpdate({
                     ...settings,
                     powerline: {
@@ -213,7 +215,7 @@ export const PowerlineSetup: React.FC<PowerlineSetupProps> = ({
                         autoAlign: !powerlineConfig.autoAlign
                     }
                 });
-            } else if ((input === 'c' || input === 'C') && powerlineConfig.enabled) {
+            } else if ((shortcut === 'c' || shortcut === 'C') && powerlineConfig.enabled) {
                 onUpdate({
                     ...settings,
                     powerline: {

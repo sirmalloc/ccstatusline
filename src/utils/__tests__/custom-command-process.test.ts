@@ -88,6 +88,13 @@ async function waitForFile(filePath: string, timeoutMs = 8000): Promise<void> {
 
 for (const runtime of ['bun', 'node']) {
     describe(`custom command capture under ${runtime}`, () => {
+        // A runtime's first start on a fresh CI machine can take seconds while its
+        // binary is read from a cold disk. Start it once here, so that cost isn't
+        // charged to whichever test happens to run it first.
+        beforeAll(() => {
+            execFileSync(runtime, ['-e', ''], { stdio: 'ignore', timeout: 30_000 });
+        }, 30_000);
+
         function run(mode: string, options: { ttlSeconds?: number; timeoutMs?: number; argument?: string } = {}) {
             const command = `"${runtime}" "${writerPath}" "${mode}" "${options.argument ?? ''}"`;
             const output = execFileSync(runtime, [probePath, JSON.stringify({

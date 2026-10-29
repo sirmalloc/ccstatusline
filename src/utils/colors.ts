@@ -223,6 +223,12 @@ export function getColorAnsiCode(colorName: string | undefined, colorLevel: 'ans
         return isBackground ? `\x1b[48;2;${first.r};${first.g};${first.b}m` : `\x1b[38;2;${first.r};${first.g};${first.b}m`;
     }
 
+    // Same for custom colors: Basic/No Color modes get no 256-color or
+    // truecolor escapes (the TUI drops these colors when switching to them).
+    if (colorLevel === 'ansi16' && (colorName.startsWith('ansi256:') || colorName.startsWith('hex:'))) {
+        return '';
+    }
+
     // Handle ansi256:X format
     if (colorName.startsWith('ansi256:')) {
         const code = Number.parseInt(colorName.substring(8), 10);
