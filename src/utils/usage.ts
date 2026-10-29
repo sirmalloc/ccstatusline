@@ -1,5 +1,8 @@
 export {
+    fetchAccountEmail,
     fetchUsageData,
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint,
     isStaleUsageFallback
 } from './usage-fetch';
 export {
