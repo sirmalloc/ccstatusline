@@ -22,6 +22,7 @@ export class ExtraUsageLimitWidget implements Widget {
     getDescription(): string { return 'Shows your monthly extra usage limit (Pro/Max overage or Enterprise spend)'; }
     getDisplayName(): string { return 'Extra Usage Limit'; }
     getCategory(): string { return 'Usage'; }
+    getLabelPrefix(): string { return LABEL; }
 
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
