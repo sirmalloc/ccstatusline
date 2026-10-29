@@ -75,6 +75,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 
 const require = createRequire(import.meta.url);
 const https = require('node:https');
@@ -161,8 +162,10 @@ https.request = (...args) => {
 
 const { fetchUsageData, getUsageFetchedAtMs, isStaleUsageFallback } = await import(${JSON.stringify(usageModulePath)});
 
-const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
-const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
+const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+const configHash = createHash('sha256').update(path.resolve(configDir)).digest('hex').slice(0, 16);
+const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + configHash + '.lock');
+const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage-' + configHash + '.json');
 const securityCallsFile = path.join(os.homedir(), 'security-calls.jsonl');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
@@ -329,10 +332,15 @@ function writeUsageCredentials(claudeConfig: string, claudeAiOauth: { accessToke
     fs.writeFileSync(path.join(claudeConfig, '.credentials.json'), JSON.stringify({ claudeAiOauth }));
 }
 
-function seedUsageCache(home: string, contents: Record<string, unknown>): { cacheFile: string; mtimeMs: number } {
-    const cacheDir = path.join(home, '.cache', 'ccstatusline');
+function usageFilePath(profile: TokenHome, suffix: 'json' | 'lock' | 'credentials.lock'): string {
+    const hash = createHash('sha256').update(path.resolve(profile.claudeConfig)).digest('hex').slice(0, 16);
+    return path.join(profile.home, '.cache', 'ccstatusline', `usage-${hash}.${suffix}`);
+}
+
+function seedUsageCache(profile: TokenHome, contents: Record<string, unknown>): { cacheFile: string; mtimeMs: number } {
+    const cacheDir = path.join(profile.home, '.cache', 'ccstatusline');
     fs.mkdirSync(cacheDir, { recursive: true });
-    const cacheFile = path.join(cacheDir, 'usage.json');
+    const cacheFile = usageFilePath(profile, 'json');
     fs.writeFileSync(cacheFile, JSON.stringify(contents));
     return { cacheFile, mtimeMs: fs.statSync(cacheFile).mtimeMs };
 }
@@ -484,6 +492,152 @@ describe('fetchUsageData error handling', () => {
 
     // The request carries the account's bearer token, so a host the user kept
     // off the proxy must stay off it
+    it('keeps fresh usage caches separate for two profiles sharing one home and token', () => {
+        const harness = createProbeHarness();
+        try {
+            const first = harness.createTokenHome('cache-first');
+            const second = { ...harness.createTokenHome('cache-second'), home: first.home };
+            const render = (profile: TokenHome, body: string, time: number, mode: ProbeOptions['mode'] = 'success') => harness.runProbe({
+                home: profile.home,
+                claudeConfigDir: profile.claudeConfig,
+                pathDir: profile.bin,
+                nowMs: time,
+                mode,
+                responseBody: body
+            });
+
+            expect(render(first, successResponseBody, nowMs).requestCount).toBe(1);
+            const freshNow = fs.statSync(usageFilePath(first, 'json')).mtimeMs + 1000;
+            expect(render(second, updatedSuccessResponseBody, freshNow).requestCount).toBe(1);
+            const firstCached = render(first, '', freshNow, 'unexpected');
+            const secondCached = render(second, '', freshNow, 'unexpected');
+            expect(firstCached.first.sessionUsage).toBe(42);
+            expect(secondCached.first.sessionUsage).toBe(55);
+            expect(firstCached.requestCount).toBe(0);
+            expect(secondCached.requestCount).toBe(0);
+            expect(fs.existsSync(usageFilePath(first, 'lock'))).toBe(false);
+            expect(fs.existsSync(usageFilePath(second, 'lock'))).toBe(false);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each(['error', 'status'] as const)('isolates %s backoff, stale caches, and lock cleanup across profiles sharing one home', (mode) => {
+        const harness = createProbeHarness();
+        try {
+            const first = harness.createTokenHome('lock-first');
+            const second = { ...harness.createTokenHome('lock-second'), home: first.home };
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const seeded = seedUsageCache(first, { sessionUsage: 11, tokenHash });
+            const refreshNow = seeded.mtimeMs + 240000;
+            const render = (profile: TokenHome, requestMode: ProbeOptions['mode'], time = refreshNow) => harness.runProbe({
+                home: profile.home,
+                claudeConfigDir: profile.claudeConfig,
+                pathDir: profile.bin,
+                nowMs: time,
+                mode: requestMode,
+                statusCode: requestMode === 'status' ? 429 : 200,
+                responseHeaders: { 'retry-after': '300' },
+                responseBody: updatedSuccessResponseBody
+            });
+
+            const failed = render(first, mode);
+            expect(failed.first.sessionUsage).toBe(11);
+            expect(failed.requestCount).toBe(1);
+            expect(failed.staleFallback).toEqual([true, true]);
+            const firstLock = fs.readFileSync(usageFilePath(first, 'lock'), 'utf8');
+            expect(parseLockContents(firstLock)?.error).toBe(mode === 'status' ? 'rate-limited' : 'timeout');
+
+            const other = render(second, 'success');
+            expect(other.first.sessionUsage).toBe(55);
+            expect(other.requestCount).toBe(1);
+            expect(other.lockExists).toBe(false);
+            expect(fs.readFileSync(usageFilePath(first, 'lock'), 'utf8')).toBe(firstLock);
+            const stillBlocked = render(first, 'unexpected', refreshNow + 1000);
+            expect(stillBlocked.first.sessionUsage).toBe(11);
+            expect(stillBlocked.requestCount).toBe(0);
+            expect(stillBlocked.staleFallback).toEqual([true, true]);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('preserves both profiles\' no-credentials backoffs when their misses alternate in one home', () => {
+        const harness = createProbeHarness();
+        try {
+            const first = harness.createTokenHome('credential-lock-first');
+            const second = { ...harness.createTokenHome('credential-lock-second'), home: first.home };
+            const render = (profile: TokenHome, time: number) => harness.runProbe({
+                home: profile.home,
+                claudeConfigDir: profile.claudeConfig,
+                pathDir: profile.bin,
+                nowMs: time,
+                mode: 'success',
+                responseBody: successResponseBody
+            });
+            for (const profile of [first, second]) {
+                fs.rmSync(path.join(profile.claudeConfig, '.credentials.json'));
+                expect(render(profile, nowMs).first).toEqual({ error: 'no-credentials' });
+            }
+            for (const profile of [first, second]) {
+                writeUsageCredentials(profile.claudeConfig, { accessToken: 'test-token' });
+                const blocked = render(profile, nowMs + 10000);
+                expect(blocked.first).toEqual({ error: 'no-credentials' });
+                expect(blocked.requestCount).toBe(0);
+            }
+            for (const profile of [first, second]) {
+                expect(render(profile, nowMs + 31000).first.sessionUsage).toBe(42);
+            }
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.each([false, true])('ignores and preserves shared legacy files with a custom profile: %s', (customProfile) => {
+        const harness = createProbeHarness();
+        try {
+            const initial = harness.createTokenHome('legacy-shared');
+            const profile = customProfile ? initial : { ...initial, claudeConfig: path.join(initial.home, '.claude') };
+            fs.mkdirSync(profile.claudeConfig, { recursive: true });
+            writeUsageCredentials(profile.claudeConfig, { accessToken: 'test-token' });
+            const cacheDir = path.join(profile.home, '.cache', 'ccstatusline');
+            fs.mkdirSync(cacheDir, { recursive: true });
+            const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const sourceService = customProfile
+                ? `Claude Code-credentials-${createHash('sha256').update(profile.claudeConfig).digest('hex').slice(0, 8)}`
+                : null;
+            const files = {
+                'usage.json': JSON.stringify({ sessionUsage: 99, tokenHash }),
+                'usage.lock': JSON.stringify({ blockedUntil: Math.floor(nowMs / 1000) + 300, error: 'rate-limited' }),
+                'usage-credentials.lock': JSON.stringify({
+                    blockedUntil: Math.floor(nowMs / 1000) + 30,
+                    source: JSON.stringify([sourceService, profile.claudeConfig])
+                })
+            };
+            for (const [name, contents] of Object.entries(files)) {
+                const file = path.join(cacheDir, name);
+                fs.writeFileSync(file, contents);
+                fs.utimesSync(file, nowMs / 1000, nowMs / 1000);
+            }
+            const result = harness.runProbe({
+                home: profile.home,
+                claudeConfigDir: customProfile ? profile.claudeConfig : undefined,
+                mode: 'success',
+                nowMs,
+                responseBody: successResponseBody
+            });
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.requestCount).toBe(1);
+            expect(fs.existsSync(usageFilePath(profile, 'json'))).toBe(true);
+            expect(result.lockExists).toBe(false);
+            for (const [name, contents] of Object.entries(files)) {
+                expect(fs.readFileSync(path.join(cacheDir, name), 'utf8')).toBe(contents);
+            }
+        } finally {
+            harness.cleanup();
+        }
+    });
+
     it('connects directly when NO_PROXY lists api.anthropic.com', () => {
         const harness = createProbeHarness();
 
@@ -802,12 +956,12 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
-            // The probe writes usage.json with a real-wall-clock mtime, so derive
+            // The probe writes the usage cache with a real-wall-clock mtime, so derive
             // 'now' from it (not the mocked epoch) to keep the cache within
             // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
             // render takes, rather than depending on a lingering lock to suppress
             // the refetch.
-            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cacheMtimeMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -850,7 +1004,7 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
-            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cacheMtimeMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -894,7 +1048,7 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
-            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cacheMtimeMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -937,7 +1091,7 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
-            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cacheMtimeMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -1018,7 +1172,7 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('lock-beyond-horizon');
             const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
             fs.mkdirSync(cacheDir, { recursive: true });
-            fs.writeFileSync(path.join(cacheDir, 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(nowMs / 1000) + (10 * 365 * 24 * 60 * 60),
                 error: 'timeout'
             }));
@@ -1055,7 +1209,7 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('lock-within-horizon');
             const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
             fs.mkdirSync(cacheDir, { recursive: true });
-            fs.writeFileSync(path.join(cacheDir, 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(nowMs / 1000) + (12 * 60 * 60),
                 error: 'rate-limited'
             }));
@@ -1184,7 +1338,7 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('account-switch');
             const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
             fs.mkdirSync(cacheDir, { recursive: true });
-            const cacheFile = path.join(cacheDir, 'usage.json');
+            const cacheFile = usageFilePath(home, 'json');
             // A complete cache written under a different account's token.
             fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
             const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
@@ -1215,8 +1369,8 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('account-switch-active-lock');
             const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
             fs.mkdirSync(cacheDir, { recursive: true });
-            const cacheFile = path.join(cacheDir, 'usage.json');
-            const lockFile = path.join(cacheDir, 'usage.lock');
+            const cacheFile = usageFilePath(home, 'json');
+            const lockFile = usageFilePath(home, 'lock');
             fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
 
             const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
@@ -1250,7 +1404,7 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('account-switch-rate-limit');
             const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
             fs.mkdirSync(cacheDir, { recursive: true });
-            const cacheFile = path.join(cacheDir, 'usage.json');
+            const cacheFile = usageFilePath(home, 'json');
             fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: 'deadbeefdeadbeef' }));
 
             const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
@@ -1286,7 +1440,7 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('account-same');
             const cacheDir = path.join(home.home, '.cache', 'ccstatusline');
             fs.mkdirSync(cacheDir, { recursive: true });
-            const cacheFile = path.join(cacheDir, 'usage.json');
+            const cacheFile = usageFilePath(home, 'json');
             const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
             fs.writeFileSync(cacheFile, JSON.stringify({ sessionUsage: 5, tokenHash: matchingHash }));
             const seededMtimeMs = fs.statSync(cacheFile).mtimeMs;
@@ -1317,7 +1471,7 @@ describe('fetchUsageData error handling', () => {
         try {
             const home = harness.createTokenHome('future-dated-cache');
             const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
-            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: matchingHash });
+            const { cacheFile, mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: matchingHash });
             // A day ahead: written while the system clock ran fast, since
             // corrected. A few seconds ahead: a concurrent render wrote it
             // after this one read the clock.
@@ -1354,10 +1508,10 @@ describe('fetchUsageData error handling', () => {
                 refreshToken: 'current-refresh-token'
             });
             const legacyHash = createHash('sha256').update('current-access-token').digest('hex').slice(0, 16);
-            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: legacyHash });
+            const { cacheFile, mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: legacyHash });
             const cacheContents = fs.readFileSync(cacheFile, 'utf8');
             const probeNowMs = mtimeMs + cacheAgeMs;
-            const lockFile = path.join(home.home, '.cache', 'ccstatusline', 'usage.lock');
+            const lockFile = usageFilePath(home, 'lock');
             const lockContents = JSON.stringify({
                 blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
                 error: 'rate-limited'
@@ -1398,9 +1552,9 @@ describe('fetchUsageData error handling', () => {
             const tokenHash = cachedToken === undefined
                 ? undefined
                 : createHash('sha256').update(cachedToken).digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash });
             const probeNowMs = mtimeMs + 5000;
-            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
                 error: 'rate-limited'
             }));
@@ -1429,7 +1583,7 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('legacy-cache-migration');
             writeUsageCredentials(home.claudeConfig, { accessToken: 'current-access-token', refreshToken });
             const legacyHash = createHash('sha256').update('current-access-token').digest('hex').slice(0, 16);
-            const { cacheFile, mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: legacyHash });
+            const { cacheFile, mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: legacyHash });
 
             const result = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
@@ -1461,9 +1615,9 @@ describe('fetchUsageData error handling', () => {
             const home = harness.createTokenHome('empty-refresh-token');
             writeUsageCredentials(home.claudeConfig, { accessToken: 'current-access-token', refreshToken: '' });
             const tokenHash = createHash('sha256').update(cachedToken).digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash });
             const probeNowMs = mtimeMs + 5000;
-            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(probeNowMs / 1000) + 3600,
                 error: 'rate-limited'
             }));
@@ -1497,7 +1651,7 @@ describe('fetchUsageData error handling', () => {
                 refreshToken: 'stable-refresh-token'
             });
             const fingerprint = createHash('sha256').update('stable-refresh-token').digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: fingerprint });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: fingerprint });
 
             const result = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
@@ -1527,13 +1681,13 @@ describe('fetchUsageData error handling', () => {
                 refreshToken: 'stable-refresh-token'
             });
             const fingerprint = createHash('sha256').update('stable-refresh-token').digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: fingerprint });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: fingerprint });
 
             // Cache is past CACHE_MAX_AGE and a server-issued backoff is active,
             // so the stale-cache fallback is the only thing standing between the
             // widgets and error text for the rest of the window.
             const backedOffNowMs = mtimeMs + 200000;
-            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(backedOffNowMs / 1000) + 3600,
                 error: 'rate-limited'
             }));
@@ -1596,10 +1750,10 @@ describe('fetchUsageData error handling', () => {
             const freshHome = harness.createTokenHome('fetched-at-fresh-cache');
             const staleHome = harness.createTokenHome('fetched-at-stale-cache');
             const matchingHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
-            const fresh = seedUsageCache(freshHome.home, { sessionUsage: 5, tokenHash: matchingHash });
-            const stale = seedUsageCache(staleHome.home, { sessionUsage: 5, tokenHash: matchingHash });
+            const fresh = seedUsageCache(freshHome, { sessionUsage: 5, tokenHash: matchingHash });
+            const stale = seedUsageCache(staleHome, { sessionUsage: 5, tokenHash: matchingHash });
             const backedOffNowMs = stale.mtimeMs + 2 * 60 * 60 * 1000;
-            fs.writeFileSync(path.join(staleHome.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(staleHome, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(backedOffNowMs / 1000) + 3600,
                 error: 'rate-limited'
             }));
@@ -1641,7 +1795,7 @@ describe('fetchUsageData error handling', () => {
                 refreshToken: 'other-account-refresh-token'
             });
             const previousFingerprint = createHash('sha256').update('previous-refresh-token').digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 5, tokenHash: previousFingerprint });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: previousFingerprint });
 
             const result = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
@@ -1688,12 +1842,12 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
-            // The probe writes usage.json with a real-wall-clock mtime, so derive
+            // The probe writes the usage cache with a real-wall-clock mtime, so derive
             // 'now' from it (not the mocked epoch) to keep the cache within
             // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
             // render takes, rather than depending on a lingering lock to suppress
             // the refetch.
-            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cacheMtimeMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -1740,12 +1894,12 @@ describe('fetchUsageData error handling', () => {
             expect(result.second).toEqual(result.first);
             expect(result.requestCount).toBe(1);
 
-            // The probe writes usage.json with a real-wall-clock mtime, so derive
+            // The probe writes the usage cache with a real-wall-clock mtime, so derive
             // 'now' from it (not the mocked epoch) to keep the cache within
             // CACHE_MAX_AGE. This exercises the file-cache fast path a real later
             // render takes, rather than depending on a lingering lock to suppress
             // the refetch.
-            const cacheMtimeMs = fs.statSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.json')).mtimeMs;
+            const cacheMtimeMs = fs.statSync(usageFilePath(home, 'json')).mtimeMs;
             const cachedResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -1926,12 +2080,12 @@ describe('fetchUsageData error handling', () => {
         try {
             const home = harness.createTokenHome(`stale-fallback-${requestCount}`);
             const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 97, tokenHash });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 97, tokenHash });
             // Long past CACHE_MAX_AGE, so only the fallback serves the cache,
             // and it has outlived any refresh
             const staleNowMs = mtimeMs + 40 * 60 * 1000;
             if (backedOff) {
-                fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+                fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                     blockedUntil: Math.floor(staleNowMs / 1000) + 3600,
                     error: 'rate-limited'
                 }));
@@ -1968,9 +2122,9 @@ describe('fetchUsageData error handling', () => {
         try {
             const home = harness.createTokenHome(`refresh-in-flight-${cacheAgeSeconds}`);
             const tokenHash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
-            const { mtimeMs } = seedUsageCache(home.home, { sessionUsage: 97, tokenHash });
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 97, tokenHash });
             const refreshNowMs = mtimeMs + cacheAgeSeconds * 1000;
-            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', 'usage.lock'), JSON.stringify({
+            fs.writeFileSync(usageFilePath(home, 'lock'), JSON.stringify({
                 blockedUntil: Math.floor(refreshNowMs / 1000) + 28,
                 error: 'timeout'
             }));
@@ -2010,7 +2164,7 @@ describe('fetchUsageData error handling', () => {
             expect(fetchedResult.requestCount).toBe(1);
             expect(fetchedResult.staleFallback).toEqual([false, false]);
 
-            const cacheFile = path.join(home.home, '.cache', 'ccstatusline', 'usage.json');
+            const cacheFile = usageFilePath(home, 'json');
             const cacheHitResult = harness.runProbe({
                 claudeConfigDir: home.claudeConfig,
                 home: home.home,
@@ -2119,7 +2273,7 @@ describe('fetchUsageData error handling', () => {
         try {
             const home = harness.createTokenHome('legacy-lock');
             const lockDir = path.join(home.home, '.cache', 'ccstatusline');
-            const lockFile = path.join(lockDir, 'usage.lock');
+            const lockFile = usageFilePath(home, 'lock');
 
             fs.mkdirSync(lockDir, { recursive: true });
             fs.writeFileSync(lockFile, '');

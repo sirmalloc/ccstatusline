@@ -60,8 +60,8 @@ bun run docs
 - `~/.cache/ccstatusline/git-review/git-review-*.json` - cached Git PR/MR lookup results
 - `~/.cache/ccstatusline/custom-command-cache/cmd-*.json` - opt-in custom command results, grouped by working directory and keyed by command, timeout, session ID, and terminal width
 - `~/.cache/ccstatusline/terminal-width.json` - per-session no-width probe results; detected numeric widths are not persisted by the renderer
-- `~/.cache/ccstatusline/usage.json` and `~/.cache/ccstatusline/usage.lock` - usage API data cache and fetch backoff lock
-- `~/.cache/ccstatusline/usage-credentials.lock` - 30-second backoff after a usage credential lookup finds no OAuth login, tagged with the profile it applies to
+- `~/.cache/ccstatusline/usage-<profileHash>.json` and `~/.cache/ccstatusline/usage-<profileHash>.lock` - per-profile usage API data cache and fetch backoff lock
+- `~/.cache/ccstatusline/usage-<profileHash>.credentials.lock` - per-profile 30-second backoff after a usage credential lookup finds no OAuth login, also tagged with its credential source
 - `~/.cache/ccstatusline/session-usage-history.json` and `~/.cache/ccstatusline/session-usage-history.json.lock` - 5-hour usage readings for Block Forecast and Block Limit Timer, per Claude config directory and login, and the lock a render holds while writing them
 - `~/.cache/ccstatusline/claude-status.json` and `~/.cache/ccstatusline/claude-status.lock` - Claude service-status cache and failed-fetch backoff lock
 - `~/.cache/ccstatusline/skills/skills-<sessionId>.jsonl` - skill hook records; session IDs must contain only ASCII letters, digits, `-`, or `_`
@@ -69,6 +69,10 @@ bun run docs
 If you use a custom Claude config location, set `CLAUDE_CONFIG_DIR` and ccstatusline will read/write that path instead of `~/.claude`.
 
 On macOS, usage credentials for a custom profile come from `Claude Code-credentials-<sha256(configDir)[:8]>`, then that profile's `.credentials.json`; the lookup does not fall back to another profile's Keychain entry. The hash uses the raw `CLAUDE_CONFIG_DIR` value normalized to NFC, without path resolution. `CLAUDE_SECURESTORAGE_CONFIG_DIR` overrides that hash input, including an empty value to force the default service lookup. Default lookup tries the plain service, then the same service scoped to `os.userInfo().username` if no OAuth token was found, then discovered suffixed services and the credentials file. If the OS username cannot be resolved, the account-scoped retry is skipped. Both access and refresh tokens are preserved for cache identity checks. Other platforms use the credentials file directly. Each Keychain subprocess has a five-second timeout; a timeout stops further Keychain probes for that lookup (including the username retry) and continues with the current profile’s credentials file, while an ordinary miss continues to the next source. A missing OAuth login triggers a profile-specific 30-second lookup backoff.
+
+Usage file names use the first 16 hex characters of SHA-256 of `path.resolve(getClaudeConfigDir())`, including for the default profile. This file identity is separate from the raw environment value used for Keychain service selection. All usage cache freshness checks, stale reads, request locks, lock cleanup, and no-credentials backoff files use that profile's names. Profiles sharing one home keep independent data and backoff deadlines, even if they use the same login.
+
+The old shared `usage.json`, `usage.lock`, and `usage-credentials.lock` files are ignored and left untouched. They are not migrated because the originating profile cannot be established reliably. Each profile starts with a cold cache and obtains its own data on the next eligible API lookup; legacy shared backoff deadlines are not carried over. The legacy empty-lock format is still supported within a profile's new lock file.
 
 Usage-cache identity prefers a truncated SHA-256 fingerprint of the refresh token and falls back to the access token when no refresh token is available. Access-token rotation preserves the cache when the refresh token is unchanged. Legacy caches carrying the current access-token hash remain readable; the next successful fetch stores the preferred fingerprint. Mismatched account fingerprints are rejected even for stale-cache fallback during API backoff.
 
@@ -82,7 +86,7 @@ Configuration exports snapshot the live TUI settings and add an `exportedBy` pac
 
 Usage-fetch tests spawn subprocess probes. Keep those probes sandboxed by setting `HOME`, `USERPROFILE`, `CLAUDE_CONFIG_DIR`, and proxy variables explicitly so tests cannot read or write a developer's live ccstatusline usage cache.
 
-Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignored, so mocked clocks, system clock jumps, or old test artifacts cannot suppress usage fetching indefinitely. Valid deadlines up to 24 hours ahead, including API `Retry-After` backoffs, remain active. Likewise, a `usage.json` modified more than its 180-second lifetime in the future counts as stale rather than fresh.
+Usage-lock deadlines more than 24 hours ahead are treated as poisoned and ignored, so mocked clocks, system clock jumps, or old test artifacts cannot suppress usage fetching indefinitely. Valid deadlines up to 24 hours ahead, including API `Retry-After` backoffs, remain active. Likewise, a usage cache file modified more than its 180-second lifetime in the future counts as stale rather than fresh.
 
 After a complete successful usage fetch, the process clears the lock only if its contents still match the in-flight record it wrote, preserving a concurrent render's newer rate-limit backoff.
 
