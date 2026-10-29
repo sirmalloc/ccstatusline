@@ -17,6 +17,7 @@ import {
     clearGitCache,
     execGit,
     getGitChangeCounts,
+    getGitConflictCount,
     getGitFileStatusCounts,
     getGitStatus,
     isInsideGitWorkTree,
@@ -565,6 +566,33 @@ describe('git utils', () => {
                 insertions: 0,
                 deletions: 0
             });
+        });
+    });
+
+    describe('getGitConflictCount', () => {
+        it('counts paths differing only in repeated spaces separately', () => {
+            mockExecFileSync.mockReturnValueOnce([
+                '100644 abc123 1\ta b.txt',
+                '100644 def456 2\ta b.txt',
+                '100644 fed789 3\ta b.txt',
+                '100644 abc123 1\ta  b.txt',
+                '100644 def456 2\ta  b.txt',
+                '100644 fed789 3\ta  b.txt',
+                ''
+            ].join('\n'));
+
+            expect(getGitConflictCount({})).toBe(2);
+        });
+
+        it('deduplicates stages for a path containing a single space', () => {
+            mockExecFileSync.mockReturnValueOnce([
+                '100644 abc123 1\ta b.txt',
+                '100644 def456 2\ta b.txt',
+                '100644 fed789 3\ta b.txt',
+                ''
+            ].join('\n'));
+
+            expect(getGitConflictCount({})).toBe(1);
         });
     });
 

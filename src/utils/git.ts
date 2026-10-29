@@ -705,8 +705,7 @@ export function getGitConflictCount(context: RenderContext): number {
 
     // Count unique file paths (unmerged files appear 3 times in output)
     const files = new Set(output.split('\n').map((line) => {
-        const parts = line.split(/\s+/).slice(3);
-        return parts.join(' ');
+        return line.slice(line.indexOf('\t') + 1);
     }).filter(path => path.length > 0));
     return files.size;
 }
