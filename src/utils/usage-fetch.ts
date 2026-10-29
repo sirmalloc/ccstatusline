@@ -379,6 +379,14 @@ interface MacKeychainCredentialCandidate {
     service: string;
 }
 
+type MacKeychainSecretResult = { kind: 'found'; secret: string }
+    | { kind: 'miss' }
+    | { kind: 'timeout' };
+
+type MacKeychainCredentialResult = { kind: 'found'; credentials: UsageCredentials }
+    | { kind: 'miss' }
+    | { kind: 'timeout' };
+
 function ensureCacheDirExists(): void {
     if (!fs.existsSync(CACHE_DIR)) {
         fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -545,24 +553,37 @@ export function parseMacKeychainCredentialCandidates(rawDump: string, servicePre
         .map(candidate => candidate.service);
 }
 
-function readMacKeychainSecret(service: string, account?: string): string | null {
+function isExecFileTimeoutError(error: unknown): boolean {
+    return typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && error.code === 'ETIMEDOUT';
+}
+
+function readMacKeychainSecret(service: string, account?: string): MacKeychainSecretResult {
     try {
         const args = account
             ? ['find-generic-password', '-s', service, '-a', account, '-w']
             : ['find-generic-password', '-s', service, '-w'];
-        return execFileSync(
+        const secret = execFileSync(
             'security',
             args,
             { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: MACOS_SECURITY_TIMEOUT_MS, windowsHide: true }
         ).trim();
-    } catch {
-        return null;
+        return { kind: 'found', secret };
+    } catch (error) {
+        return { kind: isExecFileTimeoutError(error) ? 'timeout' : 'miss' };
     }
 }
 
-function readUsageCredentialsFromMacKeychainService(service: string, account?: string): UsageCredentials | null {
-    const secret = readMacKeychainSecret(service, account);
-    return secret ? parseUsageCredentials(secret) : null;
+function readUsageCredentialsFromMacKeychainService(service: string, account?: string): MacKeychainCredentialResult {
+    const result = readMacKeychainSecret(service, account);
+    if (result.kind !== 'found') {
+        return result;
+    }
+
+    const credentials = result.secret ? parseUsageCredentials(result.secret) : null;
+    return credentials ? { kind: 'found', credentials } : { kind: 'miss' };
 }
 
 function getOsUsername(): string | null {
@@ -577,12 +598,12 @@ function getOsUsername(): string | null {
 // account; a service-only lookup returns whichever matches first, which may be an
 // entry lacking `claudeAiOauth`. Claude Code reads/writes with an explicit account
 // (the OS username), so mirror that.
-function readUsageCredentialsFromMacKeychainUserAccount(service: string): UsageCredentials | null {
+function readUsageCredentialsFromMacKeychainUserAccount(service: string): MacKeychainCredentialResult {
     const osUsername = getOsUsername();
-    return osUsername ? readUsageCredentialsFromMacKeychainService(service, osUsername) : null;
+    return osUsername ? readUsageCredentialsFromMacKeychainService(service, osUsername) : { kind: 'miss' };
 }
 
-function listMacKeychainCredentialCandidates(): string[] {
+function listMacKeychainCredentialCandidates(): string[] | { kind: 'miss' | 'timeout' } {
     try {
         const rawDump = execFileSync(
             'security',
@@ -597,22 +618,25 @@ function listMacKeychainCredentialCandidates(): string[] {
         );
 
         return parseMacKeychainCredentialCandidates(rawDump);
-    } catch {
-        return [];
+    } catch (error) {
+        return { kind: isExecFileTimeoutError(error) ? 'timeout' : 'miss' };
     }
 }
 
-function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | null {
+function readUsageCredentialsFromMacKeychainCandidates(): MacKeychainCredentialResult {
     const candidates = listMacKeychainCredentialCandidates();
+    if (!Array.isArray(candidates)) {
+        return candidates;
+    }
 
     for (const service of candidates) {
-        const credentials = readUsageCredentialsFromMacKeychainService(service);
-        if (credentials) {
-            return credentials;
+        const result = readUsageCredentialsFromMacKeychainService(service);
+        if (result.kind !== 'miss') {
+            return result;
         }
     }
 
-    return null;
+    return { kind: 'miss' };
 }
 
 function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
@@ -655,14 +679,32 @@ export function getUsageCredentials(): UsageCredentials | null {
         // other profiles (or MCP servers), so fall through only to the
         // profile's own .credentials.json rather than surface another
         // account's usage.
-        return readUsageCredentialsFromMacKeychainService(configDirService)
-            ?? readUsageCredentialsFromCredentialsFile();
+        const result = readUsageCredentialsFromMacKeychainService(configDirService);
+        return result.kind === 'found' ? result.credentials : readUsageCredentialsFromCredentialsFile();
     }
 
-    return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageCredentialsFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageCredentialsFromMacKeychainCandidates()
-        ?? readUsageCredentialsFromCredentialsFile();
+    const defaultResult = readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE);
+    if (defaultResult.kind === 'found') {
+        return defaultResult.credentials;
+    }
+
+    if (defaultResult.kind === 'timeout') {
+        return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const accountResult = readUsageCredentialsFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE);
+    if (accountResult.kind === 'found') {
+        return accountResult.credentials;
+    }
+
+    if (accountResult.kind === 'timeout') {
+        return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const candidateResult = readUsageCredentialsFromMacKeychainCandidates();
+    return candidateResult.kind === 'found'
+        ? candidateResult.credentials
+        : readUsageCredentialsFromCredentialsFile();
 }
 
 export function getUsageToken(): string | null {

@@ -38,6 +38,7 @@ interface UsageProbeResult {
     requestHost: string | null;
     homedir: string;
     lockContents: string | null;
+    securityCalls: string[];
     fetchedAtMs: number | null;
 }
 
@@ -49,6 +50,7 @@ interface TokenHome {
 
 interface ProbeOptions {
     claudeConfigDir?: string;
+    claudeSecureStorageConfigDir?: string;
     home: string;
     httpsProxy?: string;
     lockWrittenDuringRequest?: string;
@@ -161,6 +163,7 @@ const { fetchUsageData, getUsageFetchedAtMs, isStaleUsageFallback } = await impo
 
 const lockFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.lock');
 const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
+const securityCallsFile = path.join(os.homedir(), 'security-calls.jsonl');
 const nowMs = Number(process.env.TEST_NOW_MS || Date.now());
 const requiredFields = JSON.parse(process.env.TEST_REQUIRED_FIELDS_JSON || '[]');
 Date.now = () => nowMs;
@@ -178,6 +181,9 @@ process.stdout.write(JSON.stringify({
     requestHost,
     homedir: os.homedir(),
     lockContents: fs.existsSync(lockFile) ? fs.readFileSync(lockFile, 'utf8') : null,
+    securityCalls: fs.existsSync(securityCallsFile)
+        ? fs.readFileSync(securityCallsFile, 'utf8').trim().split('\\n').filter(Boolean)
+        : [],
     fetchedAtMs: getUsageFetchedAtMs() ?? null
 }));
 `;
@@ -214,6 +220,30 @@ process.stdout.write(JSON.stringify({
         };
     }
 
+    function createTimedOutSecurityHome(name: string): TokenHome {
+        const tokenHome = createTokenHome(name);
+        const securityScript = path.join(tokenHome.bin, 'security');
+
+        fs.writeFileSync(securityScript, [
+            '#!/bin/sh',
+            'printf \'%s\\n\' "$*" >> "$HOME/security-calls.jsonl"',
+            'case "$*" in',
+            '  "find-generic-password -s Claude Code-credentials -w"|"find-generic-password -s Claude Code-credentials-"*" -w")',
+            '    child=""',
+            '    trap \'[ -z "$child" ] || kill "$child" 2>/dev/null; printf "terminated\\\\n" > "$HOME/security-timeout.txt"; exit 143\' TERM',
+            '    /bin/sleep 10 &',
+            '    child=$!',
+            '    wait "$child"',
+            '    ;;',
+            '  "dump-keychain") echo "keychain: fake";;',
+            '  *) echo "unexpected fake security call: $*" >&2; exit 2 ;;',
+            'esac'
+        ].join('\n'));
+        fs.chmodSync(securityScript, 0o755);
+
+        return tokenHome;
+    }
+
     function runProbe(options: ProbeOptions): UsageProbeResult {
         const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => {
             const normalizedKey = key.toUpperCase();
@@ -240,6 +270,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.claudeConfigDir !== undefined) {
             env.CLAUDE_CONFIG_DIR = options.claudeConfigDir;
+        }
+
+        if (options.claudeSecureStorageConfigDir !== undefined) {
+            env.CLAUDE_SECURESTORAGE_CONFIG_DIR = options.claudeSecureStorageConfigDir;
         }
 
         if (options.httpsProxy !== undefined) {
@@ -279,6 +313,7 @@ process.stdout.write(JSON.stringify({
     return {
         cleanup,
         createEmptyHome,
+        createTimedOutSecurityHome,
         createTokenHome,
         runProbe
     };
@@ -1077,6 +1112,33 @@ describe('fetchUsageData error handling', () => {
             const retried = renderAt(nowMs + 31000);
             expect(retried.first.sessionUsage).toBe(42);
             expect(retried.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it.skipIf(process.platform !== 'darwin')('stops default Keychain probes after a real fake-security timeout and still uses the credentials file', { timeout: 15_000 }, () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTimedOutSecurityHome('keychain-timeout');
+            const timeoutMarker = path.join(home.home, 'security-timeout.txt');
+            const result = harness.runProbe({
+                claudeConfigDir: home.claudeConfig,
+                claudeSecureStorageConfigDir: '',
+                home: home.home,
+                mode: 'success',
+                nowMs,
+                pathDir: home.bin,
+                responseBody: successResponseBody
+            });
+
+            expect(result.securityCalls).toEqual([
+                'find-generic-password -s Claude Code-credentials -w'
+            ]);
+            expect(fs.readFileSync(timeoutMarker, 'utf8')).toBe('terminated\n');
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.requestCount).toBe(1);
         } finally {
             harness.cleanup();
         }

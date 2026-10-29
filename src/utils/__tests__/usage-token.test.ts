@@ -59,6 +59,10 @@ function makeTokenPayload(token: string, refreshToken?: string): string {
     return JSON.stringify({ claudeAiOauth: { accessToken: token, refreshToken } });
 }
 
+function makeExecFileTimeoutError(): Error & { code: string } {
+    return Object.assign(new Error('child process failed'), { code: 'ETIMEDOUT' });
+}
+
 function encodeAsciiAsHex(value: string): string {
     return Buffer.from(value, 'utf8').toString('hex');
 }
@@ -337,12 +341,75 @@ describe('getUsageToken', () => {
         }
     });
 
-    it('uses the credentials file on non-macOS', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
-        mockCredentialsFile(makeTokenPayload('linux-file-token'));
+    it.each(['service-only', 'username'] as const)('stops macOS keychain probes after the %s lookup times out', (timeoutPosition) => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile(makeTokenPayload('file-token', 'file-refresh-token'));
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command === 'security' && args?.[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials') {
+                if (timeoutPosition === 'username' && !args.includes('-a')) {
+                    return JSON.stringify({ mcpOAuth: {} });
+                }
+                throw makeExecFileTimeoutError();
+            }
 
-        expect(getUsageToken()).toBe('linux-file-token');
-        expect(getUsageToken()).toBe('linux-file-token');
+            throw new Error(`Unexpected security args: ${args?.join(' ')}`);
+        });
+
+        expect(getUsageCredentials()).toEqual({
+            accessToken: 'file-token',
+            refreshToken: 'file-refresh-token'
+        });
+        expect(getSecurityCallLog()).toEqual(timeoutPosition === 'service-only'
+            ? ['find-generic-password -s Claude Code-credentials -w']
+            : [
+                'find-generic-password -s Claude Code-credentials -w',
+                'find-generic-password -s Claude Code-credentials -a testuser -w'
+            ]);
+    });
+
+    it('stops trying macOS keychain candidates after one times out', () => {
+        const dump = [
+            makeKeychainBlock('Claude Code-credentials-new', { quoted: '20240301010101Z' }),
+            makeKeychainBlock('Claude Code-credentials-old', { quoted: '20240201010101Z' })
+        ].join('\n');
+
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile(makeTokenPayload('file-token'));
+        mockedExecFileSync.mockImplementation((command: string, args?: string[]) => {
+            if (command !== 'security' || !args) {
+                throw new Error(`Unexpected security args: ${args?.join(' ')}`);
+            }
+
+            if (args[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials') {
+                throw new Error('missing exact credential');
+            }
+
+            if (args[0] === 'dump-keychain') {
+                return dump;
+            }
+
+            if (args[0] === 'find-generic-password' && args[2] === 'Claude Code-credentials-new') {
+                throw makeExecFileTimeoutError();
+            }
+
+            throw new Error(`Unexpected security args: ${args.join(' ')}`);
+        });
+
+        expect(getUsageToken()).toBe('file-token');
+        expect(getSecurityCallLog()).toEqual([
+            'find-generic-password -s Claude Code-credentials -w',
+            'find-generic-password -s Claude Code-credentials -a testuser -w',
+            'dump-keychain',
+            'find-generic-password -s Claude Code-credentials-new -w'
+        ]);
+    });
+
+    it.each(['linux', 'win32'] as const)('uses the credentials file on %s', (platform) => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
+        mockCredentialsFile(makeTokenPayload('file-token'));
+
+        expect(getUsageToken()).toBe('file-token');
+        expect(getUsageToken()).toBe('file-token');
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
 
@@ -367,6 +434,25 @@ describe('getUsageToken', () => {
         });
         expect(getSecurityCallLog()).toEqual([
             `find-generic-password -s ${configDirService} -w`,
+            `find-generic-password -s ${configDirService} -w`
+        ]);
+    });
+
+    it('uses only the current profile file after its Keychain service times out', () => {
+        const configDirService = makeConfigDirService('/fake/claude');
+
+        process.env.CLAUDE_CONFIG_DIR = '/fake/claude';
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+        mockCredentialsFile(makeTokenPayload('profile-file-token', 'profile-file-refresh-token'));
+        mockedExecFileSync.mockImplementation(() => {
+            throw makeExecFileTimeoutError();
+        });
+
+        expect(getUsageCredentials()).toEqual({
+            accessToken: 'profile-file-token',
+            refreshToken: 'profile-file-refresh-token'
+        });
+        expect(getSecurityCallLog()).toEqual([
             `find-generic-password -s ${configDirService} -w`
         ]);
     });
