@@ -27,7 +27,9 @@ import {
 
 const SATELLITE_EMOJI = '📡';
 const SATELLITE_NERD_FONT = '';
-const SATELLITE_SLASH_NERD_FONT = '';
+// nf-md-wifi_off. Nerd Fonts v3 moved the Material Design icons out of the
+// BMP; the v2 codepoint this used to be (U+F6AC) is unassigned in v3 fonts.
+const SATELLITE_SLASH_NERD_FONT = '\u{f05aa}';
 
 const ON_SLOT: SymbolSlot = { id: 'symbolOn', label: 'On', defaultSymbol: SATELLITE_NERD_FONT };
 const OFF_SLOT: SymbolSlot = { id: 'symbolOff', label: 'Off', defaultSymbol: SATELLITE_SLASH_NERD_FONT };

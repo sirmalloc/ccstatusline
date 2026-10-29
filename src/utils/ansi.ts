@@ -19,7 +19,8 @@ const VARIATION_SELECTOR_SUPPLEMENT_END = 0xe01ef;
 const REGIONAL_INDICATOR_START = 0x1f1e6;
 const REGIONAL_INDICATOR_END = 0x1f1ff;
 
-const SGR_REGEX = /\x1b\[[0-9;]*m/g;
+// Color codes, written with ESC [ or the 8-bit CSI
+const SGR_REGEX = /(?:\x1b\[|\x9b)[0-9;]*m/g;
 // Lowest code point that can extend a display cluster (U+0300 is the first
 // \p{Mark}; ZWJ, variation selectors, the keycap and emoji modifiers are all
 // higher), so a printable ASCII character followed by anything below it is a
@@ -399,7 +400,8 @@ export function stripSgrCodes(text: string): string {
 // reset (0, an empty parameter, or 49). Skip extended color arguments so their
 // values aren't mistaken for resets or background operations.
 function sgrClearsBackground(sequence: string): boolean {
-    const params = sequence.slice(2, -1).split(';').map(param => Number.parseInt(param || '0', 10));
+    const introducerLength = sequence.startsWith(C1_CSI) ? 1 : 2;
+    const params = sequence.slice(introducerLength, -1).split(';').map(param => Number.parseInt(param || '0', 10));
     let clearsBackground = false;
     for (let i = 0; i < params.length; i++) {
         const param = params[i];

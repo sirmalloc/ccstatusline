@@ -3,6 +3,8 @@ import type {
     SkillsMetrics
 } from '../types';
 
+import type { AccountEmailResult } from './AccountEmail';
+import type { SessionForecast } from './SessionForecast';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
 import type { TokenMetrics } from './TokenMetrics';
@@ -18,11 +20,15 @@ export interface RenderUsageData {
     weeklyOpusResetAt?: string;
     fableUsage?: number;
     fableResetAt?: string;
+    spendLimitUsage?: number;
+    spendLimitUsedUsd?: number;
+    spendLimitLimitUsd?: number;
     extraUsageEnabled?: boolean;
     extraUsageLimit?: number;
     extraUsageUsed?: number;
     extraUsageUtilization?: number;
     extraUsageCurrency?: string;
+    apiSessionUsage?: number;
     error?: 'no-credentials' | 'timeout' | 'rate-limited' | 'api-error' | 'parse-error';
 }
 
@@ -48,7 +54,9 @@ export interface RenderContext {
     speedMetrics?: SpeedMetrics | null;
     windowedSpeedMetrics?: Record<string, SpeedMetrics> | null;
     usageData?: RenderUsageData | null;
+    sessionForecast?: SessionForecast | null;
     claudeStatusData?: ClaudeStatusRenderData | null;
+    accountEmail?: AccountEmailResult;  // Email of the account the live OAuth credentials belong to
     sessionDuration?: string | null;
     transcriptSessionName?: string | null;
     transcriptThinkingEffort?: { value: string; known: boolean } | null;

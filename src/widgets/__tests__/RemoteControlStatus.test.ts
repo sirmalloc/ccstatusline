@@ -195,9 +195,9 @@ describe('RemoteControlStatusWidget', () => {
     describe('render() - format icon, Nerd Font', () => {
         const NERD_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true' } };
 
-        it('renders disconnected glyph (U+F6AC) when OFF', () => {
+        it('renders nf-md-wifi_off (U+F05AA) when OFF', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
-            expect(new RemoteControlStatusWidget().render(NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('\uF6AC');
+            expect(new RemoteControlStatusWidget().render(NERD_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe('\u{F05AA}');
         });
 
         it('renders connected glyph (U+F1EB) when ON', () => {
@@ -208,8 +208,8 @@ describe('RemoteControlStatusWidget', () => {
 
     describe('render() - Nerd Font glyph slots', () => {
         const WIFI = '\u{F05A9}';
-        const WIFI_OFF = '\u{F05AA}';
-        const SLOT_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true', symbolOn: WIFI, symbolOff: WIFI_OFF } };
+        const OFF_GLYPH = '⊘';
+        const SLOT_ITEM: WidgetItem = { ...ITEM, metadata: { nerdFont: 'true', symbolOn: WIFI, symbolOff: OFF_GLYPH } };
 
         it('renders the On override when ON', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
@@ -218,7 +218,7 @@ describe('RemoteControlStatusWidget', () => {
 
         it('renders the Off override when OFF', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
-            expect(new RemoteControlStatusWidget().render(SLOT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(WIFI_OFF);
+            expect(new RemoteControlStatusWidget().render(SLOT_ITEM, makeContext(), DEFAULT_SETTINGS)).toBe(OFF_GLYPH);
         });
 
         it('uses the overrides in icon-text and collapses the space for a blank glyph', () => {
@@ -226,7 +226,7 @@ describe('RemoteControlStatusWidget', () => {
             const iconText: WidgetItem = { ...SLOT_ITEM, metadata: { ...SLOT_ITEM.metadata, format: 'icon-text' } };
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: false });
             const blankOff: WidgetItem = { ...iconText, metadata: { ...iconText.metadata, symbolOff: '' } };
-            expect(widget.render(iconText, makeContext(), DEFAULT_SETTINGS)).toBe(`${WIFI_OFF} off`);
+            expect(widget.render(iconText, makeContext(), DEFAULT_SETTINGS)).toBe(`${OFF_GLYPH} off`);
             expect(widget.render(blankOff, makeContext(), DEFAULT_SETTINGS)).toBe('off');
         });
 
@@ -238,7 +238,7 @@ describe('RemoteControlStatusWidget', () => {
 
         it('ignores the overrides when Nerd Font is off', () => {
             vi.spyOn(claudeSettings, 'getRemoteControlStatus').mockReturnValue({ enabled: true });
-            const item: WidgetItem = { ...ITEM, metadata: { symbolOn: WIFI, symbolOff: WIFI_OFF } };
+            const item: WidgetItem = { ...ITEM, metadata: { symbolOn: WIFI, symbolOff: OFF_GLYPH } };
             expect(new RemoteControlStatusWidget().render(item, makeContext(), DEFAULT_SETTINGS)).toBe('📡 ◉');
         });
 
@@ -364,7 +364,7 @@ describe('RemoteControlStatusWidget', () => {
             {
                 name: 'icon with Nerd Font',
                 item: { ...RAW_ITEM, metadata: { nerdFont: 'true' } },
-                off: '\uF6AC',
+                off: '\u{F05AA}',
                 on: '\uF1EB'
             },
             {
