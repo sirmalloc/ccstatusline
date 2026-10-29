@@ -212,7 +212,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
 
         // The label only shows when raw value is off, so the editor is offered
         // only then. Like 'h', widgets must leave this key unbound.
-        if (widgetImpl.getLabelPrefix && !widget.rawValue) {
+        if (!widget.rawValue && widgetImpl.getLabelPrefix?.(widget) !== undefined) {
             keybinds.push(getLabelKeybind());
         }
 
@@ -463,11 +463,12 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
         );
     }
 
-    if (customEditorWidget?.action === EDIT_LABEL_ACTION && customEditorWidget.impl.getLabelPrefix) {
+    const editorLabel = customEditorWidget?.impl.getLabelPrefix?.(customEditorWidget.widget);
+    if (customEditorWidget?.action === EDIT_LABEL_ACTION && editorLabel !== undefined) {
         return (
             <LabelEditor
                 widget={customEditorWidget.widget}
-                defaultLabel={customEditorWidget.impl.getLabelPrefix(customEditorWidget.widget)}
+                defaultLabel={editorLabel}
                 onComplete={handleEditorComplete}
                 onCancel={handleEditorCancel}
                 onPreview={(updatedWidget) => {
@@ -711,7 +712,9 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
                                     ? getNumberFormatModifierText(widget)
                                     : undefined;
                                 const hideModifierText = widgetImpl ? getHideModifierText(widget, widgetImpl.getHideableStates?.() ?? []) : undefined;
-                                const labelModifierText = widgetImpl?.getLabelPrefix && !widget.rawValue ? getLabelModifierText(widget) : undefined;
+                                const labelModifierText = !widget.rawValue && widgetImpl?.getLabelPrefix?.(widget) !== undefined
+                                    ? getLabelModifierText(widget)
+                                    : undefined;
 
                                 return (
                                     <Box key={widget.id} flexDirection='row' flexWrap='nowrap'>

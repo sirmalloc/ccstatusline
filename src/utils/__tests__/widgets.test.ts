@@ -383,6 +383,8 @@ describe('label prefix', () => {
         { display: 'progress-short' },
         { display: 'slider' },
         { display: 'slider-only' },
+        { format: 'label-check' },
+        { format: 'label-mark' },
         { inverse: 'true' }
     ];
 
@@ -401,6 +403,9 @@ describe('label prefix', () => {
             for (const metadata of LABEL_MODE_PROBES) {
                 const item = { id: '1', type, metadata };
                 const label = widget.getLabelPrefix(item);
+                if (label === undefined) {
+                    continue;
+                }
                 const rendered = widget.render(item, { isPreview: true }, settings) ?? '';
                 expect(`${type}/${JSON.stringify(metadata)}: ${rendered.includes(label) ? 'has' : 'lacks'} "${label}"`)
                     .toBe(`${type}/${JSON.stringify(metadata)}: has "${label}"`);
