@@ -351,7 +351,7 @@ async function main() {
         const input = await readStdin();
         if (input && input.trim() !== '') {
             try {
-                const parsed = JSON.parse(input);
+                const parsed: unknown = JSON.parse(input);
 
                 // A wrapped statusLine command may have dropped --hook before this
                 // process saw argv (see isDispatchableHookPayload above). Detect that
