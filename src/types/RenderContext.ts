@@ -3,6 +3,7 @@ import type {
     SkillsMetrics
 } from '../types';
 
+import type { AccountEmailResult } from './AccountEmail';
 import type { SessionForecast } from './SessionForecast';
 import type { SpeedMetrics } from './SpeedMetrics';
 import type { StatusJSON } from './StatusJSON';
@@ -55,6 +56,7 @@ export interface RenderContext {
     usageData?: RenderUsageData | null;
     sessionForecast?: SessionForecast | null;
     claudeStatusData?: ClaudeStatusRenderData | null;
+    accountEmail?: AccountEmailResult;  // Email of the account the live OAuth credentials belong to
     sessionDuration?: string | null;
     transcriptSessionName?: string | null;
     transcriptThinkingEffort?: { value: string; known: boolean } | null;

@@ -1,4 +1,5 @@
 export {
+    fetchAccountEmail,
     fetchUsageData,
     getUsageFetchedAtMs,
     getUsageLoginFingerprint,
