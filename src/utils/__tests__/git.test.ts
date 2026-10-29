@@ -39,7 +39,7 @@ vi.mock('node:child_process', () => ({
 
 const mockExecFileSync = execFileSync as unknown as {
     mock: { calls: unknown[][] };
-    mockImplementation: (impl: () => never) => void;
+    mockImplementation: (impl: () => string) => void;
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
@@ -296,6 +296,54 @@ describe('git utils', () => {
 
             expect(runGit('symbolic-ref --short HEAD', context)).toBe('new-value');
             expect(mockExecFileSync.mock.calls).toHaveLength(2);
+        });
+
+        // The TTL has to start when git's answer became available. Measuring
+        // from before the run would leave a command slower than the TTL (status
+        // in a large repository) expired on arrival, so every widget sharing it
+        // would run it again.
+        it('gives a slow command a full TTL measured from when it finished', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockImplementation(() => {
+                // The command occupies 6s, longer than the TTL under test.
+                nowSpy.mockReturnValue(7000);
+                return ' M src/app.ts\0';
+            });
+
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+
+            nowSpy.mockReturnValue(11000);
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            clearGitCache();
+            expect(runGit('status --porcelain -z', context)).toBe(' M src/app.ts\0');
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+        });
+
+        it('gives a slow failure a full TTL measured from when git gave up', () => {
+            const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+            useTempHome();
+            const { root } = createGitRepo();
+            const context: RenderContext = { data: { cwd: root }, gitCacheTtlSeconds: 5 };
+            mockExecFileSync.mockImplementation(() => {
+                // Killed at the 5s command timeout, just past the TTL under test.
+                nowSpy.mockReturnValue(6001);
+                throw new Error('spawnSync git ETIMEDOUT');
+            });
+
+            expect(runGit('diff --shortstat', context)).toBeNull();
+
+            nowSpy.mockReturnValue(10000);
+            expect(runGit('diff --shortstat', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
+
+            clearGitCache();
+            expect(runGit('diff --shortstat', context)).toBeNull();
+            expect(mockExecFileSync.mock.calls).toHaveLength(1);
         });
 
         it('keeps persistent cache entries when TTL is zero and repo mtimes match', () => {
