@@ -88,6 +88,8 @@ The interactive configuration tool provides a terminal UI where you can:
 
 > 🫥 **Status line empty in one folder?** Claude Code only runs the status line command in trusted workspaces, and nested git repositories stopped inheriting trust in Claude Code 2.1.232. See [Status line empty in one folder](docs/USAGE.md#status-line-empty-in-one-folder-but-fine-elsewhere).
 
+> 🧩 **Skills always `none` with a wrapper script?** Skills needs Claude Code hooks, which are only added when the status line command contains `ccstatusline`. See [Skills always shows none](docs/USAGE.md#skills-always-shows-none).
+
 </details>
 
 <details>
@@ -428,6 +430,8 @@ The localizations in this section are third-party forks maintained outside this 
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+See the [contributor guide](CONTRIBUTING.md) for setup, checks, and compatibility requirements.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
