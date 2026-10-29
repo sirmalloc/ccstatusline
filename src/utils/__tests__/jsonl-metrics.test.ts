@@ -69,12 +69,14 @@ function makeUsageLine(params: {
     isSidechain?: boolean;
     isApiErrorMessage?: boolean;
     stopReason?: string | null;
+    messageId?: string;
 }): string {
     return JSON.stringify({
         timestamp: params.timestamp,
         isSidechain: params.isSidechain,
         isApiErrorMessage: params.isApiErrorMessage,
         message: {
+            id: params.messageId,
             stop_reason: params.stopReason,
             usage: {
                 input_tokens: params.input,
@@ -426,6 +428,180 @@ describe('jsonl transcript metrics', () => {
             cacheCreationTokens: 75,
             totalTokens: 580,
             contextLength: 228
+        });
+    });
+
+    it('deduplicates cumulative token totals across one API call’s per-content-block entries', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-dedup.jsonl');
+
+        // A #549-shaped transcript: msg_01 writes three per-content-block
+        // entries with identical prompt-side usage and growing output_tokens,
+        // so the cumulative widgets must count the call once, not once per
+        // block (sirmalloc/ccstatusline#549).
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 5,
+                cacheRead: 100,
+                cacheCreate: 0,
+                stopReason: 'end_turn',
+                messageId: 'msg_00'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 1,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 100,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 2,
+                output: 287,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 12,            // 10 + 2 (msg_01 counted once)
+            outputTokens: 292,          // 5 + 287 (finalized output wins)
+            cachedTokens: 16356,        // (100 + 0) + (3978 + 12278)
+            cacheReadTokens: 4078,      // 100 + 3978
+            cacheCreationTokens: 12278, // 0 + 12278
+            totalTokens: 16660,         // 12 + 292 + 16356
+            contextLength: 16258        // 2 + 3978 + 12278
+        });
+    });
+
+    it('resolves streaming partials to their finalized values in cumulative totals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-streaming-dedup.jsonl');
+
+        // Same shape as the live-update case, but every entry carries a
+        // message.id: msg_a's partials must collapse into its finalized entry,
+        // and msg_b's in-flight partials must count once, not per partial.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 25,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: null,
+                messageId: 'msg_a'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 2,
+                output: 80,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: 'end_turn',
+                messageId: 'msg_a'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 3,
+                output: 30,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null,
+                messageId: 'msg_b'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                input: 3,
+                output: 120,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null,
+                messageId: 'msg_b'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 5,          // 2 + 3, one call each
+            outputTokens: 200,       // 80 + 120, not 25+80 or 30+120
+            cachedTokens: 375,
+            cacheReadTokens: 300,
+            cacheCreationTokens: 75,
+            totalTokens: 580,
+            contextLength: 228
+        });
+    });
+
+    it('counts a sidechain call’s per-content-block entries once in cumulative totals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-sidechain-dedup.jsonl');
+
+        // Sidechain rows keep their treatment in the cumulative sums (still
+        // included, still excluded from context length); grouping by their own
+        // message.id must not count one subagent call per content block.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 50,
+                cacheRead: 20,
+                cacheCreate: 10,
+                stopReason: 'end_turn',
+                messageId: 'msg_main'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 900,
+                output: 400,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 900,
+                output: 650,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 910,          // 10 + 900 (sidechain call counted once)
+            outputTokens: 700,         // 50 + 650
+            cachedTokens: 5130,        // (20 + 10) + (5000 + 100)
+            cacheReadTokens: 5020,     // 20 + 5000
+            cacheCreationTokens: 110,  // 10 + 100
+            totalTokens: 6740,         // 910 + 700 + 5130
+            contextLength: 40          // main-chain msg_main only
         });
     });
 
@@ -860,14 +1036,19 @@ describe('jsonl transcript metrics', () => {
             assistantEntry('2026-01-01T10:01:05.000Z', 30, 'msg_2')
         ].join('\n'));
 
-        const metrics = await getSpeedMetrics(transcriptPath);
+        const analysis = await getTranscriptAnalysis(transcriptPath, { includeSpeedMetrics: true });
 
-        expect(metrics).toEqual({
+        expect(analysis.speedMetricsCollection?.sessionAverage).toEqual({
             totalDurationMs: 10000,
             inputTokens: 200,
             outputTokens: 80,
             totalTokens: 280,
             requestCount: 2
+        });
+        expect(analysis.tokenMetrics).toMatchObject({
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280
         });
     });
 
