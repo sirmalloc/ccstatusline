@@ -635,7 +635,7 @@ export const ItemsEditor: React.FC<ItemsEditorProps> = ({
                                 <Text dimColor>No categories available.</Text>
                             ) : (
                                 <>
-                                    {renderWindowedList(pickerCategories, pickerCategories.findIndex(category => category === selectedPickerCategory), pickerMaxVisible, (category, index) => {
+                                    {renderWindowedList(pickerCategories, selectedPickerCategory === null ? -1 : pickerCategories.indexOf(selectedPickerCategory), pickerMaxVisible, (category, index) => {
                                         const isSelected = category === selectedPickerCategory;
                                         return (
                                             <Box key={category} flexDirection='row' flexWrap='nowrap'>
