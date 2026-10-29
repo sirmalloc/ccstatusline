@@ -64,6 +64,31 @@ describe('SessionUsageWidget', () => {
         }, context)).toBe('5h: ▓▓░░░│░░░░');
     });
 
+    it('places the time cursor at the time left when showing remaining usage', () => {
+        const widget = new SessionUsageWidget();
+        // 30% used with 20% of the block gone: 70% of the quota and 80% of the time left
+        const context: RenderContext = { usageData: { sessionUsage: 30 } };
+
+        vi.spyOn(usage, 'resolveUsageWindowWithFallback').mockReturnValue({
+            sessionDurationMs: 18000000,
+            elapsedMs: 3600000,
+            remainingMs: 14400000,
+            elapsedPercent: 20,
+            remainingPercent: 80
+        });
+
+        expect(render(widget, {
+            id: 'session',
+            type: 'session-usage',
+            metadata: { cursor: 'true', display: 'slider' }
+        }, context)).toBe('5h: ▓▓│░░░░░░░ 30.0%');
+        expect(render(widget, {
+            id: 'session',
+            type: 'session-usage',
+            metadata: { cursor: 'true', display: 'slider', invert: 'true' }
+        }, context)).toBe('5h: ▓▓▓▓▓▓▓░│░ 70.0%');
+    });
+
     it('applies the label override to every display mode', () => {
         const widget = new SessionUsageWidget();
         const context: RenderContext = { usageData: { sessionUsage: 20 } };
