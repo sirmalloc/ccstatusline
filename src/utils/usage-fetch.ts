@@ -6,6 +6,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
 
+import type { AccountEmailResult } from '../types/AccountEmail';
+
 import { getClaudeConfigDir } from './claude-settings';
 import { isExcludedFromProxy } from './no-proxy';
 import {
@@ -25,8 +27,14 @@ import {
 
 // Cache configuration
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
-const CACHE_FILE = path.join(CACHE_DIR, 'usage.json');
-const LOCK_FILE = path.join(CACHE_DIR, 'usage.lock');
+// Use the effective directory for file identity, independently of the raw
+// environment value Claude Code uses to name Keychain services. Shared legacy
+// files are left untouched: their cache/lock cannot be assigned to a profile.
+function getUsageFilePath(suffix: 'json' | 'lock' | 'credentials.lock'): string {
+    const configDir = path.resolve(getClaudeConfigDir());
+    const configHash = createHash('sha256').update(configDir).digest('hex').slice(0, 16);
+    return path.join(CACHE_DIR, `usage-${configHash}.${suffix}`);
+}
 const CACHE_MAX_AGE = 180; // seconds
 const LOCK_MAX_AGE = 30;   // rate limit: only try API once per 30 seconds
 const DEFAULT_RATE_LIMIT_BACKOFF = 300; // seconds
@@ -357,6 +365,18 @@ export function parseUsageApiResponse(rawJson: string): UsageData | null {
 let cachedUsageData: UsageData | null = null;
 let usageCacheTime = 0;
 let usageErrorCacheMaxAge = LOCK_MAX_AGE;
+// When the usage API sent cachedUsageData's values, in ms: a cache file's are
+// as old as the file, which may have been written hours ago
+let usageFetchedAtMs: number | undefined;
+// The last good cache each time getStaleUsageOrError serves it after it has
+// outlived a refresh, because the usage API couldn't be reached. Like a fresh
+// answer, it carries no error.
+const staleUsageFallbacks = new WeakSet<UsageData>();
+
+/** Whether fetchUsageData returned this data as a stale fallback that lags the usage API, rather than from the API or a current cache. */
+export function isStaleUsageFallback(data: UsageData): boolean {
+    return staleUsageFallbacks.has(data);
+}
 
 type UsageLockError = z.infer<typeof UsageLockErrorSchema>;
 
@@ -366,6 +386,14 @@ interface MacKeychainCredentialCandidate {
     order: number;
     service: string;
 }
+
+type MacKeychainSecretResult = { kind: 'found'; secret: string }
+    | { kind: 'miss' }
+    | { kind: 'timeout' };
+
+type MacKeychainCredentialResult = { kind: 'found'; credentials: UsageCredentials }
+    | { kind: 'miss' }
+    | { kind: 'timeout' };
 
 function ensureCacheDirExists(): void {
     if (!fs.existsSync(CACHE_DIR)) {
@@ -378,14 +406,25 @@ function setCachedUsageError(error: UsageError, now: number, maxAge = LOCK_MAX_A
     cachedUsageData = errorData;
     usageCacheTime = now;
     usageErrorCacheMaxAge = maxAge;
+    usageFetchedAtMs = undefined;
     return errorData;
 }
 
-function cacheUsageData(data: UsageData, now: number): UsageData {
+function cacheUsageData(data: UsageData, now: number, fetchedAtMs: number): UsageData {
     cachedUsageData = data;
     usageCacheTime = now;
     usageErrorCacheMaxAge = LOCK_MAX_AGE;
+    usageFetchedAtMs = fetchedAtMs;
     return data;
+}
+
+/**
+ * When the usage API sent the values fetchUsageData last returned, in ms, or
+ * undefined after an error. Served from the cache, during a rate limit say,
+ * they can be hours old.
+ */
+export function getUsageFetchedAtMs(): number | undefined {
+    return usageFetchedAtMs;
 }
 
 function hasRequiredUsageField(data: UsageData, field: UsageDataField): boolean {
@@ -423,8 +462,11 @@ function getStaleUsageOrError(
     requiredFields: readonly UsageDataField[] = []
 ): UsageData {
     const stale = readStaleUsageCache(cacheIdentity);
-    if (stale && !stale.error && hasRequiredUsageFields(stale, requiredFields)) {
-        return cacheUsageData(stale, now);
+    if (stale && !stale.data.error && hasRequiredUsageFields(stale.data, requiredFields)) {
+        if (hasUsageCacheOutlivedRefresh(now)) {
+            staleUsageFallbacks.add(stale.data);
+        }
+        return cacheUsageData(stale.data, now, stale.fetchedAtMs);
     }
 
     return setCachedUsageError(error, now, errorCacheMaxAge);
@@ -519,24 +561,57 @@ export function parseMacKeychainCredentialCandidates(rawDump: string, servicePre
         .map(candidate => candidate.service);
 }
 
-function readMacKeychainSecret(service: string): string | null {
+function isExecFileTimeoutError(error: unknown): boolean {
+    return typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && error.code === 'ETIMEDOUT';
+}
+
+function readMacKeychainSecret(service: string, account?: string): MacKeychainSecretResult {
     try {
-        return execFileSync(
+        const args = account
+            ? ['find-generic-password', '-s', service, '-a', account, '-w']
+            : ['find-generic-password', '-s', service, '-w'];
+        const secret = execFileSync(
             'security',
-            ['find-generic-password', '-s', service, '-w'],
+            args,
             { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: MACOS_SECURITY_TIMEOUT_MS, windowsHide: true }
         ).trim();
+        return { kind: 'found', secret };
+    } catch (error) {
+        return { kind: isExecFileTimeoutError(error) ? 'timeout' : 'miss' };
+    }
+}
+
+function readUsageCredentialsFromMacKeychainService(service: string, account?: string): MacKeychainCredentialResult {
+    const result = readMacKeychainSecret(service, account);
+    if (result.kind !== 'found') {
+        return result;
+    }
+
+    const credentials = result.secret ? parseUsageCredentials(result.secret) : null;
+    return credentials ? { kind: 'found', credentials } : { kind: 'miss' };
+}
+
+function getOsUsername(): string | null {
+    try {
+        return os.userInfo().username;
     } catch {
         return null;
     }
 }
 
-function readUsageCredentialsFromMacKeychainService(service: string): UsageCredentials | null {
-    const secret = readMacKeychainSecret(service);
-    return secret ? parseUsageCredentials(secret) : null;
+// The login keychain can hold several items under one service, differing only by
+// account; a service-only lookup returns whichever matches first, which may be an
+// entry lacking `claudeAiOauth`. Claude Code reads/writes with an explicit account
+// (the OS username), so mirror that.
+function readUsageCredentialsFromMacKeychainUserAccount(service: string): MacKeychainCredentialResult {
+    const osUsername = getOsUsername();
+    return osUsername ? readUsageCredentialsFromMacKeychainService(service, osUsername) : { kind: 'miss' };
 }
 
-function listMacKeychainCredentialCandidates(): string[] {
+function listMacKeychainCredentialCandidates(): string[] | { kind: 'miss' | 'timeout' } {
     try {
         const rawDump = execFileSync(
             'security',
@@ -551,22 +626,25 @@ function listMacKeychainCredentialCandidates(): string[] {
         );
 
         return parseMacKeychainCredentialCandidates(rawDump);
-    } catch {
-        return [];
+    } catch (error) {
+        return { kind: isExecFileTimeoutError(error) ? 'timeout' : 'miss' };
     }
 }
 
-function readUsageCredentialsFromMacKeychainCandidates(): UsageCredentials | null {
+function readUsageCredentialsFromMacKeychainCandidates(): MacKeychainCredentialResult {
     const candidates = listMacKeychainCredentialCandidates();
+    if (!Array.isArray(candidates)) {
+        return candidates;
+    }
 
     for (const service of candidates) {
-        const credentials = readUsageCredentialsFromMacKeychainService(service);
-        if (credentials) {
-            return credentials;
+        const result = readUsageCredentialsFromMacKeychainService(service);
+        if (result.kind !== 'miss') {
+            return result;
         }
     }
 
-    return null;
+    return { kind: 'miss' };
 }
 
 function readUsageCredentialsFromCredentialsFile(): UsageCredentials | null {
@@ -609,13 +687,32 @@ export function getUsageCredentials(): UsageCredentials | null {
         // other profiles (or MCP servers), so fall through only to the
         // profile's own .credentials.json rather than surface another
         // account's usage.
-        return readUsageCredentialsFromMacKeychainService(configDirService)
-            ?? readUsageCredentialsFromCredentialsFile();
+        const result = readUsageCredentialsFromMacKeychainService(configDirService);
+        return result.kind === 'found' ? result.credentials : readUsageCredentialsFromCredentialsFile();
     }
 
-    return readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE)
-        ?? readUsageCredentialsFromMacKeychainCandidates()
-        ?? readUsageCredentialsFromCredentialsFile();
+    const defaultResult = readUsageCredentialsFromMacKeychainService(MACOS_USAGE_CREDENTIALS_SERVICE);
+    if (defaultResult.kind === 'found') {
+        return defaultResult.credentials;
+    }
+
+    if (defaultResult.kind === 'timeout') {
+        return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const accountResult = readUsageCredentialsFromMacKeychainUserAccount(MACOS_USAGE_CREDENTIALS_SERVICE);
+    if (accountResult.kind === 'found') {
+        return accountResult.credentials;
+    }
+
+    if (accountResult.kind === 'timeout') {
+        return readUsageCredentialsFromCredentialsFile();
+    }
+
+    const candidateResult = readUsageCredentialsFromMacKeychainCandidates();
+    return candidateResult.kind === 'found'
+        ? candidateResult.credentials
+        : readUsageCredentialsFromCredentialsFile();
 }
 
 export function getUsageToken(): string | null {
@@ -624,10 +721,9 @@ export function getUsageToken(): string | null {
 
 // A lookup that finds no OAuth login (an API-key user, a logged-out profile)
 // stands for LOCK_MAX_AGE across renders, as it already does within one
-// process: on macOS the default profile's lookup runs `security` twice, once
-// for a full keychain dump. The record names the credential stores it
+// process: on macOS the default profile's lookup can run `security` multiple
+// times, including a full keychain dump. The record names the credential stores it
 // covers, so one profile's miss never suppresses another profile's lookup.
-const NO_CREDENTIALS_LOCK_FILE = path.join(CACHE_DIR, 'usage-credentials.lock');
 const NoCredentialsLockSchema = z.object({
     blockedUntil: z.number(),
     source: z.string()
@@ -640,7 +736,7 @@ function getUsageCredentialsSource(): string {
 function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
     const source = getUsageCredentialsSource();
     try {
-        const lock = parseJsonWithSchema(fs.readFileSync(NO_CREDENTIALS_LOCK_FILE, 'utf8'), NoCredentialsLockSchema);
+        const lock = parseJsonWithSchema(fs.readFileSync(getUsageFilePath('credentials.lock'), 'utf8'), NoCredentialsLockSchema);
         // Bounded like the usage lock, so a deadline written before the clock
         // was set back cannot stretch the backoff.
         if (lock?.source === source && lock.blockedUntil > now && lock.blockedUntil <= now + LOCK_MAX_AGE) {
@@ -654,7 +750,7 @@ function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
     if (!credentials) {
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(NO_CREDENTIALS_LOCK_FILE, JSON.stringify({ blockedUntil: now + LOCK_MAX_AGE, source }));
+            fs.writeFileSync(getUsageFilePath('credentials.lock'), JSON.stringify({ blockedUntil: now + LOCK_MAX_AGE, source }));
         } catch {
             // Ignore lock file errors
         }
@@ -663,15 +759,40 @@ function getUsageCredentialsWithBackoff(now: number): UsageCredentials | null {
     return credentials;
 }
 
-function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): UsageData | null {
+/**
+ * The login whose usage the status line shows: the usage cache's fingerprint
+ * of it (see getUsageCacheIdentity), or null with no OAuth login found. It
+ * stays the same across access-token refreshes, and changes with /login.
+ */
+export function getUsageLoginFingerprint(): string | null {
+    const credentials = getUsageCredentialsWithBackoff(Math.floor(Date.now() / 1000));
+    return credentials ? getUsageCacheIdentity(credentials).preferredHash : null;
+}
+
+function readStaleUsageCache(cacheIdentity: UsageCacheIdentity | null): { data: UsageData; fetchedAtMs: number } | null {
     try {
-        const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+        const fetchedAtMs = fs.statSync(getUsageFilePath('json')).mtimeMs;
+        const rawCache = fs.readFileSync(getUsageFilePath('json'), 'utf8');
         if (!tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)) {
             return null;
         }
-        return parseCachedUsageData(rawCache);
+        const data = parseCachedUsageData(rawCache);
+        return data ? { data, fetchedAtMs } : null;
     } catch {
         return null;
+    }
+}
+
+// A refresh started as the cache expired keeps its in-flight lock, which a
+// failed request also leaves in place, for up to LOCK_MAX_AGE, and other
+// renders serve the cache through it meanwhile. Only a cache older than that
+// has outlived a refresh.
+function hasUsageCacheOutlivedRefresh(now: number): boolean {
+    try {
+        const fileAge = now - Math.floor(fs.statSync(getUsageFilePath('json')).mtimeMs / 1000);
+        return Math.abs(fileAge) >= CACHE_MAX_AGE + LOCK_MAX_AGE;
+    } catch {
+        return true;
     }
 }
 
@@ -679,7 +800,7 @@ function writeUsageLock(blockedUntil: number, error: UsageLockError): string {
     const contents = JSON.stringify({ blockedUntil, error });
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(LOCK_FILE, contents);
+        fs.writeFileSync(getUsageFilePath('lock'), contents);
     } catch {
         // Ignore lock file errors
     }
@@ -692,8 +813,8 @@ function writeUsageLock(blockedUntil: number, error: UsageLockError): string {
 // server's backoff window.
 function clearOwnUsageLock(ownContents: string): void {
     try {
-        if (fs.readFileSync(LOCK_FILE, 'utf8') === ownContents) {
-            fs.rmSync(LOCK_FILE, { force: true });
+        if (fs.readFileSync(getUsageFilePath('lock'), 'utf8') === ownContents) {
+            fs.rmSync(getUsageFilePath('lock'), { force: true });
         }
     } catch {
         // Ignore lock file errors
@@ -704,7 +825,7 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
     let hasValidJsonLock = false;
 
     try {
-        const parsed = parseJsonWithSchema(fs.readFileSync(LOCK_FILE, 'utf8'), UsageLockSchema);
+        const parsed = parseJsonWithSchema(fs.readFileSync(getUsageFilePath('lock'), 'utf8'), UsageLockSchema);
         if (parsed) {
             hasValidJsonLock = true;
             // Past deadline, or one implausibly far ahead: treat as no lock and
@@ -727,7 +848,7 @@ function readActiveUsageLock(now: number): { blockedUntil: number; error: UsageL
     }
 
     try {
-        const lockStat = fs.statSync(LOCK_FILE);
+        const lockStat = fs.statSync(getUsageFilePath('lock'));
         const lockMtime = Math.floor(lockStat.mtimeMs / 1000);
         const blockedUntil = lockMtime + LOCK_MAX_AGE;
         if (blockedUntil > now) {
@@ -887,19 +1008,19 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 
     // Check file cache
     try {
-        const stat = fs.statSync(CACHE_FILE);
+        const stat = fs.statSync(getUsageFilePath('json'));
         const fileAge = now - Math.floor(stat.mtimeMs / 1000);
         // A file dated ahead of now still counts within one cache lifetime: a
         // concurrent render may have written it after this one read the clock.
         // Further ahead, it was written under a clock since set back, and
         // trusting it would keep that data on screen until real time caught up.
         if (Math.abs(fileAge) < CACHE_MAX_AGE) {
-            const rawCache = fs.readFileSync(CACHE_FILE, 'utf8');
+            const rawCache = fs.readFileSync(getUsageFilePath('json'), 'utf8');
             const fileData = parseCachedUsageData(rawCache);
             if (fileData && !fileData.error
                 && tokenHashMatches(readCachedTokenHash(rawCache), cacheIdentity)
                 && hasRequiredUsageFields(fileData, requiredFields)) {
-                return cacheUsageData(fileData, now);
+                return cacheUsageData(fileData, now, stat.mtimeMs);
             }
         }
     } catch {
@@ -951,7 +1072,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
         // Save to cache
         try {
             ensureCacheDirExists();
-            fs.writeFileSync(CACHE_FILE, JSON.stringify({ ...usageData, tokenHash: cacheIdentity?.preferredHash }));
+            fs.writeFileSync(getUsageFilePath('json'), JSON.stringify({ ...usageData, tokenHash: cacheIdentity?.preferredHash }));
         } catch {
             // Ignore cache write errors
         }
@@ -963,7 +1084,7 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
             clearOwnUsageLock(inFlightLock);
         }
 
-        return cacheUsageData(usageData, now);
+        return cacheUsageData(usageData, now, Date.now());
     } catch {
         writeUsageLock(now + LOCK_MAX_AGE, 'parse-error');
         return getStaleUsageOrError('parse-error', now, cacheIdentity, LOCK_MAX_AGE, requiredFields);
@@ -976,7 +1097,9 @@ export async function fetchUsageData(options: FetchUsageDataOptions = {}): Promi
 // the usage above, belong to (#538). The profile endpoint answers for the
 // credentials themselves.
 const ACCOUNT_EMAIL_CACHE_FILE = path.join(CACHE_DIR, 'account-email.json');
-const ACCOUNT_EMAIL_LOCK_FILE = path.join(CACHE_DIR, 'account-email.lock');
+function getAccountEmailLockPath(tokenHash: string): string {
+    return path.join(CACHE_DIR, `account-email-${tokenHash}.lock`);
+}
 // Logins used side by side (one per CLAUDE_CONFIG_DIR profile) each keep an
 // entry instead of evicting each other on every render.
 const MAX_CACHED_ACCOUNT_EMAILS = 10;
@@ -1016,7 +1139,7 @@ function writeCachedAccountEmails(entries: CachedAccountEmails): void {
 // stop lookups for good.
 function isAccountEmailLookupBlocked(tokenHash: string, now: number): boolean {
     try {
-        const lock = parseJsonWithSchema(fs.readFileSync(ACCOUNT_EMAIL_LOCK_FILE, 'utf8'), AccountEmailLockSchema);
+        const lock = parseJsonWithSchema(fs.readFileSync(getAccountEmailLockPath(tokenHash), 'utf8'), AccountEmailLockSchema);
         return lock?.tokenHash === tokenHash && lock.blockedUntil > now && lock.blockedUntil <= now + MAX_LOCK_HORIZON;
     } catch {
         return false;
@@ -1026,22 +1149,22 @@ function isAccountEmailLookupBlocked(tokenHash: string, now: number): boolean {
 function writeAccountEmailLock(tokenHash: string, blockedUntil: number): void {
     try {
         ensureCacheDirExists();
-        fs.writeFileSync(ACCOUNT_EMAIL_LOCK_FILE, JSON.stringify({ blockedUntil, tokenHash }));
+        fs.writeFileSync(getAccountEmailLockPath(tokenHash), JSON.stringify({ blockedUntil, tokenHash }));
     } catch {
         // Ignore lock file errors
     }
 }
 
 /**
- * The email of the account the usage credentials belong to, or null when there
- * is no OAuth login or the lookup failed. Cached per login, so the profile
- * endpoint is called again only when the login changes.
+ * Distinguish no OAuth login from a failed lookup for an existing login so
+ * the widget never substitutes an unverified account snapshot after failure.
+ * Successful answers are cached per login across access-token refreshes.
  */
-export async function fetchAccountEmail(): Promise<string | null> {
+export async function fetchAccountEmail(): Promise<AccountEmailResult> {
     const now = Math.floor(Date.now() / 1000);
     const credentials = getUsageCredentialsWithBackoff(now);
     if (!credentials) {
-        return null;
+        return { status: 'no-credentials' };
     }
 
     // Keyed like the usage cache: a refreshed access token keeps the entry,
@@ -1050,11 +1173,11 @@ export async function fetchAccountEmail(): Promise<string | null> {
     const cachedEmails = readCachedAccountEmails();
     const cached = cachedEmails.find(entry => entry.tokenHash === tokenHash);
     if (cached) {
-        return cached.email;
+        return { status: 'available', email: cached.email };
     }
 
     if (isAccountEmailLookupBlocked(tokenHash, now)) {
-        return null;
+        return { status: 'unavailable' };
     }
 
     const response = await fetchFromUsageApi(credentials.accessToken, USAGE_API_TIMEOUT_MS, PROFILE_API_PATH)
@@ -1064,9 +1187,9 @@ export async function fetchAccountEmail(): Promise<string | null> {
         : null;
     if (email === null) {
         writeAccountEmailLock(tokenHash, now + (response.kind === 'rate-limited' ? response.retryAfterSeconds : LOCK_MAX_AGE));
-        return null;
+        return { status: 'unavailable' };
     }
 
     writeCachedAccountEmails([{ tokenHash, email }, ...cachedEmails].slice(0, MAX_CACHED_ACCOUNT_EMAILS));
-    return email;
+    return { status: 'available', email };
 }

@@ -43,9 +43,14 @@ export class ClaudeAccountEmailWidget implements Widget {
         }
 
         // .claude.json's oauthAccount is written at login and can still name a
-        // previous account after the credentials change (#538), so it only
-        // stands in when the live login's email could not be looked up.
-        const email = context.accountEmail ?? readClaudeJsonAccountEmail();
+        // previous account after the credentials change (#538). A failed
+        // lookup for an existing login must not fall back to that snapshot.
+        if (context.accountEmail?.status === 'unavailable') {
+            return null;
+        }
+        const email = context.accountEmail?.status === 'available'
+            ? context.accountEmail.email
+            : readClaudeJsonAccountEmail();
         if (email === null) {
             return null;
         }

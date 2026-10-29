@@ -13,6 +13,12 @@ export interface WidgetHookDef {
     matcher?: string;
 }
 
+/** Hooks some widgets need that weren't added, because the status line command doesn't run ccstatusline. */
+export interface SkippedWidgetHooks {
+    statusCommand: string;
+    widgetNames: string[];
+}
+
 const HOOK_TAG = 'ccstatusline-managed';
 
 // Matches ccstatusline hook commands written by any install method
@@ -77,29 +83,42 @@ function stripManagedHooks(hooks: Record<string, HookEntry[]>): void {
     }
 }
 
-function getActiveHookDefs(settings: Settings): WidgetHookDef[] {
-    const seen = new Set<string>();
-    const defs: WidgetHookDef[] = [];
+function getHookWidgets(settings: Settings): WidgetWithHooks[] {
+    const widgets = new Set<WidgetWithHooks>();
     for (const line of settings.lines) {
         for (const item of line) {
             const widget = getWidget(item.type);
-            if (!hasWidgetHooks(widget)) {
-                continue;
+            if (hasWidgetHooks(widget)) {
+                widgets.add(widget);
             }
-            for (const hook of widget.getHooks()) {
-                const key = `${hook.event}:${hook.matcher ?? ''}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    defs.push(hook);
-                }
+        }
+    }
+    return [...widgets];
+}
+
+function getActiveHookDefs(widgets: WidgetWithHooks[]): WidgetHookDef[] {
+    const seen = new Set<string>();
+    const defs: WidgetHookDef[] = [];
+    for (const widget of widgets) {
+        for (const hook of widget.getHooks()) {
+            const key = `${hook.event}:${hook.matcher ?? ''}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                defs.push(hook);
             }
         }
     }
     return defs;
 }
 
-export async function syncWidgetHooks(settings: Settings): Promise<void> {
-    const needed = getActiveHookDefs(settings);
+/**
+ * Points Claude Code's ccstatusline-managed hooks at the status line command, for
+ * the widgets in settings that need them. Returns the hooks it had to leave out,
+ * or null when every needed hook was added.
+ */
+export async function syncWidgetHooks(settings: Settings): Promise<SkippedWidgetHooks | null> {
+    const hookWidgets = getHookWidgets(settings);
+    const needed = getActiveHookDefs(hookWidgets);
     const claudeSettings = await loadClaudeSettings({ logErrors: false });
     const hooks = (claudeSettings.hooks ?? {}) as Record<string, HookEntry[]>;
 
@@ -113,7 +132,11 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
     if (!statusCommand?.includes('ccstatusline')) {
         claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
         await saveClaudeSettings(claudeSettings);
-        return;
+        // With no status line installed there's nothing to point hooks at yet;
+        // installing ccstatusline adds them
+        return statusCommand && needed.length > 0
+            ? { statusCommand, widgetNames: hookWidgets.map(widget => widget.getDisplayName()) }
+            : null;
     }
     const hookCommand = `${statusCommand} --hook`;
 
@@ -132,6 +155,7 @@ export async function syncWidgetHooks(settings: Settings): Promise<void> {
 
     claudeSettings.hooks = Object.keys(hooks).length > 0 ? hooks : undefined;
     await saveClaudeSettings(claudeSettings);
+    return null;
 }
 
 export async function removeManagedHooks(): Promise<void> {
