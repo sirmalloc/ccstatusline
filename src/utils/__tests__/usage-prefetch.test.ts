@@ -12,6 +12,8 @@ import type { StatusJSON } from '../../types/StatusJSON';
 import type { WidgetItem } from '../../types/Widget';
 import * as usage from '../../utils/usage';
 import { BlockResetTimerWidget } from '../../widgets/BlockResetTimer';
+import { SessionUsageWidget } from '../../widgets/SessionUsage';
+import { WeeklyUsageWidget } from '../../widgets/WeeklyUsage';
 import {
     extractUsageDataFromRateLimits,
     hasUsageDependentWidgets,
@@ -307,6 +309,34 @@ describe('usage prefetch', () => {
         expect(mockFetchUsageData.mock.calls.length).toBe(0);
     });
 
+    it('renders valid weekly usage when the shared response reports an expired session window', async () => {
+        const partial: UsageData = { weeklyUsage: 40, weeklyResetAt: '2030-01-07T00:00:00.000Z', error: 'rate-limited' };
+        mockFetchUsageData.mockResolvedValue(partial);
+        const session: WidgetItem = { id: 'session', type: 'session-usage' };
+        const weekly: WidgetItem = { id: 'weekly', type: 'weekly-usage', rawValue: true };
+
+        const usageData = await prefetchUsageDataIfNeeded([[session, weekly]]);
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{ requiredFields: ['sessionUsage', 'weeklyUsage'] }]]);
+        expect(usageData).toEqual(partial);
+        const context = { isPreview: false, usageData: usageData ?? undefined };
+        expect(new WeeklyUsageWidget().render(weekly, context, DEFAULT_SETTINGS)).toBe('40.0%');
+        expect(new SessionUsageWidget().render(session, context, DEFAULT_SETTINGS)).toBe('[Rate limited]');
+    });
+
+    it('keeps valid reset data when suppressing an error for another expired window', async () => {
+        const weeklyResetAt = '2030-01-07T00:00:00.000Z';
+        mockFetchUsageData.mockResolvedValue({ weeklyUsage: 40, weeklyResetAt, error: 'rate-limited' });
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([
+            { id: 'session', type: 'reset-timer' },
+            { id: 'weekly', type: 'weekly-reset-timer' }
+        ]));
+
+        expect(mockFetchUsageData.mock.calls).toEqual([[{ requiredFields: ['sessionResetAt', 'weeklyResetAt'] }]]);
+        expect(usageData).toEqual({ weeklyUsage: 40, weeklyResetAt });
+    });
+
     it('suppresses API errors when reset timer widgets are only missing reset data', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
 
@@ -326,6 +356,30 @@ describe('usage prefetch', () => {
             weeklyUsage: 15,
             weeklyResetAt: epochToIso(1774540000)
         });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['sessionResetAt'] }]
+        ]);
+    });
+
+    it('reads the forecast widgets\' data from rate_limits without fetching', async () => {
+        const lines = makeLines(
+            [{ id: '1', type: 'block-forecast' }, { id: '2', type: 'block-limit-timer' }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 42, sessionResetAt: epochToIso(1774020000) });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it.each(['block-forecast', 'block-limit-timer'])('fetches the reset time %s needs and keeps quiet when that fails', async (type) => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines([{ id: '1', type }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 42 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 42 });
         expect(mockFetchUsageData.mock.calls).toEqual([
             [{ requiredFields: ['sessionResetAt'] }]
         ]);
@@ -476,6 +530,61 @@ describe('usage prefetch', () => {
         expect(usageData).toEqual({ sessionUsage: 100, sessionResetAt: epochToIso(1774020000) });
     });
 
+    it('fetches the 5-hour block\'s percent for a Block Usage that hides at the limit, even when rate_limits has one', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 100 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage', metadata: { hide: 'at-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 97, resets_at: 1774020000 } } });
+
+        // The widget keeps showing the payload's percent; only the hide state reads the API's
+        expect(usageData).toEqual({ sessionUsage: 97, sessionResetAt: epochToIso(1774020000), apiSessionUsage: 100 });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['sessionUsage'] }]
+        ]);
+    });
+
+    it('fetches the block\'s percent once for Block Usage and Block Reset Timer that swap at the limit', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 100 });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage', metadata: { hide: 'at-limit' } }],
+            [{ id: '2', type: 'reset-timer', metadata: { hide: 'under-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 97, resets_at: 1774020000 } } });
+
+        expect(usageData?.apiSessionUsage).toBe(100);
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['sessionUsage'] }]
+        ]);
+    });
+
+    it('doesn\'t fetch for a Block Usage without the at-limit state when rate_limits has its percent', async () => {
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage', metadata: { hide: 'no-data' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 97, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 97, sessionResetAt: epochToIso(1774020000) });
+        expect(mockFetchUsageData.mock.calls.length).toBe(0);
+    });
+
+    it('falls back to rate_limits\' block percent when the at-limit fetch fails', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+
+        const lines = makeLines(
+            [{ id: '1', type: 'session-usage', metadata: { hide: 'at-limit' } }]
+        );
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, { rate_limits: { five_hour: { used_percentage: 100, resets_at: 1774020000 } } });
+
+        expect(usageData).toEqual({ sessionUsage: 100, sessionResetAt: epochToIso(1774020000) });
+    });
+
     it('keeps statusline usage when cursor metadata requires a missing reset and API has no credentials', async () => {
         mockFetchUsageData.mockResolvedValue({ error: 'no-credentials' });
 
@@ -586,6 +695,25 @@ describe('usage prefetch', () => {
                     'extraUsageUsed'
                 ]
             }]
+        ]);
+    });
+
+    it('fetches the extra usage state and monthly limit for the Extra Usage Limit widget', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            extraUsageEnabled: true,
+            extraUsageLimit: 50000
+        });
+
+        const lines = makeLines([{ id: '1', type: 'extra-usage-limit' }]);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, {});
+
+        expect(usageData).toEqual({
+            extraUsageEnabled: true,
+            extraUsageLimit: 50000
+        });
+        expect(mockFetchUsageData.mock.calls).toEqual([
+            [{ requiredFields: ['extraUsageEnabled', 'extraUsageLimit'] }]
         ]);
     });
 

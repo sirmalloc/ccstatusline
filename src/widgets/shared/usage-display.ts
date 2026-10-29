@@ -1,3 +1,4 @@
+import type { RenderContext } from '../../types/RenderContext';
 import type {
     CustomKeybind,
     HideableState,
@@ -23,6 +24,20 @@ export const USAGE_NO_DATA_HIDEABLE_STATE: HideableState = { key: 'no-data', lab
 // Block Reset Timer's: show the reset countdown only once the 5-hour limit is
 // hit. Here rather than in the widget so the usage prefetch can read it.
 export const SESSION_UNDER_LIMIT_HIDEABLE_STATE: HideableState = { key: 'under-limit', label: 'when the 5-hour block is under 100%' };
+// Block Usage's: hide the percent once the limit is hit, so with both states on
+// the reset countdown takes its place. Here for the same reason.
+export const SESSION_AT_LIMIT_HIDEABLE_STATE: HideableState = { key: 'at-limit', label: 'when the 5-hour block is at 100%' };
+
+// Whether the 5-hour block is at its limit, for both states above, so Block
+// Usage and Block Reset Timer always swap at the same render. The usage API's
+// percent decides when prefetch accepted one (see usage-prefetch.ts), then the
+// payload's own: merged usage data can still hold an API percent prefetch
+// rejected as stale or from a block that has since reset. The raw percent, not
+// the rounded one: 99.7% isn't the limit yet.
+export function isAtSessionLimit(context: RenderContext): boolean {
+    const sessionUsage = context.usageData?.apiSessionUsage ?? context.data?.rate_limits?.five_hour?.used_percentage;
+    return typeof sessionUsage === 'number' && sessionUsage >= 100;
+}
 
 const SLIDER_WIDTH = 10;
 
@@ -175,6 +190,17 @@ export function toggleUsageWeekday(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'weekday');
 }
 
+// For the usage widgets that only ever render text. A type change in the widget
+// picker keeps the old widget's metadata, but its bar mode doesn't apply, nor
+// does inverting that bar's fill unless the widget shows used or remaining.
+export function getUsageTextModifierText(
+    item: WidgetItem,
+    options: UsageDisplayModifierOptions = {}
+): string | undefined {
+    const barKeys = options.showUsageDirection ? ['display'] : ['display', 'invert'];
+    return getUsageDisplayModifierText(removeMetadataKeys(item, barKeys), options);
+}
+
 interface UsageDisplayModifierOptions {
     includeCompact?: boolean;
     // Only for widgets that draw a time cursor: the cursor metadata outlives a
@@ -274,11 +300,19 @@ export function toggleUsageInverted(item: WidgetItem): WidgetItem {
     return toggleMetadataFlag(item, 'invert');
 }
 
-export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
+export function getUsageDirectionKeybind(item?: WidgetItem): CustomKeybind {
     const nextDirection = item && isUsageInverted(item) ? 'used' : 'remaining';
+    return { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' };
+}
+
+export function getUsageCompactKeybind(): CustomKeybind {
+    return COMPACT_TOGGLE_KEYBIND;
+}
+
+export function getUsagePercentCustomKeybinds(item?: WidgetItem, includeCursor = true): CustomKeybind[] {
     const keybinds: CustomKeybind[] = [
         PROGRESS_TOGGLE_KEYBIND,
-        { key: 'u', label: `(u) show ${nextDirection}`, action: 'toggle-invert' }
+        getUsageDirectionKeybind(item)
     ];
 
     if (item && includeCursor) {

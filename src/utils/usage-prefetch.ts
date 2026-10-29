@@ -4,7 +4,10 @@ import type {
 } from '../types/StatusJSON';
 import type { WidgetItem } from '../types/Widget';
 import { isHidden } from '../widgets/shared/hideable';
-import { SESSION_UNDER_LIMIT_HIDEABLE_STATE } from '../widgets/shared/usage-display';
+import {
+    SESSION_AT_LIMIT_HIDEABLE_STATE,
+    SESSION_UNDER_LIMIT_HIDEABLE_STATE
+} from '../widgets/shared/usage-display';
 
 import type { UsageData } from './usage';
 import {
@@ -22,6 +25,8 @@ import {
 // that adding a model bucket can't desync one of these tables from the others.
 const BASE_USAGE_WIDGET_TYPES = [
     'session-usage',
+    'block-forecast',
+    'block-limit-timer',
     'weekly-usage',
     'block-timer',
     'reset-timer',
@@ -29,6 +34,7 @@ const BASE_USAGE_WIDGET_TYPES = [
     'extra-usage-utilization',
     'extra-usage-remaining',
     'extra-usage-used',
+    'extra-usage-limit',
     'extra-usage-daily-budget',
     'spend-limit-usage',
     'spend-limit-amount'
@@ -70,6 +76,10 @@ const EMPTY_USAGE_REQUIREMENTS: UsageFieldRequirement[] = [];
 // OAuth usage fetch.
 const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
     'session-usage': [{ field: 'sessionUsage' }],
+    // The forecast widgets render nothing without data, so a failed fetch made only
+    // for them isn't an error for the rest of the line.
+    'block-forecast': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
+    'block-limit-timer': [{ field: 'sessionUsage', suppressFetchError: true }, { field: 'sessionResetAt', suppressFetchError: true }],
     'weekly-usage': [{ field: 'weeklyUsage' }],
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, [{ field: bucket.usageField }]])),
     'block-timer': [{ field: 'sessionResetAt', suppressFetchError: true }],
@@ -88,6 +98,10 @@ const USAGE_WIDGET_REQUIREMENTS: Record<string, UsageFieldRequirement[]> = {
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageUsed' }
     ],
+    'extra-usage-limit': [
+        { field: 'extraUsageEnabled' },
+        { field: 'extraUsageLimit' }
+    ],
     'extra-usage-daily-budget': [
         { field: 'extraUsageEnabled' },
         { field: 'extraUsageLimit' },
@@ -101,12 +115,18 @@ const USAGE_CURSOR_REQUIREMENTS: Record<string, UsageFieldRequirement> = {
     ...Object.fromEntries(WEEKLY_MODEL_USAGE_BUCKETS.map(bucket => [bucket.widgetType, { field: bucket.resetField, alternatives: ['weeklyResetAt'] }]))
 };
 
-// Block Reset Timer's under-limit hide state reads the 5-hour block's percent
-// from the usage API, kept as apiSessionUsage. The payload's percent comes from
-// this session's last response, so in a session left idle while others use up
-// the limit it never reaches 100%. Like the timer's own reset requirement, a failed
-// fetch made only for it isn't an error, and the payload's percent stands in.
-const UNDER_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionUsage', fromApi: true, suppressFetchError: true };
+// Block Reset Timer's under-limit and Block Usage's at-limit hide states read
+// the 5-hour block's percent from the usage API, kept as apiSessionUsage. The
+// payload's percent comes from this session's last response, so in a session
+// left idle while others use up the limit it never reaches 100%. Like the
+// timer's own reset requirement, a failed fetch made only for it isn't an
+// error, and the payload's percent stands in.
+const SESSION_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionUsage', fromApi: true, suppressFetchError: true };
+
+function readsSessionLimit(item: WidgetItem): boolean {
+    return (item.type === 'reset-timer' && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key))
+        || (item.type === 'session-usage' && isHidden(item, SESSION_AT_LIMIT_HIDEABLE_STATE.key));
+}
 
 // A cached answer can outlive its block: the cache is reused for minutes, and
 // for as long as the API keeps failing. Once its block has reset, its percent
@@ -136,8 +156,8 @@ function getUsageFieldRequirements(lines: WidgetItem[][]): UsageFieldRequirement
                 requirements.push(cursorRequirement);
             }
 
-            if (item.type === 'reset-timer' && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key)) {
-                requirements.push(UNDER_LIMIT_HIDE_REQUIREMENT);
+            if (readsSessionLimit(item)) {
+                requirements.push(SESSION_LIMIT_HIDE_REQUIREMENT);
             }
         }
     }
@@ -271,13 +291,15 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
 
     const apiData = await fetchUsageData({ requiredFields: missingFields });
     if (apiData.error && missingRequirements.suppressFetchError) {
-        return rateLimitsData;
+        return hasAnyUsageDataField(apiData)
+            ? mergeUsageData(rateLimitsData, { ...apiData, error: undefined })
+            : rateLimitsData;
     }
 
     const usageData = mergeUsageData(rateLimitsData, apiData);
     // A stale fallback is the last good cache, served while the API can't be reached
     // once it has outlived a refresh, so like a failed fetch it leaves the payload's percent to decide
-    if (requirements.includes(UNDER_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined && isFromCurrentBlock(apiData) && !isStaleUsageFallback(apiData)) {
+    if (requirements.includes(SESSION_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined && isFromCurrentBlock(apiData) && !isStaleUsageFallback(apiData)) {
         usageData.apiSessionUsage = apiData.sessionUsage;
     }
     return usageData;
