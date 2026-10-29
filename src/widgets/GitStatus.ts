@@ -1,22 +1,12 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    getGitStatus,
-    isInsideGitWorkTree
-} from '../utils/git';
+import { getGitStatus } from '../utils/git';
 
-import {
-    NO_GIT_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { GitStatusWidgetBase } from './shared/git-status-widget';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -29,31 +19,16 @@ const STAGED_SLOT: SymbolSlot = { id: 'symbolStaged', label: 'Staged', defaultSy
 const UNSTAGED_SLOT: SymbolSlot = { id: 'symbolUnstaged', label: 'Unstaged', defaultSymbol: '*' };
 const UNTRACKED_SLOT: SymbolSlot = { id: 'symbolUntracked', label: 'Untracked', defaultSymbol: '?' };
 
-export class GitStatusWidget implements Widget {
+export class GitStatusWidget extends GitStatusWidgetBase {
     getDefaultColor(): string { return 'yellow'; }
     getDescription(): string { return 'Shows git status indicators: + staged, * unstaged, ? untracked, ! conflicts'; }
     getDisplayName(): string { return 'Git Status'; }
-    getCategory(): string { return 'Git'; }
 
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+    protected renderPreview(item: WidgetItem): string {
+        return this.formatStatus(item, { staged: true, unstaged: true, untracked: false, conflicts: false });
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_GIT_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return this.formatStatus(item, { staged: true, unstaged: true, untracked: false, conflicts: false });
-        }
-
-        if (!isInsideGitWorkTree(context)) {
-            return hideNoGit ? null : '(no git)';
-        }
-
+    protected renderInWorkTree(item: WidgetItem, context: RenderContext): string | null {
         const status = getGitStatus(context);
 
         // Hide if clean
@@ -87,5 +62,4 @@ export class GitStatusWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(_item: WidgetItem): boolean { return true; }
 }

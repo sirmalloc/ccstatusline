@@ -437,7 +437,7 @@ describe('items-editor input handlers', () => {
         expect(setSelectedIndex).toHaveBeenCalledWith(0);
     });
 
-    it('wraps to last position when moving widget up from first position', () => {
+    it('wraps to last position when moving widget up from first position, keeping the others in order', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'tokens-input' },
             { id: '2', type: 'tokens-output' },
@@ -456,14 +456,14 @@ describe('items-editor input handlers', () => {
         });
 
         expect(onUpdate).toHaveBeenCalledWith([
-            { id: '3', type: 'git-branch' },
             { id: '2', type: 'tokens-output' },
+            { id: '3', type: 'git-branch' },
             { id: '1', type: 'tokens-input' }
         ]);
         expect(setSelectedIndex).toHaveBeenCalledWith(2);
     });
 
-    it('wraps to first position when moving widget down from last position', () => {
+    it('wraps to first position when moving widget down from last position, keeping the others in order', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'tokens-input' },
             { id: '2', type: 'tokens-output' },
@@ -483,8 +483,8 @@ describe('items-editor input handlers', () => {
 
         expect(onUpdate).toHaveBeenCalledWith([
             { id: '3', type: 'git-branch' },
-            { id: '2', type: 'tokens-output' },
-            { id: '1', type: 'tokens-input' }
+            { id: '1', type: 'tokens-input' },
+            { id: '2', type: 'tokens-output' }
         ]);
         expect(setSelectedIndex).toHaveBeenCalledWith(0);
     });
@@ -1047,6 +1047,57 @@ describe('items-editor input handlers', () => {
         });
     });
 
+    describe('m shortcut - merge', () => {
+        const pressMerge = (widgets: WidgetItem[], selectedIndex: number, onUpdate: (widgets: WidgetItem[]) => void) => {
+            handleNormalInputMode({
+                input: 'm',
+                key: {},
+                widgets,
+                selectedIndex,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm: vi.fn(),
+                openWidgetPicker: vi.fn(),
+                getCustomKeybindsForWidget: vi.fn().mockReturnValue([]),
+                setCustomEditorWidget: vi.fn()
+            });
+        };
+
+        it('cycles merged, merged without padding and off when a widget follows', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+            pressMerge([{ id: '1', type: 'model', merge: true }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+            pressMerge([{ id: '1', type: 'model', merge: 'no-padding' }, { id: '2', type: 'git-branch' }], 0, onUpdate);
+
+            expect(onUpdate.mock.calls.map(call => (call[0] as WidgetItem[])[0])).toEqual([
+                { id: '1', type: 'model', merge: true },
+                { id: '1', type: 'model', merge: 'no-padding' },
+                { id: '1', type: 'model' }
+            ]);
+        });
+
+        it('clears a merge left on the last widget', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch', merge: true }], 1, onUpdate);
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch', merge: 'no-padding' }], 1, onUpdate);
+
+            expect(onUpdate.mock.calls.map(call => (call[0] as WidgetItem[])[1])).toEqual([
+                { id: '2', type: 'git-branch' },
+                { id: '2', type: 'git-branch' }
+            ]);
+        });
+
+        it('does not set a merge on the last widget', () => {
+            const onUpdate = vi.fn();
+            pressMerge([{ id: '1', type: 'model' }, { id: '2', type: 'git-branch' }], 1, onUpdate);
+
+            expect(onUpdate).not.toHaveBeenCalled();
+        });
+    });
+
     describe('precision keybind', () => {
         // The items editor injects this bind for numeric widgets, so the handler
         // applies it itself rather than delegating to handleEditorAction.
@@ -1087,6 +1138,59 @@ describe('items-editor input handlers', () => {
             pressPrecision([{ id: '1', type: 'custom-text' }], onUpdate);
 
             expect(onUpdate).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('modifier combos', () => {
+        function pressInNormalMode(input: string, key: Record<string, boolean>, widgets: WidgetItem[]) {
+            const onUpdate = vi.fn();
+            const openWidgetPicker = vi.fn();
+            const setShowClearConfirm = vi.fn();
+
+            handleNormalInputMode({
+                input,
+                key,
+                widgets,
+                selectedIndex: 0,
+                separatorChars: ['|'],
+                onBack: vi.fn(),
+                onUpdate,
+                setSelectedIndex: vi.fn(),
+                setMoveMode: vi.fn(),
+                setShowClearConfirm,
+                openWidgetPicker,
+                getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+                setCustomEditorWidget: vi.fn()
+            });
+
+            return { onUpdate, openWidgetPicker, setShowClearConfirm };
+        }
+
+        const commandWidget: WidgetItem = { id: '2', type: 'custom-command', commandPath: 'date' };
+        const widgets: WidgetItem[] = [{ id: '1', type: 'model' }, commandWidget];
+
+        it.each([
+            ['ctrl', { ctrl: true }],
+            ['alt', { meta: true }]
+        ])('ignores letter shortcuts while %s is held', (_name, key) => {
+            for (const letter of ['a', 'i', 'd', 'k', 'c', 'r', 'm']) {
+                const { onUpdate, openWidgetPicker, setShowClearConfirm } = pressInNormalMode(letter, key, widgets);
+                expect(onUpdate).not.toHaveBeenCalled();
+                expect(openWidgetPicker).not.toHaveBeenCalled();
+                expect(setShowClearConfirm).not.toHaveBeenCalled();
+            }
+        });
+
+        it('still runs the shortcut for the bare letter', () => {
+            expect(pressInNormalMode('d', {}, widgets).onUpdate).toHaveBeenCalledWith([{ id: '2', type: 'custom-command', commandPath: 'date' }]);
+        });
+
+        it('ignores widget keybinds while alt is held, not just ctrl', () => {
+            const commandFirst = [commandWidget];
+
+            expect(pressInNormalMode('p', { meta: true }, commandFirst).onUpdate).not.toHaveBeenCalled();
+            expect(pressInNormalMode('p', {}, commandFirst).onUpdate)
+                .toHaveBeenCalledWith([{ id: '2', type: 'custom-command', commandPath: 'date', preserveColors: true }]);
         });
     });
 });

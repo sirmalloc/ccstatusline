@@ -1,22 +1,12 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
     WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
-import {
-    getJjChangeCounts,
-    isInsideJjRepo
-} from '../utils/jj';
+import { getJjChangeCounts } from '../utils/jj';
 
-import {
-    NO_JJ_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
+import { JjWidgetBase } from './shared/jj-widget-base';
 import {
     getSlotSymbol,
     getSymbolKeybind,
@@ -26,32 +16,20 @@ import {
 
 const DELETIONS_SLOT: SymbolSlot = { id: 'symbolDeletions', label: 'Deletions', defaultSymbol: '-' };
 
-export class JjDeletionsWidget implements Widget {
+export class JjDeletionsWidget extends JjWidgetBase<number> {
+    protected readonly previewValue = 10;
+    protected readonly noJjText = '(no jj)';
+
     getDefaultColor(): string { return 'red'; }
     getDescription(): string { return 'Shows jujutsu deletions count'; }
     getDisplayName(): string { return 'JJ Deletions'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
+
+    protected getValue(context: RenderContext): number {
+        return getJjChangeCounts(context).deletions;
     }
 
-    getHideableStates(): HideableState[] {
-        return [NO_JJ_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = isHidden(item, NO_JJ_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return `${getSlotSymbol(item, DELETIONS_SLOT)}10`;
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : '(no jj)';
-        }
-
-        const changes = getJjChangeCounts(context);
-        return `${getSlotSymbol(item, DELETIONS_SLOT)}${changes.deletions}`;
+    protected formatValue(item: WidgetItem, deletions: number): string {
+        return `${getSlotSymbol(item, DELETIONS_SLOT)}${deletions}`;
     }
 
     getCustomKeybinds(): CustomKeybind[] {
@@ -63,5 +41,4 @@ export class JjDeletionsWidget implements Widget {
     }
 
     supportsRawValue(): boolean { return false; }
-    supportsColors(item: WidgetItem): boolean { return true; }
 }

@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -10,10 +10,11 @@ import {
 import type { RenderContext } from '../../types/RenderContext';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
+import { mockExecutableResolution } from '../../utils/__tests__/executable-path-test-helpers';
 import { clearGitCache } from '../../utils/git';
 import { GitAheadBehindWidget } from '../GitAheadBehind';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -40,6 +41,8 @@ function render(options: {
 
     return widget.render(item, context, DEFAULT_SETTINGS);
 }
+
+mockExecutableResolution();
 
 describe('GitAheadBehindWidget', () => {
     beforeEach(() => {

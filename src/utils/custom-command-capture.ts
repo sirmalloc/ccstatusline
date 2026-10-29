@@ -1,4 +1,4 @@
-import type { spawn } from 'child_process';
+import type { spawn } from 'node:child_process';
 
 import type {
     CustomCommandRequest,

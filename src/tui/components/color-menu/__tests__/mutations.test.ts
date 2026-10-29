@@ -58,7 +58,7 @@ describe('color-menu mutations', () => {
         expect(whole[1]?.dim).toBeUndefined();
     });
 
-    it('resetWidgetStyling removes color, backgroundColor, bold, dim, and numberFormat from one widget', () => {
+    it('resetWidgetStyling removes color, backgroundColor, bold and dim from one widget, keeping its number format', () => {
         const widgets: WidgetItem[] = [
             {
                 id: '1',
@@ -74,11 +74,11 @@ describe('color-menu mutations', () => {
 
         const updated = resetWidgetStyling(widgets, '1');
 
-        expect(updated[0]).toEqual({ id: '1', type: 'tokens-input' });
+        expect(updated[0]).toEqual({ id: '1', type: 'tokens-input', numberFormat: { style: 'compact' } });
         expect(updated[1]).toEqual({ id: '2', type: 'tokens-output', color: 'white', bold: true });
     });
 
-    it('clearAllWidgetStyling strips styling fields from every widget', () => {
+    it('clearAllWidgetStyling strips styling fields from every widget, keeping number formats', () => {
         const widgets: WidgetItem[] = [
             {
                 id: '1',
@@ -95,7 +95,7 @@ describe('color-menu mutations', () => {
 
         expect(updated).toEqual([
             { id: '1', type: 'tokens-input' },
-            { id: '2', type: 'tokens-output' }
+            { id: '2', type: 'tokens-output', numberFormat: { style: 'whole' } }
         ]);
     });
 
