@@ -13,6 +13,8 @@ import type {
 import { truncateStyledText } from '../../utils/ansi';
 import { shouldInsertInput } from '../../utils/input-guards';
 
+import { BlinkingCursor } from './BlinkingCursor';
+
 export const MAX_WIDTH_ACTION = 'edit-max-width';
 
 const MAX_WIDTH_KEYBIND: CustomKeybind = {
@@ -67,7 +69,7 @@ const MaxWidthEditor: React.FC<WidgetEditorProps> = ({ widget, onComplete, onCan
             <Box>
                 <Text>Enter max width (blank for no limit): </Text>
                 <Text>{widthInput}</Text>
-                <Text backgroundColor='gray' color='black'>{' '}</Text>
+                <BlinkingCursor>{' '}</BlinkingCursor>
             </Box>
             <Text dimColor>Press Enter to save, ESC to cancel</Text>
         </Box>

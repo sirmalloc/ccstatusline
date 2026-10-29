@@ -9,6 +9,7 @@ import {
     getVisibleWidth,
     restoreBackgroundAfterResets,
     stripOscCodes,
+    stripSgrCodes,
     truncateStyledText
 } from '../ansi';
 
@@ -112,12 +113,30 @@ describe('truncateStyledText', () => {
     });
 });
 
+describe('stripSgrCodes', () => {
+    it('removes 7-bit and 8-bit color codes', () => {
+        expect(stripSgrCodes('\x9b31mred\x9b39m')).toBe('red');
+        expect(stripSgrCodes('\x1b[1m\x9b38;5;208mbold\x9b0m\x1b[22m')).toBe('bold');
+    });
+
+    it('leaves other CSI sequences and hyperlinks alone', () => {
+        const text = `\x1b[2K\x9b2J${OSC8_OPEN}link${OSC8_CLOSE}${C1_OSC8_OPEN}c1${C1_OSC8_CLOSE}`;
+
+        expect(stripSgrCodes(text)).toBe(text);
+    });
+});
+
 describe('restoreBackgroundAfterResets', () => {
     const BG = '\x1b[44m';
 
     it('re-applies the background after every sequence that clears it', () => {
         expect(restoreBackgroundAfterResets('\x1b[31ma\x1b[0mb\x1b[mc\x1b[00md\x1b[;1me\x1b[39;49mf', BG))
             .toBe(`\x1b[31ma\x1b[0m${BG}b\x1b[m${BG}c\x1b[00m${BG}d\x1b[;1m${BG}e\x1b[39;49m${BG}f`);
+    });
+
+    it('re-applies the background after an 8-bit reset', () => {
+        expect(restoreBackgroundAfterResets('\x9b31ma\x9b0mb\x9b49mc', BG))
+            .toBe(`\x9b31ma\x9b0m${BG}b\x9b49m${BG}c`);
     });
 
     it('leaves other styling, and the arguments of extended colors, alone', () => {
