@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { Mock } from 'vitest';
+import type { MockInstance } from 'vitest';
 import {
     afterEach,
     beforeEach,
@@ -17,13 +17,15 @@ import type {
     WidgetItem
 } from '../../types';
 import { DEFAULT_SETTINGS } from '../../types/Settings';
-import { loadClaudeSettingsSync } from '../../utils/claude-settings';
+import * as claudeSettings from '../../utils/claude-settings';
 import { ThinkingEffortWidget } from '../ThinkingEffort';
 
-// Mock claude-settings to avoid filesystem reads in tests
-vi.mock('../../utils/claude-settings', () => ({ loadClaudeSettingsSync: vi.fn() }));
-
-const mockedLoadSettings = loadClaudeSettingsSync as Mock;
+// Stub the settings read to avoid filesystem reads in tests. vi.spyOn on the
+// module namespace rather than vi.mock('../../utils/claude-settings', ...): a
+// factory-based vi.mock is not file-scoped under this test runner, and when
+// claude-settings.test.ts ran later in the same invocation, its own
+// loadClaudeSettingsSync tests got this file's stub instead of the real one.
+let mockedLoadSettings: MockInstance<typeof claudeSettings.loadClaudeSettingsSync>;
 const MODEL_WITH_HIGH_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-6)\u001b[22m with \u001b[1mhigh\u001b[22m effort</local-command-stdout>';
 const MODEL_WITH_LOW_EFFORT = '<local-command-stdout>Set model to \u001b[1msonnet (claude-sonnet-4-5)\u001b[22m with \u001b[1mlow\u001b[22m effort</local-command-stdout>';
 const MODEL_WITH_MAX_EFFORT = '<local-command-stdout>Set model to \u001b[1mopus (claude-opus-4-6)\u001b[22m with \u001b[1mmax\u001b[22m effort</local-command-stdout>';
@@ -84,7 +86,7 @@ function render(options: {
         rawValue
     };
 
-    mockedLoadSettings.mockReturnValue(settingsValue);
+    mockedLoadSettings.mockReturnValue(settingsValue as ReturnType<typeof claudeSettings.loadClaudeSettingsSync>);
 
     if (transcriptPath && fileContent !== undefined && fileContent !== null) {
         fs.writeFileSync(transcriptPath, fileContent, 'utf-8');
@@ -95,12 +97,12 @@ function render(options: {
 
 describe('ThinkingEffortWidget', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-thinking-effort-'));
-        mockedLoadSettings.mockReturnValue({});
+        mockedLoadSettings = vi.spyOn(claudeSettings, 'loadClaudeSettingsSync').mockReturnValue({});
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         fs.rmSync(tempDir, { recursive: true, force: true });
     });
 

@@ -62,6 +62,7 @@ describe('JjRootDirWidget', () => {
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/home/user/my-project'
         });
@@ -70,6 +71,7 @@ describe('JjRootDirWidget', () => {
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/home/user/my-project'
         });

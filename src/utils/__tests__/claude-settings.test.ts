@@ -62,6 +62,11 @@ function writeRawClaudeSettings(content: string): void {
 
 beforeEach(() => {
     testClaudeConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-claude-settings-'));
+    // Every home lookup in this file resolves into the temp directory: an
+    // install test must never touch the developer's real configs, even when
+    // a code change (or a mutation-testing mutant) breaks the settings parse
+    // and the code path materialises defaults.
+    vi.spyOn(os, 'homedir').mockReturnValue(testClaudeConfigDir);
     process.env.CLAUDE_CONFIG_DIR = testClaudeConfigDir;
     config.initConfigPath(path.join(testClaudeConfigDir, 'ccstatusline-settings.json'));
 });
@@ -69,6 +74,13 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     config.initConfigPath();
+    // Tests may delete CLAUDE_CONFIG_DIR (the default-path resolution test);
+    // restore it so later tests and other files don't reach the real home
+    if (ORIGINAL_CLAUDE_CONFIG_DIR === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+        process.env.CLAUDE_CONFIG_DIR = ORIGINAL_CLAUDE_CONFIG_DIR;
+    }
     if (testClaudeConfigDir) {
         fs.rmSync(testClaudeConfigDir, { recursive: true, force: true });
     }
@@ -353,6 +365,19 @@ describe('installStatusLine refreshInterval', () => {
         await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: true });
         expect(readInstalledRefreshInterval()).toBe(5);
     });
+
+    it('should preserve existing refreshInterval when version is unsupported', async () => {
+        writeRawClaudeSettings(JSON.stringify({
+            statusLine: {
+                type: 'command',
+                command: CCSTATUSLINE_COMMANDS.NPM,
+                padding: 0,
+                refreshInterval: 5
+            }
+        }));
+        await installStatusLine({ commandMode: 'auto-npx', supportsRefreshInterval: false });
+        expect(readInstalledRefreshInterval()).toBe(5);
+    });
 });
 
 describe('refreshInterval', () => {
@@ -487,6 +512,23 @@ describe('backup and error handling behavior', () => {
 
         const orig = JSON.parse(fs.readFileSync(`${settingsPath}.orig`, 'utf-8')) as { statusLine?: { command?: string } };
         expect(orig.statusLine?.command).toBe('old-command');
+    });
+
+    // settings.json can hold secrets (env, apiKeyHelper), so its backups must
+    // not be readable by anyone who can't read it
+    it.skipIf(process.platform === 'win32')('gives .bak and .orig backups the permissions of a private settings file', async () => {
+        writeRawClaudeSettings(JSON.stringify({ effortLevel: 'high' }));
+        const settingsPath = getClaudeSettingsPath();
+        fs.chmodSync(settingsPath, 0o600);
+        // A backup left from before keeps its own permissions when overwritten
+        fs.writeFileSync(`${settingsPath}.bak`, '{}', 'utf-8');
+        fs.chmodSync(`${settingsPath}.bak`, 0o644);
+
+        await installStatusLine({ commandMode: 'auto-npx' });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.orig`).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${settingsPath}.bak`).mode & 0o777).toBe(0o600);
     });
 
     it('loadClaudeSettings should return empty object when settings file is missing', async () => {

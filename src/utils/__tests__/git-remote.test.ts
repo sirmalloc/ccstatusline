@@ -202,6 +202,25 @@ describe('git-remote utils', () => {
                 expect(parseRemoteUrl('ftp://github.com/owner/repo.git')).toBeNull();
             });
 
+            it('ignores repeated slashes around and inside the path', () => {
+                expect(parseRemoteUrl('https://github.com//owner//repo.git//')).toEqual({
+                    host: 'github.com',
+                    owner: 'owner',
+                    repo: 'repo'
+                });
+            });
+
+            // Remote URLs come from the repository's own config
+            it('parses a URL with a long run of slashes in linear time', () => {
+                const started = Date.now();
+                expect(parseRemoteUrl(`https://github.com/owner${'/'.repeat(100_000)}repo.git`)).toEqual({
+                    host: 'github.com',
+                    owner: 'owner',
+                    repo: 'repo'
+                });
+                expect(Date.now() - started).toBeLessThan(1000);
+            });
+
             it('trims whitespace from URL', () => {
                 expect(parseRemoteUrl('  https://github.com/owner/repo.git  ')).toEqual({
                     host: 'github.com',

@@ -72,6 +72,7 @@ describe('jj utils', () => {
             expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
+                timeout: 5_000,
                 windowsHide: true,
                 cwd: '/tmp/repo'
             });
@@ -86,6 +87,7 @@ describe('jj utils', () => {
             expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
+                timeout: 5_000,
                 windowsHide: true
             });
         });
@@ -138,6 +140,24 @@ describe('jj utils', () => {
 
             expect(getJjChangeCounts({})).toEqual({
                 insertions: 1,
+                deletions: 1
+            });
+        });
+
+        it('ignores insertion counts in filenames before the summary', () => {
+            mockExecFileSync.mockReturnValue('777 insertions.txt | 1 +\n1 file changed, 1 insertion(+), 0 deletions(-)\n');
+
+            expect(getJjChangeCounts({})).toEqual({
+                insertions: 1,
+                deletions: 0
+            });
+        });
+
+        it('ignores deletion counts in filenames before the summary', () => {
+            mockExecFileSync.mockReturnValue('888 deletions.txt | 1 -\n1 file changed, 0 insertions(+), 1 deletion(-)\n');
+
+            expect(getJjChangeCounts({})).toEqual({
+                insertions: 0,
                 deletions: 1
             });
         });

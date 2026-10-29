@@ -111,6 +111,39 @@ function getPlainOutput(output: string): string {
 }
 
 describe('SymbolSlotsEditor', () => {
+    it.each([
+        { name: 'BMP Nerd Font icon', glyph: '\uF1EB', preview: '\uF1EB ' },
+        { name: 'supplementary Nerd Font icon', glyph: '\u{F05AA}', preview: '\u{F05AA} ' },
+        { name: 'wide emoji', glyph: '📡', preview: '📡' },
+        { name: 'combining character', glyph: 'e\u0301', preview: 'e\u0301 ' },
+        { name: 'empty glyph', glyph: '', preview: '(none)' }
+    ])('preserves the $name preview padding across blink frames without saving it', async ({ glyph, preview }) => {
+        const slots: SymbolSlot[] = [
+            { id: 'symbolOn', label: 'On', defaultSymbol: glyph },
+            { id: 'symbolOff', label: 'Off', defaultSymbol: glyph }
+        ];
+        const rendered = renderEditor({ id: 'remote', type: 'remote-control-status' }, slots);
+
+        try {
+            for (let frame = 0; frame < 3; frame++) {
+                await waitFor(() => {
+                    const output = getPlainOutput(rendered.stdout.getOutput());
+                    expect(output).toContain(`On: ${preview} (default:`);
+                    expect(output).toContain(`Off: ${preview} (default:`);
+                });
+                rendered.stdout.clearOutput();
+            }
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledTimes(1);
+            });
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata).toBeUndefined();
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
     it('right-aligns labels so glyph values start in the same column', async () => {
         const rendered = renderEditor({ id: 'git-status', type: 'git-status' });
 

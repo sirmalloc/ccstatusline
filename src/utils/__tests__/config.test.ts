@@ -20,13 +20,14 @@ import {
     type Settings
 } from '../../types/Settings';
 import type { ImportValidationResult } from '../config';
+import type { SkippedWidgetHooks } from '../hooks';
 
 // Unique per run, so test runs going at once don't delete each other's files
 const MOCK_HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-config-test-home-'));
 const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 
 let loadSettings: () => Promise<Settings>;
-let saveSettings: (settings: Settings) => Promise<void>;
+let saveSettings: (settings: Settings) => Promise<SkippedWidgetHooks | null>;
 let exportConfig: (settings: Settings, filePath: string) => Promise<void>;
 let validateImportFile: (filePath: string) => Promise<ImportValidationResult>;
 let applyImport: (
@@ -409,6 +410,20 @@ describe('config utilities', () => {
         expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 
+    it('returns the widget hooks a save couldn\'t add', async () => {
+        const command = 'bash ~/.claude/statusline.sh';
+        fs.mkdirSync(getClaudeConfigDir(), { recursive: true });
+        fs.writeFileSync(
+            path.join(getClaudeConfigDir(), 'settings.json'),
+            JSON.stringify({ statusLine: { type: 'command', command } }),
+            'utf-8'
+        );
+
+        const skipped = await saveSettings({ ...DEFAULT_SETTINGS, lines: [[{ id: 'skills-1', type: 'skills' }]] });
+
+        expect(skipped).toEqual({ statusCommand: command, widgetNames: ['Skills'] });
+    });
+
     it('saves settings without leaving a temp file behind', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
 
@@ -421,6 +436,19 @@ describe('config utilities', () => {
         // No temporary write-file is left in the config directory.
         const leftovers = fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'));
         expect(leftovers).toEqual([]);
+    });
+
+    // Custom commands can carry credentials, so a save must not open up a
+    // settings file the user made private
+    it.skipIf(process.platform === 'win32')('keeps a private settings file private when saving', async () => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []] }), 'utf-8');
+        fs.chmodSync(settingsPath, 0o600);
+
+        await saveSettings({ ...DEFAULT_SETTINGS });
+
+        expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
     });
 
     it('saves through a symlinked settings file without replacing the link', async () => {
