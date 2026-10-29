@@ -1,5 +1,7 @@
 export {
     fetchUsageData,
+    getUsageFetchedAtMs,
+    getUsageLoginFingerprint,
     isStaleUsageFallback
 } from './usage-fetch';
 export {

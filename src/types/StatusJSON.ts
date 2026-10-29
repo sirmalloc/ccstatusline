@@ -72,6 +72,9 @@ export const StatusJSONSchema = z.looseObject({
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
     vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    // Only the Fast Mode widget reads it, so a malformed value is dropped
+    // rather than failing the whole payload
+    fast_mode: z.boolean().nullable().optional().catch(undefined),
     worktree: z.object({
         name: z.string().optional(),
         path: z.string().optional(),
