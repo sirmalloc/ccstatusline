@@ -16,6 +16,7 @@ import {
     type InstallationMetadata
 } from '../../types/Settings';
 import * as claudeSettings from '../../utils/claude-settings';
+import * as globalCommandResolution from '../../utils/global-command-resolution';
 import * as globalPackageManager from '../../utils/global-package-manager';
 import { getPackageVersion } from '../../utils/terminal';
 import * as updateChecker from '../../utils/update-checker';
@@ -23,9 +24,9 @@ import {
     applyTuiImport,
     buildConfigLoadWarning,
     buildInvalidConfigSaveConfirm,
+    classifyInstalledStatusLine,
     clearInstallMenuSelection,
     getConfirmCancelScreen,
-    getCurrentInstallation,
     getPathInferredInstallation,
     getPinnedVersionMismatch
 } from '../App';
@@ -115,10 +116,7 @@ describe('Pinned version mismatch guard', () => {
             installedVersion: '2.2.13'
         };
 
-        expect(getCurrentInstallation(true, null, {
-            ...DEFAULT_SETTINGS,
-            installation
-        })).toEqual(installation);
+        expect(classifyInstalledStatusLine(null, installation)).toEqual(installation);
     });
 
     it('does not block auto-update or matching pinned installs', () => {
@@ -545,6 +543,99 @@ describe('App live label preview', () => {
             await pressKey(rendered, '\t', 'Edit Line 2');
             expect(rendered.getFrame()).toContain('Model: Claude');
             expect(rendered.getFrame()).not.toContain('7d !Claude');
+        } finally {
+            rendered.cleanup();
+        }
+    });
+});
+
+describe('App lookup of the global ccstatusline command', () => {
+    let sandbox: AppSandbox;
+
+    beforeEach(() => {
+        sandbox = setUpAppSandbox();
+        vi.spyOn(claudeStatus, 'loadClaudeStatusLineState').mockResolvedValue({ existingStatusLine: 'ccstatusline', refreshInterval: null });
+        vi.spyOn(claudeSettings, 'isInstalled').mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        sandbox.restore();
+    });
+
+    // The real lookups run `which -a`, `npm prefix -g` and `bun pm bin -g`
+    it.each(['pinned', 'self-managed'] as const)('looks up a %s install once, not again for each editor key', async (method) => {
+        const runningVersion = getPackageVersion();
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            lines: [[{ id: 'model', type: 'model', metadata: { label: '7d' } }]],
+            ...(method === 'pinned' && { installation: { method: 'pinned', installedVersion: runningVersion } })
+        }));
+        const inspectActiveCommand = vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockReturnValue({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: runningVersion,
+            warning: null
+        });
+        const inspectResolution = vi.spyOn(globalCommandResolution, 'inspectGlobalCommandResolution').mockReturnValue({
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            firstResolvedPath: '/usr/local/bin/ccstatusline',
+            expectedBinDir: '/usr/local/bin',
+            warning: null
+        });
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('🧰 Manage Installation');
+            });
+            await pressKey(rendered, KEYS.enter, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 1');
+            await pressKey(rendered, 'e', '(default: "Model: ")');
+            await pressKey(rendered, 'X', '7dXClaude');
+            await pressKey(rendered, 'Y', '7dXYClaude');
+            await pressKey(rendered, 'Z', '7dXYZClaude');
+            await pressKey(rendered, KEYS.enter, 'Edit Line 1');
+            await pressKey(rendered, 'r', '(raw value)');
+            await pressKey(rendered, KEYS.escape, 'Select Line to Edit Items');
+            await pressKey(rendered, KEYS.escape, '🧰 Manage Installation');
+
+            expect(inspectActiveCommand).toHaveBeenCalledOnce();
+            // Pinned installs also look up the relaunch path for the version-mismatch screen
+            expect(inspectResolution).toHaveBeenCalledTimes(method === 'pinned' ? 1 : 0);
+        } finally {
+            rendered.cleanup();
+        }
+    });
+
+    it('looks again after the TUI updates the pinned global install', async () => {
+        fs.writeFileSync(sandbox.settingsPath, JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            installation: { method: 'pinned', installedVersion: '2.0.0' }
+        }));
+        let versionOnDisk = '2.0.0';
+        const inspectActiveCommand = vi.spyOn(globalPackageManager, 'inspectActiveGlobalCommand').mockImplementation(() => ({
+            packageManager: 'npm',
+            resolvedPath: '/usr/local/bin/ccstatusline',
+            resolvedPaths: ['/usr/local/bin/ccstatusline'],
+            binDir: '/usr/local/bin',
+            version: versionOnDisk,
+            warning: null
+        }));
+        vi.spyOn(updateChecker, 'runGlobalPackageInstall').mockImplementation((packageManager, version) => {
+            versionOnDisk = version;
+            return Promise.resolve();
+        });
+        const rendered = renderApp();
+
+        try {
+            await waitFor(() => {
+                expect(rendered.getFrame()).toContain('Pinned Install Version Mismatch');
+            });
+            await pressKey(rendered, KEYS.enter, '✓ Global package updated');
+            expect(rendered.getFrame()).toContain('Main Menu');
+            expect(inspectActiveCommand).toHaveBeenCalledTimes(2);
         } finally {
             rendered.cleanup();
         }
