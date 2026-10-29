@@ -13,11 +13,16 @@ import {
 import { resolveNumberFormat } from '../utils/number-format';
 import { formatTokens } from '../utils/renderer';
 
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const LABEL = 'Win: ';
+
 export class ContextWindowWidget implements Widget {
     getDefaultColor(): string { return 'brightBlack'; }
     getDescription(): string { return 'Shows the total context window size for the current model'; }
     getDisplayName(): string { return 'Context Window'; }
     getCategory(): string { return 'Context'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -26,7 +31,7 @@ export class ContextWindowWidget implements Widget {
         const format = resolveNumberFormat('token', item, settings);
         if (context.isPreview) {
             const value = formatTokens(200000, format);
-            return item.rawValue ? value : `Win: ${value}`;
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         let total = getContextWindowSize(context.data);
@@ -40,7 +45,7 @@ export class ContextWindowWidget implements Widget {
             return null;
         }
 
-        return item.rawValue ? formatTokens(total, format) : `Win: ${formatTokens(total, format)}`;
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), formatTokens(total, format));
     }
 
     supportsRawValue(): boolean { return true; }

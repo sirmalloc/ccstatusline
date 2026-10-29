@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
     CURRENT_VERSION,
@@ -10,6 +10,7 @@ import {
     type Settings
 } from '../types/Settings';
 
+import type { SkippedWidgetHooks } from './hooks';
 import {
     migrateConfig,
     needsMigration
@@ -26,10 +27,16 @@ const unlink = fs.promises.unlink;
 const lstat = fs.promises.lstat;
 const readlink = fs.promises.readlink;
 const realpath = fs.promises.realpath;
+const stat = fs.promises.stat;
 
-const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+// Resolved on every call, not once at import time: tests replace os.homedir()
+// with a temp directory after this module has loaded, and the default path has
+// to follow so an install test can never touch the developer's real file.
+function getDefaultSettingsPath(): string {
+    return path.join(os.homedir(), '.config', 'ccstatusline', 'settings.json');
+}
 
-let settingsPath = DEFAULT_SETTINGS_PATH;
+let settingsPath = getDefaultSettingsPath();
 let lastLoadError: string | null = null;
 
 export function getConfigLoadError(): string | null {
@@ -37,7 +44,7 @@ export function getConfigLoadError(): string | null {
 }
 
 export function initConfigPath(filePath?: string): void {
-    settingsPath = filePath ? path.resolve(filePath) : DEFAULT_SETTINGS_PATH;
+    settingsPath = filePath ? path.resolve(filePath) : getDefaultSettingsPath();
 }
 
 export function getConfigPath(): string {
@@ -45,7 +52,7 @@ export function getConfigPath(): string {
 }
 
 export function isCustomConfigPath(): boolean {
-    return settingsPath !== DEFAULT_SETTINGS_PATH;
+    return settingsPath !== getDefaultSettingsPath();
 }
 
 interface SettingsPaths {
@@ -111,6 +118,16 @@ async function resolveAtomicWriteTarget(paths: SettingsPaths): Promise<AtomicWri
     }
 }
 
+// The permissions of the file a save replaces, so a private settings file
+// stays private; a new file gets the usual default
+async function getReplacedFileMode(filePath: string): Promise<number> {
+    try {
+        return (await stat(filePath)).mode & 0o777;
+    } catch {
+        return 0o666;
+    }
+}
+
 async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promise<void> {
     await mkdir(paths.configDir, { recursive: true });
 
@@ -123,8 +140,9 @@ async function writeSettingsJson(settings: unknown, paths: SettingsPaths): Promi
         writeTarget.tempDir,
         `${path.basename(writeTarget.targetPath)}.${process.pid}.${Date.now()}.tmp`
     );
+    const mode = await getReplacedFileMode(writeTarget.targetPath);
     try {
-        await writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf-8');
+        await writeFile(tempPath, JSON.stringify(settings, null, 2), { encoding: 'utf-8', mode });
         await rename(tempPath, writeTarget.targetPath);
     } catch (error) {
         try {
@@ -229,7 +247,8 @@ export async function loadSettings(): Promise<Settings> {
     }
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
+/** Saves settings and syncs widget hooks; returns the hooks the sync couldn't add, if any. */
+export async function saveSettings(settings: Settings): Promise<SkippedWidgetHooks | null> {
     const paths = getSettingsPaths();
 
     // Always include version when saving
@@ -243,8 +262,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
     // Sync widget hooks to Claude settings
     try {
         const { syncWidgetHooks } = await import('./hooks');
-        await syncWidgetHooks(settings);
-    } catch { /* ignore hook sync failures */ }
+        return await syncWidgetHooks(settings);
+    } catch {
+        // Ignore hook sync failures
+        return null;
+    }
 }
 
 export type ImportValidationResult

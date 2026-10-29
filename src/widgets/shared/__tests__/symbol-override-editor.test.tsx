@@ -8,6 +8,7 @@ import {
     vi
 } from 'vitest';
 
+import { waitFor } from '../../../tui/__tests__/helpers/wait-for-ink';
 import type { WidgetItem } from '../../../types/Widget';
 import {
     renderSymbolSlotsEditor,
@@ -32,7 +33,10 @@ class MockTtyStream extends PassThrough {
     }
 }
 
-interface CapturedWriteStream extends NodeJS.WriteStream { getOutput: () => string }
+interface CapturedWriteStream extends NodeJS.WriteStream {
+    clearOutput: () => void;
+    getOutput: () => string;
+}
 
 function createMockStdin(): NodeJS.ReadStream {
     return new MockTtyStream() as unknown as NodeJS.ReadStream;
@@ -47,15 +51,12 @@ function createMockStdout(): CapturedWriteStream {
     });
 
     return Object.assign(stream as unknown as NodeJS.WriteStream, {
+        clearOutput() {
+            chunks.length = 0;
+        },
         getOutput() {
             return chunks.join('');
         }
-    });
-}
-
-function flushInk() {
-    return new Promise((resolve) => {
-        setTimeout(resolve, 25);
     });
 }
 
@@ -110,18 +111,51 @@ function getPlainOutput(output: string): string {
 }
 
 describe('SymbolSlotsEditor', () => {
+    it.each([
+        { name: 'BMP Nerd Font icon', glyph: '\uF1EB', preview: '\uF1EB ' },
+        { name: 'supplementary Nerd Font icon', glyph: '\u{F05AA}', preview: '\u{F05AA} ' },
+        { name: 'wide emoji', glyph: '📡', preview: '📡' },
+        { name: 'combining character', glyph: 'e\u0301', preview: 'e\u0301 ' },
+        { name: 'empty glyph', glyph: '', preview: '(none)' }
+    ])('preserves the $name preview padding across blink frames without saving it', async ({ glyph, preview }) => {
+        const slots: SymbolSlot[] = [
+            { id: 'symbolOn', label: 'On', defaultSymbol: glyph },
+            { id: 'symbolOff', label: 'Off', defaultSymbol: glyph }
+        ];
+        const rendered = renderEditor({ id: 'remote', type: 'remote-control-status' }, slots);
+
+        try {
+            for (let frame = 0; frame < 3; frame++) {
+                await waitFor(() => {
+                    const output = getPlainOutput(rendered.stdout.getOutput());
+                    expect(output).toContain(`On: ${preview} (default:`);
+                    expect(output).toContain(`Off: ${preview} (default:`);
+                });
+                rendered.stdout.clearOutput();
+            }
+            rendered.stdin.write('\r');
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledTimes(1);
+            });
+            const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
+            expect(updated?.metadata).toBeUndefined();
+        } finally {
+            cleanupEditor(rendered);
+        }
+    });
+
     it('right-aligns labels so glyph values start in the same column', async () => {
         const rendered = renderEditor({ id: 'git-status', type: 'git-status' });
 
         try {
-            await flushInk();
-
-            const lines = getPlainOutput(rendered.stdout.getOutput())
+            const slotLines = () => getPlainOutput(rendered.stdout.getOutput())
                 .split('\n')
                 .filter(line => gitStatusSlots.some(slot => line.includes(`${slot.label}:`)));
-            const colonColumns = lines.map(line => line.indexOf(':'));
+            await waitFor(() => {
+                expect(slotLines()).toHaveLength(gitStatusSlots.length);
+            });
 
-            expect(lines).toHaveLength(gitStatusSlots.length);
+            const colonColumns = slotLines().map(line => line.indexOf(':'));
             expect(new Set(colonColumns)).toHaveLength(1);
         } finally {
             cleanupEditor(rendered);
@@ -136,11 +170,19 @@ describe('SymbolSlotsEditor', () => {
         });
 
         try {
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
+            // Any new frame after Tab means the reset was handled
+            rendered.stdout.clearOutput();
             rendered.stdin.write('\t');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.stdout.getOutput()).toContain('Conflicts:');
+            });
             rendered.stdin.write('\r');
-            await flushInk();
+            await waitFor(() => {
+                expect(rendered.onComplete).toHaveBeenCalledTimes(1);
+            });
 
             const updated = rendered.onComplete.mock.calls[0]?.[0] as WidgetItem | undefined;
             expect(updated?.metadata).toBeUndefined();

@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import path from 'node:path';
 
 import type {
@@ -70,12 +70,10 @@ interface SpeedInterval {
 }
 
 interface SpeedRequest {
-    /** Message id shared by every record of one logged API response, or null when absent. */
-    messageId: string | null;
     inputTokens: number;
     outputTokens: number;
     assistantTimestampMs: number | null;
-    interval: SpeedInterval | null;
+    intervals: SpeedInterval[];
 }
 
 interface CollectedSpeedMetrics {
@@ -84,12 +82,11 @@ interface CollectedSpeedMetrics {
 }
 
 interface TokenMetricEntry {
-    /** Message id shared by every record of one logged API response, or null when absent. */
-    messageId: string | null;
     usage: UsageTokens;
     stopReason: string | null | undefined;
     timestampMs: number | null;
     isMainChain: boolean;
+    messageId: string | null;
 }
 
 interface TokenMetricAccumulator {
@@ -101,17 +98,12 @@ interface TokenMetricAccumulator {
     mostRecentTimestampMs: number | null;
     mostRecentPostCompactionUsage: UsageTokens | null;
     mostRecentPostCompactionTimestampMs: number | null;
-    /**
-     * What each message id contributed, so a later record of it can replace that
-     * share. Only entries the stop_reason guard accepted are recorded, which keeps
-     * it in step with the totals it describes.
-     */
-    countedByMessageId: Map<string, UsageTokens>;
 }
 
 interface TokenMetricState {
     metrics: TokenMetricAccumulator;
     hasStopReasonField: boolean;
+    countedOutputByMessageId: Map<string, number>;
     lastUsageEntry: TokenMetricEntry | null;
     sawCompactBoundary: boolean;
     boundaryAfterLastUsage: boolean;
@@ -139,8 +131,7 @@ function createTokenMetricAccumulator(): TokenMetricAccumulator {
         mostRecentMainChainUsage: null,
         mostRecentTimestampMs: null,
         mostRecentPostCompactionUsage: null,
-        mostRecentPostCompactionTimestampMs: null,
-        countedByMessageId: new Map()
+        mostRecentPostCompactionTimestampMs: null
     };
 }
 
@@ -149,33 +140,12 @@ function resetPostCompactionUsage(accumulator: TokenMetricAccumulator): void {
     accumulator.mostRecentPostCompactionTimestampMs = null;
 }
 
-/**
- * Adds one entry's usage, replacing what an earlier record of the same response
- * contributed.
- *
- * A response is logged once per content block and repeats that response's usage
- * on every record, so adding each record would count it once per block. Only the
- * last record carries the response's final usage, so a repeat for a message id
- * replaces that id's share instead of accumulating on top of it. Entries without
- * a message id cannot be grouped and are each added.
- */
 function accumulateTokenMetricEntry(
     accumulator: TokenMetricAccumulator,
     entry: TokenMetricEntry,
     includePostCompactionUsage: boolean
 ): void {
     const { usage } = entry;
-    if (entry.messageId !== null) {
-        const previous = accumulator.countedByMessageId.get(entry.messageId);
-        if (previous !== undefined) {
-            accumulator.inputTokens -= previous.input;
-            accumulator.outputTokens -= previous.output;
-            accumulator.cacheReadTokens -= previous.read;
-            accumulator.cacheCreationTokens -= previous.creation;
-        }
-        accumulator.countedByMessageId.set(entry.messageId, usage);
-    }
-
     accumulator.inputTokens += usage.input;
     accumulator.outputTokens += usage.output;
     accumulator.cacheReadTokens += usage.read;
@@ -201,11 +171,38 @@ function createTokenMetricState(): TokenMetricState {
     return {
         metrics: createTokenMetricAccumulator(),
         hasStopReasonField: false,
+        countedOutputByMessageId: new Map(),
         lastUsageEntry: null,
         sawCompactBoundary: false,
         boundaryAfterLastUsage: false,
         lastCompactBoundaryPostTokens: null
     };
+}
+
+// Count each message once even when another response separates its content
+// blocks. Keep the maximum output and the first counted context snapshot, as
+// consecutive duplicates did; records without an id still count independently.
+function accumulateCumulativeTokenEntry(
+    state: TokenMetricState,
+    entry: TokenMetricEntry,
+    includePostCompactionUsage: boolean
+): void {
+    const previousOutput = entry.messageId === null
+        ? undefined
+        : state.countedOutputByMessageId.get(entry.messageId);
+    if (entry.messageId !== null && previousOutput !== undefined) {
+        const outputDelta = entry.usage.output - previousOutput;
+        if (outputDelta > 0) {
+            state.countedOutputByMessageId.set(entry.messageId, entry.usage.output);
+            state.metrics.outputTokens += outputDelta;
+        }
+        return;
+    }
+
+    if (entry.messageId !== null) {
+        state.countedOutputByMessageId.set(entry.messageId, entry.usage.output);
+    }
+    accumulateTokenMetricEntry(state.metrics, entry, includePostCompactionUsage);
 }
 
 function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine | null, timestampMs: number | null): void {
@@ -220,21 +217,23 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
     const message = data?.message;
     const usage = message?.usage;
     if (usage) {
+        const rawMessageId = message.id;
         const entry: TokenMetricEntry = {
-            messageId: getMessageId(message),
             usage: parseUsageTokens(usage),
             stopReason: message.stop_reason,
             timestampMs,
-            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage
+            isMainChain: data?.isSidechain !== true && !data?.isApiErrorMessage,
+            messageId: typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null
         };
 
         const hasStopReason = Object.prototype.hasOwnProperty.call(message, 'stop_reason');
         if (hasStopReason && !state.hasStopReasonField) {
             state.hasStopReasonField = true;
             state.metrics = createTokenMetricAccumulator();
+            state.countedOutputByMessageId.clear();
         }
         if (!state.hasStopReasonField || entry.stopReason) {
-            accumulateTokenMetricEntry(state.metrics, entry, !compactBoundary);
+            accumulateCumulativeTokenEntry(state, entry, !compactBoundary);
         }
         state.lastUsageEntry = entry;
         state.boundaryAfterLastUsage = compactBoundary;
@@ -243,7 +242,7 @@ function collectTokenMetricRecord(state: TokenMetricState, data: TranscriptLine 
 
 function finishTokenMetrics(state: TokenMetricState): TokenMetrics {
     if (state.hasStopReasonField && state.lastUsageEntry?.stopReason === null) {
-        accumulateTokenMetricEntry(state.metrics, state.lastUsageEntry, !state.boundaryAfterLastUsage);
+        accumulateCumulativeTokenEntry(state, state.lastUsageEntry, !state.boundaryAfterLastUsage);
     }
 
     const contextLengthFromUsage = (usage: UsageTokens | null): number | null => usage
@@ -294,19 +293,6 @@ function parseTimestampMs(value: string | undefined): number | null {
 
     const timestampMs = Date.parse(value);
     return Number.isNaN(timestampMs) ? null : timestampMs;
-}
-
-/**
- * Reads the message id of one transcript record.
- *
- * Claude Code logs a single assistant response as one record per content block
- * (thinking / text / tool_use), so the id is what identifies one logged request
- * across those records. Records without an id cannot be grouped and are each
- * treated as a request.
- */
-function getMessageId(message: TranscriptLine['message']): string | null {
-    const id = message?.id;
-    return typeof id === 'string' && id !== '' ? id : null;
 }
 
 function mergeIntervals(intervals: SpeedInterval[]): SpeedInterval[] {
@@ -363,13 +349,22 @@ function normalizeWindowSeconds(value: number | undefined): number | null {
     return normalized > 0 ? normalized : null;
 }
 
-interface SpeedMetricCollectorState extends CollectedSpeedMetrics { lastUserTimestampMs: number | null }
+interface SpeedMetricCollectorState extends CollectedSpeedMetrics {
+    lastUserTimestampMs: number | null;
+    lastRequest: SpeedRequest | null;
+    lastRequestInterval: SpeedInterval | null;
+    // Scoped to this transcript so subagent collectors keep independent requests.
+    requestsByMessageId: Map<string, SpeedRequest>;
+}
 
 function createSpeedMetricCollector(): SpeedMetricCollectorState {
     return {
         requests: [],
         latestTimestampMs: null,
-        lastUserTimestampMs: null
+        lastUserTimestampMs: null,
+        lastRequest: null,
+        lastRequestInterval: null,
+        requestsByMessageId: new Map()
     };
 }
 
@@ -402,13 +397,50 @@ function collectSpeedMetricRecord(
     }
 
     const usage = parseUsageTokens(data.message.usage);
-    state.requests.push({
-        messageId: getMessageId(data.message),
+    const rawMessageId = data.message.id;
+    const messageId = typeof rawMessageId === 'string' && rawMessageId.length > 0 ? rawMessageId : null;
+
+    // One API call can be written as several entries sharing a message.id,
+    // each repeating the call's input tokens. Count the call once, keeping
+    // its largest output count and its latest end time.
+    const previous = messageId === null ? undefined : state.requestsByMessageId.get(messageId);
+    if (previous) {
+        if (state.lastRequest !== previous) {
+            state.lastRequestInterval = null;
+        }
+        previous.inputTokens = usage.input;
+        previous.outputTokens = Math.max(previous.outputTokens, usage.output);
+        if (timestampMs !== null) {
+            previous.assistantTimestampMs = timestampMs;
+        }
+        if (interval) {
+            const lastInterval = state.lastRequestInterval;
+            if (lastInterval) {
+                lastInterval.startMs = Math.min(lastInterval.startMs, interval.startMs);
+                lastInterval.endMs = Math.max(lastInterval.endMs, interval.endMs);
+            } else {
+                // A nonconsecutive repeat must not turn the intervening idle
+                // time into active processing time.
+                previous.intervals.push(interval);
+                state.lastRequestInterval = interval;
+            }
+        }
+        state.lastRequest = previous;
+        return;
+    }
+
+    const request: SpeedRequest = {
         inputTokens: usage.input,
         outputTokens: usage.output,
         assistantTimestampMs: timestampMs,
-        interval
-    });
+        intervals: interval ? [interval] : []
+    };
+    state.requests.push(request);
+    state.lastRequest = request;
+    state.lastRequestInterval = interval;
+    if (messageId !== null) {
+        state.requestsByMessageId.set(messageId, request);
+    }
 }
 
 async function collectSpeedMetricsFromFile(filePath: string, ignoreSidechain: boolean): Promise<CollectedSpeedMetrics> {
@@ -439,98 +471,62 @@ function mergeCollectedSpeedMetrics(parts: CollectedSpeedMetrics[]): CollectedSp
     };
 }
 
-/**
- * Picks the requests whose usage is counted, one per logged API response.
- *
- * A response is logged as one record per content block, so summing every
- * record would count its tokens once per block. Only the record written last
- * carries the response's final usage: main transcripts repeat the same usage on
- * every record, while subagent transcripts write zeroes until it settles.
- * Transcripts are append-only, so the last record of a message id is that final
- * one. The earlier records still contribute their intervals to the active
- * duration. Requests without a message id cannot be grouped and are each
- * counted.
- */
-function selectTokenBearingRequests(selectedRequests: SpeedRequest[]): SpeedRequest[] {
-    const latestByMessageId = new Map<string, SpeedRequest>();
-    const ungrouped: SpeedRequest[] = [];
-
-    for (const request of selectedRequests) {
-        if (request.messageId === null) {
-            ungrouped.push(request);
-            continue;
-        }
-
-        // Later records overwrite earlier ones: the last record of a message id
-        // holds the response's final usage.
-        latestByMessageId.set(request.messageId, request);
-    }
-
-    return [...latestByMessageId.values(), ...ungrouped];
-}
-
 function buildSpeedMetrics(
     collected: CollectedSpeedMetrics,
     windowSeconds?: number
 ): SpeedMetrics {
     const normalizedWindowSeconds = normalizeWindowSeconds(windowSeconds);
-    if (normalizedWindowSeconds !== null && collected.latestTimestampMs === null) {
+    const windowBounds = normalizedWindowSeconds !== null && collected.latestTimestampMs !== null
+        ? {
+            startMs: collected.latestTimestampMs - (normalizedWindowSeconds * 1000),
+            endMs: collected.latestTimestampMs
+        }
+        : null;
+    if (normalizedWindowSeconds !== null && windowBounds === null) {
         return createEmptySpeedMetrics();
     }
 
-    const windowEndMs = normalizedWindowSeconds !== null && collected.latestTimestampMs !== null
-        ? collected.latestTimestampMs
-        : null;
-    const windowStartMs = normalizedWindowSeconds !== null && windowEndMs !== null
-        ? windowEndMs - (normalizedWindowSeconds * 1000)
-        : null;
-
-    const selectedRequests = normalizedWindowSeconds !== null && windowStartMs !== null && windowEndMs !== null
+    const selectedRequests = windowBounds
         ? collected.requests.filter(request => request.assistantTimestampMs !== null
-            && request.assistantTimestampMs >= windowStartMs
-            && request.assistantTimestampMs <= windowEndMs
+            && request.assistantTimestampMs >= windowBounds.startMs
+            && request.assistantTimestampMs <= windowBounds.endMs
         )
         : collected.requests;
 
+    let inputTokens = 0;
+    let outputTokens = 0;
     const intervals: SpeedInterval[] = [];
 
     for (const request of selectedRequests) {
-        if (!request.interval) {
-            continue;
-        }
+        inputTokens += request.inputTokens;
+        outputTokens += request.outputTokens;
 
-        if (windowStartMs === null || windowEndMs === null) {
-            intervals.push(request.interval);
-            continue;
-        }
+        for (const interval of request.intervals) {
+            if (windowBounds === null) {
+                intervals.push(interval);
+                continue;
+            }
 
-        const clippedStartMs = Math.max(request.interval.startMs, windowStartMs);
-        const clippedEndMs = Math.min(request.interval.endMs, windowEndMs);
-        if (clippedEndMs > clippedStartMs) {
-            intervals.push({
-                startMs: clippedStartMs,
-                endMs: clippedEndMs
-            });
+            const clippedStartMs = Math.max(interval.startMs, windowBounds.startMs);
+            const clippedEndMs = Math.min(interval.endMs, windowBounds.endMs);
+            if (clippedEndMs > clippedStartMs) {
+                intervals.push({
+                    startMs: clippedStartMs,
+                    endMs: clippedEndMs
+                });
+            }
         }
     }
 
     const mergedIntervals = mergeIntervals(intervals);
     const totalDurationMs = getIntervalsDurationMs(mergedIntervals);
 
-    const tokenRequests = selectTokenBearingRequests(selectedRequests);
-    let inputTokens = 0;
-    let outputTokens = 0;
-    for (const request of tokenRequests) {
-        inputTokens += request.inputTokens;
-        outputTokens += request.outputTokens;
-    }
-
     return {
         totalDurationMs,
         inputTokens,
         outputTokens,
         totalTokens: inputTokens + outputTokens,
-        requestCount: tokenRequests.length
+        requestCount: selectedRequests.length
     };
 }
 

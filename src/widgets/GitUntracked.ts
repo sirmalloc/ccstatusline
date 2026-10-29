@@ -1,79 +1,10 @@
-import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
-import type {
-    CustomKeybind,
-    HideableState,
-    Widget,
-    WidgetEditorDisplay,
-    WidgetEditorProps,
-    WidgetItem
-} from '../types/Widget';
-import {
-    getGitStatus,
-    isInsideGitWorkTree
-} from '../utils/git';
+import { GitStatusFlagWidget } from './shared/git-status-widget';
 
-import {
-    NO_GIT_HIDEABLE_STATE,
-    isHidden
-} from './shared/hideable';
-import {
-    getSymbol,
-    getSymbolKeybind,
-    renderSymbolOverrideEditor
-} from './shared/symbol-override';
+export class GitUntrackedWidget extends GitStatusFlagWidget {
+    protected readonly flag = 'untracked';
+    protected readonly defaultSymbol = '?';
 
-const DEFAULT_SYMBOL = '?';
-
-export class GitUntrackedWidget implements Widget {
     getDefaultColor(): string { return 'red'; }
     getDescription(): string { return 'Shows ? when there are untracked files'; }
     getDisplayName(): string { return 'Git Untracked'; }
-    getCategory(): string { return 'Git'; }
-
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        return { displayText: this.getDisplayName() };
-    }
-
-    getHideableStates(): HideableState[] {
-        return [NO_GIT_HIDEABLE_STATE];
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoGit = isHidden(item, NO_GIT_HIDEABLE_STATE.key);
-
-        if (context.isPreview) {
-            return item.rawValue ? 'true' : getSymbol(item, DEFAULT_SYMBOL);
-        }
-
-        if (!isInsideGitWorkTree(context)) {
-            return hideNoGit ? null : '(no git)';
-        }
-
-        const status = getGitStatus(context);
-
-        if (!status.untracked) {
-            return null;
-        }
-
-        return item.rawValue ? 'true' : getSymbol(item, DEFAULT_SYMBOL);
-    }
-
-    getCustomKeybinds(): CustomKeybind[] {
-        return [getSymbolKeybind()];
-    }
-
-    renderEditor(props: WidgetEditorProps) {
-        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
-    }
-
-    getNumericValue(context: RenderContext, _item: WidgetItem): number | null {
-        if (!isInsideGitWorkTree(context))
-            return null;
-        const status = getGitStatus(context);
-        return status.untracked ? 1 : 0;
-    }
-
-    supportsRawValue(): boolean { return true; }
-    supportsColors(_item: WidgetItem): boolean { return true; }
 }

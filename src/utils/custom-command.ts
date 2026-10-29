@@ -1,5 +1,5 @@
-import type { SpawnSyncReturns } from 'child_process';
-import { spawnSync } from 'child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -253,6 +253,8 @@ function executeCommand(request: CustomCommandRequest): CustomCommandResult {
     try {
         // Only the capture runtime owns this pipe. The command's descendants
         // cannot inherit it and keep spawnSync waiting after their shell exits.
+        // Keep CommonJS requires unprefixed for Node versions before 14.18;
+        // this script runs verbatim and is not transformed by the bundler.
         const script = `(${captureCustomCommand.toString()})(
             require('child_process').spawn,
             JSON.parse(require('fs').readFileSync(0, 'utf8')),

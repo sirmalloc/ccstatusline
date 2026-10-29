@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import os from 'os';
-import path from 'path';
+import * as fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
     afterEach,
     describe,
@@ -579,6 +579,180 @@ describe('jsonl transcript metrics', () => {
             cacheCreationTokens: 75,
             totalTokens: 580,
             contextLength: 228
+        });
+    });
+
+    it('deduplicates cumulative token totals across one API call’s per-content-block entries', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-dedup.jsonl');
+
+        // A #549-shaped transcript: msg_01 writes three per-content-block
+        // entries with identical prompt-side usage and growing output_tokens,
+        // so the cumulative widgets must count the call once, not once per
+        // block (sirmalloc/ccstatusline#549).
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 5,
+                cacheRead: 100,
+                cacheCreate: 0,
+                stopReason: 'end_turn',
+                messageId: 'msg_00'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 1,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 2,
+                output: 100,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 2,
+                output: 287,
+                cacheRead: 3978,
+                cacheCreate: 12278,
+                stopReason: 'tool_use',
+                messageId: 'msg_01'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 12,            // 10 + 2 (msg_01 counted once)
+            outputTokens: 292,          // 5 + 287 (finalized output wins)
+            cachedTokens: 16356,        // (100 + 0) + (3978 + 12278)
+            cacheReadTokens: 4078,      // 100 + 3978
+            cacheCreationTokens: 12278, // 0 + 12278
+            totalTokens: 16660,         // 12 + 292 + 16356
+            contextLength: 16258        // 2 + 3978 + 12278
+        });
+    });
+
+    it('resolves streaming partials to their finalized values in cumulative totals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-streaming-dedup.jsonl');
+
+        // Same shape as the live-update case, but every entry carries a
+        // message.id: msg_a's partials must collapse into its finalized entry,
+        // and msg_b's in-flight partials must count once, not per partial.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 2,
+                output: 25,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: null,
+                messageId: 'msg_a'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:01.000Z',
+                input: 2,
+                output: 80,
+                cacheRead: 100,
+                cacheCreate: 50,
+                stopReason: 'end_turn',
+                messageId: 'msg_a'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:02.000Z',
+                input: 3,
+                output: 30,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null,
+                messageId: 'msg_b'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:03.000Z',
+                input: 3,
+                output: 120,
+                cacheRead: 200,
+                cacheCreate: 25,
+                stopReason: null,
+                messageId: 'msg_b'
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 5,          // 2 + 3, one call each
+            outputTokens: 200,       // 80 + 120, not 25+80 or 30+120
+            cachedTokens: 375,
+            cacheReadTokens: 300,
+            cacheCreationTokens: 75,
+            totalTokens: 580,
+            contextLength: 228
+        });
+    });
+
+    it('counts a sidechain call’s per-content-block entries once in cumulative totals', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'cumulative-sidechain-dedup.jsonl');
+
+        // Sidechain rows keep their treatment in the cumulative sums (still
+        // included, still excluded from context length); grouping by their own
+        // message.id must not count one subagent call per content block.
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                input: 10,
+                output: 50,
+                cacheRead: 20,
+                cacheCreate: 10,
+                stopReason: 'end_turn',
+                messageId: 'msg_main'
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                input: 900,
+                output: 400,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            }),
+            makeUsageLine({
+                timestamp: '2026-01-01T10:01:01.000Z',
+                input: 900,
+                output: 650,
+                cacheRead: 5000,
+                cacheCreate: 100,
+                stopReason: 'tool_use',
+                messageId: 'msg_sub',
+                isSidechain: true
+            })
+        ].join('\n'));
+
+        const metrics = await getTokenMetrics(transcriptPath);
+
+        expect(metrics).toEqual({
+            inputTokens: 910,          // 10 + 900 (sidechain call counted once)
+            outputTokens: 700,         // 50 + 650
+            cachedTokens: 5130,        // (20 + 10) + (5000 + 100)
+            cacheReadTokens: 5020,     // 20 + 5000
+            cacheCreationTokens: 110,  // 10 + 100
+            totalTokens: 6740,         // 910 + 700 + 5130
+            contextLength: 40          // main-chain msg_main only
         });
     });
 
@@ -1247,6 +1421,95 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
+    it('counts the entries of one API call once in speed metrics', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'speed-message-id.jsonl');
+        const assistantEntry = (timestamp: string, output: number, id: string): string => JSON.stringify({
+            timestamp,
+            type: 'assistant',
+            message: {
+                id,
+                usage: { input_tokens: 100, output_tokens: output }
+            }
+        });
+
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:00:00.000Z',
+                type: 'user'
+            }),
+            // One API call written as one entry per content block
+            assistantEntry('2026-01-01T10:00:02.000Z', 10, 'msg_1'),
+            assistantEntry('2026-01-01T10:00:04.000Z', 40, 'msg_1'),
+            assistantEntry('2026-01-01T10:00:05.000Z', 50, 'msg_1'),
+            makeTranscriptLine({
+                timestamp: '2026-01-01T10:01:00.000Z',
+                type: 'user'
+            }),
+            assistantEntry('2026-01-01T10:01:05.000Z', 30, 'msg_2')
+        ].join('\n'));
+
+        const analysis = await getTranscriptAnalysis(transcriptPath, { includeSpeedMetrics: true });
+
+        expect(analysis.speedMetricsCollection?.sessionAverage).toEqual({
+            totalDurationMs: 10000,
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            requestCount: 2
+        });
+        expect(analysis.tokenMetrics).toMatchObject({
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280
+        });
+    });
+
+    it.each([
+        { finalOutput: 20, expectedOutput: 110, middleId: 'b' },
+        { finalOutput: 120, expectedOutput: 150, middleId: 'b' },
+        { finalOutput: 20, expectedOutput: 110, middleId: undefined }
+    ])('deduplicates nonconsecutive responses without losing peak output or counting idle time ($finalOutput, $middleId)', async ({ finalOutput, expectedOutput, middleId }) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'interleaved-responses.jsonl');
+        fs.writeFileSync(transcriptPath, [
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:00.000Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:02.000Z', type: 'assistant', messageId: 'a', input: 100, output: 50 }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:03.000Z', type: 'assistant', messageId: 'a', input: 100, output: 80 }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:04.000Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:05.000Z', type: 'assistant', messageId: middleId, input: 200, output: 30 }),
+            // A duplicate with an invalid timestamp must not reconnect earlier intervals.
+            makeTranscriptLine({ timestamp: '', type: 'assistant', messageId: 'a', input: 100, output: 20 }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:06.000Z', type: 'user' }),
+            makeTranscriptLine({ timestamp: '2026-01-01T10:00:07.000Z', type: 'assistant', messageId: 'a', input: 100, output: finalOutput })
+        ].join('\n'));
+
+        const analysis = await getTranscriptAnalysis(transcriptPath, { includeSpeedMetrics: true, speedWindowSeconds: [3] });
+        const totals = { inputTokens: 300, outputTokens: expectedOutput, totalTokens: 300 + expectedOutput };
+        expect(analysis.tokenMetrics).toMatchObject({ ...totals, contextLength: 200 });
+        expect(analysis.speedMetricsCollection?.sessionAverage).toEqual({ ...totals, requestCount: 2, totalDurationMs: 5000 });
+        expect(analysis.speedMetricsCollection?.windowed['3']).toEqual({ ...totals, requestCount: 2, totalDurationMs: 2000 });
+    });
+
+    it('does not restore pre-compaction context from a duplicate response', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-metrics-'));
+        tempRoots.push(root);
+        const transcriptPath = path.join(root, 'duplicate-after-compaction.jsonl');
+        fs.writeFileSync(transcriptPath, [
+            makeUsageLine({ timestamp: '2026-01-01T10:00:00.000Z', messageId: 'a', input: 100, output: 50, stopReason: 'end_turn' }),
+            JSON.stringify({
+                type: 'system',
+                subtype: 'compact_boundary',
+                timestamp: '2026-01-01T10:00:01.000Z',
+                compactMetadata: { trigger: 'manual', postTokens: 20 }
+            }),
+            makeUsageLine({ timestamp: '2026-01-01T10:00:02.000Z', messageId: 'a', input: 100, output: 80, stopReason: 'end_turn' })
+        ].join('\n'));
+        expect(await getTokenMetrics(transcriptPath)).toMatchObject({ inputTokens: 100, outputTokens: 80, contextLength: 20 });
+    });
+
     it('calculates windowed speed metrics from recent requests only', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
@@ -1443,7 +1706,7 @@ describe('jsonl transcript metrics', () => {
         });
     });
 
-    it('aggregates subagent speed metrics with merged active windows when enabled', async () => {
+    it.each([undefined, 'shared-id'])('aggregates subagents independently with message id %s', async (messageId) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-jsonl-speed-'));
         tempRoots.push(root);
         const transcriptPath = path.join(root, 'speed-main-with-subagents.jsonl');
@@ -1457,6 +1720,7 @@ describe('jsonl transcript metrics', () => {
             makeTranscriptLine({
                 timestamp: '2026-01-01T10:00:10.000Z',
                 type: 'assistant',
+                messageId,
                 input: 50,
                 output: 100
             }),
@@ -1480,6 +1744,7 @@ describe('jsonl transcript metrics', () => {
             makeTranscriptLine({
                 timestamp: '2026-01-01T10:00:15.000Z',
                 type: 'assistant',
+                messageId,
                 input: 150,
                 output: 300,
                 isSidechain: true
@@ -1494,6 +1759,7 @@ describe('jsonl transcript metrics', () => {
             makeTranscriptLine({
                 timestamp: '2026-01-01T10:00:25.000Z',
                 type: 'assistant',
+                messageId,
                 input: 25,
                 output: 50,
                 isSidechain: true

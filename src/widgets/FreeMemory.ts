@@ -1,5 +1,5 @@
-import { execSync } from 'child_process';
-import os from 'os';
+import { execSync } from 'node:child_process';
+import os from 'node:os';
 
 import type { NumberFormat } from '../types/NumberFormat';
 import type { RenderContext } from '../types/RenderContext';
@@ -13,6 +13,10 @@ import {
     renderMagnitude,
     resolveNumberFormat
 } from '../utils/number-format';
+
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
+
+const LABEL = 'Mem: ';
 
 function formatBytes(bytes: number, format: NumberFormat): string {
     const GB = 1024 ** 3;
@@ -43,7 +47,7 @@ function getUsedMemoryMacOS(): number | null {
         const pageSizeString = pageSizeMatch?.[1];
         if (!pageSizeString)
             return null;
-        const pageSize = parseInt(pageSizeString, 10);
+        const pageSize = Number.parseInt(pageSizeString, 10);
 
         // Parse page counts
         let activePages = 0;
@@ -53,11 +57,11 @@ function getUsedMemoryMacOS(): number | null {
             const activeMatch = /Pages active:\s+(\d+)/.exec(line);
             const activeValue = activeMatch?.[1];
             if (activeValue)
-                activePages = parseInt(activeValue, 10);
+                activePages = Number.parseInt(activeValue, 10);
             const wiredMatch = /Pages wired down:\s+(\d+)/.exec(line);
             const wiredValue = wiredMatch?.[1];
             if (wiredValue)
-                wiredPages = parseInt(wiredValue, 10);
+                wiredPages = Number.parseInt(wiredValue, 10);
         }
 
         return (activePages + wiredPages) * pageSize;
@@ -71,6 +75,7 @@ export class FreeMemoryWidget implements Widget {
     getDescription(): string { return 'Shows system memory usage (used/total)'; }
     getDisplayName(): string { return 'Memory Usage'; }
     getCategory(): string { return 'Environment'; }
+    getLabelPrefix(): string { return LABEL; }
     getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
         return { displayText: this.getDisplayName() };
     }
@@ -79,7 +84,7 @@ export class FreeMemoryWidget implements Widget {
         const format = resolveNumberFormat('memory', item, settings);
         if (context.isPreview) {
             const value = `${formatBytes(12.4 * 1024 ** 3, format)}/${formatBytes(16 * 1024 ** 3, format)}`;
-            return item.rawValue ? value : `Mem: ${value}`;
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
         const total = os.totalmem();
@@ -95,7 +100,7 @@ export class FreeMemoryWidget implements Widget {
 
         const value = `${formatBytes(used, format)}/${formatBytes(total, format)}`;
 
-        return item.rawValue ? value : `Mem: ${value}`;
+        return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
     }
 
     supportsRawValue(): boolean { return true; }

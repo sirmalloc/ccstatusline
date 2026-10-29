@@ -7,7 +7,7 @@ export interface TokenUsage {
 
 export interface TranscriptLine {
     // One assistant response is logged as several records (one per content
-    // block) sharing this id; only the last of them carries its final usage.
+    // block) sharing this id; output usage can grow across those records.
     message?: { id?: string; usage?: TokenUsage; stop_reason?: string | null };
     isSidechain?: boolean;
     timestamp?: string;
