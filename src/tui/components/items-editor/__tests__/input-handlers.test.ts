@@ -672,6 +672,36 @@ describe('items-editor input handlers', () => {
         expect(updated?.[0]?.metadata?.hour12).toBe('true');
     });
 
+    it('uses the CWD link key to persist the first link mode in settings metadata', () => {
+        const widgets: WidgetItem[] = [
+            { id: '1', type: 'current-working-dir', metadata: { abbreviateHome: 'true' } }
+        ];
+        const onUpdate = vi.fn();
+
+        handleNormalInputMode({
+            input: 'l',
+            key: {},
+            widgets,
+            selectedIndex: 0,
+            separatorChars: ['|', '-'],
+            onBack: vi.fn(),
+            onUpdate,
+            setSelectedIndex: vi.fn(),
+            setMoveMode: vi.fn(),
+            setShowClearConfirm: vi.fn(),
+            openWidgetPicker: vi.fn(),
+            getCustomKeybindsForWidget: (widgetImpl, widget) => widgetImpl.getCustomKeybinds ? widgetImpl.getCustomKeybinds(widget) : [],
+            setCustomEditorWidget: vi.fn()
+        });
+
+        const updated = onUpdate.mock.calls[0]?.[0] as WidgetItem[] | undefined;
+        expect(updated?.[0]).toEqual({
+            id: '1',
+            type: 'current-working-dir',
+            metadata: { abbreviateHome: 'true', linkTo: 'file' }
+        });
+    });
+
     it('opens custom editor for reset timer timezone action', () => {
         const widgets: WidgetItem[] = [
             { id: '1', type: 'reset-timer', metadata: { absolute: 'true' } }
