@@ -72,13 +72,13 @@ function createMockStdout(): CapturedWriteStream {
 const COMMAND_IMPORT_CURRENT: Settings = { ...DEFAULT_SETTINGS, globalBold: true };
 const COMMAND_IMPORT_DATA: Settings = {
     ...DEFAULT_SETTINGS,
-    flexMode: 'full-minus-40',
+    colorLevel: 3,
     lines: [[{ id: 'c', type: 'custom-command', commandPath: 'echo hi' }], [], []]
 };
 const COMMAND_IMPORT_VALIDATION = {
     status: 'valid' as const,
     data: COMMAND_IMPORT_DATA,
-    presentKeys: ['version', 'flexMode', 'lines'] as (keyof Settings)[]
+    presentKeys: ['version', 'colorLevel', 'lines'] as (keyof Settings)[]
 };
 
 // The globalBold row of the last frame drawn
