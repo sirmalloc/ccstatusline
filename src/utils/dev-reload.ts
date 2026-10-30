@@ -1,4 +1,5 @@
 import { spawn as spawnProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -12,22 +13,60 @@ import {
 // under a small supervisor, and ctrl+r restarts it in place (new code, same
 // unsaved settings and screen). Nothing here runs unless the variable is set.
 export const DEV_RELOAD_ENV = 'CCSTATUSLINE_DEV_RELOAD';
-export const DEV_RELOAD_STATE_ENV = 'CCSTATUSLINE_DEV_RELOAD_STATE';
+export const DEV_RELOAD_CHILD_ARG_PREFIX = '--ccstatusline-dev-reload-child=';
 // EX_TEMPFAIL: "try again", which is what the supervisor does
 export const DEV_RELOAD_EXIT_CODE = 75;
 
+const DEV_RELOAD_STATE_DIR_PREFIX = 'ccstatusline-dev-reload-';
+const DEV_RELOAD_CAPABILITY_PATTERN = /^[a-f0-9]{64}$/;
+
 export type DevReloadMode = 'off' | 'supervisor' | 'child';
 
-export function getDevReloadMode(env: NodeJS.ProcessEnv): DevReloadMode {
+function getDevReloadStateDir(args: readonly string[]): string | null {
+    const childArgs = args.filter(arg => arg.startsWith(DEV_RELOAD_CHILD_ARG_PREFIX));
+    if (childArgs.length !== 1) {
+        return null;
+    }
+
+    const capability = childArgs[0]?.slice(DEV_RELOAD_CHILD_ARG_PREFIX.length);
+    if (!capability || !DEV_RELOAD_CAPABILITY_PATTERN.test(capability)) {
+        return null;
+    }
+
+    const stateDir = path.join(os.tmpdir(), `${DEV_RELOAD_STATE_DIR_PREFIX}${capability}`);
+    try {
+        const stats = fs.lstatSync(stateDir);
+        if (!stats.isDirectory() || stats.isSymbolicLink()) {
+            return null;
+        }
+        if (typeof process.getuid === 'function' && stats.uid !== process.getuid()) {
+            return null;
+        }
+        if (process.platform !== 'win32' && (stats.mode & 0o077) !== 0) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return stateDir;
+}
+
+export function getDevReloadMode(env: NodeJS.ProcessEnv, args: readonly string[] = process.argv): DevReloadMode {
     if (env[DEV_RELOAD_ENV] !== '1') {
         return 'off';
     }
 
-    return env[DEV_RELOAD_STATE_ENV] ? 'child' : 'supervisor';
+    return getDevReloadStateDir(args) ? 'child' : 'supervisor';
 }
 
-export function getDevReloadStateFile(env: NodeJS.ProcessEnv): string | null {
-    return getDevReloadMode(env) === 'child' ? env[DEV_RELOAD_STATE_ENV] ?? null : null;
+export function getDevReloadStateFile(env: NodeJS.ProcessEnv, args: readonly string[] = process.argv): string | null {
+    if (env[DEV_RELOAD_ENV] !== '1') {
+        return null;
+    }
+
+    const stateDir = getDevReloadStateDir(args);
+    return stateDir ? path.join(stateDir, 'snapshot.json') : null;
 }
 
 // Screens that need nothing beyond the snapshot to render. Confirm dialogs,
@@ -111,11 +150,24 @@ export function readDevReloadSnapshot(stateFile: string): RestoredDevReloadSnaps
     };
 }
 
-// Each supervisor run keeps its snapshot in a new private (0700) directory,
-// so its first TUI can't restore one an earlier run left behind (its PID
-// reused) or another user planted in a shared temp directory
-function createDevReloadStateDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-dev-reload-'));
+// The random capability is passed as an internal command-line argument, not
+// through ambient environment state. A child derives the fixed snapshot path
+// from it, so project .env values cannot select a file or impersonate a child.
+function createDevReloadState(): { stateDir: string; capability: string } {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+        const capability = randomBytes(32).toString('hex');
+        const stateDir = path.join(os.tmpdir(), `${DEV_RELOAD_STATE_DIR_PREFIX}${capability}`);
+        try {
+            fs.mkdirSync(stateDir, { mode: 0o700 });
+            return { stateDir, capability };
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+                throw error;
+            }
+        }
+    }
+
+    throw new Error('Unable to create a unique dev reload state directory');
 }
 
 function removeDevReloadStateDir(stateDir: string): void {
@@ -234,11 +286,15 @@ export async function superviseDevReload(
     spawn: DevReloadSpawn = spawnInTerminal,
     host: DevReloadProcess = process
 ): Promise<number> {
-    const stateDir = createDevReloadStateDir();
-    const stateFile = path.join(stateDir, 'snapshot.json');
+    const { stateDir, capability } = createDevReloadState();
     const script = process.argv[1];
-    const command = [...process.execArgv, ...(script ? [script] : []), ...launchArgs];
-    const env = { ...process.env, [DEV_RELOAD_STATE_ENV]: stateFile };
+    const childArg = `${DEV_RELOAD_CHILD_ARG_PREFIX}${capability}`;
+    const command = [...process.execArgv, ...(script ? [script] : []), childArg, ...launchArgs];
+    const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        [DEV_RELOAD_ENV]: '1'
+    };
+    delete env.CCSTATUSLINE_DEV_RELOAD_STATE;
 
     // A signal sent to the supervisor alone (kill <pid>) would end it and
     // orphan the TUI, leaving the snapshot behind. Instead the signal is
