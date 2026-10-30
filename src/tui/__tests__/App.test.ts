@@ -799,9 +799,15 @@ describe('App main menu highlight across Ctrl+S', () => {
         sandbox.restore();
     });
 
+    // The main menu entry the cursor is on
+    function getHighlightedEntry(rendered: RenderedApp): string | undefined {
+        return rendered.getFrame().split('\n').find(line => line.startsWith('▶  '))?.slice(3).trimEnd();
+    }
+
     // Changes Color Level, so the main menu offers Save & Exit, then moves down
-    // from Terminal Options, the entry last opened, through the given entries
-    async function changeAndMoveDown(rendered: RenderedApp, entries: string[]): Promise<void> {
+    // from Terminal Options, the entry last opened, to the given entry, past
+    // whatever entries lie between
+    async function changeAndMoveDownTo(rendered: RenderedApp, target: string): Promise<void> {
         await waitFor(() => {
             expect(rendered.getFrame()).toContain('Main Menu');
         });
@@ -812,18 +818,21 @@ describe('App main menu highlight across Ctrl+S', () => {
         await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
         await pressKey(rendered, KEYS.enter, '(Truecolor)');
         await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
-        for (const entry of entries) {
-            await pressKey(rendered, KEYS.down, `▶  ${entry}`);
+        for (let steps = 0; getHighlightedEntry(rendered) !== target; steps += 1) {
+            expect(steps).toBeLessThan(20);
+            const before = getHighlightedEntry(rendered);
+            rendered.stdin.write(KEYS.down);
+            await waitFor(() => {
+                expect(getHighlightedEntry(rendered)).not.toBe(before);
+            });
         }
     }
-
-    const toInstall = ['🌐 Global Overrides', '📤 Export Config', '📥 Import Config', '📦 Install to Claude Code'];
 
     it('keeps the highlighted entry, so Enter opens it', async () => {
         const rendered = renderApp();
 
         try {
-            await changeAndMoveDown(rendered, toInstall);
+            await changeAndMoveDownTo(rendered, '📦 Install to Claude Code');
             await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
             expect(rendered.getFrame()).not.toContain('💾 Save & Exit');
             expect(rendered.getFrame()).toContain('▶  📦 Install to Claude Code');
@@ -835,8 +844,6 @@ describe('App main menu highlight across Ctrl+S', () => {
     });
 
     // Saving replaces Save & Exit and Exit without saving with a single Exit
-    const belowInstall = ['💾 Save & Exit', '❌ Exit without saving', '⭐ Like ccstatusline? Star us on GitHub'];
-
     it.each([
         { highlighted: '💾 Save & Exit', after: '🚪 Exit', above: '📦 Install to Claude Code' },
         { highlighted: '❌ Exit without saving', after: '🚪 Exit', above: '📦 Install to Claude Code' },
@@ -845,7 +852,7 @@ describe('App main menu highlight across Ctrl+S', () => {
         const rendered = renderApp();
 
         try {
-            await changeAndMoveDown(rendered, [...toInstall, ...belowInstall.slice(0, belowInstall.indexOf(highlighted) + 1)]);
+            await changeAndMoveDownTo(rendered, highlighted);
             await pressKey(rendered, KEYS.ctrlS, '✓ Configuration saved');
             await waitFor(() => {
                 expect(rendered.getFrame()).toContain(`▶  ${after}`);
