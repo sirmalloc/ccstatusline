@@ -32,7 +32,6 @@ const BEL_OSC8_CLOSE = '\x1b]8;;\x07';
 function createSettings(overrides: Partial<Settings> = {}): Settings {
     return {
         ...DEFAULT_SETTINGS,
-        flexMode: 'full',
         ...overrides,
         powerline: {
             ...DEFAULT_SETTINGS.powerline,

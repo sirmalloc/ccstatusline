@@ -73,15 +73,11 @@ An explicit per-model quota at 0% is shown even when its reset timestamp is stil
 - **Custom Text** / **Custom Symbol** / **Custom Command** / **Link** - Add user-defined text, a single symbol or emoji, custom command output, or a clickable OSC 8 hyperlink.
 - **Separator** / **Flex Separator** - Add a manual divider or a width-filling flexible spacer. Manual separators are disabled in Powerline mode, but flex separators still work there as layout spacers.
 
-## Terminal Width Options
+## Terminal Width
 
-These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators:
+Status lines use the full terminal width minus 6 columns of padding: longer lines are truncated there, and flex separators right-align against it. Outside fullscreen rendering, Claude Code shows notifications such as the context-low warning on the same row, and on narrow terminals they may cut the status line short.
 
-- **Full width always** - Uses full terminal width (default; may wrap if auto-compact message appears or IDE integration adds text)
-- **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping
-- **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
-
-The default applies to new configurations and settings without an explicit `flexMode`; saved mode choices are preserved.
+Settings files from earlier versions may still carry `flexMode` and `compactThreshold`, from the removed **Full width minus 40** and **Full width until compact** modes. They are ignored, and the next save from the TUI removes them.
 
 Flex separators expand against the detected width in both regular and Powerline rendering. If width detection is unavailable, they render like normal separators until a terminal width is available.
 

@@ -69,7 +69,6 @@ The interactive configuration tool provides a terminal UI where you can:
 - Configure multiple separate status lines
 - Add/remove/reorder status line widgets
 - Customize colors for each widget
-- Configure flex separator behavior
 - Configure Claude Code status line refresh interval when supported
 - Edit custom text widgets
 - Export JSON backups and preview imported configs before replacing or merging settings
