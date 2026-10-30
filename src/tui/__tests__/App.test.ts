@@ -815,8 +815,7 @@ describe('App main menu highlight across Ctrl+S', () => {
         await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
         await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
         await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-        await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-        await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+        await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
         await pressKey(rendered, KEYS.enter, '(Truecolor)');
         await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
         for (let steps = 0; getHighlightedEntry(rendered) !== target; steps += 1) {
@@ -918,8 +917,7 @@ describe('App preview colors in a terminal that reports fewer colors', () => {
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             if (customColors) {
                 await pressKey(rendered, KEYS.enter, 'Custom colors detected');
             }
