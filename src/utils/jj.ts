@@ -36,8 +36,9 @@ export function isInsideJjRepo(context: RenderContext): boolean {
 }
 
 function parseDiffStat(stat: string): JjChangeCounts {
-    const insertMatch = /(\d+)\s+insertions?/.exec(stat);
-    const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
+    const summaryLine = stat.split('\n').pop() ?? '';
+    const insertMatch = /(\d+)\s+insertions?/.exec(summaryLine);
+    const deleteMatch = /(\d+)\s+deletions?/.exec(summaryLine);
 
     return {
         insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,
