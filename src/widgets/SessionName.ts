@@ -13,7 +13,7 @@ const LABEL = 'Session: ';
 
 export class SessionNameWidget implements Widget {
     getDefaultColor(): string { return 'cyan'; }
-    getDescription(): string { return 'Shows the session name set via /rename command in Claude Code'; }
+    getDescription(): string { return 'Shows the session name from /rename or the automatic Claude Code title'; }
     getDisplayName(): string { return 'Session Name'; }
     getCategory(): string { return 'Session'; }
     getLabelPrefix(): string { return LABEL; }

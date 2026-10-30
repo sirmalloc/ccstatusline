@@ -19,6 +19,14 @@ const RateLimitPeriodSchema = z.object({
     resets_at: CoercedNumberSchema.nullable().optional() // Unix epoch seconds
 });
 
+// Claude apps gateway spend limit (Claude Code 2.1.251+). The dollar fields and
+// period arrive separately from the percentage, so they can be absent.
+const SpendLimitSchema = RateLimitPeriodSchema.extend({
+    used_usd: CoercedNumberSchema.nullable().optional(),
+    limit_usd: CoercedNumberSchema.nullable().optional(),
+    period: z.string().nullable().optional()
+});
+
 export type RateLimitPeriod = z.infer<typeof RateLimitPeriodSchema>;
 
 export const StatusJSONSchema = z.looseObject({
@@ -64,6 +72,9 @@ export const StatusJSONSchema = z.looseObject({
         remaining_percentage: CoercedNumberSchema.nullable().optional()
     }).nullable().optional(),
     vim: z.object({ mode: z.string().optional() }).nullable().optional(),
+    // Only the Fast Mode widget reads it, so a malformed value is dropped
+    // rather than failing the whole payload
+    fast_mode: z.boolean().nullable().optional().catch(undefined),
     worktree: z.object({
         name: z.string().optional(),
         path: z.string().optional(),
@@ -71,11 +82,23 @@ export const StatusJSONSchema = z.looseObject({
         original_cwd: z.string().optional(),
         original_branch: z.string().optional()
     }).nullable().optional(),
+    // Claude Code reports the live prompt-cache state, including the real
+    // expiry timestamp, so consumers do not have to infer it from transcript
+    // timings. Absent on older Claude Code versions.
+    prompt_cache: z.object({
+        warm: z.boolean().nullable().optional(),
+        caching_observed: z.boolean().nullable().optional(),
+        ttl: z.string().nullable().optional(),
+        expires_at: CoercedNumberSchema.nullable().optional(), // Unix epoch seconds
+        hit_ratio: CoercedNumberSchema.nullable().optional(),
+        recache_tokens_if_cold: CoercedNumberSchema.nullable().optional()
+    }).nullable().optional(),
     rate_limits: z.object({
         five_hour: RateLimitPeriodSchema.optional(),
         seven_day: RateLimitPeriodSchema.optional(),
         seven_day_sonnet: RateLimitPeriodSchema.nullable().optional(),
-        seven_day_opus: RateLimitPeriodSchema.nullable().optional()
+        seven_day_opus: RateLimitPeriodSchema.nullable().optional(),
+        spend_limit: SpendLimitSchema.nullable().optional()
     }).nullable().optional()
 });
 
