@@ -202,6 +202,25 @@ describe('git-remote utils', () => {
                 expect(parseRemoteUrl('ftp://github.com/owner/repo.git')).toBeNull();
             });
 
+            it('ignores repeated slashes around and inside the path', () => {
+                expect(parseRemoteUrl('https://github.com//owner//repo.git//')).toEqual({
+                    host: 'github.com',
+                    owner: 'owner',
+                    repo: 'repo'
+                });
+            });
+
+            // Remote URLs come from the repository's own config
+            it('parses a URL with a long run of slashes in linear time', () => {
+                const started = Date.now();
+                expect(parseRemoteUrl(`https://github.com/owner${'/'.repeat(100_000)}repo.git`)).toEqual({
+                    host: 'github.com',
+                    owner: 'owner',
+                    repo: 'repo'
+                });
+                expect(Date.now() - started).toBeLessThan(1000);
+            });
+
             it('trims whitespace from URL', () => {
                 expect(parseRemoteUrl('  https://github.com/owner/repo.git  ')).toEqual({
                     host: 'github.com',
@@ -267,7 +286,7 @@ describe('git-remote utils', () => {
 
         it('falls back to the tracking remote when upstream is not a remote name', () => {
             mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecFileSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/hangie/feature/new-git-and-worktree-widgets\n');
             mockExecFileSync.mockReturnValueOnce('origin\nhangie\n');
             mockExecFileSync.mockReturnValueOnce('https://github.com/hangie/ccstatusline.git\n');
 
@@ -282,7 +301,7 @@ describe('git-remote utils', () => {
 
         it('matches the longest remote prefix when remote names contain slashes', () => {
             mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecFileSync.mockReturnValueOnce('team/upstream/feature/worktree\n');
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/team/upstream/feature/worktree\n');
             mockExecFileSync.mockReturnValueOnce('origin\nteam\nteam/upstream\n');
             mockExecFileSync.mockReturnValueOnce('https://github.com/team/upstream-repo.git\n');
 
@@ -295,9 +314,21 @@ describe('git-remote utils', () => {
             });
         });
 
+        // The full ref: --abbrev-ref says `remotes/origin/feature` when a
+        // branch or tag is named `origin/feature`, and that matches no remote
+        it('reads the tracking branch as a full ref', () => {
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/origin/feature\n');
+            mockExecFileSync.mockReturnValueOnce('origin\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/me/proj.git\n');
+
+            expect(getUpstreamRemoteInfo({})?.name).toBe('origin');
+            expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--symbolic-full-name', '@{upstream}']);
+        });
+
         it('returns null when the tracking remote cannot be resolved', () => {
             mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecFileSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/hangie/feature/new-git-and-worktree-widgets\n');
             mockExecFileSync.mockReturnValueOnce('origin\n');
 
             expect(getUpstreamRemoteInfo({})).toBeNull();

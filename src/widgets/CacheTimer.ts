@@ -31,9 +31,10 @@ const LABEL = 'Cache: ';
 
 // Anthropic's ephemeral prompt cache defaults to a 5-minute TTL, but Claude Code
 // also writes 1-hour breakpoints (cache_control ttl: "1h") for the stable prefix.
-// The expiry itself is never exposed (the transcript only records token counts),
-// so this is a best-effort countdown from the last turn; the TTL is configurable
-// to match whichever tier the user cares about.
+// Recent Claude Code reports the real expiry in status JSON as
+// prompt_cache.expires_at, which is used when present. The transcript-derived
+// countdown below stays as the fallback for older versions, where the expiry is
+// not exposed and the configured TTL is the only thing to count down from.
 const TTL_METADATA_KEY = 'ttlSeconds';
 const DEFAULT_TTL_SECONDS = 300;
 const TTL_OPTIONS = [300, 3600] as const; // 5 minutes, 1 hour
@@ -249,6 +250,36 @@ function getRemainingSeconds(lastAssistant: Date, ttlSeconds: number): number {
     return ttlSeconds - SAFETY_MARGIN - elapsedSeconds;
 }
 
+/**
+ * Seconds left according to Claude Code's own prompt_cache.expires_at, or null
+ * when the field is absent (older Claude Code) or the session has not cached
+ * anything yet. Reported expiry beats any countdown inferred from timestamps:
+ * it survives a resumed session, and it is right even when the last turn read a
+ * cache entry written much earlier.
+ */
+function getReportedRemainingSeconds(context: RenderContext): number | null {
+    const cache = context.data?.prompt_cache;
+    if (!cache || cache.caching_observed === false) {
+        return null;
+    }
+    if (cache.warm === false) {
+        return 0;
+    }
+    const expiresAt = cache.expires_at;
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) {
+        return null;
+    }
+    return expiresAt - Date.now() / 1000;
+}
+
+function getReportedTtlSeconds(context: RenderContext): number | null {
+    switch (context.data?.prompt_cache?.ttl) {
+        case '5m': return 300;
+        case '1h': return 3600;
+        default: return null;
+    }
+}
+
 // Labeled like the reset timers ('4m 52s' / '4m52s') rather than clock
 // notation, so every timer widget reads the same way. Seconds always render:
 // they are the point of a cache countdown, and dropping a zero part the way
@@ -332,6 +363,13 @@ export class CacheTimerWidget implements Widget {
         if (context.isPreview) {
             const sample = formatCountdown(292, compact);
             return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(getSlotSymbol(item, FRESH_SLOT), sample));
+        }
+
+        const reportedRemaining = getReportedRemainingSeconds(context);
+        if (reportedRemaining !== null) {
+            const ttlSeconds = getReportedTtlSeconds(context) ?? getTtlSeconds(item);
+            const glyph = getStateSymbol(item, reportedRemaining, ttlSeconds);
+            return formatRawOrLabeledValue(item, this.getLabelPrefix(), withGlyph(glyph, formatCountdown(reportedRemaining, compact)));
         }
 
         const transcriptPath = context.data?.transcript_path;

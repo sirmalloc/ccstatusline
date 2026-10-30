@@ -18,9 +18,10 @@ export interface LabelEditorProps {
     defaultLabel: string;
     onComplete: (updatedWidget: WidgetItem) => void;
     onCancel: () => void;
+    onPreview?: (updatedWidget: WidgetItem) => void;
 }
 
-export const LabelEditor: React.FC<LabelEditorProps> = ({ widget, defaultLabel, onComplete, onCancel }) => {
+export const LabelEditor: React.FC<LabelEditorProps> = ({ widget, defaultLabel, onComplete, onCancel, onPreview }) => {
     const { getText, display, handleInput } = useTextCursor(getLabel(widget, defaultLabel));
 
     useInput((input, key) => {
@@ -31,7 +32,11 @@ export const LabelEditor: React.FC<LabelEditorProps> = ({ widget, defaultLabel, 
         } else if (key.tab) {
             onComplete(clearLabel(widget));
         } else {
+            const previousText = getText();
             handleInput(input, key);
+            if (getText() !== previousText) {
+                onPreview?.(setLabel(widget, getText()));
+            }
         }
     });
 

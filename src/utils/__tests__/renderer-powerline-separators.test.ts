@@ -234,6 +234,22 @@ describe('powerline widgets that preserve their own colors', () => {
         expect(line).toBe(`${A_BG_CODE}\x1b[0;32m${A_BG_CODE}ok\x1b[49m${A_BG_CODE} then\x1b[m${A_BG_CODE}\x1b[0m`);
     });
 
+    it('re-applies bold and dim after the command\'s own resets too', () => {
+        const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG, bold: true, dim: true }];
+
+        const line = render(widgets, { 0: '\x1b[32m+5\x1b[0m \x1b[31m-3\x1b[22m!' });
+
+        expect(line).toBe(
+            `${BOLD}\x1b[2m${A_BG_CODE}\x1b[32m+5\x1b[0m${BOLD}\x1b[2m${A_BG_CODE} \x1b[31m-3\x1b[22m${BOLD}\x1b[2m!\x1b[0m`
+        );
+    });
+
+    it('re-applies bold after the command\'s own reset in a segment without a background', () => {
+        const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, bold: true }];
+
+        expect(render(widgets, { 0: '\x1b[32m+5\x1b[0m -3' })).toBe(`${BOLD}\x1b[32m+5\x1b[0m${BOLD} -3\x1b[0m`);
+    });
+
     it('does not mistake a 0 or 49 inside an extended color for a reset', () => {
         const widgets: WidgetItem[] = [{ id: 'cmd', type: 'custom-command', preserveColors: true, backgroundColor: A_BG }];
         const content = '\x1b[38;5;0mk\x1b[38;2;0;49;0mg\x1b[48;5;49mb';
@@ -275,12 +291,32 @@ describe('powerline merged widgets', () => {
         );
     });
 
-    it('merges across a widget that rendered empty', () => {
-        const widgets = [text('a', { color: A_FG, merge: true }), text('empty'), text('b', { color: B_FG })];
+    it('merges across an empty widget that is merged too', () => {
+        const widgets = [text('a', { color: A_FG, merge: true }), text('empty', { merge: true }), text('b', { color: B_FG })];
         const contents = { 0: 'A', 2: 'B' };
 
         expect(calculateMaxWidthsFromPreRendered([preRender(widgets, contents)], powerlineSettings())).toEqual([2]);
         expect(render(widgets, contents)).toBe(`${A_FG_CODE}A${COLOR_RESET}${B_FG_CODE}B${COLOR_RESET}`);
+    });
+
+    // The merge joined A to the empty widget, which wasn't merged on to B, so it
+    // ends there: A and B get their own segments, as if A were never merged.
+    it('ends a merge at an empty widget that is not merged', () => {
+        const widgets = [text('a', { color: A_FG, merge: true }), text('empty'), text('b', { color: B_FG })];
+        const unmerged = [text('a', { color: A_FG }), text('empty'), text('b', { color: B_FG })];
+        const contents = { 0: 'A', 2: 'B' };
+
+        expect(calculateMaxWidthsFromPreRendered([preRender(widgets, contents)], powerlineSettings()))
+            .toEqual(calculateMaxWidthsFromPreRendered([preRender(unmerged, contents)], powerlineSettings()));
+        expect(render(widgets, contents)).toBe(render(unmerged, contents));
+    });
+
+    it('keeps theme colors in place when a widget after a merge renders empty', () => {
+        const widgets = [text('a', { merge: true }), text('empty'), text('b'), text('c')];
+        const unmerged = [text('a'), text('empty'), text('b'), text('c')];
+        const contents = { 0: 'A', 2: 'B', 3: 'C' };
+
+        expect(render(widgets, contents, { theme: 'nord-aurora' })).toBe(render(unmerged, contents, { theme: 'nord-aurora' }));
     });
 
     it('keeps the trailing padding of a no-padding merge when nothing after it rendered', () => {

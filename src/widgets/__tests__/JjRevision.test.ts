@@ -64,15 +64,17 @@ describe('JjRevisionWidget', () => {
 
         expect(render({ cwd: '/tmp/repo' })).toBe(' kkmpptxz');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/tmp/repo'
         });
         expect(mockExecFileSync.mock.calls[1]?.[0]).toBe('jj');
         expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([
+            '--color=never',
             'log',
             '--no-graph',
             '-r',
@@ -83,6 +85,7 @@ describe('JjRevisionWidget', () => {
         expect(mockExecFileSync.mock.calls[1]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: 5_000,
             windowsHide: true,
             cwd: '/tmp/repo'
         });

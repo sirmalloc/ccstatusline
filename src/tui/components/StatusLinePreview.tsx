@@ -10,7 +10,6 @@ import type { Settings } from '../../types/Settings';
 import type { WidgetItem } from '../../types/Widget';
 import {
     getVisibleWidth,
-    stripOscCodes,
     truncateStyledText
 } from '../../utils/ansi';
 import { advanceGlobalPowerlineThemeIndex } from '../../utils/powerline-theme-index';
@@ -23,12 +22,12 @@ import {
     type RenderResult
 } from '../../utils/renderer';
 import { advanceGlobalSeparatorIndex } from '../../utils/separator-index';
+import { sanitizeTerminalText } from '../../utils/terminal-sanitize';
 
 export interface StatusLinePreviewProps {
     lines: WidgetItem[][];
     terminalWidth: number;
     settings?: Settings;
-    onTruncationChange?: (isTruncated: boolean) => void;
 }
 
 const renderSingleLine = (
@@ -61,17 +60,19 @@ const renderSingleLine = (
 const PREVIEW_LINE_INDENT = '  ';
 
 export function preparePreviewLineForTerminal(line: string, terminalWidth: number): string {
-    const printableLine = stripOscCodes(line);
+    // Ink's ANSI tokenizer recognizes BEL-terminated hyperlinks, but not ST.
+    // After sanitizing, string terminators can only belong to OSC 8 links.
+    const printableLine = sanitizeTerminalText(line).replace(/\x1b\\/g, '\x07');
     const availableWidth = Math.max(0, terminalWidth - getVisibleWidth(PREVIEW_LINE_INDENT));
     return truncateStyledText(printableLine, availableWidth, { ellipsis: true });
 }
 
-export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings, onTruncationChange }) => {
+export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, terminalWidth, settings }) => {
     // Render each configured line
     // Pass the full terminal width - the renderer will handle preview adjustments
-    const { renderedLines, anyTruncated } = React.useMemo(() => {
+    const renderedLines = React.useMemo(() => {
         if (!settings)
-            return { renderedLines: [], anyTruncated: false };
+            return [];
 
         // Always pre-render all widgets once (for efficiency)
         const preRenderedLines = preRenderAllWidgets(lines, settings, {
@@ -87,7 +88,6 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
         let globalPowerlineThemeIndex = 0;
         let globalPowerlineStartCapIndex = 0;
         const result: string[] = [];
-        let truncated = false;
 
         for (let i = 0; i < lines.length; i++) {
             const lineItems = lines[i];
@@ -105,9 +105,6 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
                     preCalculatedMaxWidths
                 );
                 result.push(renderResult.line);
-                if (renderResult.wasTruncated) {
-                    truncated = true;
-                }
 
                 globalSeparatorIndex = advanceGlobalSeparatorIndex(globalSeparatorIndex, lineItems, preRenderedWidgets);
                 if (settings.powerline.enabled) {
@@ -119,13 +116,8 @@ export const StatusLinePreview: React.FC<StatusLinePreviewProps> = ({ lines, ter
             }
         }
 
-        return { renderedLines: result, anyTruncated: truncated };
+        return result;
     }, [lines, terminalWidth, settings]);
-
-    // Notify parent when truncation status changes
-    React.useEffect(() => {
-        onTruncationChange?.(anyTruncated);
-    }, [anyTruncated, onTruncationChange]);
 
     return (
         <Box flexDirection='column'>

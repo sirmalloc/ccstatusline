@@ -5,6 +5,10 @@ import type { RenderContext } from '../types/RenderContext';
 import { resolveExecutable } from './executable-path';
 import { resolveGitCwd } from './git';
 
+// Same as git's: a jj call that blocks (a held working-copy lock, a slow
+// snapshot) must not hold up the status line
+const JJ_COMMAND_TIMEOUT_MS = 5_000;
+
 export interface JjChangeCounts {
     insertions: number;
     deletions: number;
@@ -13,9 +17,12 @@ export interface JjChangeCounts {
 export function runJjArgs(args: string[], context: RenderContext, allowEmpty = false): string | null {
     try {
         const cwd = resolveGitCwd(context);
-        const output = execFileSync(resolveExecutable('jj'), args, {
+        // ui.color = "always" in the user's jj config colors jj's output even
+        // into a pipe, and its codes would override the widget's own colors
+        const output = execFileSync(resolveExecutable('jj'), ['--color=never', ...args], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
+            timeout: JJ_COMMAND_TIMEOUT_MS,
             windowsHide: true,
             ...(cwd ? { cwd } : {})
         }).trimEnd();
@@ -31,8 +38,9 @@ export function isInsideJjRepo(context: RenderContext): boolean {
 }
 
 function parseDiffStat(stat: string): JjChangeCounts {
-    const insertMatch = /(\d+)\s+insertions?/.exec(stat);
-    const deleteMatch = /(\d+)\s+deletions?/.exec(stat);
+    const summaryLine = stat.split('\n').pop() ?? '';
+    const insertMatch = /(\d+)\s+insertions?/.exec(summaryLine);
+    const deleteMatch = /(\d+)\s+deletions?/.exec(summaryLine);
 
     return {
         insertions: insertMatch?.[1] ? Number.parseInt(insertMatch[1], 10) : 0,

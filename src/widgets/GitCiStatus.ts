@@ -106,7 +106,7 @@ export class GitCiStatusWidget implements Widget {
         }
 
         const cwd = this.deps.resolveGitCwd(context) ?? this.deps.getProcessCwd();
-        const checks = this.deps.getCachedGitReviewData(cwd, { includeChecks: true })?.checks;
+        const checks = this.deps.getCachedGitReviewData(cwd, { includeChecks: true, context })?.checks;
         if (!checks) {
             return isHidden(item, NO_DATA_HIDEABLE_STATE.key) ? null : NO_CHECKS;
         }

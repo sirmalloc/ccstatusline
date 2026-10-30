@@ -98,7 +98,7 @@ All widgets must implement:
 - `getAllWidgetTypes()`: Returns all available widget types
 - `isKnownWidgetType()`: Validates if a type is registered
 
-**Available Widgets:**
+**Available Widgets** (highlights — the full, current list lives in `src/utils/widget-manifest.ts`):
 - Model, Version, OutputStyle, VoiceStatus, ClaudeStatus - Claude Code metadata and service-health display
 - GitBranch, GitChanges, GitInsertions, GitDeletions, GitWorktree - Git repository status
 - TokensInput, TokensOutput, TokensCached, TokensTotal - Token usage metrics
@@ -112,7 +112,7 @@ All widgets must implement:
 - **Cross-platform stdin reading**: Detects Bun vs Node.js environment and uses appropriate stdin API
 - **Token metrics**: Parses Claude Code transcript files (JSONL format) to calculate token usage
 - **Git integration**: Uses child_process.execSync to get current branch and changes
-- **Terminal width management**: Three modes for handling width (full, full-minus-40, full-until-compact)
+- **Terminal width management**: Lines use the full width minus 5 columns, taken from `CCSTATUSLINE_WIDTH`, then the `COLUMNS` Claude Code sets, then a terminal probe
 - **Flex separators**: Special separator type that expands to fill available space
 - **Powerline mode**: Optional Powerline-style rendering with arrow separators
 - **Custom commands**: Execute shell commands and display output in status line
@@ -141,7 +141,7 @@ Default to using Bun instead of Node.js:
 - **Dependencies**: All runtime dependencies are bundled using `--packages=external` for npm package
 - **Type checking and linting**: Run checks via `bun run lint` and use `bun run lint:fix` only when you intentionally want ESLint auto-fixes. Never use `npx eslint`, `eslint`, `tsx`, `bun tsc`, or any other variation directly
 - **Lint rules**: Never disable a lint rule via a comment, no matter how benign the lint warning or error may seem
-- **Testing**: Uses Vitest (via Bun) with 6 test files and ~40 test cases covering:
+- **Testing**: Uses Vitest (via Bun); tests live in `__tests__/` directories alongside the code they cover, including:
   - Model context detection and token calculation (src/utils/__tests__/model-context.test.ts)
   - Context percentage calculations (src/utils/__tests__/context-percentage.test.ts)
   - JSONL transcript parsing (src/utils/__tests__/jsonl.test.ts)

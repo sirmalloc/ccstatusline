@@ -1,4 +1,3 @@
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as os from 'node:os';
@@ -9,17 +8,32 @@ import type { ColorLevelString } from '../types/ColorLevel';
 import type { WidgetItem } from '../types/Widget';
 
 import { getColorAnsiCode } from './colors';
+import { isExcludedFromProxy } from './no-proxy';
+import {
+    createProxyAgent,
+    type ClosableProxyAgent
+} from './proxy-agent';
 
-// Cache configuration mirrors usage-fetch.ts: a short-lived disk cache shared
-// across statusline invocations, plus a failure lock so an unreachable status
-// page cannot trigger a network attempt on every render.
+// A short-lived disk cache and an exclusive fetch lock are shared across
+// statusline invocations, with a separate backoff file written on failure.
+// While a fetch is in flight, concurrent sessions
+// serve the expired cache instead of all fetching at once, and an unreachable
+// status page cannot trigger a network attempt on every render.
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'ccstatusline');
 const CACHE_FILE = path.join(CACHE_DIR, 'claude-status.json');
 const LOCK_FILE = path.join(CACHE_DIR, 'claude-status.lock');
+const FETCH_LOCK_DIR = path.join(CACHE_DIR, 'claude-status.inflight');
 const CACHE_MAX_AGE = 300;       // seconds - refresh service status every ~5 minutes
-const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed fetch
+const FAILURE_BACKOFF = 30;      // seconds - wait before retrying after a failed or in-flight fetch
+// Longest the last fetched status stands in while the status page can't be
+// reached; past it the widget shows `?`, as with no data at all. Staying under
+// one six-hour history block means an incident still open in the cache colors
+// the same blocks it would had it ended when last seen, never unseen hours.
+const STALE_MAX_AGE = 3600;      // seconds
 
 const STATUS_HOST = 'status.claude.com';
+/** The status page itself, which the widget can link to. */
+export const CLAUDE_STATUS_PAGE_URL = `https://${STATUS_HOST}`;
 const STATUS_PATH = '/api/v2/status.json';
 const INCIDENTS_PATH = '/api/v2/incidents.json';
 const STATUS_TIMEOUT_MS = 5000;
@@ -231,10 +245,20 @@ function writeCachedClaudeStatus(cache: CachedClaudeStatus): void {
     }
 }
 
+// Whether a timestamp lies within maxAgeSeconds of now. One dated ahead of now
+// still counts within that window, since clocks sharing a home directory can
+// sit a little apart; further ahead, it was written under a clock since set
+// back, and trusting it would hold that state until real time caught up.
+function isWithinAge(stampSeconds: number, nowSeconds: number, maxAgeSeconds: number): boolean {
+    return Math.abs(nowSeconds - stampSeconds) < maxAgeSeconds;
+}
+
+// The lock is judged by its mtime alone, so an empty lock left by an older
+// version still blocks for FAILURE_BACKOFF.
 function isFailureLockActive(nowSeconds: number): boolean {
     try {
         const lockMtime = Math.floor(fs.statSync(LOCK_FILE).mtimeMs / 1000);
-        return nowSeconds - lockMtime < FAILURE_BACKOFF;
+        return isWithinAge(lockMtime, nowSeconds, FAILURE_BACKOFF);
     } catch {
         return false;
     }
@@ -249,17 +273,62 @@ function writeFailureLock(): void {
     }
 }
 
-function clearFailureLock(): void {
+// Publish a nonempty directory atomically. Renaming another directory onto it
+// fails while it is occupied, so only one process can acquire the fetch lock.
+// Each claim has a unique marker: stale cleanup removes that marker and uses
+// nonrecursive rmdir, which cannot remove a newer, nonempty claim.
+function acquireFetchLock(nowMs: number): string | null {
+    let stagingDir: string | undefined;
     try {
-        fs.rmSync(LOCK_FILE, { force: true });
+        ensureCacheDirExists();
+        stagingDir = fs.mkdtempSync(`${FETCH_LOCK_DIR}-`);
+        const owner = path.basename(stagingDir);
+        fs.writeFileSync(path.join(stagingDir, owner), '');
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                fs.renameSync(stagingDir, FETCH_LOCK_DIR);
+                return owner;
+            } catch (error) {
+                const code = (error as NodeJS.ErrnoException).code;
+                if (code !== 'EEXIST' && code !== 'ENOTEMPTY') {
+                    return null;
+                }
+            }
+
+            const [existingOwner] = fs.readdirSync(FETCH_LOCK_DIR);
+            if (!existingOwner
+                || isWithinAge(Math.floor(fs.statSync(path.join(FETCH_LOCK_DIR, existingOwner)).mtimeMs / 1000), Math.floor(nowMs / 1000), FAILURE_BACKOFF)) {
+                return null;
+            }
+            clearOwnFetchLock(existingOwner);
+        }
     } catch {
-        // Ignore lock file errors
+        // If coordination is unavailable, serve stale data instead of fetching.
+    } finally {
+        if (stagingDir) {
+            try {
+                fs.rmSync(stagingDir, { recursive: true, force: true });
+            } catch {
+                // Best-effort cleanup of this process's unpublished claim.
+            }
+        }
+    }
+    return null;
+}
+
+function clearOwnFetchLock(owner: string): void {
+    try {
+        fs.unlinkSync(path.join(FETCH_LOCK_DIR, owner));
+        fs.rmdirSync(FETCH_LOCK_DIR);
+    } catch {
+        // The old claim may be gone, or another owner may have replaced it.
     }
 }
 
 function getStatusPageProxyUrl(): string | null {
     const proxyUrl = process.env.HTTPS_PROXY?.trim();
-    return proxyUrl?.length ? proxyUrl : null;
+    return proxyUrl?.length && !isExcludedFromProxy(STATUS_HOST) ? proxyUrl : null;
 }
 
 interface StatusPageResponse {
@@ -284,8 +353,25 @@ const requestStatusPage: StatusPageRequestFn = (options, onResponse) => https.re
 
 function fetchStatusPagePath(
     pathName: string,
-    requestFn: StatusPageRequestFn = requestStatusPage
+    requestFn: StatusPageRequestFn = requestStatusPage,
+    deadlineMs = STATUS_TIMEOUT_MS
 ): Promise<string | null> {
+    let requestOptions: https.RequestOptions;
+    let proxy: ClosableProxyAgent | null;
+    try {
+        const proxyUrl = getStatusPageProxyUrl();
+        proxy = proxyUrl ? createProxyAgent(proxyUrl) : null;
+        requestOptions = {
+            hostname: STATUS_HOST,
+            path: pathName,
+            method: 'GET',
+            timeout: STATUS_TIMEOUT_MS,
+            ...(proxy ? { agent: proxy.agent } : {})
+        };
+    } catch {
+        return Promise.resolve(null);
+    }
+
     return new Promise((resolve) => {
         let settled = false;
 
@@ -294,23 +380,9 @@ function fetchStatusPagePath(
                 return;
             }
             settled = true;
+            clearTimeout(deadline);
             resolve(value);
         };
-
-        let requestOptions: https.RequestOptions;
-        try {
-            const proxyUrl = getStatusPageProxyUrl();
-            requestOptions = {
-                hostname: STATUS_HOST,
-                path: pathName,
-                method: 'GET',
-                timeout: STATUS_TIMEOUT_MS,
-                ...(proxyUrl ? { agent: new HttpsProxyAgent(proxyUrl) } : {})
-            };
-        } catch {
-            finish(null);
-            return;
-        }
 
         const request = requestFn(requestOptions, (response) => {
             let data = '';
@@ -330,6 +402,13 @@ function fetchStatusPagePath(
             request.destroy();
             finish(null);
         });
+        // `timeout` only covers an idle socket, and behind a proxy the request
+        // has none until the proxy answers CONNECT
+        const deadline = setTimeout(() => {
+            request.destroy();
+            proxy?.close();
+            finish(null);
+        }, deadlineMs);
         request.end();
     });
 }
@@ -353,27 +432,49 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     const nowSeconds = Math.floor(nowMs / 1000);
 
     if (memoryCache
-        && nowSeconds - Math.floor(memoryCache.fetchedAt / 1000) < CACHE_MAX_AGE
+        && isWithinAge(Math.floor(memoryCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
         && isCacheUsable(memoryCache, includeIncidents)) {
         return toStatusData(memoryCache);
     }
 
     const diskCache = readCachedClaudeStatus();
     if (diskCache
-        && nowSeconds - Math.floor(diskCache.fetchedAt / 1000) < CACHE_MAX_AGE
+        && isWithinAge(Math.floor(diskCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
         && isCacheUsable(diskCache, includeIncidents)) {
         memoryCache = diskCache;
         return toStatusData(diskCache);
     }
 
     const serveStaleOrError = (): ClaudeServiceStatusData => {
-        if (diskCache && isCacheUsable(diskCache, includeIncidents)) {
+        if (diskCache
+            && isWithinAge(Math.floor(diskCache.fetchedAt / 1000), nowSeconds, STALE_MAX_AGE)
+            && isCacheUsable(diskCache, includeIncidents)) {
             return toStatusData(diskCache);
         }
         return { error: true };
     };
 
     if (isFailureLockActive(nowSeconds)) {
+        return serveStaleOrError();
+    }
+
+    const inFlightLock = acquireFetchLock(nowMs);
+    if (inFlightLock === null) {
+        return serveStaleOrError();
+    }
+
+    // Another fetch may have completed between our initial cache read and
+    // acquisition. Recheck both its result and its failure backoff under lock.
+    const latestCache = readCachedClaudeStatus();
+    if (latestCache
+        && isWithinAge(Math.floor(latestCache.fetchedAt / 1000), nowSeconds, CACHE_MAX_AGE)
+        && isCacheUsable(latestCache, includeIncidents)) {
+        memoryCache = latestCache;
+        clearOwnFetchLock(inFlightLock);
+        return toStatusData(latestCache);
+    }
+    if (isFailureLockActive(nowSeconds)) {
+        clearOwnFetchLock(inFlightLock);
         return serveStaleOrError();
     }
 
@@ -387,10 +488,10 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
 
     if (indicator === null || (includeIncidents && incidents === null)) {
         writeFailureLock();
+        clearOwnFetchLock(inFlightLock);
         return serveStaleOrError();
     }
 
-    clearFailureLock();
     const cache: CachedClaudeStatus = {
         fetchedAt: nowMs,
         indicator,
@@ -399,6 +500,9 @@ async function fetchClaudeServiceStatus(includeIncidents: boolean): Promise<Clau
     };
     memoryCache = cache;
     writeCachedClaudeStatus(cache);
+    // Release the lock only after the fresh cache is on disk, so no render can
+    // see neither a lock nor a fresh cache and start a redundant fetch.
+    clearOwnFetchLock(inFlightLock);
     return toStatusData(cache);
 }
 

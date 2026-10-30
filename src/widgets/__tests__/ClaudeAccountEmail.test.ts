@@ -25,14 +25,16 @@ let tempHomeDir: string;
 function render(options: {
     rawValue?: boolean;
     isPreview?: boolean;
+    accountEmail?: RenderContext['accountEmail'];
 } = {}): string | null {
     const {
         rawValue = false,
-        isPreview = false
+        isPreview = false,
+        accountEmail
     } = options;
 
     const widget = new ClaudeAccountEmailWidget();
-    const context: RenderContext = { isPreview };
+    const context: RenderContext = { isPreview, accountEmail };
     const item: WidgetItem = {
         id: 'claude-account-email',
         type: 'claude-account-email',
@@ -135,6 +137,51 @@ describe('ClaudeAccountEmailWidget', () => {
         );
 
         expect(render()).toBeNull();
+    });
+
+    it('prefers the email of the live login over the .claude.json snapshot', () => {
+        // Claude Code writes oauthAccount at login and does not rewrite it when
+        // the credentials change, so after an account switch it can still name
+        // the previous account (#538).
+        delete process.env.CLAUDE_CONFIG_DIR;
+        vi.spyOn(os, 'homedir').mockReturnValue(tempHomeDir);
+        fs.writeFileSync(
+            path.join(tempHomeDir, '.claude.json'),
+            JSON.stringify({ oauthAccount: { emailAddress: 'previous@example.com' } }),
+            'utf-8'
+        );
+
+        expect(render({ accountEmail: { status: 'available', email: 'current@example.com' } })).toBe('Account: current@example.com');
+        expect(render({ accountEmail: { status: 'available', email: 'current@example.com' }, rawValue: true })).toBe('current@example.com');
+    });
+
+    it('falls back to .claude.json when there are no OAuth credentials', () => {
+        delete process.env.CLAUDE_CONFIG_DIR;
+        vi.spyOn(os, 'homedir').mockReturnValue(tempHomeDir);
+        fs.writeFileSync(
+            path.join(tempHomeDir, '.claude.json'),
+            JSON.stringify({ oauthAccount: { emailAddress: 'user@example.com' } }),
+            'utf-8'
+        );
+
+        expect(render({ accountEmail: { status: 'no-credentials' } })).toBe('Account: user@example.com');
+    });
+
+    it('hides an unverified previous account when the current login lookup fails', () => {
+        process.env.CLAUDE_CONFIG_DIR = tempHomeDir;
+        fs.writeFileSync(
+            path.join(tempHomeDir, '.claude.json'),
+            JSON.stringify({ oauthAccount: { emailAddress: 'previous@example.com' } })
+        );
+
+        expect(render({ accountEmail: { status: 'unavailable' } })).toBeNull();
+        expect(render({ accountEmail: { status: 'unavailable' }, rawValue: true })).toBeNull();
+    });
+
+    it('shows the email of the live login when .claude.json has none', () => {
+        process.env.CLAUDE_CONFIG_DIR = path.join(tempHomeDir, '.claude');
+
+        expect(render({ accountEmail: { status: 'available', email: 'current@example.com' } })).toBe('Account: current@example.com');
     });
 
     it('returns null when emailAddress is not a string', () => {
