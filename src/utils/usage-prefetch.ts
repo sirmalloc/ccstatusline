@@ -9,9 +9,11 @@ import {
     SESSION_UNDER_LIMIT_HIDEABLE_STATE
 } from '../widgets/shared/usage-display';
 
+import { getLastResponseAtMs } from './session-usage-history';
 import type { UsageData } from './usage';
 import {
     fetchUsageData,
+    getUsageFetchedAtMs,
     isStaleUsageFallback
 } from './usage';
 import type { UsageDataField } from './usage-types';
@@ -126,6 +128,75 @@ const SESSION_LIMIT_HIDE_REQUIREMENT: UsageFieldRequirement = { field: 'sessionU
 function readsSessionLimit(item: WidgetItem): boolean {
     return (item.type === 'reset-timer' && isHidden(item, SESSION_UNDER_LIMIT_HIDEABLE_STATE.key))
         || (item.type === 'session-usage' && isHidden(item, SESSION_AT_LIMIT_HIDEABLE_STATE.key));
+}
+
+// Claude Code sends the usage percents with each of this session's API
+// responses, so in a session left idle they stay where its last response left
+// them while other sessions and devices use up the limits. Once that response
+// is older than the usage API cache's lifetime, the API may know more, so the
+// prefetch asks it too (a failure leaves the payload's percents), and a newer
+// answer replaces them (see refreshIdlePayloadUsage).
+const PAYLOAD_USAGE_TRUSTED_MS = 3 * 60 * 1000;
+// One window's reset time differs by under a second between the payload (whole
+// seconds) and the usage API (fractional ones)
+const SAME_WINDOW_MS = 60 * 1000;
+
+const PAYLOAD_USAGE_WINDOWS: { usageField: UsageDataField; resetField: UsageDataField }[] = [
+    { usageField: 'sessionUsage', resetField: 'sessionResetAt' },
+    { usageField: 'weeklyUsage', resetField: 'weeklyResetAt' },
+    ...WEEKLY_MODEL_USAGE_BUCKETS
+        .filter(bucket => bucket.apiBucketKey)
+        .map(bucket => ({ usageField: bucket.usageField, resetField: bucket.resetField }))
+];
+
+// The windows a widget on the line reads whose percent the payload supplies
+function getPayloadUsageFields(rateLimitsData: UsageData | null, requirements: UsageFieldRequirement[]): UsageDataField[] {
+    return PAYLOAD_USAGE_WINDOWS
+        .map(({ usageField }) => usageField)
+        .filter(field => rateLimitsData?.[field] !== undefined && requirements.some(requirement => requirement.field === field));
+}
+
+// When the payload's percents were reported, if that's long enough ago that the
+// usage API may know more. Null when they're recent, or when the transcript has
+// no response to date them by (a new one after /clear): then they stand.
+function getIdlePayloadUsageTime(data: StatusJSON | undefined, nowMs: number): number | null {
+    const seenAtMs = getLastResponseAtMs(data?.transcript_path);
+    return seenAtMs !== undefined && nowMs - seenAtMs > PAYLOAD_USAGE_TRUSTED_MS ? seenAtMs : null;
+}
+
+function parseResetAtMs(value: unknown): number {
+    return typeof value === 'string' ? Date.parse(value) : Number.NaN;
+}
+
+// Takes the usage API's percent for each window of an idle session's payload
+// when the API sent it after the session's last response. It must be the same
+// window, and no lower: usage never falls within a window, so a lower one is
+// another login's (the credentials changed since the session's last
+// response). Once the payload's window has reset, the API's current one wins.
+function refreshIdlePayloadUsage(usageData: UsageData, rateLimitsData: UsageData, apiData: UsageData, payloadSeenAtMs: number, nowMs: number): void {
+    const fetchedAtMs = getUsageFetchedAtMs();
+    if (fetchedAtMs === undefined || fetchedAtMs <= payloadSeenAtMs) {
+        return;
+    }
+
+    for (const { usageField, resetField } of PAYLOAD_USAGE_WINDOWS) {
+        const payloadPercent = rateLimitsData[usageField];
+        const apiPercent = apiData[usageField];
+        if (typeof payloadPercent !== 'number' || typeof apiPercent !== 'number') {
+            continue;
+        }
+
+        const payloadResetAtMs = parseResetAtMs(rateLimitsData[resetField]);
+        const apiResetAtMs = parseResetAtMs(apiData[resetField]);
+        const isSameWindow = Math.abs(payloadResetAtMs - apiResetAtMs) <= SAME_WINDOW_MS;
+        // The API sends no reset time for a window nothing has used yet
+        const isApiWindowCurrent = Number.isNaN(apiResetAtMs) || apiResetAtMs > nowMs;
+        const isPayloadWindowOver = payloadResetAtMs <= nowMs && isApiWindowCurrent;
+        if (isSameWindow ? apiPercent >= payloadPercent : isPayloadWindowOver) {
+            setUsageField(usageData, usageField, apiPercent);
+            setUsageField(usageData, resetField, apiData[resetField]);
+        }
+    }
 }
 
 // A cached answer can outlive its block: the cache is reused for minutes, and
@@ -282,6 +353,13 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
 
     const rateLimitsData = extractUsageDataFromRateLimits(data?.rate_limits);
     const requirements = getUsageFieldRequirements(lines);
+    const nowMs = Date.now();
+    const payloadUsageFields = getPayloadUsageFields(rateLimitsData, requirements);
+    const payloadSeenAtMs = payloadUsageFields.length > 0 ? getIdlePayloadUsageTime(data, nowMs) : null;
+    if (payloadSeenAtMs !== null) {
+        requirements.push(...payloadUsageFields.map(field => ({ field, fromApi: true, suppressFetchError: true })));
+    }
+
     const missingRequirements = getMissingFetchRequirements(rateLimitsData, requirements);
     const missingFields = missingRequirements.fields;
 
@@ -297,6 +375,10 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
     }
 
     const usageData = mergeUsageData(rateLimitsData, apiData);
+    if (payloadSeenAtMs !== null && rateLimitsData && !apiData.error) {
+        refreshIdlePayloadUsage(usageData, rateLimitsData, apiData, payloadSeenAtMs, nowMs);
+    }
+
     // A stale fallback is the last good cache, served while the API can't be reached
     // once it has outlived a refresh, so like a failed fetch it leaves the payload's percent to decide
     if (requirements.includes(SESSION_LIMIT_HIDE_REQUIREMENT) && apiData.sessionUsage !== undefined && isFromCurrentBlock(apiData) && !isStaleUsageFallback(apiData)) {

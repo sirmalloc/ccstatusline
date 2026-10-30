@@ -154,7 +154,7 @@ async function renderMultipleLines(data: StatusJSON) {
         prefetchClaudeStatusIfNeeded(lines),
         hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
     ]);
-    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data));
+    const sessionForecast = computeSessionForecastIfNeeded(lines, usageData, getDefaultSessionUsageHistoryDeps(data, usageData));
 
     const tokenMetrics = transcriptAnalysis?.tokenMetrics ?? null;
     const sessionDuration = transcriptAnalysis?.sessionDuration ?? null;

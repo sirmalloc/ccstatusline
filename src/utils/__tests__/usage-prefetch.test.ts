@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
     afterEach,
     beforeEach,
@@ -905,6 +908,138 @@ describe('usage prefetch', () => {
         expect(usageData?.spendLimitUsage).toBe(62.8);
         expect(usageData?.extraUsageUsed).toBe(1000);
         expect(mockFetchUsageData.mock.calls[0]).toEqual([{ requiredFields: ['extraUsageEnabled', 'extraUsageUsed'] }]);
+    });
+});
+
+// Claude Code sends the usage percents with each of a session's API responses,
+// so an idle session's payload keeps the percents from its last one
+describe('usage prefetch in a session left idle', () => {
+    const MINUTE = 60 * 1000;
+    const NOW = Date.UTC(2026, 9, 28, 14, 0);
+    const BLOCK_RESET = (NOW + 2 * 60 * MINUTE) / 1000;
+    const WEEK_RESET = (NOW + 3 * 24 * 60 * MINUTE) / 1000;
+    let dir: string;
+    let mockFetchUsageData: {
+        mock: { calls: unknown[][] };
+        mockResolvedValue: (value: UsageData) => void;
+    };
+    let mockFetchedAt: { mockReturnValue: (value: number | undefined) => void };
+
+    function payloadAfterResponse(lastResponseAtMs: number | null, rateLimits: StatusJSON['rate_limits'] = {
+        five_hour: { used_percentage: 20, resets_at: BLOCK_RESET },
+        seven_day: { used_percentage: 50, resets_at: WEEK_RESET }
+    }): StatusJSON {
+        const transcriptPath = path.join(dir, 'session.jsonl');
+        const entries = [{ type: 'user', timestamp: new Date(NOW - 90 * MINUTE).toISOString() }];
+        if (lastResponseAtMs !== null) {
+            entries.push({ type: 'assistant', timestamp: new Date(lastResponseAtMs).toISOString() });
+        }
+        fs.writeFileSync(transcriptPath, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
+        return { transcript_path: transcriptPath, rate_limits: rateLimits };
+    }
+
+    const lines = makeLines([{ id: '1', type: 'session-usage' }, { id: '2', type: 'weekly-usage' }]);
+
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-idle-usage-'));
+        mockFetchUsageData = vi.spyOn(usage, 'fetchUsageData');
+        mockFetchedAt = vi.spyOn(usage, 'getUsageFetchedAtMs');
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('takes the usage API\'s newer percents once the session\'s last response is over three minutes old', async () => {
+        mockFetchUsageData.mockResolvedValue({
+            sessionUsage: 60,
+            sessionResetAt: epochToIso(BLOCK_RESET),
+            weeklyUsage: 55,
+            weeklyResetAt: epochToIso(WEEK_RESET)
+        });
+        mockFetchedAt.mockReturnValue(NOW - MINUTE);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, payloadAfterResponse(NOW - 20 * MINUTE));
+
+        expect(usageData).toMatchObject({ sessionUsage: 60, weeklyUsage: 55 });
+        expect(mockFetchUsageData.mock.calls).toHaveLength(1);
+        expect(mockFetchUsageData.mock.calls[0]?.[0]).toMatchObject({ requiredFields: ['sessionUsage', 'weeklyUsage'] });
+    });
+
+    it('asks only for the windows the line shows', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 60, sessionResetAt: epochToIso(BLOCK_RESET) });
+        mockFetchedAt.mockReturnValue(NOW - MINUTE);
+
+        await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'session-usage' }]), payloadAfterResponse(NOW - 20 * MINUTE));
+
+        expect(mockFetchUsageData.mock.calls).toHaveLength(1);
+        expect(mockFetchUsageData.mock.calls[0]?.[0]).toMatchObject({ requiredFields: ['sessionUsage'] });
+    });
+
+    it.each([
+        ['while the session\'s last response is recent', NOW - 2 * MINUTE],
+        ['without a response in the transcript to date them by', null]
+    ])('keeps the payload\'s percents without asking the API %s', async (_label, lastResponseAtMs) => {
+        const usageData = await prefetchUsageDataIfNeeded(lines, payloadAfterResponse(lastResponseAtMs));
+
+        expect(usageData).toMatchObject({ sessionUsage: 20, weeklyUsage: 50 });
+        expect(mockFetchUsageData.mock.calls).toEqual([]);
+    });
+
+    it.each([
+        ['the API\'s answer is older than the session\'s last response', { sessionUsage: 60, sessionResetAt: epochToIso(BLOCK_RESET) }, NOW - 30 * MINUTE],
+        ['the API\'s percent is lower, as another login\'s would be', { sessionUsage: 10, sessionResetAt: epochToIso(BLOCK_RESET) }, NOW - MINUTE],
+        ['the API answers another window that the payload\'s hasn\'t reached', { sessionUsage: 60, sessionResetAt: epochToIso(BLOCK_RESET + 60 * 60) }, NOW - MINUTE]
+    ])('keeps the payload\'s 5-hour percent when %s', async (_label, apiData: UsageData, fetchedAtMs) => {
+        mockFetchUsageData.mockResolvedValue(apiData);
+        mockFetchedAt.mockReturnValue(fetchedAtMs);
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'session-usage' }]), payloadAfterResponse(NOW - 20 * MINUTE));
+
+        expect(usageData?.sessionUsage).toBe(20);
+        expect(usageData?.sessionResetAt).toBe(epochToIso(BLOCK_RESET));
+    });
+
+    it('takes the API\'s new window once the payload\'s has reset', async () => {
+        const newReset = (NOW + 290 * MINUTE) / 1000;
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 3, sessionResetAt: epochToIso(newReset) });
+        mockFetchedAt.mockReturnValue(NOW - MINUTE);
+
+        const rateLimits = { five_hour: { used_percentage: 100, resets_at: (NOW - 10 * MINUTE) / 1000 } };
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'session-usage' }]), payloadAfterResponse(NOW - 20 * MINUTE, rateLimits));
+
+        expect(usageData).toMatchObject({ sessionUsage: 3, sessionResetAt: epochToIso(newReset) });
+    });
+
+    // The usage API sends no reset time for a window nothing has used yet
+    it('takes the API\'s percent once the payload\'s window has reset, before the next one starts', async () => {
+        mockFetchUsageData.mockResolvedValue({ sessionUsage: 0 });
+        mockFetchedAt.mockReturnValue(NOW - MINUTE);
+        const rateLimits = { five_hour: { used_percentage: 100, resets_at: (NOW - 10 * MINUTE) / 1000 } };
+
+        const usageData = await prefetchUsageDataIfNeeded(makeLines([{ id: '1', type: 'session-usage' }]), payloadAfterResponse(NOW - 20 * MINUTE, rateLimits));
+
+        expect(usageData?.sessionUsage).toBe(0);
+        expect(usageData?.sessionResetAt).toBeUndefined();
+    });
+
+    it('keeps the payload\'s percents, with no error, when the API can\'t answer', async () => {
+        mockFetchUsageData.mockResolvedValue({ error: 'rate-limited' });
+        mockFetchedAt.mockReturnValue(undefined);
+
+        const usageData = await prefetchUsageDataIfNeeded(lines, payloadAfterResponse(NOW - 20 * MINUTE));
+
+        expect(usageData).toEqual({
+            sessionUsage: 20,
+            sessionResetAt: epochToIso(BLOCK_RESET),
+            weeklyUsage: 50,
+            weeklyResetAt: epochToIso(WEEK_RESET)
+        });
     });
 });
 

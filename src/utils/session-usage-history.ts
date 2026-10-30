@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import type { RenderUsageData } from '../types/RenderContext';
 import type { StatusJSON } from '../types/StatusJSON';
 
 import {
@@ -80,7 +81,7 @@ interface TranscriptEntry {
 // When the transcript's last API response was written. Prompts, tool results
 // and local commands are written too, with no new percent behind them, and so
 // are the assistant messages Claude Code makes up itself (an API error's, say).
-function getLastResponseAtMs(transcriptPath: string | undefined): number | undefined {
+export function getLastResponseAtMs(transcriptPath: string | undefined): number | undefined {
     if (transcriptPath === undefined) {
         return undefined;
     }
@@ -105,11 +106,14 @@ function getLastResponseAtMs(transcriptPath: string | undefined): number | undef
 }
 
 // Built per call rather than at import, so the path follows HOME at render time.
-// The payload's 5-hour percent, which wins over the usage API's, dates from its
-// session's last response; the API's from when the API sent it, which for a
-// cached one can be hours ago.
-export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON): SessionUsageHistoryDeps {
-    const isPayloadPercent = typeof payload?.rate_limits?.five_hour?.used_percentage === 'number';
+// The payload's 5-hour percent dates from its session's last response; the
+// usage API's from when the API sent it, which for a cached one can be hours
+// ago. The API's is the one in use when the payload has none, or when it
+// replaced an idle session's older one (see usage-prefetch.ts).
+export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON, usageData?: RenderUsageData | null): SessionUsageHistoryDeps {
+    const payloadPercent = payload?.rate_limits?.five_hour?.used_percentage;
+    const isPayloadPercent = typeof payloadPercent === 'number'
+        && (usageData?.sessionUsage === undefined || usageData.sessionUsage === payloadPercent);
     return {
         readFileSync: (p: string) => fs.readFileSync(p, 'utf-8'),
         writeFileSync: (p: string, data: string) => { fs.writeFileSync(p, data, 'utf-8'); },
@@ -120,7 +124,7 @@ export function getDefaultSessionUsageHistoryDeps(payload?: StatusJSON): Session
         statSync: (p: string) => fs.statSync(p),
         mkdirSync: (p: string) => { fs.mkdirSync(p, { recursive: true }); },
         now: () => Date.now(),
-        percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload.transcript_path) : getUsageFetchedAtMs,
+        percentSeenAt: isPayloadPercent ? () => getLastResponseAtMs(payload?.transcript_path) : getUsageFetchedAtMs,
         loginFingerprint: getUsageLoginFingerprint,
         cachePath: path.join(os.homedir(), '.cache', 'ccstatusline', 'session-usage-history.json')
     };
