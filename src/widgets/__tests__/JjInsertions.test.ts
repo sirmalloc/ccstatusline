@@ -57,7 +57,7 @@ describe('JjInsertionsWidget', () => {
 
         expect(render({ cwd: '/my/project' })).toBe('+7');
         expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('jj');
-        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['root']);
+        expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['--color=never', 'root']);
         expect(mockExecFileSync.mock.calls[0]?.[2]).toEqual({
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
@@ -65,7 +65,7 @@ describe('JjInsertionsWidget', () => {
             windowsHide: true,
             cwd: '/my/project'
         });
-        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['diff', '--stat']);
+        expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual(['--color=never', 'diff', '--stat']);
     });
 
     it('should render no jj when not in repo', () => {
