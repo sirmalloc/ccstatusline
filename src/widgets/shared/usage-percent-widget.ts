@@ -219,7 +219,12 @@ export function renderUsagePercentWidgetValue(
             return undefined;
         }
 
+        // A remaining-percent bar shrinks as the window runs out, so its cursor
+        // marks the time left, keeping the cursor and the fill on one scale.
         const window = resolveUsageWindow(kind, data, context);
-        return window ? { cursorPercent: window.elapsedPercent } : undefined;
+        if (!window) {
+            return undefined;
+        }
+        return { cursorPercent: inverted ? window.remainingPercent : window.elapsedPercent };
     });
 }

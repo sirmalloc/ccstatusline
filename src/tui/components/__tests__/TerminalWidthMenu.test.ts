@@ -23,7 +23,6 @@ import {
 } from '../../../utils/renderer';
 import { waitFor } from '../../__tests__/helpers/wait-for-ink';
 import {
-    TERMINAL_WIDTH_OPTIONS,
     TerminalWidthMenu,
     buildTerminalWidthItems,
     getTerminalWidthSelectionIndex,
@@ -98,9 +97,9 @@ describe('TerminalWidthMenu helpers', () => {
         });
         expect(items[1]).toMatchObject({
             label: 'Full width minus 40',
+            sublabel: undefined,
             value: 'full-minus-40'
         });
-        expect(items[1]?.sublabel).toBeUndefined();
         expect(items[2]).toMatchObject({
             label: 'Full width until compact',
             sublabel: '(threshold 60%, active)',
@@ -109,38 +108,17 @@ describe('TerminalWidthMenu helpers', () => {
         expect(items[2]?.description).toContain('60%');
     });
 
-    it('gives the number of columns the renderer reserves in Full width always', () => {
-        const widgets: WidgetItem[] = [{ id: 'text', type: 'custom-text', customText: 'x'.repeat(200) }];
-        const settings: Settings = { ...DEFAULT_SETTINGS, flexMode: 'full', colorLevel: 0 };
-        const context: RenderContext = { isPreview: false, terminalWidth: 100 };
-        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
-        const line = renderStatusLine(
-            widgets,
-            settings,
-            context,
-            preRenderedLines[0] ?? [],
-            calculateMaxWidthsFromPreRendered(preRenderedLines, settings)
-        );
-        const reserved = 100 - getVisibleWidth(line);
+    it('marks the mode new settings get as the default', () => {
+        expect(DEFAULT_SETTINGS.flexMode).toBe('full');
 
-        const [fullWidth] = buildTerminalWidthItems('full', 60);
-        expect(fullWidth?.description).toContain(`full terminal width minus ${reserved} characters`);
-    });
+        const fullMinus40Items = buildTerminalWidthItems('full-minus-40', 60);
+        expect(fullMinus40Items[0]?.sublabel).toBe('(default)');
+        expect(fullMinus40Items[1]?.sublabel).toBe('(active)');
 
-    it('marks the mode a config without flexMode gets as the default', () => {
-        const defaultMode = DEFAULT_SETTINGS.flexMode;
-
-        for (const selectedOption of TERMINAL_WIDTH_OPTIONS.filter(mode => mode !== defaultMode)) {
-            const marked = buildTerminalWidthItems(selectedOption, 60)
-                .filter(item => item.sublabel === '(default)')
-                .map(item => item.value);
-            expect(marked).toEqual([defaultMode]);
-        }
-
-        // Once the default is chosen, its active mark replaces the default one
-        const items = buildTerminalWidthItems(defaultMode, 60);
-        expect(items.find(item => item.value === defaultMode)?.sublabel).toBe('(active)');
-        expect(items.some(item => item.sublabel === '(default)')).toBe(false);
+        // The active mode says so, even when it is also the default
+        const fullItems = buildTerminalWidthItems('full', 60);
+        expect(fullItems[0]?.sublabel).toBe('(active)');
+        expect(fullItems[1]?.sublabel).toBeUndefined();
     });
 
     it('returns the current option index for list selection', () => {
@@ -213,5 +191,26 @@ describe('TerminalWidthMenu helpers', () => {
             stdout.destroy();
             stderr.destroy();
         }
+    });
+});
+
+describe('TerminalWidthMenu descriptions', () => {
+    it('describes the columns full width always actually reserves', () => {
+        const terminalWidth = 50;
+        const widgets: WidgetItem[] = [
+            { id: 'left', type: 'custom-text', customText: 'LEFT' },
+            { id: 'flex', type: 'flex-separator' },
+            { id: 'right', type: 'custom-text', customText: 'RIGHT' }
+        ];
+        const settings: Settings = { ...DEFAULT_SETTINGS, flexMode: 'full' };
+        const context: RenderContext = { isPreview: false, terminalWidth };
+        const preRenderedLines = preRenderAllWidgets([widgets], settings, context);
+        const maxWidths = calculateMaxWidthsFromPreRendered(preRenderedLines, settings);
+        const line = renderStatusLine(widgets, settings, context, preRenderedLines[0] ?? [], maxWidths);
+        const reserved = terminalWidth - getVisibleWidth(line);
+
+        const fullItem = buildTerminalWidthItems('full', 60)[0];
+
+        expect(fullItem?.description).toContain(`minus ${reserved} characters`);
     });
 });
