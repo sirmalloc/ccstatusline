@@ -77,7 +77,7 @@ An explicit per-model quota at 0% is shown even when its reset timestamp is stil
 
 ## Terminal Width
 
-Status lines use the full terminal width minus 6 columns of padding: longer lines are truncated there, and flex separators right-align against it. Outside fullscreen rendering, Claude Code shows notifications such as the context-low warning on the same row, and on narrow terminals they may cut the status line short.
+Status lines use the full terminal width minus 5 columns of padding: longer lines are truncated there, and flex separators right-align against it. Outside fullscreen rendering, Claude Code shows notifications such as the context-low warning on the same row, and on narrow terminals they may cut the status line short.
 
 Settings files from earlier versions may still carry `flexMode` and `compactThreshold`, from the removed **Full width minus 40** and **Full width until compact** modes. They are ignored, and the next save from the TUI removes them.
 

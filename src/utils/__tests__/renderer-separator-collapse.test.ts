@@ -263,8 +263,8 @@ describe('renderer separator collapse around empty widgets', () => {
             T('c')
         ];
         const settings = createSettings({ colorLevel: 0 });
-        // Six columns are reserved, leaving a ten-column render width.
-        const context: RenderContext = { isPreview: false, terminalWidth: 16 };
+        // Five columns are reserved, leaving a ten-column render width.
+        const context: RenderContext = { isPreview: false, terminalWidth: 15 };
         const preRenderedWidgets = makePreRendered(widgets, { 0: 'AAAAA', 2: '', 4: 'CCCCC' });
         const out = stripSgrCodes(renderStatusLine(widgets, settings, context, preRenderedWidgets, []));
 

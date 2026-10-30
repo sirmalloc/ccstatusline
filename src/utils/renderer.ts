@@ -88,7 +88,7 @@ function resolvePaddingSides(padding: string, side: DefaultPaddingSide | undefin
 
 // Columns left free at the right edge for the padding Claude Code puts
 // around the status line.
-const RESERVED_COLUMNS = 6;
+const RESERVED_COLUMNS = 5;
 
 function resolveEffectiveTerminalWidth(detectedWidth: number | null): number | null {
     if (!detectedWidth) {

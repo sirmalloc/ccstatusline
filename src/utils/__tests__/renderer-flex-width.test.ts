@@ -60,17 +60,17 @@ describe('renderer width behavior', () => {
         customText: 'abcdefghijklmnopqrstuvwxyz1234567890'
     };
 
-    it('reserves six columns at the right edge', () => {
+    it('reserves five columns at the right edge', () => {
         const line = renderLine([longTextWidget], {}, { terminalWidth: 30 });
 
-        expect(getVisibleWidth(line)).toBe(24);
+        expect(getVisibleWidth(line)).toBe(25);
         expect(line.endsWith('...')).toBe(true);
     });
 
     it('uses the same width in preview mode, matching the real render', () => {
         const line = renderLine([longTextWidget], {}, { terminalWidth: 30, isPreview: true });
 
-        expect(getVisibleWidth(line)).toBe(24);
+        expect(getVisibleWidth(line)).toBe(25);
         expect(line.endsWith('...')).toBe(true);
     });
 
@@ -93,15 +93,15 @@ describe('renderer width behavior', () => {
             }
         }, { terminalWidth: 30 });
 
-        expect(getVisibleWidth(line)).toBe(24);
+        expect(getVisibleWidth(line)).toBe(25);
         expect(line.endsWith('...')).toBe(true);
     });
 
     it('keeps truncating when the reserved columns take the whole terminal', () => {
         const cases: Partial<RenderContext>[] = [
-            { terminalWidth: 6 },
+            { terminalWidth: 5 },
             { terminalWidth: 3 },
-            { terminalWidth: 6, isPreview: true }
+            { terminalWidth: 5, isPreview: true }
         ];
 
         for (const contextOverrides of cases) {
@@ -120,7 +120,7 @@ describe('renderer width behavior', () => {
                 ...DEFAULT_SETTINGS.powerline,
                 enabled: true
             }
-        }, { terminalWidth: 6 });
+        }, { terminalWidth: 5 });
 
         expect(line).toBe('');
     });
@@ -159,7 +159,7 @@ describe('flex-separator widget', () => {
         }, { terminalWidth: 50 });
         const plainLine = stripSgrCodes(line);
 
-        expect(getVisibleWidth(line)).toBe(50 - 6);
+        expect(getVisibleWidth(line)).toBe(50 - 5);
         expect(plainLine.endsWith('RIGHT')).toBe(true);
         expect(plainLine).not.toMatch(/RIGHT\s+$/);
     });
@@ -172,9 +172,9 @@ describe('flex-separator widget', () => {
             }
         }, { terminalWidth: 50 });
 
-        // 6 columns are reserved for trailing UI, so the effective render width
-        // is terminalWidth - 6.
-        expect(getVisibleWidth(line)).toBe(50 - 6);
+        // 5 columns are reserved for trailing UI, so the effective render width
+        // is terminalWidth - 5.
+        expect(getVisibleWidth(line)).toBe(50 - 5);
     });
 
     it('distributes space across multiple flex-separators in powerline mode', () => {
@@ -192,7 +192,7 @@ describe('flex-separator widget', () => {
             }
         }, { terminalWidth: 60 });
 
-        expect(getVisibleWidth(line)).toBe(60 - 6);
+        expect(getVisibleWidth(line)).toBe(60 - 5);
     });
 
     it('uses the next configured start cap for each segment after a flex-separator', () => {
@@ -219,7 +219,7 @@ describe('flex-separator widget', () => {
         const thirdCapIndex = plainLine.indexOf('\uE0BA');
         const rightIndex = plainLine.indexOf('RIGHT');
 
-        expect(getVisibleWidth(line)).toBe(60 - 6);
+        expect(getVisibleWidth(line)).toBe(60 - 5);
         expect(firstCapIndex).toBeGreaterThanOrEqual(0);
         expect(firstCapIndex).toBeLessThan(leftIndex);
         expect(secondCapIndex).toBeGreaterThan(leftIndex);
@@ -256,7 +256,7 @@ describe('flex-separator widget', () => {
         const rightIndex = plainLine.indexOf('RIGHT');
         const thirdEndIndex = plainLine.indexOf('}');
 
-        expect(getVisibleWidth(line)).toBe(60 - 6);
+        expect(getVisibleWidth(line)).toBe(60 - 5);
         expect(firstStartIndex).toBeGreaterThanOrEqual(0);
         expect(firstEndIndex).toBeGreaterThanOrEqual(0);
         expect(secondStartIndex).toBeGreaterThanOrEqual(0);
@@ -525,7 +525,7 @@ describe('flex-separator widget', () => {
         }, { terminalWidth: 50 });
         const plainLine = stripSgrCodes(line);
 
-        expect(getVisibleWidth(line)).toBe(50 - 6);
+        expect(getVisibleWidth(line)).toBe(50 - 5);
         expect(plainLine.endsWith('\uE0B0')).toBe(true);
         expect(line).not.toContain('...');
     });
@@ -614,7 +614,7 @@ describe('flex-separator widget', () => {
     it('still works in non-powerline mode (no regression)', () => {
         const line = renderLine([leftWidget, flexWidget, rightWidget], { powerline: { ...DEFAULT_SETTINGS.powerline, enabled: false } }, { terminalWidth: 50 });
 
-        expect(getVisibleWidth(line)).toBe(50 - 6);
+        expect(getVisibleWidth(line)).toBe(50 - 5);
     });
 
     it('keeps uncolored widget text that reads FLEX instead of treating it as a flex separator', () => {
@@ -626,7 +626,7 @@ describe('flex-separator widget', () => {
         ];
 
         const known = renderLine(widgets, { colorLevel: 0 }, { terminalWidth: 46 });
-        expect(stripSgrCodes(known)).toBe(`left${' '.repeat(27)}FLEXright`);
+        expect(stripSgrCodes(known)).toBe(`left${' '.repeat(28)}FLEXright`);
 
         const unknown = renderLine(widgets, { colorLevel: 0 }, { terminalWidth: 0 });
         expect(stripSgrCodes(unknown)).toBe('left | FLEXright');
