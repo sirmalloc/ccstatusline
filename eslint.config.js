@@ -60,6 +60,14 @@ export default ts.config([
         rules: {
             'no-control-regex': 'off', // We intentionally match ANSI escape sequences
             'eqeqeq': 'error',
+            // One spelling for the number helpers. Number.isNaN/isFinite also skip
+            // the string coercion the globals do (isNaN('abc') is true).
+            'no-restricted-globals': ['error',
+                { name: 'parseInt', message: 'Use Number.parseInt instead.' },
+                { name: 'parseFloat', message: 'Use Number.parseFloat instead.' },
+                { name: 'isNaN', message: 'Use Number.isNaN instead; it does not coerce its argument.' },
+                { name: 'isFinite', message: 'Use Number.isFinite instead; it does not coerce its argument.' }
+            ],
             'import-x/order': ['error', {
                 alphabetize: {
                     'order': 'asc',
@@ -85,7 +93,7 @@ export default ts.config([
                 items: 1,
                 semi: true
             }],
-            '@typescript-eslint/no-unused-vars': ['error', { 'args': 'none' }],
+            '@typescript-eslint/no-unused-vars': ['error', { 'args': 'none', 'ignoreRestSiblings': true }],
             '@typescript-eslint/no-empty-function': ['error', { 'allow': ['private-constructors'] }],
             '@typescript-eslint/array-type': 'error',
             '@typescript-eslint/consistent-type-imports': 'error',

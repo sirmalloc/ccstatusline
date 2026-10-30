@@ -1,10 +1,20 @@
 import type { RenderContext } from '../types/RenderContext';
 import type { Settings } from '../types/Settings';
 import type {
+    CustomKeybind,
     Widget,
     WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+
+import {
+    getSymbol,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
+
+const DEFAULT_SYMBOL = '⎇';
 
 export class GitWorktreeModeWidget implements Widget {
     getDefaultColor(): string { return 'yellow'; }
@@ -28,7 +38,16 @@ export class GitWorktreeModeWidget implements Widget {
             return null;
         }
 
-        return '⎇';
+        const symbol = getSymbol(item, DEFAULT_SYMBOL);
+        return symbol.length > 0 ? symbol : null;
+    }
+
+    getCustomKeybinds(): CustomKeybind[] {
+        return [getSymbolKeybind()];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     supportsRawValue(): boolean { return true; }

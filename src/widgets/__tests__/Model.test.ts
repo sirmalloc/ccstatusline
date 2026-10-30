@@ -61,6 +61,11 @@ describe('ModelWidget', () => {
             expect(new ModelWidget().render(RAW_ITEM, ctx, DEFAULT_SETTINGS)).toBe('Claude');
         });
 
+        it('uses the label override in place of the default label', () => {
+            const ctx = makeContext({ data: { model: { id: 'claude-opus-4-6', display_name: 'Opus 4.6' } } });
+            expect(new ModelWidget().render({ ...ITEM, metadata: { label: 'M ' } }, ctx, DEFAULT_SETTINGS)).toBe('M Opus 4.6');
+        });
+
         it('falls back to model id when display_name is absent', () => {
             const ctx = makeContext({ data: { model: { id: 'claude-opus-4-6[1m]' } } });
             expect(new ModelWidget().render(RAW_ITEM, ctx, DEFAULT_SETTINGS)).toBe('claude-opus-4-6[1m]');

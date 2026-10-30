@@ -66,8 +66,10 @@ export function parseRemoteUrl(url: string): { host: string; owner: string; repo
             return null;
         }
 
-        // Remove leading/trailing slashes and .git suffix
-        const pathname = parsedUrl.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+        // Remove empty segments (leading, trailing or repeated slashes) and the
+        // .git suffix. Splitting stays linear where a trailing-slash regex
+        // would rescan every run of slashes from each position in it.
+        const pathname = parsedUrl.pathname.split('/').filter(Boolean).join('/').replace(/\.git$/, '');
         const segments = pathname.split('/').filter(Boolean);
 
         const repo = segments.at(-1);
@@ -112,11 +114,16 @@ export function getRemoteInfo(remoteName: string, context: RenderContext): Remot
     };
 }
 
+const REMOTE_REF_PREFIX = 'refs/remotes/';
+
 function getTrackingRemoteName(context: RenderContext): string | null {
-    const upstreamRef = runGit('rev-parse --abbrev-ref --symbolic-full-name @{upstream}', context);
-    if (!upstreamRef) {
+    // The full ref, since --abbrev-ref turns it into "remotes/<remote>/<name>"
+    // when a branch or tag is named "<remote>/<name>"
+    const fullRef = runGit('rev-parse --symbolic-full-name @{upstream}', context);
+    if (!fullRef?.startsWith(REMOTE_REF_PREFIX)) {
         return null;
     }
+    const upstreamRef = fullRef.slice(REMOTE_REF_PREFIX.length);
 
     const remotes = listRemotes(context)
         .slice()
@@ -145,19 +152,21 @@ export function getUpstreamRemoteInfo(context: RenderContext): RemoteInfo | null
 }
 
 /**
- * Get fork status by checking origin and upstream remotes.
- * A repository is considered a fork if:
- * 1. Both origin and upstream remotes exist
- * 2. They point to different owner/repo combinations
+ * Get fork status: a fork iff origin and its peer remote both exist and differ
+ * in owner/repo. The peer is the literal "upstream" remote, else the literal
+ * "fork" remote (inverted layout: origin = parent). Deliberately not routed
+ * through getUpstreamRemoteInfo — its tracking-remote fallback can resolve to
+ * origin itself, which would always read as not-a-fork.
  */
 export function getForkStatus(context: RenderContext): ForkStatus {
     const origin = getRemoteInfo('origin', context);
     const upstream = getRemoteInfo('upstream', context);
+    const peer = upstream ?? getRemoteInfo('fork', context);
 
     const isFork = Boolean(
         origin
-        && upstream
-        && (origin.owner !== upstream.owner || origin.repo !== upstream.repo)
+        && peer
+        && (origin.owner !== peer.owner || origin.repo !== peer.repo)
     );
 
     return {

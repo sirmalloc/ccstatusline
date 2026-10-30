@@ -1,71 +1,31 @@
 import type { RenderContext } from '../types/RenderContext';
-import type { Settings } from '../types/Settings';
 import type {
     CustomKeybind,
-    Widget,
-    WidgetEditorDisplay,
+    WidgetEditorProps,
     WidgetItem
 } from '../types/Widget';
+import { runJjArgs } from '../utils/jj';
+
+import { JjWidgetBase } from './shared/jj-widget-base';
+import { formatRawOrLabeledValue } from './shared/raw-or-labeled';
 import {
-    isInsideJjRepo,
-    runJjArgs
-} from '../utils/jj';
+    formatSymbolPrefix,
+    getSymbolKeybind,
+    renderSymbolOverrideEditor
+} from './shared/symbol-override';
 
 const CURRENT_WORKSPACE_TEMPLATE = 'if(target.current_working_copy(), name ++ "\n")';
+const DEFAULT_SYMBOL = '◆';
 
-export class JjWorkspaceWidget implements Widget {
+export class JjWorkspaceWidget extends JjWidgetBase {
+    protected readonly previewValue = 'default';
+    protected readonly noJjText = 'no jj';
+
     getDefaultColor(): string { return 'blue'; }
     getDescription(): string { return 'Shows the current jujutsu workspace name'; }
     getDisplayName(): string { return 'JJ Workspace'; }
-    getCategory(): string { return 'Jujutsu'; }
-    getEditorDisplay(item: WidgetItem): WidgetEditorDisplay {
-        const hideNoJj = item.metadata?.hideNoJj === 'true';
-        const modifiers: string[] = [];
 
-        if (hideNoJj) {
-            modifiers.push('hide \'no jj\'');
-        }
-
-        return {
-            displayText: this.getDisplayName(),
-            modifierText: modifiers.length > 0 ? `(${modifiers.join(', ')})` : undefined
-        };
-    }
-
-    handleEditorAction(action: string, item: WidgetItem): WidgetItem | null {
-        if (action === 'toggle-nojj') {
-            const currentState = item.metadata?.hideNoJj === 'true';
-            return {
-                ...item,
-                metadata: {
-                    ...item.metadata,
-                    hideNoJj: (!currentState).toString()
-                }
-            };
-        }
-        return null;
-    }
-
-    render(item: WidgetItem, context: RenderContext, _settings: Settings): string | null {
-        const hideNoJj = item.metadata?.hideNoJj === 'true';
-
-        if (context.isPreview) {
-            return item.rawValue ? 'default' : '◆ default';
-        }
-
-        if (!isInsideJjRepo(context)) {
-            return hideNoJj ? null : '◆ no jj';
-        }
-
-        const workspace = this.getJjWorkspace(context);
-        if (workspace) {
-            return item.rawValue ? workspace : `◆ ${workspace}`;
-        }
-
-        return hideNoJj ? null : '◆ no jj';
-    }
-
-    private getJjWorkspace(context: RenderContext): string | null {
+    protected getValue(context: RenderContext): string | null {
         const output = runJjArgs([
             'workspace',
             'list',
@@ -79,12 +39,21 @@ export class JjWorkspaceWidget implements Widget {
         return output.split(/\r?\n/).map(workspace => workspace.trim()).find(Boolean) ?? null;
     }
 
+    protected formatValue(item: WidgetItem, workspace: string): string {
+        return formatRawOrLabeledValue(item, formatSymbolPrefix(item, DEFAULT_SYMBOL), workspace);
+    }
+
+    protected override formatPlaceholder(item: WidgetItem, text: string): string {
+        return `${formatSymbolPrefix(item, DEFAULT_SYMBOL)}${text}`;
+    }
+
     getCustomKeybinds(): CustomKeybind[] {
-        return [
-            { key: 'h', label: '(h)ide \'no jj\' message', action: 'toggle-nojj' }
-        ];
+        return [getSymbolKeybind()];
+    }
+
+    renderEditor(props: WidgetEditorProps) {
+        return renderSymbolOverrideEditor(props, DEFAULT_SYMBOL);
     }
 
     supportsRawValue(): boolean { return true; }
-    supportsColors(): boolean { return true; }
 }

@@ -1,0 +1,24 @@
+# ccstatusline
+
+> A highly customizable status line formatter for Claude Code CLI. Renders a configurable terminal status line (model info, git branch/state, token/context usage, cost, timers, and other widgets) via an interactive TUI, with support for themes and Powerline-style separators.
+
+## Getting Started
+
+- [Quick Start](https://github.com/sirmalloc/ccstatusline#-quick-start): Run with `npx -y ccstatusline@latest` or `bunx -y ccstatusline@latest` — no installation required. Launches an interactive TUI to configure and install the status line into Claude Code's `settings.json`.
+- [Windows Support](https://github.com/sirmalloc/ccstatusline/blob/main/docs/WINDOWS.md): PowerShell setup, fonts, and WSL/Windows Terminal notes.
+- [Usage](https://github.com/sirmalloc/ccstatusline/blob/main/docs/USAGE.md): Full widget reference and configuration behavior.
+
+## Configuration
+
+- [ccstatusline settings](https://github.com/sirmalloc/ccstatusline#-quick-start): Widget and appearance settings are stored at `~/.config/ccstatusline/settings.json` by default. Use `--config <path>` to load and save these settings at a custom file path.
+- [Claude Code settings.json format](https://github.com/sirmalloc/ccstatusline#-quick-start): ccstatusline writes a `statusLine` command object (`type`, `command`, `padding`, and `refreshInterval` when supported) to Claude Code's `~/.claude/settings.json`, supporting `npx`, `bunx`, or a pinned global `ccstatusline` command. Set `CLAUDE_CONFIG_DIR` to override the Claude Code configuration directory; the file is then `<CLAUDE_CONFIG_DIR>/settings.json`.
+
+## Development
+
+- [Development guide](https://github.com/sirmalloc/ccstatusline/blob/main/docs/DEVELOPMENT.md): build and contribution workflow for the TypeScript/Bun-based codebase.
+- [Contributing](https://github.com/sirmalloc/ccstatusline#-contributing): guidelines for submitting changes.
+
+## Optional
+
+- [Related Projects](https://github.com/sirmalloc/ccstatusline#-related-projects): other tools in the Claude Code ecosystem.
+- [License](https://github.com/sirmalloc/ccstatusline/blob/main/LICENSE): MIT.

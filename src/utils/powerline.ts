@@ -1,7 +1,10 @@
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import {
+    execFileSync,
+    execSync
+} from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import type { PowerlineFontStatus } from '../types/PowerlineFontStatus';
 
@@ -127,11 +130,14 @@ export async function checkPowerlineFontsAsync(): Promise<PowerlineFontStatus> {
         const platform = os.platform();
         if (platform === 'linux' || platform === 'darwin') {
             try {
-                const { exec } = await import('child_process');
-                const { promisify } = await import('util');
+                const { exec } = await import('node:child_process');
+                const { promisify } = await import('node:util');
                 const execAsync = promisify(exec);
 
-                const { stdout } = await execAsync('fc-list 2>/dev/null | grep -i powerline', { encoding: 'utf8' });
+                const { stdout } = await execAsync('fc-list 2>/dev/null | grep -i powerline', {
+                    encoding: 'utf8',
+                    windowsHide: true
+                });
 
                 if (stdout.trim()) {
                     return {
@@ -187,21 +193,20 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
             fs.mkdirSync(fontDir, { recursive: true });
         }
 
-        // Create temporary directory for font download
-        const tempDir = path.join(os.tmpdir(), `ccstatusline-powerline-fonts-${Date.now()}`);
+        // A new folder only this account can use for the download: os.tmpdir()
+        // is shared on Linux, and a folder another account created first would
+        // let it swap install.sh between the clone and running it
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ccstatusline-powerline-fonts-'));
 
         try {
-            // Clean up if temp directory exists
-            if (fs.existsSync(tempDir)) {
-                fs.rmSync(tempDir, { recursive: true, force: true });
-            }
-
             // Clone Powerline fonts repository
-            execSync(
-                `git clone --depth=1 https://github.com/powerline/fonts.git "${tempDir}"`,
+            execFileSync(
+                'git',
+                ['clone', '--depth=1', 'https://github.com/powerline/fonts.git', tempDir],
                 {
                     stdio: 'pipe',
-                    encoding: 'utf8'
+                    encoding: 'utf8',
+                    windowsHide: true
                 }
             );
 
@@ -214,10 +219,11 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                     fs.chmodSync(installScript, 0o755);
 
                     // Run install script
-                    execSync(`cd "${tempDir}" && ./install.sh`, {
+                    execFileSync(installScript, [], {
+                        cwd: tempDir,
                         stdio: 'pipe',
                         encoding: 'utf8',
-                        shell: '/bin/bash'
+                        windowsHide: true
                     });
 
                     // On Linux, update font cache
@@ -225,7 +231,8 @@ export async function installPowerlineFonts(): Promise<{ success: boolean; messa
                         try {
                             execSync('fc-cache -f -v', {
                                 stdio: 'pipe',
-                                encoding: 'utf8'
+                                encoding: 'utf8',
+                                windowsHide: true
                             });
                         } catch {
                             // fc-cache might not be available

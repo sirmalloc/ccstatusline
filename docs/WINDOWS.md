@@ -21,13 +21,9 @@ bunx -y ccstatusline@latest
 ```powershell
 # Using npm
 npx -y ccstatusline@latest
-
-# Or with Yarn
-yarn dlx ccstatusline@latest
-
-# Or with pnpm
-pnpm dlx ccstatusline@latest
 ```
+
+These commands launch the configuration TUI. To pin the install, start the TUI with `bunx -y ccstatusline@latest` or `npx -y ccstatusline@latest`, then choose **Pinned global install**. The TUI installs the active ccstatusline version globally with Bun or npm and configures Claude Code to run `ccstatusline`. After a pinned install, you can run `ccstatusline` directly to launch the TUI in the future.
 
 ## Claude Code Integration
 
@@ -71,7 +67,20 @@ $env:CLAUDE_CONFIG_DIR="C:\custom\path\.claude"
 
 `refreshInterval` is optional and only supported by Claude Code >=2.1.97. You can configure it from ccstatusline's TUI after installation.
 
+The `bunx` and `npx` examples above follow `@latest`. If you choose **Pinned global install** in the TUI, it writes `"command": "ccstatusline"` instead after installing the selected version globally. You can also run `ccstatusline` directly for future TUI launches.
+
 ## Windows-Specific Features
+
+### GitHub CI Status
+
+The **Git CI Status** widget requires the GitHub CLI to be installed and authenticated. It is GitHub-only and reads checks from the pull request associated with the current branch.
+
+```powershell
+winget install --id GitHub.cli --source winget
+gh auth login
+```
+
+The widget displays `-` when the branch has no pull request, the pull request has no checks, or the authenticated token cannot read the check rollup.
 
 ### Powerline Font Support
 
@@ -96,6 +105,10 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 # or [Google Fonts](https://fonts.google.com/specimen/JetBrains+Mono)
 ```
 
+### Helper Executables
+
+Git, JJ, GitHub/GitLab CLI, SSH, and the UTF-8 code-page helper are resolved from absolute directories in `PATH`. Empty and relative PATH entries are skipped, so a helper executable placed only in the current project directory is not selected. Install the tools you use in an absolute directory listed in `PATH`.
+
 ### Path Handling
 
 `ccstatusline` automatically handles Windows-specific paths:
@@ -103,10 +116,23 @@ winget install DEVCOM.JetBrainsMonoNerdFont
 - Current Working Directory widget displays Windows-style paths correctly
 - Full support for mapped network drives and UNC paths
 - Handles Windows drive letters (C:, D:, etc.)
+- Current Working Dir link mode builds Windows `file:///C:/...` and UNC `file://server/share/...` targets with reserved characters encoded
 
 ## Windows Troubleshooting
 
 ### Common Issues & Solutions
+
+**Issue**: Status lines wrap because terminal width cannot be detected
+
+Claude Code 2.1.153 and later pass the terminal width to the status line in `COLUMNS`, which ccstatusline reads on Windows too. With an older Claude Code, update it or set an explicit width before launching it:
+
+```powershell
+# Set an explicit width before launching Claude Code
+$env:CCSTATUSLINE_WIDTH="160"
+claude
+```
+
+`CCSTATUSLINE_WIDTH` accepts a positive integer column width and is checked before `COLUMNS` and automatic width detection. Set it in the same environment that starts Claude Code so the status line command inherits it. Without either variable, Windows has no width: native width probing is disabled when ccstatusline runs outside WSL.
 
 **Issue**: Powerline symbols showing as question marks or boxes
 

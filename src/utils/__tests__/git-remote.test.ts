@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import {
     beforeEach,
     describe,
@@ -9,6 +9,7 @@ import {
 
 import type { RenderContext } from '../../types/RenderContext';
 import { clearGitCache } from '../git';
+import { GIT_HARDENING_ARGS } from '../git-hardening';
 import {
     buildRepoWebUrl,
     getForkStatus,
@@ -18,7 +19,10 @@ import {
     parseRemoteUrl
 } from '../git-remote';
 
-vi.mock('child_process', () => ({
+import { mockExecutableResolution } from './executable-path-test-helpers';
+import { expectGitExecOptions } from './git-test-helpers';
+
+vi.mock('node:child_process', () => ({
     execSync: vi.fn(),
     execFileSync: vi.fn(),
     spawnSync: vi.fn()
@@ -31,6 +35,8 @@ const mockExecFileSync = execFileSync as unknown as {
     mockReturnValue: (value: string) => void;
     mockReturnValueOnce: (value: string) => void;
 };
+
+mockExecutableResolution();
 
 describe('git-remote utils', () => {
     beforeEach(() => {
@@ -196,6 +202,25 @@ describe('git-remote utils', () => {
                 expect(parseRemoteUrl('ftp://github.com/owner/repo.git')).toBeNull();
             });
 
+            it('ignores repeated slashes around and inside the path', () => {
+                expect(parseRemoteUrl('https://github.com//owner//repo.git//')).toEqual({
+                    host: 'github.com',
+                    owner: 'owner',
+                    repo: 'repo'
+                });
+            });
+
+            // Remote URLs come from the repository's own config
+            it('parses a URL with a long run of slashes in linear time', () => {
+                const started = Date.now();
+                expect(parseRemoteUrl(`https://github.com/owner${'/'.repeat(100_000)}repo.git`)).toEqual({
+                    host: 'github.com',
+                    owner: 'owner',
+                    repo: 'repo'
+                });
+                expect(Date.now() - started).toBeLessThan(1000);
+            });
+
             it('trims whitespace from URL', () => {
                 expect(parseRemoteUrl('  https://github.com/owner/repo.git  ')).toEqual({
                     host: 'github.com',
@@ -229,7 +254,8 @@ describe('git-remote utils', () => {
             getRemoteInfo(remoteName, {});
 
             expect(mockExecFileSync.mock.calls[0]?.[0]).toBe('git');
-            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual(['remote', 'get-url', '--', remoteName]);
+            expect(mockExecFileSync.mock.calls[0]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'remote', 'get-url', '--', remoteName]);
+            expectGitExecOptions(mockExecFileSync.mock.calls[0]?.[2]);
         });
 
         it('returns null when remote does not exist', () => {
@@ -260,7 +286,7 @@ describe('git-remote utils', () => {
 
         it('falls back to the tracking remote when upstream is not a remote name', () => {
             mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecFileSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/hangie/feature/new-git-and-worktree-widgets\n');
             mockExecFileSync.mockReturnValueOnce('origin\nhangie\n');
             mockExecFileSync.mockReturnValueOnce('https://github.com/hangie/ccstatusline.git\n');
 
@@ -275,7 +301,7 @@ describe('git-remote utils', () => {
 
         it('matches the longest remote prefix when remote names contain slashes', () => {
             mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecFileSync.mockReturnValueOnce('team/upstream/feature/worktree\n');
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/team/upstream/feature/worktree\n');
             mockExecFileSync.mockReturnValueOnce('origin\nteam\nteam/upstream\n');
             mockExecFileSync.mockReturnValueOnce('https://github.com/team/upstream-repo.git\n');
 
@@ -288,9 +314,21 @@ describe('git-remote utils', () => {
             });
         });
 
+        // The full ref: --abbrev-ref says `remotes/origin/feature` when a
+        // branch or tag is named `origin/feature`, and that matches no remote
+        it('reads the tracking branch as a full ref', () => {
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/origin/feature\n');
+            mockExecFileSync.mockReturnValueOnce('origin\n');
+            mockExecFileSync.mockReturnValueOnce('https://github.com/me/proj.git\n');
+
+            expect(getUpstreamRemoteInfo({})?.name).toBe('origin');
+            expect(mockExecFileSync.mock.calls[1]?.[1]).toEqual([...GIT_HARDENING_ARGS, 'rev-parse', '--symbolic-full-name', '@{upstream}']);
+        });
+
         it('returns null when the tracking remote cannot be resolved', () => {
             mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
-            mockExecFileSync.mockReturnValueOnce('hangie/feature/new-git-and-worktree-widgets\n');
+            mockExecFileSync.mockReturnValueOnce('refs/remotes/hangie/feature/new-git-and-worktree-widgets\n');
             mockExecFileSync.mockReturnValueOnce('origin\n');
 
             expect(getUpstreamRemoteInfo({})).toBeNull();
@@ -316,6 +354,28 @@ describe('git-remote utils', () => {
             const result = getForkStatus({});
 
             expect(result.isFork).toBe(true);
+        });
+
+        it('detects fork when remotes are inverted: origin is the parent, fork is the personal copy', () => {
+            mockExecFileSync.mockReturnValueOnce('https://github.com/browser-use/jev-ultrafast.git\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('https://github.com/axisrow/jev-ultrafast.git\n');
+
+            const result = getForkStatus({});
+
+            expect(result.isFork).toBe(true);
+            expect(result.origin?.owner).toBe('browser-use');
+            expect(result.upstream).toBeNull();
+        });
+
+        it('returns not a fork when the fork remote points to the same repo as origin', () => {
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+            mockExecFileSync.mockImplementationOnce(() => { throw new Error('No such remote'); });
+            mockExecFileSync.mockReturnValueOnce('https://github.com/owner/repo.git\n');
+
+            const result = getForkStatus({});
+
+            expect(result.isFork).toBe(false);
         });
 
         it('returns not a fork when only origin exists', () => {

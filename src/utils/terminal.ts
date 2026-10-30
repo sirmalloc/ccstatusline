@@ -1,6 +1,12 @@
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+import { probeWidthNative } from './terminal-native';
+import {
+    readCachedWidth,
+    writeCachedWidth
+} from './terminal-width-cache';
 
 // Get package version
 // __PACKAGE_VERSION__ will be replaced at build time
@@ -39,6 +45,13 @@ function probeTerminalWidth(): number | null {
         return null;
     }
 
+    // Zero-subprocess path (Linux): /proc ancestry + TIOCGWINSZ. Returns null on
+    // other platforms and falls through to the portable ps/stty walk below.
+    const nativeWidth = probeWidthNative();
+    if (nativeWidth !== null) {
+        return nativeWidth;
+    }
+
     // Claude Code can spawn ccstatusline with piped stdio, leaving the immediate
     // parent process without a controlling TTY. Walk up a few ancestors until we
     // find the shell process that owns the real PTY.
@@ -62,24 +75,15 @@ function probeTerminalWidth(): number | null {
         }
     }
 
-    // Fallback: try tput cols which might work in some environments
-    try {
-        const width = execSync('tput cols 2>/dev/null', {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-        }).trim();
-
-        return parsePositiveInteger(width);
-    } catch {
-        // tput also failed
-    }
-
+    // No `tput cols` fallback: with no terminal on its stdio, tput prints
+    // terminfo's default (80) rather than a real width, and a made-up width
+    // truncates the line where null leaves it whole.
     return null;
 }
 
 function parsePositiveInteger(value: string): number | null {
-    const parsed = parseInt(value, 10);
-    if (isNaN(parsed) || parsed <= 0) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed) || parsed <= 0) {
         return null;
     }
 
@@ -88,10 +92,10 @@ function parsePositiveInteger(value: string): number | null {
 
 function getParentProcessId(pid: number): number | null {
     try {
-        const parentPidOutput = execSync(`ps -o ppid= -p ${pid}`, {
+        const parentPidOutput = execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
+            windowsHide: true
         }).trim();
 
         return parsePositiveInteger(parentPidOutput);
@@ -102,10 +106,10 @@ function getParentProcessId(pid: number): number | null {
 
 function getTTYForProcess(pid: number): string | null {
     try {
-        const tty = execSync(`ps -o tty= -p ${pid}`, {
+        const tty = execFileSync('ps', ['-o', 'tty=', '-p', String(pid)], {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore'],
-            shell: '/bin/sh'
+            windowsHide: true
         }).replace(/\s+/g, '');
 
         if (!tty || tty === '??' || tty === '?') {
@@ -119,28 +123,131 @@ function getTTYForProcess(pid: number): string | null {
 }
 
 function getWidthForTTY(tty: string): number | null {
-    try {
-        const width = execSync(
-            `stty size < /dev/${tty} | awk '{print $2}'`,
-            {
+    // The shell-redirect form (`stty size < /dev/${tty}`) fails with ENOTTY
+    // when the calling process has no controlling terminal — the case under
+    // Claude Code >= 2.1.139, which spawns statusline/hooks without terminal
+    // access. `stty -F` / `-f` ask stty to open the device itself (with
+    // O_NOCTTY semantics) and succeed regardless of controlling-tty status,
+    // so the legacy redirect form (which also required a shell) is dropped.
+    // The "rows cols" output is parsed here rather than piped through awk:
+    // no shell, one process instead of three.
+    const devicePath = `/dev/${tty}`;
+    const attempts: string[][] = [
+        ['-F', devicePath, 'size'],   // GNU coreutils (Linux)
+        ['-f', devicePath, 'size']    // BSD stty (macOS, *BSD)
+    ];
+
+    for (const args of attempts) {
+        try {
+            const output = execFileSync('stty', args, {
                 encoding: 'utf8',
                 stdio: ['pipe', 'pipe', 'ignore'],
-                shell: '/bin/sh'
-            }
-        ).trim();
+                windowsHide: true
+            }).trim();
 
-        return parsePositiveInteger(width);
-    } catch {
-        return null;
+            const parsed = parsePositiveInteger(output.split(/\s+/)[1] ?? '');
+            if (parsed !== null) {
+                return parsed;
+            }
+        } catch {
+            // try next strategy
+        }
     }
+
+    return null;
 }
 
-// Get terminal width
-export function getTerminalWidth(): number | null {
-    return probeTerminalWidth();
+// Memoized probe result. `hasProbed` is a separate flag rather than a
+// `null`-check on `cachedWidth`, because `null` (no TTY found) is a real,
+// cacheable answer -- and the common one: Claude Code spawns the statusline
+// with no controlling terminal. Callers do `context.terminalWidth ??
+// getTerminalWidth()`, so treating `null` as "not yet probed" would re-run the
+// full ancestor walk on every line of every render.
+let hasProbed = false;
+let cachedWidth: number | null = null;
+
+/** Clear the memoized width. For tests, and for the TUI to re-probe after a resize. */
+export function resetTerminalWidthCache(): void {
+    hasProbed = false;
+    cachedWidth = null;
+}
+
+export interface TerminalWidthOptions {
+    sessionId?: string;
+    ttlSeconds?: number;
+}
+
+// Get terminal width.
+//
+// Callers that pass no options (renderer.ts, widgets/TerminalWidth.ts) read the
+// in-process memo, which the entry point has already populated. Only the entry
+// point supplies a session, so only it consults or writes the shared L2 cache.
+export function getTerminalWidth(options?: TerminalWidthOptions): number | null {
+    if (hasProbed) {
+        return cachedWidth;
+    }
+
+    // An explicit width takes precedence over a cached "no TTY" result and
+    // bypasses probing. Memoize it for subsequent calls in this render.
+    const overrideRaw = process.env.CCSTATUSLINE_WIDTH;
+    if (overrideRaw) {
+        const override = parsePositiveInteger(overrideRaw);
+        if (override !== null) {
+            cachedWidth = override;
+            hasProbed = true;
+            return cachedWidth;
+        }
+    }
+
+    // Claude Code >= 2.1.153 sets COLUMNS to the terminal width when it spawns
+    // the statusline, since its captured stdio leaves no TTY to probe. Reading
+    // it skips the ancestor walk (several ps/stty calls per render on macOS).
+    // Checked before the L2 cache so a stale "no TTY" entry cannot hide it.
+    const columnsRaw = process.env.COLUMNS;
+    if (columnsRaw) {
+        const columns = parsePositiveInteger(columnsRaw);
+        if (columns !== null) {
+            cachedWidth = columns;
+            hasProbed = true;
+            return cachedWidth;
+        }
+    }
+
+    const sessionId = options?.sessionId;
+    const ttlSeconds = options?.ttlSeconds ?? 0;
+
+    // L2: another process in this session may have already paid for the probe.
+    // Only ever consulted for a cached "no TTY" result -- see the write side
+    // below for why a discovered numeric width is never read back here either.
+    if (sessionId) {
+        const cached = readCachedWidth(sessionId, ttlSeconds);
+        if (cached?.width === null) {
+            cachedWidth = null;
+            hasProbed = true;
+            return cachedWidth;
+        }
+    }
+
+    cachedWidth = probeTerminalWidth();
+    hasProbed = true;
+
+    // Persist only the "no TTY" result, never a discovered numeric width.
+    // The no-TTY case is the one this cache exists for (Claude Code spawning
+    // the statusline without a controlling terminal is stable for the life of
+    // a session, so it's safe to cache indefinitely and expensive to keep
+    // re-walking). A real width is comparatively cheap to redetect and, unlike
+    // "no TTY", is NOT stable per session: the same session_id can be resumed
+    // in a different terminal with a different width, and persisting a numeric
+    // width across processes would serve that stale width for up to
+    // ttlSeconds after the resume.
+    if (sessionId && ttlSeconds > 0 && cachedWidth === null) {
+        writeCachedWidth(sessionId, null);
+    }
+
+    return cachedWidth;
 }
 
 // Check if terminal width detection is available
 export function canDetectTerminalWidth(): boolean {
-    return probeTerminalWidth() !== null;
+    return getTerminalWidth() !== null;
 }

@@ -32,7 +32,6 @@ const BEL_OSC8_CLOSE = '\x1b]8;;\x07';
 function createSettings(overrides: Partial<Settings> = {}): Settings {
     return {
         ...DEFAULT_SETTINGS,
-        flexMode: 'full',
         ...overrides,
         powerline: {
             ...DEFAULT_SETTINGS.powerline,
@@ -182,7 +181,7 @@ describe('renderer ANSI/OSC handling', () => {
         expect(visible.startsWith('A')).toBe(true);
         expect(visible.endsWith('B')).toBe(true);
         expect(visible.includes('...')).toBe(false);
-        expect(getVisibleWidth(line)).toBe(20);
+        expect(getVisibleWidth(line)).toBe(21);
     });
 
     it('handles BEL-terminated OSC 8 sequences during truncation', () => {
@@ -201,6 +200,46 @@ describe('renderer ANSI/OSC handling', () => {
         expect(truncated.endsWith('...')).toBe(true);
         expect(truncated).toContain(OSC8_CLOSE);
         expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(8);
+    });
+
+    it('never returns text wider than maxWidth when an escape splits a cluster', () => {
+        // U+2764 + SGR + U+FE0F: the escape-stripped text measures 2 columns per
+        // heart, but each run between escapes measures 1 + 0.
+        const heart = '\u2764\x1b[31m\uFE0F\x1b[39m';
+        const text = heart.repeat(6);
+        expect(getVisibleWidth(text)).toBe(12);
+
+        for (const ellipsis of [true, false]) {
+            for (let maxWidth = 1; maxWidth < 12; maxWidth++) {
+                const truncated = truncateStyledText(text, maxWidth, { ellipsis });
+                expect(getVisibleWidth(truncated)).toBeLessThanOrEqual(maxWidth);
+            }
+        }
+        expect(getVisibleText(truncateStyledText(text, 9))).toBe('\u2764\uFE0F'.repeat(3) + '...');
+    });
+});
+
+describe('renderer widgets that preserve their own colors', () => {
+    const BG = '\x1b[48;2;17;34;51m';
+    const BOLD = '\x1b[1m';
+    const OUTPUT = '\x1b[32m+5\x1b[0m \x1b[31m-3\x1b[0m';
+
+    function renderCommand(widget: Partial<WidgetItem>, settings: Partial<Settings> = {}): string {
+        const item: WidgetItem = { id: 'cmd', type: 'custom-command', preserveColors: true, ...widget };
+        const context: RenderContext = { isPreview: false, terminalWidth: 200 };
+        const preRenderedWidgets = [{ content: OUTPUT, plainLength: getVisibleWidth(OUTPUT), widget: item }];
+
+        return renderStatusLine([item], createSettings({ colorLevel: 3, ...settings }), context, preRenderedWidgets, []);
+    }
+
+    it('keeps the widget background and bold after the command\'s own resets', () => {
+        expect(renderCommand({ backgroundColor: 'hex:112233', bold: true }))
+            .toBe(`${BOLD}${BG}\x1b[32m+5\x1b[0m${BOLD}${BG} \x1b[31m-3\x1b[0m${BOLD}${BG}\x1b[49m\x1b[22m`);
+    });
+
+    it('keeps a global background override after the command\'s own resets', () => {
+        expect(renderCommand({}, { overrideBackgroundColor: 'hex:112233' }))
+            .toBe(`${BG}\x1b[32m+5\x1b[0m${BG} \x1b[31m-3\x1b[0m${BG}\x1b[49m`);
     });
 });
 
@@ -232,5 +271,36 @@ describe('renderer minimalist mode', () => {
         const content = preRenderedLines[0]?.[0]?.content;
 
         expect(content).toBe('Model: Claude');
+    });
+});
+
+describe('renderer color levels', () => {
+    const widgets: WidgetItem[] = [
+        { id: 'hex', type: 'custom-text', customText: 'hex', color: 'hex:FF0000', backgroundColor: 'hex:0000FF' },
+        { id: 'sep', type: 'separator' },
+        { id: 'a256', type: 'custom-text', customText: 'a256', color: 'ansi256:100', backgroundColor: 'ansi256:20' }
+    ];
+    const extendedColorCode = /\x1b\[[34]8;[25];/;
+
+    it('emits no 256-color or truecolor escapes at No Color and Basic', () => {
+        for (const colorLevel of [0, 1] as const) {
+            for (const enabled of [false, true]) {
+                const line = renderLine(widgets, {
+                    settings: { colorLevel, powerline: { ...DEFAULT_SETTINGS.powerline, enabled } },
+                    terminalWidth: 80
+                });
+
+                expect(getVisibleText(line)).toContain('hex');
+                expect(line).not.toMatch(extendedColorCode);
+            }
+        }
+    });
+
+    it('keeps them at 256-color and truecolor levels', () => {
+        for (const colorLevel of [2, 3] as const) {
+            const line = renderLine(widgets, { settings: { colorLevel }, terminalWidth: 80 });
+
+            expect(line).toMatch(extendedColorCode);
+        }
     });
 });

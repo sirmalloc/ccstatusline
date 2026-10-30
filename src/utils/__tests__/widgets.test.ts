@@ -8,7 +8,8 @@ import {
     DEFAULT_SETTINGS,
     type Settings
 } from '../../types/Settings';
-import type { WidgetItemType } from '../../types/Widget';
+import { getHideKeybind } from '../../widgets/shared/hideable';
+import { getLabelKeybind } from '../../widgets/shared/raw-or-labeled';
 import {
     filterWidgetCatalog,
     getAllWidgetTypes,
@@ -39,6 +40,10 @@ describe('widget catalog', () => {
         const totalSpeed = catalog.find(entry => entry.type === 'total-speed');
         const resetTimer = catalog.find(entry => entry.type === 'reset-timer');
         const weeklyResetTimer = catalog.find(entry => entry.type === 'weekly-reset-timer');
+        const sessionForecast = catalog.find(entry => entry.type === 'block-forecast');
+        const sessionLimitTimer = catalog.find(entry => entry.type === 'block-limit-timer');
+        const weeklyLimitTimer = catalog.find(entry => entry.type === 'weekly-limit-timer');
+        const fableWeeklyLimitTimer = catalog.find(entry => entry.type === 'fable-weekly-limit-timer');
 
         expect(model?.displayName).toBe('Model');
         expect(model?.category).toBe('Core');
@@ -60,6 +65,14 @@ describe('widget catalog', () => {
         expect(resetTimer?.category).toBe('Usage');
         expect(weeklyResetTimer?.displayName).toBe('Weekly Reset Timer');
         expect(weeklyResetTimer?.category).toBe('Usage');
+        expect(sessionForecast?.displayName).toBe('Block Forecast');
+        expect(sessionForecast?.category).toBe('Usage');
+        expect(sessionLimitTimer?.displayName).toBe('Block Limit Timer');
+        expect(sessionLimitTimer?.category).toBe('Usage');
+        expect(weeklyLimitTimer?.displayName).toBe('Weekly Limit Timer');
+        expect(weeklyLimitTimer?.category).toBe('Usage');
+        expect(fableWeeklyLimitTimer?.displayName).toBe('Weekly Fable Limit Timer');
+        expect(fableWeeklyLimitTimer?.category).toBe('Usage');
     });
 
     it('hides manual separator when default separator is configured', () => {
@@ -73,7 +86,7 @@ describe('widget catalog', () => {
         expect(types.has('flex-separator')).toBe(true);
     });
 
-    it('hides both separator types in powerline mode', () => {
+    it('hides manual separator but keeps flex separator in powerline mode', () => {
         const catalog = getWidgetCatalog({
             ...baseSettings,
             powerline: {
@@ -84,7 +97,7 @@ describe('widget catalog', () => {
 
         const types = new Set(catalog.map(entry => entry.type));
         expect(types.has('separator')).toBe(false);
-        expect(types.has('flex-separator')).toBe(false);
+        expect(types.has('flex-separator')).toBe(true);
     });
 
     it('returns unique categories in discovery order', () => {
@@ -152,6 +165,76 @@ describe('legacy widget type aliases', () => {
     });
 });
 
+describe('shared keybind reservation', () => {
+    // Widgets vary their keybinds by display mode, so an item-free call sees
+    // only one branch. These cover the metadata the usage and timer widgets
+    // branch on, so a bind offered in just one mode still gets caught.
+    const KEYBIND_MODE_PROBES: (Record<string, string> | undefined)[] = [
+        undefined,
+        {},
+        { absolute: 'true' },
+        { display: 'progress' },
+        { display: 'progress-short' },
+        { display: 'slider' },
+        { display: 'slider-only' },
+        { hours: 'true' },
+        { absolute: 'true', hours: 'true' }
+    ];
+
+    it('widgets declaring hideable states leave the shared hide key free in every mode', () => {
+        const reservedKey = getHideKeybind().key;
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+        const runtimeTypes = getAllWidgetTypes(settings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            if ((widget?.getHideableStates?.().length ?? 0) === 0) {
+                continue;
+            }
+
+            for (const metadata of KEYBIND_MODE_PROBES) {
+                // The items editor appends the shared hide keybind last and
+                // keybind matching takes the first hit, so a widget-level
+                // binding would shadow the hide editor
+                const item = metadata === undefined ? undefined : { id: '1', type, metadata };
+                const keys = (widget?.getCustomKeybinds?.(item) ?? []).map(keybind => keybind.key);
+                expect(`${type}/${JSON.stringify(metadata)} binds ${keys.includes(reservedKey) ? reservedKey : 'nothing reserved'}`)
+                    .toBe(`${type}/${JSON.stringify(metadata)} binds nothing reserved`);
+            }
+        }
+    });
+
+    it('widgets declaring a label prefix leave the shared label key free in every mode', () => {
+        const reservedKey = getLabelKeybind().key;
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+        const runtimeTypes = getAllWidgetTypes(settings).filter(
+            type => type !== 'separator' && type !== 'flex-separator'
+        );
+
+        for (const type of runtimeTypes) {
+            const widget = getWidget(type);
+            if (!widget?.getLabelPrefix) {
+                continue;
+            }
+
+            for (const metadata of KEYBIND_MODE_PROBES) {
+                const item = metadata === undefined ? undefined : { id: '1', type, metadata };
+                const keys = (widget.getCustomKeybinds?.(item) ?? []).map(keybind => keybind.key);
+                expect(`${type}/${JSON.stringify(metadata)} binds ${keys.includes(reservedKey) ? reservedKey : 'nothing reserved'}`)
+                    .toBe(`${type}/${JSON.stringify(metadata)} binds nothing reserved`);
+            }
+        }
+    });
+});
+
 describe('widget catalog filtering', () => {
     const catalog = getWidgetCatalog({
         ...DEFAULT_SETTINGS,
@@ -197,14 +280,14 @@ describe('widget catalog filtering', () => {
     it('ranks exact substring matches above fuzzy matches', () => {
         const rankingCatalog: WidgetCatalogEntry[] = [
             {
-                type: 'exact-match' as WidgetItemType,
+                type: 'exact-match',
                 displayName: 'Git Branch',
                 description: 'Exact substring match',
                 category: 'Core',
                 searchText: 'git branch exact substring match exact-match'
             },
             {
-                type: 'fuzzy-match' as WidgetItemType,
+                type: 'fuzzy-match',
                 displayName: 'Global Input Timer',
                 description: 'Fuzzy-only match',
                 category: 'Core',
@@ -217,28 +300,28 @@ describe('widget catalog filtering', () => {
     });
 
     it('returns no results when query chars cannot form a subsequence in any entry', () => {
-        const results = filterWidgetCatalog(catalog, 'All', 'zzz');
+        const results = filterWidgetCatalog(catalog, 'All', 'zzzz');
         expect(results).toHaveLength(0);
     });
 
     it('prioritizes name match before type and description matches', () => {
         const rankingCatalog: WidgetCatalogEntry[] = [
             {
-                type: 'alpha' as WidgetItemType,
+                type: 'alpha',
                 displayName: 'Git Branch',
                 description: 'Primary match',
                 category: 'Core',
                 searchText: 'git branch primary match alpha'
             },
             {
-                type: 'git-type-only' as WidgetItemType,
+                type: 'git-type-only',
                 displayName: 'Branch',
                 description: 'Type fallback match',
                 category: 'Core',
                 searchText: 'branch type fallback match git-type-only'
             },
             {
-                type: 'desc-only' as WidgetItemType,
+                type: 'desc-only',
                 displayName: 'Branch',
                 description: 'Description contains git',
                 category: 'Core',
@@ -295,5 +378,44 @@ describe('getMatchSegments', () => {
     it('is case-insensitive but preserves original casing in output', () => {
         const segments = getMatchSegments('Git Branch', 'GIT');
         expect(segments[0]).toEqual({ text: 'Git', matched: true });
+    });
+});
+
+describe('label prefix', () => {
+    const LABEL_MODE_PROBES: Record<string, string>[] = [
+        {},
+        { absolute: 'true' },
+        { display: 'progress' },
+        { display: 'progress-short' },
+        { display: 'slider' },
+        { display: 'slider-only' },
+        { format: 'label-check' },
+        { format: 'label-mark' },
+        { inverse: 'true' }
+    ];
+
+    it('widgets render the label their prefix declares in every mode', () => {
+        const settings: Settings = {
+            ...DEFAULT_SETTINGS,
+            powerline: { ...DEFAULT_SETTINGS.powerline }
+        };
+
+        for (const type of getAllWidgetTypes(settings)) {
+            const widget = getWidget(type);
+            if (!widget?.getLabelPrefix) {
+                continue;
+            }
+
+            for (const metadata of LABEL_MODE_PROBES) {
+                const item = { id: '1', type, metadata };
+                const label = widget.getLabelPrefix(item);
+                if (label === undefined) {
+                    continue;
+                }
+                const rendered = widget.render(item, { isPreview: true }, settings) ?? '';
+                expect(`${type}/${JSON.stringify(metadata)}: ${rendered.includes(label) ? 'has' : 'lacks'} "${label}"`)
+                    .toBe(`${type}/${JSON.stringify(metadata)}: has "${label}"`);
+            }
+        }
     });
 });
