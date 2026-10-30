@@ -150,7 +150,7 @@ async function renderMultipleLines(data: StatusJSON) {
         : Promise.resolve(null);
     const [transcriptAnalysis, usageData, claudeStatusData, accountEmail] = await Promise.all([
         transcriptAnalysisPromise,
-        prefetchUsageDataIfNeeded(lines, data),
+        prefetchUsageDataIfNeeded(lines, data, { cacheTtlSeconds: settings.usageCacheTtlSeconds }),
         prefetchClaudeStatusIfNeeded(lines),
         hasAccountEmailWidget ? fetchAccountEmail() : Promise.resolve(undefined)
     ]);

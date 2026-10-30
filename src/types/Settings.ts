@@ -76,6 +76,7 @@ export const SettingsSchema = z.object({
     globalBold: z.boolean().default(false),
     numberFormat: GlobalNumberFormatSchema.optional(),
     gitCacheTtlSeconds: z.number().min(0).max(60).default(5),
+    usageCacheTtlSeconds: z.number().min(180).default(180),
     // How long a "no TTY" result is reused for the same session, in seconds.
     // Detected widths are re-probed each render so terminal resizes take effect.
     // NOTE: 0 disables the cache (always probe). This deliberately differs from

@@ -93,6 +93,7 @@ describe('CustomCommandWidget', () => {
         inheritSeparatorColors: false,
         globalBold: false,
         gitCacheTtlSeconds: 5,
+        usageCacheTtlSeconds: 180,
         terminalWidthCacheTtlSeconds: 5,
         customCommandCacheTtlSeconds: 0,
         minimalistMode: false,

@@ -14,6 +14,7 @@ import {
     fetchUsageData,
     isStaleUsageFallback
 } from './usage';
+import type { FetchUsageDataOptions } from './usage-fetch';
 import type { UsageDataField } from './usage-types';
 import {
     WEEKLY_MODEL_USAGE_BUCKETS,
@@ -275,7 +276,11 @@ export function extractUsageDataFromRateLimits(rateLimits: StatusJSON['rate_limi
     return hasAnyUsageDataField(usageData) ? usageData : null;
 }
 
-export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: StatusJSON): Promise<UsageData | null> {
+export async function prefetchUsageDataIfNeeded(
+    lines: WidgetItem[][],
+    data?: StatusJSON,
+    options: Pick<FetchUsageDataOptions, 'cacheTtlSeconds'> = {}
+): Promise<UsageData | null> {
     if (!hasUsageDependentWidgets(lines)) {
         return null;
     }
@@ -289,7 +294,7 @@ export async function prefetchUsageDataIfNeeded(lines: WidgetItem[][], data?: St
         return rateLimitsData;
     }
 
-    const apiData = await fetchUsageData({ requiredFields: missingFields });
+    const apiData = await fetchUsageData({ ...options, requiredFields: missingFields });
     if (apiData.error && missingRequirements.suppressFetchError) {
         return hasAnyUsageDataField(apiData)
             ? mergeUsageData(rateLimitsData, { ...apiData, error: undefined })

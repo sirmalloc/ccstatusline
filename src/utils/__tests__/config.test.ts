@@ -16,6 +16,7 @@ import {
 import {
     CURRENT_VERSION,
     DEFAULT_SETTINGS,
+    SettingsSchema,
     type InstallationMetadata,
     type Settings
 } from '../../types/Settings';
@@ -103,6 +104,8 @@ describe('config utilities', () => {
         };
         expect(onDisk.version).toBe(CURRENT_VERSION);
         expect(Array.isArray(onDisk.lines)).toBe(true);
+        expect(settings.usageCacheTtlSeconds).toBe(180);
+        expect((onDisk as { usageCacheTtlSeconds?: number }).usageCacheTtlSeconds).toBe(180);
         expect(settings.gitCacheTtlSeconds).toBe(5);
         expect((onDisk as { gitCacheTtlSeconds?: number }).gitCacheTtlSeconds).toBe(5);
         // Custom command caching is opt-in, so an untouched install keeps running
@@ -112,6 +115,25 @@ describe('config utilities', () => {
             expect.stringContaining('Default settings written to')
         );
     });
+
+    it.each([undefined, 180, 900])('loads and persists usage cache TTL %s', async (usageCacheTtlSeconds) => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify({ version: CURRENT_VERSION, usageCacheTtlSeconds }));
+
+        const settings = await loadSettings();
+        expect(settings.usageCacheTtlSeconds).toBe(usageCacheTtlSeconds ?? 180);
+        await saveSettings(settings);
+        const onDisk = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as Settings;
+        expect(onDisk.usageCacheTtlSeconds).toBe(usageCacheTtlSeconds ?? 180);
+    });
+
+    it.each([179, 0, -1, '900', null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+        'rejects invalid usage cache TTL %s',
+        (usageCacheTtlSeconds) => {
+            expect(SettingsSchema.safeParse({ usageCacheTtlSeconds }).success).toBe(false);
+        }
+    );
 
     it('exports the provided in-memory settings instead of reloading stale settings from disk', async () => {
         const { settingsPath, configDir } = getSettingsPaths();
