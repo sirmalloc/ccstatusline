@@ -144,8 +144,8 @@ describe('config utilities', () => {
         );
         const current: Settings = {
             ...DEFAULT_SETTINGS,
-            flexMode: 'full',
-            compactThreshold: 75,
+            colorLevel: 3,
+            defaultPaddingSide: 'left',
             lines: [[{ id: 'custom', type: 'model' }]]
         };
 
@@ -157,8 +157,8 @@ describe('config utilities', () => {
         }
         const merged = applyImport(current, validation.data, 'merge', validation.presentKeys);
         expect(merged.globalBold).toBe(true);
-        expect(merged.flexMode).toBe('full');
-        expect(merged.compactThreshold).toBe(75);
+        expect(merged.colorLevel).toBe(3);
+        expect(merged.defaultPaddingSide).toBe('left');
         expect(merged.lines).toEqual(current.lines);
     });
 
@@ -249,7 +249,7 @@ describe('config utilities', () => {
     it('uses defaults in memory and preserves an invalid v1 payload', async () => {
         const { settingsPath, backupPath, configDir } = getSettingsPaths();
         fs.mkdirSync(configDir, { recursive: true });
-        const original = JSON.stringify({ flexMode: 123 });
+        const original = JSON.stringify({ colorLevel: 'high' });
         fs.writeFileSync(settingsPath, original, 'utf-8');
 
         const settings = await loadSettings();
@@ -459,25 +459,25 @@ describe('config utilities', () => {
         fs.mkdirSync(targetDir, { recursive: true });
         fs.writeFileSync(
             targetPath,
-            JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []], flexMode: 'full' }),
+            JSON.stringify({ version: CURRENT_VERSION, lines: [[], [], []], colorLevel: 1 }),
             'utf-8'
         );
         fs.symlinkSync(targetPath, settingsPath);
 
         await saveSettings({
             ...DEFAULT_SETTINGS,
-            flexMode: 'full-minus-40'
+            colorLevel: 3
         });
 
         expect(fs.lstatSync(settingsPath).isSymbolicLink()).toBe(true);
         expect(fs.realpathSync(settingsPath)).toBe(fs.realpathSync(targetPath));
 
         const saved = JSON.parse(fs.readFileSync(targetPath, 'utf-8')) as {
-            flexMode?: string;
+            colorLevel?: number;
             version?: number;
         };
         expect(saved.version).toBe(CURRENT_VERSION);
-        expect(saved.flexMode).toBe('full-minus-40');
+        expect(saved.colorLevel).toBe(3);
         expect(fs.readdirSync(configDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
         expect(fs.readdirSync(targetDir).filter(name => name.endsWith('.tmp'))).toEqual([]);
     });
@@ -590,5 +590,59 @@ describe('config utilities', () => {
 
         const onDiskAfterSave = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { lines: { type: string }[][] };
         expect(onDiskAfterSave.lines[0]?.[1]?.type).toBe('git-review');
+    });
+
+    it.each([
+        ['a saved choice', { flexMode: 'full-minus-40', compactThreshold: 75 }],
+        ['values the old menu would have rejected', { flexMode: 'not-a-mode', compactThreshold: 500 }]
+    ])('ignores the removed terminal width settings (%s) and drops them on the next save', async (_name, removed) => {
+        const { settingsPath, configDir } = getSettingsPaths();
+        fs.mkdirSync(configDir, { recursive: true });
+        const original = JSON.stringify({
+            version: CURRENT_VERSION,
+            lines: [[{ id: 'widget-1', type: 'model' }], [], []],
+            colorLevel: 3,
+            ...removed
+        });
+        fs.writeFileSync(settingsPath, original, 'utf-8');
+
+        const settings = await loadSettings();
+
+        expect(getConfigLoadError()).toBeNull();
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+        expect(settings.colorLevel).toBe(3);
+        expect(settings.lines[0]?.map(item => item.type)).toEqual(['model']);
+        expect(settings).not.toHaveProperty('flexMode');
+        expect(settings).not.toHaveProperty('compactThreshold');
+
+        // Load does not rewrite the file; the keys go with the next save.
+        expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(original);
+
+        await saveSettings(settings);
+
+        const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+        expect(saved).not.toHaveProperty('flexMode');
+        expect(saved).not.toHaveProperty('compactThreshold');
+        expect(saved.colorLevel).toBe(3);
+    });
+
+    it('imports a config that still has the removed terminal width settings', async () => {
+        const { configDir } = getSettingsPaths();
+        const importPath = path.join(configDir, 'old-export.json');
+        fs.mkdirSync(configDir, { recursive: true });
+        fs.writeFileSync(
+            importPath,
+            JSON.stringify({ version: CURRENT_VERSION, globalBold: true, flexMode: 'full-until-compact', compactThreshold: 75 }),
+            'utf-8'
+        );
+
+        const validation = await validateImportFile(importPath);
+
+        expect(validation.status).toBe('valid');
+        if (validation.status !== 'valid') {
+            return;
+        }
+        expect(validation.data.globalBold).toBe(true);
+        expect(validation.presentKeys).toEqual(['version', 'globalBold']);
     });
 });

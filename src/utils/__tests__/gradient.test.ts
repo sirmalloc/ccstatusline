@@ -260,7 +260,6 @@ describe('renderStatusLine with a gradient override', () => {
     function createSettings(overrides: Partial<Settings> = {}): Settings {
         return {
             ...DEFAULT_SETTINGS,
-            flexMode: 'full',
             colorLevel: 3,
             ...overrides,
             powerline: {

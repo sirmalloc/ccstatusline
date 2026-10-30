@@ -232,4 +232,97 @@ describe('StatusJSONSchema numeric coercion', () => {
         expect(result.data.fast_mode).toBeUndefined();
         expect(result.data.model).toEqual({ id: 'claude-opus-4-6' });
     });
+
+    it('parses prompt_cache with every documented field', () => {
+        const result = StatusJSONSchema.safeParse({
+            prompt_cache: {
+                warm: true,
+                caching_observed: true,
+                ttl: '1h',
+                expires_at: 1738429200,
+                requests: 14,
+                misses: '2',
+                expected_rebuilds: 1,
+                hit_ratio: 0.91,
+                cache_write_tokens: 352000,
+                miss_recache_tokens: 310200,
+                last_miss_at: 1738425230,
+                last_miss_cause: { causes: ['tools_changed'], tools_added: 2, tools_removed: 0 },
+                miss_causes: { tools_changed: 2 },
+                recache_tokens_if_cold: 45000
+            }
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.prompt_cache).toEqual({
+            warm: true,
+            caching_observed: true,
+            ttl: '1h',
+            expires_at: 1738429200,
+            requests: 14,
+            misses: 2,
+            expected_rebuilds: 1,
+            hit_ratio: 0.91,
+            cache_write_tokens: 352000,
+            miss_recache_tokens: 310200,
+            last_miss_at: 1738425230,
+            last_miss_cause: { causes: ['tools_changed'], tools_added: 2, tools_removed: 0 },
+            miss_causes: { tools_changed: 2 },
+            recache_tokens_if_cold: 45000
+        });
+    });
+
+    it('accepts the nulls prompt_cache documents', () => {
+        const promptCache = { expires_at: null, hit_ratio: null, last_miss_at: null, last_miss_cause: null, recache_tokens_if_cold: null };
+        const result = StatusJSONSchema.safeParse({ prompt_cache: promptCache });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.prompt_cache?.last_miss_at).toBeNull();
+        expect(result.data.prompt_cache?.last_miss_cause).toBeNull();
+    });
+
+    // The status line keeps rendering when Claude Code sends a prompt_cache
+    // field in a shape this version doesn't know
+    it('drops a malformed prompt_cache field instead of rejecting the payload', () => {
+        const result = StatusJSONSchema.safeParse({
+            model: { display_name: 'Opus' },
+            prompt_cache: {
+                requests: 14,
+                misses: 'several',
+                last_miss_cause: 'tools_changed',
+                miss_causes: { tools_changed: 'two' }
+            }
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.model).toEqual({ display_name: 'Opus' });
+        expect(result.data.prompt_cache?.requests).toBe(14);
+        expect(result.data.prompt_cache?.misses).toBeUndefined();
+        expect(result.data.prompt_cache?.last_miss_cause).toBeUndefined();
+        expect(result.data.prompt_cache?.miss_causes).toBeUndefined();
+    });
+
+    it('drops a prompt_cache that is not an object instead of rejecting the payload', () => {
+        const result = StatusJSONSchema.safeParse({ model: { display_name: 'Opus' }, prompt_cache: 42 });
+
+        expect(result.success).toBe(true);
+        if (!result.success) {
+            return;
+        }
+
+        expect(result.data.model).toEqual({ display_name: 'Opus' });
+        expect(result.data.prompt_cache).toBeUndefined();
+    });
 });
