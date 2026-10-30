@@ -43,6 +43,7 @@ interface UsageProbeResult {
     lockContents: string | null;
     securityCalls: string[];
     fetchedAtMs: number | null;
+    loginFingerprint: string | null;
 }
 
 interface TokenHome {
@@ -66,6 +67,8 @@ interface ProbeOptions {
     responseBody?: string;
     responseHeaders?: Record<string, string>;
     statusCode?: number;
+    securityTimeoutLog?: string;
+    readLoginFingerprint?: boolean;
     // What each of the probe's two calls runs: fetchUsageData (the default)
     // or fetchAccountEmail, whose status also drives the real email widget.
     target?: 'account-email' | 'usage';
@@ -85,6 +88,17 @@ import { createHash } from 'node:crypto';
 
 const require = createRequire(import.meta.url);
 const https = require('node:https');
+// A structured timeout fixture exercises backoff without waiting on a child or
+// invoking the real Keychain. It is installed before importing credential code.
+if (process.env.TEST_SECURITY_TIMEOUT_LOG) {
+    const childProcess = require('node:child_process');
+    childProcess.execFileSync = (command, args) => {
+        if (command !== 'security') throw new Error('unexpected child command');
+        fs.appendFileSync(process.env.TEST_SECURITY_TIMEOUT_LOG, args.join(' ') + '\\n');
+        throw Object.assign(new Error('synthetic security timeout'), { code: 'ETIMEDOUT' });
+    };
+}
+
 const mode = process.env.TEST_REQUEST_MODE || 'success';
 const responseBody = process.env.TEST_RESPONSE_BODY || '';
 const responseHeaders = JSON.parse(process.env.TEST_RESPONSE_HEADERS_JSON || '{}');
@@ -170,7 +184,7 @@ https.request = (...args) => {
     return request;
 };
 
-const { fetchAccountEmail, fetchUsageData, getUsageFetchedAtMs, isStaleUsageFallback } = await import(${JSON.stringify(usageModulePath)});
+const { fetchAccountEmail, fetchUsageData, getUsageFetchedAtMs, getUsageLoginFingerprint, isStaleUsageFallback } = await import(${JSON.stringify(usageModulePath)});
 
 const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const configHash = createHash('sha256').update(path.resolve(configDir)).digest('hex').slice(0, 16);
@@ -213,7 +227,8 @@ process.stdout.write(JSON.stringify({
     securityCalls: fs.existsSync(securityCallsFile)
         ? fs.readFileSync(securityCallsFile, 'utf8').trim().split('\\n').filter(Boolean)
         : [],
-    fetchedAtMs: getUsageFetchedAtMs() ?? null
+    fetchedAtMs: getUsageFetchedAtMs() ?? null,
+    loginFingerprint: process.env.TEST_LOGIN_FINGERPRINT === '1' ? getUsageLoginFingerprint() : null
 }));
 `;
 
@@ -295,7 +310,8 @@ process.stdout.write(JSON.stringify({
             TEST_RESPONSE_BODY: options.responseBody ?? '',
             TEST_RESPONSE_HEADERS_JSON: JSON.stringify(options.responseHeaders ?? {}),
             TEST_STATUS_CODE: String(options.statusCode ?? (options.mode === 'success' ? 200 : 500)),
-            TEST_PROBE_TARGET: options.target ?? 'usage'
+            TEST_PROBE_TARGET: options.target ?? 'usage',
+            TEST_LOGIN_FINGERPRINT: options.readLoginFingerprint ? '1' : '0'
         });
 
         if (options.claudeConfigDir !== undefined) {
@@ -304,6 +320,10 @@ process.stdout.write(JSON.stringify({
 
         if (options.claudeSecureStorageConfigDir !== undefined) {
             env.CLAUDE_SECURESTORAGE_CONFIG_DIR = options.claudeSecureStorageConfigDir;
+        }
+
+        if (options.securityTimeoutLog !== undefined) {
+            env.TEST_SECURITY_TIMEOUT_LOG = options.securityTimeoutLog;
         }
 
         if (options.httpsProxy !== undefined) {
@@ -607,19 +627,23 @@ describe('fetchUsageData error handling', () => {
                 fs.rmSync(path.join(profile.claudeConfig, '.credentials.json'));
                 expect(render(profile, nowMs).first).toEqual({ error: 'no-credentials' });
             }
+            // Both stores remain missing while their separate cooldowns apply.
             for (const profile of [first, second]) {
-                writeUsageCredentials(profile.claudeConfig, { accessToken: 'test-token' });
                 const blocked = render(profile, nowMs + 10000);
                 expect(blocked.first).toEqual({ error: 'no-credentials' });
                 expect(blocked.requestCount).toBe(0);
             }
+            // Creating either profile's file invalidates only its own record.
             for (const profile of [first, second]) {
-                expect(render(profile, nowMs + 31000).first.sessionUsage).toBe(42);
+                writeUsageCredentials(profile.claudeConfig, { accessToken: 'test-token' });
+                const loggedIn = render(profile, nowMs + 11000);
+                expect(loggedIn.first.sessionUsage).toBe(42);
+                expect(loggedIn.requestCount).toBe(1);
             }
         } finally {
             harness.cleanup();
         }
-    });
+    }, 30000);
 
     it.each([false, true])('ignores and preserves shared legacy files with a custom profile: %s', (customProfile) => {
         const harness = createProbeHarness();
@@ -860,6 +884,50 @@ describe('fetchUsageData error handling', () => {
             expect(cachedSuccessResult.second).toEqual(successResult.first);
             expect(cachedSuccessResult.cacheExists).toBe(true);
             expect(cachedSuccessResult.requestCount).toBe(0);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('reuses a fresh successful response with a required window whose reset has passed across processes', () => {
+        const harness = createProbeHarness();
+
+        try {
+            const home = harness.createTokenHome('fresh-past-reset');
+            const renderNowMs = Date.now();
+            const pastResetAt = new Date(renderNowMs - 60000).toISOString();
+            const futureResetAt = new Date(renderNowMs + 60000).toISOString();
+            const options: ProbeOptions = {
+                claudeConfigDir: home.claudeConfig,
+                claudeSecureStorageConfigDir: '',
+                home: home.home,
+                pathDir: home.bin,
+                nowMs: renderNowMs,
+                mode: 'success',
+                requiredFields: ['sessionUsage', 'weeklyUsage'],
+                responseBody: JSON.stringify({
+                    five_hour: { utilization: 42, resets_at: pastResetAt },
+                    seven_day: { utilization: 17, resets_at: futureResetAt }
+                })
+            };
+            const first = harness.runProbe(options);
+            expect(first.requestCount).toBe(1);
+            expect(first.lockExists).toBe(false);
+            expect(first.first).toEqual({
+                sessionUsage: 42,
+                sessionResetAt: pastResetAt,
+                weeklyUsage: 17,
+                weeklyResetAt: futureResetAt
+            });
+
+            // Each probe starts a new process, so memory reuse cannot hide a
+            // fresh-cache miss that would refetch on the next status render.
+            const next = harness.runProbe({ ...options, nowMs: renderNowMs + 1000 });
+            expect(next.requestCount).toBe(0);
+            expect(next.first).toEqual(first.first);
+            expect(next.second).toEqual(first.first);
+            expect(next.staleFallback).toEqual([false, false]);
+            expect(next.lockExists).toBe(false);
         } finally {
             harness.cleanup();
         }
@@ -1278,14 +1346,19 @@ describe('fetchUsageData error handling', () => {
 
             expect(renderAt(nowMs).first).toEqual({ error: 'no-credentials' });
 
-            // An API-key user has no OAuth login to find, and on macOS each
-            // lookup spawns `security` twice, a full keychain dump included.
-            // Later renders inside the window skip the lookup entirely, so a
-            // login made meanwhile is only picked up once it ends.
+            // An unchanged missing file keeps the no-login cooldown; creating
+            // the file invalidates it immediately.
+            const unchanged = renderAt(nowMs + 5000);
+            expect(unchanged.first).toEqual({ error: 'no-credentials' });
+            expect(unchanged.requestCount).toBe(0);
             fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
-            const backedOff = renderAt(nowMs + 10000);
-            expect(backedOff.first).toEqual({ error: 'no-credentials' });
-            expect(backedOff.requestCount).toBe(0);
+            const loggedIn = renderAt(nowMs + 10000);
+            expect(loggedIn.first.sessionUsage).toBe(42);
+            expect(loggedIn.requestCount).toBe(1);
+
+            // Keep the filesystem cache age aligned with the probe's fake clock.
+            const cacheTimeSeconds = (nowMs + 10000) / 1000;
+            fs.utimesSync(usageFilePath(home, 'json'), cacheTimeSeconds, cacheTimeSeconds);
 
             // Another profile's lookup is not suppressed by this one's miss.
             const other = renderAt(nowMs + 10000, otherProfile.claudeConfig);
@@ -1294,7 +1367,7 @@ describe('fetchUsageData error handling', () => {
 
             const retried = renderAt(nowMs + 31000);
             expect(retried.first.sessionUsage).toBe(42);
-            expect(retried.requestCount).toBe(1);
+            expect(retried.requestCount).toBe(0);
         } finally {
             harness.cleanup();
         }
@@ -3304,5 +3377,263 @@ describe('parseUsageApiResponse limits[] fallback (#503)', () => {
             weeklyUsage: 0,
             weeklyResetAt: '2030-07-07T00:00:00.000Z'
         });
+    });
+});
+
+describe.skipIf(process.platform !== 'darwin')('CC740 cross-process credential checks', () => {
+    it('reuses successful Keychain checks across fresh-cache renders', () => {
+        const harness = createProbeHarness();
+        try {
+            const home = harness.createTokenHome('cc740-keychain-success');
+            const log = path.join(home.home, 'security.log');
+            const fakeSecret = path.join(home.home, 'fake-keychain.json');
+            const payload = (token: string) => JSON.stringify({ claudeAiOauth: { accessToken: token } });
+            fs.writeFileSync(fakeSecret, payload('synthetic-account-a'));
+            fs.writeFileSync(path.join(home.bin, 'security'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\n/bin/cat '${fakeSecret}'\n`);
+            const hash = createHash('sha256').update('synthetic-account-a').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: hash });
+            const render = () => harness.runProbe({
+                home: home.home,
+                claudeConfigDir: home.claudeConfig,
+                claudeSecureStorageConfigDir: '',
+                pathDir: home.bin,
+                nowMs: mtimeMs,
+                mode: 'success',
+                readLoginFingerprint: true,
+                responseBody: JSON.stringify({ five_hour: { utilization: 42 } })
+            });
+            for (let i = 0; i < 3; i += 1) {
+                const result = render();
+                expect(result.first.sessionUsage).toBe(5);
+                expect(result.fetchedAtMs).toBe(mtimeMs);
+                expect(result.loginFingerprint).toBe(hash);
+                expect(result.requestCount).toBe(0);
+            }
+            expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+            fs.writeFileSync(path.join(home.home, '.cache', 'ccstatusline', `account-email-${hash}.json`),
+                JSON.stringify({ tokenHash: hash, email: 'cached@example.com' }));
+            const email = harness.runProbe({
+                home: home.home,
+                claudeConfigDir: home.claudeConfig,
+                claudeSecureStorageConfigDir: '',
+                pathDir: home.bin,
+                nowMs: mtimeMs,
+                mode: 'unexpected',
+                target: 'account-email'
+            });
+            expect(email.first).toEqual({ status: 'available', email: 'cached@example.com' });
+            expect(email.requestCount).toBe(0);
+            expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('detects a Keychain-only account switch while the credential file remains unchanged', () => {
+        const harness = createProbeHarness();
+        try {
+            const home = harness.createTokenHome('cc740-keychain-switch');
+            const log = path.join(home.home, 'security.log');
+            const fakeSecret = path.join(home.home, 'fake-keychain.json');
+            fs.writeFileSync(fakeSecret, JSON.stringify({ claudeAiOauth: { accessToken: 'synthetic-account-b' } }));
+            fs.writeFileSync(path.join(home.bin, 'security'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\n/bin/cat '${fakeSecret}'\n`);
+            const hash = createHash('sha256').update('synthetic-account-a').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: hash });
+            const result = harness.runProbe({
+                home: home.home,
+                claudeConfigDir: home.claudeConfig,
+                claudeSecureStorageConfigDir: '',
+                pathDir: home.bin,
+                nowMs: mtimeMs,
+                mode: 'success',
+                responseBody: JSON.stringify({ five_hour: { utilization: 42 } })
+            });
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.requestCount).toBe(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+
+    it('backs off failed default-profile reads and dumps with valid file fallback', () => {
+        const harness = createProbeHarness();
+        try {
+            const home = harness.createTokenHome('cc740-file-fallback');
+            const defaultConfig = home.claudeConfig;
+            fs.writeFileSync(path.join(defaultConfig, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+            const log = path.join(home.home, 'security.log');
+            fs.writeFileSync(path.join(home.bin, 'security'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexit 1\n`);
+            const hash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+            const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: hash });
+            for (let i = 0; i < 3; i += 1) {
+                const result = harness.runProbe({ home: home.home, claudeConfigDir: home.claudeConfig, claudeSecureStorageConfigDir: '', pathDir: home.bin, nowMs: mtimeMs, mode: 'unexpected' });
+                expect(result.first.sessionUsage).toBe(5);
+                expect(result.requestCount).toBe(0);
+            }
+            const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
+            expect(calls.filter(call => call.startsWith('find-generic-password'))).toHaveLength(2);
+            expect(calls.filter(call => call === 'dump-keychain')).toHaveLength(1);
+        } finally {
+            harness.cleanup();
+        }
+    });
+});
+
+describe.skipIf(process.platform !== 'darwin')('CC740 credential cooldown boundaries', () => {
+    function fixture() {
+        const harness = createProbeHarness();
+        const home = harness.createTokenHome('cc740-boundary');
+        const defaultConfig = home.claudeConfig;
+        writeUsageCredentials(defaultConfig, { accessToken: 'test-token' });
+        const secret = path.join(home.home, 'synthetic-keychain.json');
+        const log = path.join(home.home, 'security.log');
+        fs.writeFileSync(secret, JSON.stringify({ claudeAiOauth: { accessToken: 'test-token' } }));
+        const setSecurity = (succeeds: boolean) => {
+            fs.writeFileSync(path.join(home.bin, 'security'),
+                `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\n${succeeds ? `/bin/cat '${secret}'` : 'exit 1'}\n`);
+        };
+        setSecurity(true);
+        const hash = createHash('sha256').update('test-token').digest('hex').slice(0, 16);
+        const { mtimeMs } = seedUsageCache(home, { sessionUsage: 5, tokenHash: hash });
+        const nowMs = Math.floor(mtimeMs / 1000) * 1000;
+        const render = (offsetMs = 0, extra: Partial<ProbeOptions> = {}) => harness.runProbe({
+            home: home.home, claudeConfigDir: home.claudeConfig, claudeSecureStorageConfigDir: '', pathDir: home.bin, nowMs: nowMs + offsetMs,
+            mode: 'success', responseBody: JSON.stringify({ five_hour: { utilization: 42 } }), ...extra
+        });
+        const calls = () => fs.readFileSync(log, 'utf8').trim().split('\n');
+        const switchKeychain = () => {
+            fs.writeFileSync(secret, JSON.stringify({ claudeAiOauth: { accessToken: 'synthetic-account-b' } }));
+        };
+        return { harness, home, defaultConfig, secret, log, setSecurity, nowMs, render, calls, switchKeychain };
+    }
+
+    it('detects a Keychain-only account switch at 30 seconds, not on each render', () => {
+        const f = fixture();
+        try {
+            expect(f.render().first.sessionUsage).toBe(5);
+            f.switchKeychain();
+            const before = f.render(29999);
+            expect(before.first.sessionUsage).toBe(5);
+            expect(before.requestCount).toBe(0);
+            const boundary = f.render(30000);
+            expect(boundary.first.sessionUsage).toBe(42);
+            expect(boundary.requestCount).toBe(1);
+            expect(f.calls()).toHaveLength(2);
+        } finally {
+            f.harness.cleanup();
+        }
+    });
+
+    it('invalidates a successful check immediately when the credential file rotates', () => {
+        const f = fixture();
+        try {
+            expect(f.render().first.sessionUsage).toBe(5);
+            f.switchKeychain();
+            writeUsageCredentials(f.defaultConfig, { accessToken: 'synthetic-account-b' });
+            const rotated = f.render(1000);
+            expect(rotated.first.sessionUsage).toBe(42);
+            expect(rotated.requestCount).toBe(1);
+            expect(f.calls()).toHaveLength(2);
+        } finally {
+            f.harness.cleanup();
+        }
+    });
+
+    it('invalidates failed-Keychain file fallback immediately on file rotation', () => {
+        const f = fixture();
+        try {
+            f.setSecurity(false);
+            expect(f.render().first.sessionUsage).toBe(5);
+            writeUsageCredentials(f.defaultConfig, { accessToken: 'synthetic-account-b' });
+            const rotated = f.render(1000);
+            expect(rotated.first.sessionUsage).toBe(42);
+            expect(rotated.requestCount).toBe(1);
+            expect(f.calls().filter(call => call === 'dump-keychain')).toHaveLength(2);
+        } finally {
+            f.harness.cleanup();
+        }
+    }, 30000);
+
+    it.each([false, true])('retries failed Keychain lookup and recovers its precedence at expiry (timeout=%s)', (timeout) => {
+        const f = fixture();
+        try {
+            f.setSecurity(false);
+            expect(f.render(0, timeout ? { securityTimeoutLog: f.log } : {}).first.sessionUsage).toBe(5);
+            f.switchKeychain();
+            f.setSecurity(true);
+            const recovered = f.render(30000);
+            expect(recovered.first.sessionUsage).toBe(42);
+            expect(recovered.requestCount).toBe(1);
+            expect(f.calls().filter(call => call.startsWith('find-generic-password'))).toHaveLength(timeout ? 2 : 3);
+            expect(f.calls().filter(call => call === 'dump-keychain')).toHaveLength(timeout ? 0 : 1);
+        } finally {
+            f.harness.cleanup();
+        }
+    });
+
+    it('backs off structured timeout failures with valid file fallback', () => {
+        const f = fixture();
+        try {
+            for (const offset of [0, 10000]) {
+                const result = f.render(offset, { securityTimeoutLog: f.log });
+                expect(result.first.sessionUsage).toBe(5);
+                expect(result.requestCount).toBe(0);
+            }
+            expect(f.calls().filter(call => call.startsWith('find-generic-password'))).toHaveLength(1);
+            expect(f.calls().filter(call => call === 'dump-keychain')).toHaveLength(0);
+        } finally {
+            f.harness.cleanup();
+        }
+    }, 30000);
+
+    it('does not reuse another profile check with the same HOME', () => {
+        const f = fixture();
+        try {
+            expect(f.render().first.sessionUsage).toBe(5);
+            const other = f.harness.createTokenHome('cc740-other-profile');
+            writeUsageCredentials(other.claudeConfig, { accessToken: 'synthetic-account-b' });
+            // The other profile has its own service. Its fake security reads
+            // only that profile's file; its usage cache is profile-scoped.
+            const result = f.render(1000, { claudeConfigDir: other.claudeConfig, claudeSecureStorageConfigDir: other.claudeConfig, pathDir: other.bin });
+            expect(result.first.sessionUsage).toBe(42);
+            expect(result.requestCount).toBe(1);
+            expect(f.calls()).toHaveLength(1);
+        } finally {
+            f.harness.cleanup();
+        }
+    });
+
+    it.each(['error', 'status'] as const)('preserves stale usage and %s backoff without repeated Keychain reads', (mode) => {
+        const f = fixture();
+        try {
+            f.setSecurity(false);
+            const extra: Partial<ProbeOptions> = { mode, statusCode: 429, responseHeaders: { 'retry-after': '90' } };
+            const first = f.render(240000, extra);
+            expect(first.first.sessionUsage).toBe(5);
+            expect(first.requestCount).toBe(1);
+            expect(first.staleFallback).toEqual([true, true]);
+            const second = f.render(250000, extra);
+            expect(second.first.sessionUsage).toBe(5);
+            expect(second.requestCount).toBe(0);
+            expect(second.staleFallback).toEqual([true, true]);
+            expect(f.calls()).toHaveLength(3);
+        } finally {
+            f.harness.cleanup();
+        }
+    });
+
+    it('does not stretch the credential cooldown after the clock moves back', () => {
+        const f = fixture();
+        try {
+            expect(f.render().first.sessionUsage).toBe(5);
+            expect(f.render(-31000).first.sessionUsage).toBe(5);
+            expect(f.calls()).toHaveLength(2);
+            const record = fs.readFileSync(usageFilePath(f.home, 'credentials.lock'), 'utf8');
+            expect(record).not.toContain('test-token');
+            expect(record).not.toContain('accessToken"');
+            expect(fs.statSync(usageFilePath(f.home, 'credentials.lock')).mode & 0o777).toBe(0o600);
+        } finally {
+            f.harness.cleanup();
+        }
     });
 });
