@@ -29,16 +29,12 @@ describe('TerminalOptionsMenu helpers', () => {
     it('builds terminal options list items with the current color level label', () => {
         const items = buildTerminalOptionsItems(2);
 
-        expect(items).toHaveLength(2);
+        expect(items).toHaveLength(1);
         expect(items[0]).toMatchObject({
-            label: '◱ Terminal Width',
-            value: 'width'
-        });
-        expect(items[1]).toMatchObject({
             label: '▓ Color Level',
             sublabel: '(256 Color (default))',
             value: 'colorLevel'
         });
-        expect(items[1]?.description).toContain('Truecolor');
+        expect(items[0]?.description).toContain('Truecolor');
     });
 });

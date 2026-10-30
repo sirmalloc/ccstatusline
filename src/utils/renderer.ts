@@ -33,7 +33,6 @@ import {
     getColorAnsiCode,
     getPowerlineTheme
 } from './colors';
-import { calculateContextPercentage } from './context-percentage';
 import {
     isGradientSpec,
     parseGradientSpec
@@ -87,48 +86,18 @@ function resolvePaddingSides(padding: string, side: DefaultPaddingSide | undefin
     return { leading: padding, trailing: padding };
 }
 
-function resolveEffectiveTerminalWidth(
-    detectedWidth: number | null,
-    settings: Settings,
-    context: RenderContext
-): number | null {
+// Columns left free at the right edge for the padding Claude Code puts
+// around the status line.
+const RESERVED_COLUMNS = 5;
+
+function resolveEffectiveTerminalWidth(detectedWidth: number | null): number | null {
     if (!detectedWidth) {
         return null;
     }
 
     // A reserve that takes the whole terminal leaves 0 columns, which still
     // truncates; a negative width would read as "unknown" and skip truncation.
-    const remaining = (reserved: number): number => Math.max(0, detectedWidth - reserved);
-    const flexMode = settings.flexMode as string;
-
-    if (context.isPreview) {
-        if (flexMode === 'full') {
-            return remaining(6);
-        }
-        if (flexMode === 'full-minus-40') {
-            return remaining(40);
-        }
-        if (flexMode === 'full-until-compact') {
-            return remaining(6);
-        }
-        return null;
-    }
-
-    if (flexMode === 'full') {
-        return remaining(6);
-    }
-    if (flexMode === 'full-minus-40') {
-        return remaining(40);
-    }
-    if (flexMode === 'full-until-compact') {
-        const threshold = settings.compactThreshold;
-        const contextPercentage = calculateContextPercentage(context);
-        return contextPercentage >= threshold
-            ? remaining(40)
-            : remaining(6);
-    }
-
-    return null;
+    return Math.max(0, detectedWidth - RESERVED_COLUMNS);
 }
 
 function renderPowerlineStatusLine(
@@ -195,10 +164,7 @@ function renderPowerlineStatusLine(
     if (filteredWidgets.length === 0)
         return '';
 
-    const detectedWidth = context.terminalWidth ?? getTerminalWidth();
-
-    // Calculate terminal width based on flex mode settings
-    const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
+    const terminalWidth = resolveEffectiveTerminalWidth(context.terminalWidth ?? getTerminalWidth());
 
     // Build widget elements (similar to regular mode but without separators)
     const widgetElements: {
@@ -1099,10 +1065,7 @@ export function renderStatusLine(
         return applyColors(text, fgColor, bgColor, shouldBold, colorLevel, dim);
     };
 
-    const detectedWidth = context.terminalWidth ?? getTerminalWidth();
-
-    // Calculate terminal width based on flex mode settings
-    const terminalWidth = resolveEffectiveTerminalWidth(detectedWidth, settings, context);
+    const terminalWidth = resolveEffectiveTerminalWidth(context.terminalWidth ?? getTerminalWidth());
 
     const elements: { content: string; type: string; widget?: WidgetItem; mergesWithNext?: boolean }[] = [];
     let hasFlexSeparator = false;
@@ -1436,16 +1399,14 @@ export function renderStatusLine(
         statusLine = finalElements.join('');
     }
 
-    // Truncate if the line exceeds the terminal width
-    // Use terminalWidth if available (already accounts for flex mode adjustments, and
-    // may be 0 when the reserve takes the whole terminal), otherwise use detectedWidth
-    const maxWidth = terminalWidth ?? detectedWidth;
-    if (maxWidth !== null && (terminalWidth !== null || maxWidth > 0)) {
+    // Truncate if the line exceeds the terminal width (which may be 0 when the
+    // reserve takes the whole terminal)
+    if (terminalWidth !== null) {
         // Remove ANSI escape codes to get actual length
         const plainLength = getVisibleWidth(statusLine);
 
-        if (plainLength > maxWidth) {
-            statusLine = truncateStyledText(statusLine, maxWidth, { ellipsis: true });
+        if (plainLength > terminalWidth) {
+            statusLine = truncateStyledText(statusLine, terminalWidth, { ellipsis: true });
         }
     }
 

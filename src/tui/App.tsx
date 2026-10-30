@@ -102,7 +102,6 @@ import {
     RefreshIntervalMenu,
     StatusLinePreview,
     TerminalOptionsMenu,
-    TerminalWidthMenu,
     UninstallMenu,
     UpdateCheckerMenu,
     getMainMenuInstallSelectionIndex,
@@ -128,7 +127,6 @@ type AppScreen = 'main'
     | 'items'
     | 'colorLines'
     | 'colors'
-    | 'terminalWidth'
     | 'terminalConfig'
     | 'globalOverrides'
     | 'confirm'
@@ -531,7 +529,6 @@ export const App: React.FC = () => {
     const [fontInstallMessage, setFontInstallMessage] = useState<string | null>(null);
     const [existingStatusLine, setExistingStatusLine] = useState<string | null>(null);
     const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
-    const [previewIsTruncated, setPreviewIsTruncated] = useState(false);
     const [currentRefreshInterval, setCurrentRefreshInterval] = useState<number | null>(null);
     const [supportsRefreshInterval] = useState(() => isClaudeCodeVersionAtLeast('2.1.97'));
     const [commandAvailability] = useState(() => getPackageCommandAvailability());
@@ -1306,7 +1303,6 @@ export const App: React.FC = () => {
                 lines={previewLines}
                 terminalWidth={terminalWidth}
                 settings={settings}
-                onTruncationChange={setPreviewIsTruncated}
             />
 
             <Box marginTop={1}>
@@ -1325,9 +1321,7 @@ export const App: React.FC = () => {
                         initialSelection={menuSelections.main}
                         onSelectionChange={(index) => { setMenuSelections(prev => ({ ...prev, main: index })); }}
                         powerlineFontStatus={powerlineFontStatus}
-                        settings={settings}
                         installation={effectiveInstallation}
-                        previewIsTruncated={previewIsTruncated}
                     />
                 )}
                 {screen === 'lines' && (
@@ -1411,25 +1405,10 @@ export const App: React.FC = () => {
                         onUpdate={(updatedSettings) => {
                             setSettings(updatedSettings);
                         }}
-                        onBack={(target?: string) => {
-                            if (target === 'width') {
-                                setScreen('terminalWidth');
-                            } else {
-                                // Save that we came from 'terminalConfig' menu (index 3)
-                                setMenuSelections(prev => ({ ...prev, main: 3 }));
-                                setScreen('main');
-                            }
-                        }}
-                    />
-                )}
-                {screen === 'terminalWidth' && (
-                    <TerminalWidthMenu
-                        settings={settings}
-                        onUpdate={(updatedSettings) => {
-                            setSettings(updatedSettings);
-                        }}
                         onBack={() => {
-                            setScreen('terminalConfig');
+                            // Save that we came from 'terminalConfig' menu (index 3)
+                            setMenuSelections(prev => ({ ...prev, main: 3 }));
+                            setScreen('main');
                         }}
                     />
                 )}

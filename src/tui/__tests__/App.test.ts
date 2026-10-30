@@ -414,8 +414,7 @@ describe('App after a global update run from the TUI', () => {
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             await pressKey(rendered, KEYS.enter, '(Truecolor)');
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 
@@ -738,8 +737,7 @@ describe('App save with a widget whose hooks the status line command can\'t run'
             await pressKey(rendered, KEYS.down, '▶  🎨 Edit Colors');
             await pressKey(rendered, KEYS.down, '▶  ⚡ Powerline Setup');
             await pressKey(rendered, KEYS.down, '▶  💻 Terminal Options');
-            await pressKey(rendered, KEYS.enter, '▶  ◱ Terminal Width');
-            await pressKey(rendered, KEYS.down, '▶  ▓ Color Level');
+            await pressKey(rendered, KEYS.enter, '▶  ▓ Color Level');
             await pressKey(rendered, KEYS.enter, '(Truecolor)');
             await pressKey(rendered, KEYS.escape, '💾 Save & Exit');
 

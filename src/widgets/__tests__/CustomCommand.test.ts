@@ -86,8 +86,6 @@ describe('CustomCommandWidget', () => {
     const settings: Settings = {
         version: 3,
         lines: [],
-        flexMode: 'full',
-        compactThreshold: 60,
         colorLevel: 2,
         defaultPadding: ' ',
         defaultPaddingSide: 'both',

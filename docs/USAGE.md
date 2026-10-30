@@ -77,15 +77,11 @@ An explicit per-model quota at 0% is shown even when its reset timestamp is stil
 - **Custom Text** / **Custom Symbol** / **Custom Command** / **Link** - Add user-defined text, a single symbol or emoji, custom command output, or a clickable OSC 8 hyperlink.
 - **Separator** / **Flex Separator** - Add a manual divider or a width-filling flexible spacer. Manual separators stay saved but are hidden in Powerline mode, reappearing when it is disabled; flex separators still work there as layout spacers.
 
-## Terminal Width Options
+## Terminal Width
 
-These settings affect where long lines are truncated, and where right-alignment occurs when using flex separators:
+Status lines use the full terminal width minus 5 columns of padding: longer lines are truncated there, and flex separators right-align against it. Outside fullscreen rendering, Claude Code shows notifications such as the context-low warning on the same row, and on narrow terminals they may cut the status line short.
 
-- **Full width always** - Uses full terminal width (default; may wrap if auto-compact message appears or IDE integration adds text)
-- **Full width minus 40** - Reserves 40 characters for auto-compact message to prevent wrapping
-- **Full width until compact** - Dynamically switches between full width and minus 40 based on context percentage threshold (configurable, default 60%)
-
-The default applies to new configurations and settings without an explicit `flexMode`; saved mode choices are preserved.
+Settings files from earlier versions may still carry `flexMode` and `compactThreshold`, from the removed **Full width minus 40** and **Full width until compact** modes. They are ignored, and the next save from the TUI removes them.
 
 Flex separators expand against the detected width in both regular and Powerline rendering. If width detection is unavailable, they render like normal separators until a terminal width is available.
 
@@ -96,6 +92,8 @@ CCSTATUSLINE_WIDTH=160 ccstatusline
 ```
 
 The override is checked before automatic width detection, so it also works in wrapper processes, IDE integrations, nested PTYs, and Windows environments where probing may be unavailable. Invalid values such as `0`, negative numbers, or non-numeric strings are ignored and ccstatusline falls back to normal detection.
+
+Claude Code 2.1.153 and later set `COLUMNS` to the current terminal width when running the status line. ccstatusline reads it after `CCSTATUSLINE_WIDTH` and before any probing, so on current Claude Code versions no width-detection subprocesses run. Invalid values fall back to detection the same way.
 
 On Linux, width detection first uses `/proc` and the terminal device directly, avoiding subprocesses when that probe succeeds. Portable `ps`/`stty` fallbacks run without shell wrappers. A probe result is reused throughout one render. If no width is found, that result can also be cached for the same session across renders (default: 5 seconds); a detected width is always re-probed on the next render so resizes take effect immediately. Adjust **Terminal Width Cache TTL** under **Configure Status Line**, or set `terminalWidthCacheTtlSeconds` to `0-300` in `settings.json`; `0` disables the cache across renders.
 
