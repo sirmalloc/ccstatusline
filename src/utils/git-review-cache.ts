@@ -196,8 +196,13 @@ function runGitForCache(args: string[], cwd: string, deps: GitReviewCacheDeps): 
     }
 }
 
+const BRANCH_REF_PREFIX = 'refs/heads/';
+
 function getCurrentBranch(cwd: string, deps: GitReviewCacheDeps): string | null {
-    const branch = runGitForCache(['symbolic-ref', '--short', 'HEAD'], cwd, deps);
+    // The full ref, since --short turns it into "heads/<name>" when a tag has
+    // the same name, and no PR is on a branch by that name
+    const ref = runGitForCache(['symbolic-ref', 'HEAD'], cwd, deps);
+    const branch = ref.startsWith(BRANCH_REF_PREFIX) ? ref.slice(BRANCH_REF_PREFIX.length) : ref;
     return branch.length > 0 ? branch : null;
 }
 
