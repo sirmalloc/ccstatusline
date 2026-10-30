@@ -1135,8 +1135,12 @@ export function renderStatusLine(
             // and the preceding visible content. A visible separator owns that
             // boundary, while spacing-only separators can be replaced by a
             // more meaningful separator that follows the empty widget.
+            // Separators placed next to each other form one run and all
+            // render; only a run on the far side of an empty widget can
+            // own or give up the boundary.
             let contentBeforeIndex: number | null = null;
             let replacesSpacingSeparator = false;
+            let followsSeparatorInRun = false;
             let crossedEmptyWidget = false;
             let crossedUnmergedEmptyWidget = false;
             for (let j = i - 1; j >= 0; j--) {
@@ -1144,6 +1148,10 @@ export function renderStatusLine(
                 if (!prevWidget)
                     continue;
                 if (prevWidget.type === 'separator') {
+                    if (!crossedEmptyWidget) {
+                        followsSeparatorInRun = true;
+                        continue;
+                    }
                     if (!isSpacingSeparator(prevWidget, settings.defaultSeparator))
                         break;
                     replacesSpacingSeparator = true;
@@ -1165,7 +1173,10 @@ export function renderStatusLine(
             if (contentBeforeIndex === null)
                 continue;
 
-            if (replacesSpacingSeparator) {
+            // Only the first separator of a run removes the spacing it
+            // replaces; the rest of the run would remove that run's own
+            // separators.
+            if (replacesSpacingSeparator && !followsSeparatorInRun) {
                 while (isSpacingSeparator(elements[elements.length - 1]?.widget, settings.defaultSeparator)) {
                     elements.pop();
                 }
