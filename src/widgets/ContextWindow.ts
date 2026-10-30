@@ -34,12 +34,8 @@ export class ContextWindowWidget implements Widget {
             return formatRawOrLabeledValue(item, this.getLabelPrefix(), value);
         }
 
-        let total = getContextWindowSize(context.data);
-
-        if (total === null) {
-            const modelIdentifier = getModelContextIdentifier(context.data?.model);
-            total = getContextConfig(modelIdentifier).maxTokens;
-        }
+        const modelIdentifier = getModelContextIdentifier(context.data?.model);
+        const total = getContextConfig(modelIdentifier, getContextWindowSize(context.data)).maxTokens;
 
         if (total <= 0) {
             return null;

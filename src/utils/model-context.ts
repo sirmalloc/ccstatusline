@@ -71,7 +71,7 @@ function parseContextWindowEnvValue(raw: string): number | null {
     return result;
 }
 
-function getContextWindowEnvOverride(): number | null {
+export function getContextWindowEnvOverride(): number | null {
     const raw = process.env[CONTEXT_WINDOW_ENV_VAR];
     if (hasCachedEnv && raw === cachedEnvRaw) {
         return cachedEnvResult;
